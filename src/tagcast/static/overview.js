@@ -56,7 +56,7 @@ function statTile(label, value, note = "") {
 }
 
 function renderOverview({account: a, stats: s}) {
-  const plan = a.premium ? (a.subscription?.name || "Premium") : "Free account";
+  const plan = a.premium ? `Premium${a.subscription?.frequency ? ` · ${a.subscription.frequency}` : ""}` : "Free account";
   $("#overview-page").innerHTML = intro(`${escapeHtml(a.username || "Your account")} <span aria-hidden="true">·</span> ${escapeHtml(plan)} <span aria-hidden="true">·</span> library changed ${escapeHtml(a.lastmodified || "—")} (UTC)`)
     + `<div class="kpi-row">${[
       statTile("Tracks", fmt(s.tracks)), statTile("Albums", fmt(s.albums)), statTile("Album artists", fmt(s.album_artists), `${fmt(s.track_artists)} track artists`),
@@ -94,7 +94,7 @@ function accountCard(a) {
     ["Account", escapeHtml(a.username || "—")],
     ["E-mail", escapeHtml(a.email || "—")],
     ["Verified", a.verified ? `Yes${a.verified_on ? `, ${escapeHtml(a.verified_on)}` : ""}` : "No"],
-    ["Plan", a.premium ? `${escapeHtml(sub?.name || "Premium")}${sub?.frequency ? ` · ${escapeHtml(sub.frequency)}` : ""}${sub?.renews_on && !sub.canceled ? ` · renews ${escapeHtml(sub.renews_on)}` : ""}${sub?.canceled ? " · canceled" : ""}` : "Free"],
+    ["Plan", a.premium ? `Premium${sub?.name && sub.name.toLowerCase() !== "premium" && sub.name.toLowerCase() !== sub.frequency?.toLowerCase() ? ` (${escapeHtml(sub.name)})` : ""}${sub?.frequency ? ` · ${escapeHtml(sub.frequency)}` : ""}${sub?.renews_on && !sub.canceled ? ` · renews ${escapeHtml(sub.renews_on)}` : ""}${sub?.canceled ? " · canceled" : ""}` : "Free"],
     ["Last.fm scrobbling", a.linked.lastfm ? `Linked as ${escapeHtml(a.linked.lastfm)}` : "Not linked"],
     ["Dropbox · Google Drive", `${a.linked.dropbox ? "Linked" : "Not linked"} · ${a.linked.googledrive ? "Linked" : "Not linked"}`],
     ["Achievements", fmt(a.achievements)],

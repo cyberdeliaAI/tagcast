@@ -382,6 +382,14 @@ class Library:
             raise LibraryError("This artist is no longer available. Reload the library.")
         return number(artist.get("artwork_id"))
 
+    def first_track_of_artist(self, artist_id):
+        """A track on one of the artist's own albums, else any track by them, else 0."""
+        for album_id in self.album_ids():
+            if number(self.albums[album_id].get("artist_id")) == artist_id:
+                return self.active_track_ids(album_id)[0]
+        return next((i for i, t in self.tracks.items()
+                     if number(t.get("artist_id")) == artist_id and not t.get("trashed")), 0)
+
     def stream_info(self, track_id):
         track = self.tracks.get(track_id)
         if not track or track.get("trashed") or not text(track.get("file")).startswith("/"):

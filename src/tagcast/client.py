@@ -748,9 +748,14 @@ class Studio:
         """Images iBroadcast already has for this album or artist (the web editor's picker)."""
         client = self._require_client()
         library, _ = self._library()
-        track_id = 0
+        # Like the web editor, ask with one of the album's or the artist's own tracks; with
+        # track_id 0 iBroadcast answers with images of unrelated artists.
         if album_id:
             track_id = next(iter(library.album_art_state(number(album_id))), 0)
+        else:
+            track_id = library.first_track_of_artist(number(artist_id))
+        if not track_id:
+            return {"artwork": []}
         data = client._jsonrequest("get_artwork", track_id=track_id, artist_id=number(artist_id))
         ids = []
         for item in data.get("art") or []:

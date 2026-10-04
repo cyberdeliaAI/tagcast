@@ -214,6 +214,8 @@ class ClientTests(unittest.TestCase):
         art = studio.related_artwork(album_id="72")["artwork"]
         self.assertEqual([a["artwork_id"] for a in art], [77, 78])
         self.assertTrue(art[0]["thumb"].endswith("/artwork/77-150"))
+        studio.related_artwork(artist_id="42")  # asks with one of the artist's own tracks
+        self.assertEqual(mock_ibroadcast.STATE["last_get_artwork"], {"track_id": 904, "artist_id": 42})
 
     def test_stream_passes_ranges_through_with_the_token_kept_server_side(self):
         studio = self.connect()
