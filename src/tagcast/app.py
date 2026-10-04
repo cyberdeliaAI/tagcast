@@ -5,11 +5,13 @@ import json
 import logging
 import logging.handlers
 import os
+import sys
 import webbrowser
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
+from urllib.request import urlopen
 
 from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio
@@ -205,26 +207,56 @@ def _log_to_file(home):
     logging.getLogger().addHandler(handler)
 
 
+class Server(ThreadingHTTPServer):
+    # On Windows, SO_REUSEADDR lets a second program listen on a port that is in use,
+    # so a second Tagcast would start next to the first instead of noticing it.
+    allow_reuse_address = sys.platform != "win32"
+
+
+def _already_running(port):
+    """True when the program on this port is Tagcast (started earlier, e.g. by a double-click)."""
+    try:
+        with urlopen(f"http://127.0.0.1:{port}/api/status", timeout=3) as response:
+            return "configured" in json.loads(response.read() or b"{}")
+    except (OSError, ValueError):
+        return False
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Tagcast for iBroadcast")
     parser.add_argument("--port", type=int, default=int(os.environ.get("TAGCAST_PORT", 8912)))
     parser.add_argument("--open", action="store_true", help="open the browser after starting")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    _log_to_file(Studio.default_home())
+    url = f"http://127.0.0.1:{args.port}"
 
-    handler = type("BoundHandler", (Handler,), {"studio": Studio(), "port": args.port})
-    with ThreadingHTTPServer(("127.0.0.1", args.port), partial(handler, directory=str(STATIC))) as server:
-        url = f"http://127.0.0.1:{args.port}"
+    handler = type("BoundHandler", (Handler,), {"studio": None, "port": args.port})
+    try:
+        server = Server(("127.0.0.1", args.port), partial(handler, directory=str(STATIC)))
+    except OSError as error:
+        if _already_running(args.port):
+            print(f"Tagcast is already running: {url}", flush=True)
+            if args.open:
+                webbrowser.open(url)
+            return 0
+        print(f"Port {args.port} is in use by another program ({error.strerror}). "
+              "Start Tagcast with --port 8913, for example.", flush=True)
+        return 1
+
+    _log_to_file(Studio.default_home())
+    handler.studio = Studio()
+    with server:
         print(f"Tagcast: {url}", flush=True)
         print(f"Settings and sign-in tokens: {handler.studio.home}", flush=True)
+        print("Stop Tagcast with Ctrl+C, or by closing this window.", flush=True)
         if args.open:
             webbrowser.open(url)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             pass
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
