@@ -3,6 +3,8 @@ name = "tagcast"
 version = "0.5.0"
 description = "Tagcast for iBroadcast: an album-by-album metadata editor with online sources, covers and playback"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = ["ibroadcast>=2.0.1,<3"]
 
 [project.scripts]

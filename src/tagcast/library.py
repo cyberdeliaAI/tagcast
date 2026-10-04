@@ -244,6 +244,8 @@ class Library:
             "artwork": self.art_url(self.album_artwork(track_ids)),
             "artist_id": number(album.get("artist_id")),
             "artist_image": self.artist_image(album.get("artist_id")),
+            "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
+                                        .get("artwork_id")),
             "track_count": len(track_ids),
             "genres": sorted(genres),
             "no_genre": no_genre,

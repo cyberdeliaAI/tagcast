@@ -51,7 +51,7 @@ function intro(subtitle) {
   return `<section class="page-intro"><div><div class="eyebrow">YOUR iBROADCAST</div><h1>Overview<span>.</span></h1><p>${subtitle}</p></div></section>`;
 }
 
-function tile(label, value, note = "") {
+function statTile(label, value, note = "") {
   return `<div class="stat-tile"><span>${label}</span><strong>${value}</strong>${note ? `<small>${note}</small>` : ""}</div>`;
 }
 
@@ -59,9 +59,9 @@ function renderOverview({account: a, stats: s}) {
   const plan = a.premium ? (a.subscription?.name || "Premium") : "Free account";
   $("#overview-page").innerHTML = intro(`${escapeHtml(a.username || "Your account")} <span aria-hidden="true">·</span> ${escapeHtml(plan)} <span aria-hidden="true">·</span> library changed ${escapeHtml(a.lastmodified || "—")} (UTC)`)
     + `<div class="kpi-row">${[
-      tile("Tracks", fmt(s.tracks)), tile("Albums", fmt(s.albums)), tile("Album artists", fmt(s.album_artists), `${fmt(s.track_artists)} track artists`),
-      tile("Playlists", s.playlists == null ? "—" : fmt(s.playlists), s.playlists == null ? "after the next download" : ""),
-      tile("Plays", fmt(a.plays), "counted by iBroadcast"), tile("Collection size", bytes(s.size)), tile("Playing time", duration(s.length)),
+      statTile("Tracks", fmt(s.tracks)), statTile("Albums", fmt(s.albums)), statTile("Album artists", fmt(s.album_artists), `${fmt(s.track_artists)} track artists`),
+      statTile("Playlists", s.playlists == null ? "—" : fmt(s.playlists), s.playlists == null ? "after the next download" : ""),
+      statTile("Plays", fmt(a.plays), "counted by iBroadcast"), statTile("Collection size", bytes(s.size)), statTile("Playing time", duration(s.length)),
     ].join("")}</div>
     <div class="overview-grid">${healthCard(s)}${accountCard(a)}${formatsCard(s)}${uploadsCard(s)}${topCard(s)}</div>`;
 }

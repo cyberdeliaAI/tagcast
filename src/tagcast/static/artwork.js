@@ -21,6 +21,13 @@ function artistArtTarget() {
     artist: album.artist, before: {artwork_id: album.artist_artwork_id || 0}};
 }
 
+function artistPageTarget(name) {
+  const album = state.albums.find(a => a.artist === name && a.artist_id);
+  if (!album) return null;
+  return {target: "artist", id: String(album.artist_id), label: name, current: (album.artist_image || "").replace(/-150$/, "-300"),
+    artist: name, before: {artwork_id: album.artist_artwork_id || 0}};
+}
+
 function openArtwork(target, preselect) {
   if (!target) return;
   if (!live()) { toast("Connect your iBroadcast account to change images."); return; }
@@ -153,7 +160,7 @@ function showNewArt(t, result) {
     }
   } else {
     const small = result.image.replace(/-300$/, "-150");
-    state.albums = state.albums.map(a => String(a.artist_id) === t.id ? {...a, artist_image: small} : a);
+    state.albums = state.albums.map(a => String(a.artist_id) === t.id ? {...a, artist_image: small, artist_artwork_id: result.artwork_id} : a);
     for (const album of state.details.values()) if (String(album.artist_id) === t.id) { album.artist_image = small; album.artist_artwork_id = result.artwork_id; }
     if (editing && String(editing.originals[0].artist_id) === t.id) {
       editing.originals[0].artist_image = small; editing.originals[0].artist_artwork_id = result.artwork_id;
@@ -183,6 +190,7 @@ async function undoArtwork(entry) {
 document.addEventListener("click", event => {
   if (event.target.closest("#change-cover")) { openArtwork(albumArtTarget()); return; }
   if (event.target.closest("#change-artist-image")) { openArtwork(artistArtTarget()); return; }
+  if (event.target.closest("#change-artist-page-image")) { openArtwork(artistPageTarget(state.artist)); return; }
   const option = event.target.closest("[data-art-choice]");
   if (option) { choose(Number(option.dataset.artChoice)); return; }
   if (event.target.closest("#art-save") && !event.target.closest("#art-save").onclick) { saveArtwork(); return; }
