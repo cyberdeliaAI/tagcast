@@ -42,6 +42,10 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["frozen"] = False
         mock_ibroadcast.STATE["tracks"][901]["artwork_id"] = 601
 
+    def assertPrivate(self, path):
+        if sys.platform != "win32":  # Windows has no owner-only file mode bits
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
     def connect(self):
         studio = client.Studio(self.home)
         studio.set_client_id("test")
@@ -56,7 +60,7 @@ class ClientTests(unittest.TestCase):
         studio = self.connect()
         self.assertEqual(studio.status()["account"], "wilfred")
         tokens = Path(self.home, "tokens.json")
-        self.assertEqual(tokens.stat().st_mode & 0o777, 0o600)
+        self.assertPrivate(tokens)
         self.assertTrue(client.Studio(self.home).status()["connected"])
 
     def wait_for_cache(self, studio):
@@ -128,7 +132,7 @@ class ClientTests(unittest.TestCase):
         studio.load_library()
         self.wait_for_cache(studio)
         path = Path(self.home, client.CACHE_FILE)
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertPrivate(path)
         import gzip
         data = gzip.decompress(path.read_bytes()).decode()
         self.assertNotIn("secret-lastfm-session", data)
@@ -155,10 +159,10 @@ class ClientTests(unittest.TestCase):
     def test_expired_token_is_refreshed(self):
         studio = self.connect()
         Path(self.home, "tokens.json").write_text(json.dumps({"client_id": "test", "token_set": {
-            "access_token": "stale", "refresh_token": "refresh-1", "expires_at": 0}}))
+            "access_token": "stale", "refresh_token": "refresh-1", "expires_at": 0}}), encoding="utf-8")
         restored = client.Studio(self.home)
         self.assertTrue(restored.load_library())
-        saved = json.loads(Path(self.home, "tokens.json").read_text())
+        saved = json.loads(Path(self.home, "tokens.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["token_set"]["access_token"], mock_ibroadcast.TOKEN)
         del studio
 
@@ -235,9 +239,9 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(discogs["enabled"])
         self.assertNotIn("abc123", json.dumps(settings))
         self.assertFalse(settings["auto_lookup"])
-        self.assertEqual(Path(self.home, "config.json").stat().st_mode & 0o777, 0o600)
+        self.assertPrivate(Path(self.home, "config.json"))
         studio.save_settings({"discogs_token": ""})
-        self.assertNotIn("discogs_token", json.loads(Path(self.home, "config.json").read_text()))
+        self.assertNotIn("discogs_token", json.loads(Path(self.home, "config.json").read_text(encoding="utf-8")))
 
     def test_album_changes_wait_while_combine_sets_is_on_but_tracks_are_saved(self):
         mock_ibroadcast.STATE["combine_sets"] = True

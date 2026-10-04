@@ -2,6 +2,7 @@
 
 <h1 align="center">Tagcast</h1>
 <p align="center"><b>Tag your iBroadcast library, one album at a time.</b></p>
+<p align="center"><a href="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml"><img src="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml/badge.svg" alt="Tests"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2e7d4f" alt="MIT license"></a></p>
 
 Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.com/) collection: fix titles, artists, years, disc and track numbers and genres, pick covers and artist images from online sources, play what you're tagging, review every change, then save it to iBroadcast.
 
@@ -29,7 +30,7 @@ Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callba
 | Windows | `start-tagcast.bat` |
 | Linux | `./start-tagcast.sh` |
 
-The scripts use [uv](https://docs.astral.sh/uv/) when it's installed. Otherwise they need Python 3.11 or newer and, on the first start, install Tagcast in a `.venv` next to them. Starting it again while it runs just opens the running Tagcast.
+The scripts use [uv](https://docs.astral.sh/uv/) when it's installed (set `TAGCAST_NO_UV=1` to skip it). Otherwise they need Python 3.11 or newer and, on the first start, install Tagcast in a `.venv` next to them. Starting it again while it runs just opens the running Tagcast.
 
 Or from a terminal, with uv:
 

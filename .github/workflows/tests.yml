@@ -1,0 +1,77 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Tests
+        run: uv run --frozen pytest -q
+      - name: Lint
+        run: uv run --frozen ruff check src tests tools
+      - name: Page scripts parse
+        shell: bash
+        run: for f in src/tagcast/static/*.js; do node --check "$f"; done
+
+  start-scripts:
+    name: Start scripts · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      # --help makes Tagcast print its usage and stop, so the whole start-up path runs
+      # without leaving a server behind.
+      - name: With uv
+        if: runner.os != 'Windows'
+        run: |
+          ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
+      - name: Without uv, installing into .venv
+        if: runner.os != 'Windows'
+        env:
+          TAGCAST_NO_UV: "1"
+        run: |
+          rm -rf .venv
+          ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
+          test -x .venv/bin/tagcast
+      - name: With uv (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $out = "" | cmd /c start-tagcast.bat --help 2>&1 | Out-String
+          Write-Output $out
+          if ($out -notmatch "usage: tagcast") { exit 1 }
+      - name: Without uv, installing into .venv (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAGCAST_NO_UV: "1"
+        run: |
+          if (Test-Path .venv) { Remove-Item -Recurse -Force .venv }
+          $out = "" | cmd /c start-tagcast.bat --help 2>&1 | Out-String
+          Write-Output $out
+          if ($out -notmatch "usage: tagcast") { exit 1 }
+          if (-not (Test-Path .venv\Scripts\tagcast.exe)) { exit 1 }

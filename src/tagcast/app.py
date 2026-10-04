@@ -25,6 +25,11 @@ MAX_BODY = 24 * 1024 * 1024  # an uploaded image arrives base64-encoded
 class Handler(SimpleHTTPRequestHandler):
     studio = None
     port = 8912
+    # Fixed types: on Windows the registry can map .js to text/plain, and with nosniff
+    # the browser would then refuse to run the page's scripts.
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".js": "text/javascript",
+                      ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml",
+                      ".png": "image/png", ".json": "application/json"}
 
     def log_message(self, fmt, *args):
         if os.environ.get("TAGCAST_DEBUG"):
@@ -195,7 +200,7 @@ def _log_to_file(home):
     """Problems also go to <settings folder>/tagcast.log (kept small)."""
     try:
         home.mkdir(parents=True, exist_ok=True)
-        handler = logging.handlers.RotatingFileHandler(home / "tagcast.log",
+        handler = logging.handlers.RotatingFileHandler(home / "tagcast.log", encoding="utf-8",
                                                        maxBytes=1_000_000, backupCount=2)
     except OSError:
         return

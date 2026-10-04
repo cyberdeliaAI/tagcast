@@ -26,3 +26,10 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]  # long template lines are fine here
+
+[tool.ruff.lint.per-file-ignores]
+"tools/build_dark_css.py" = ["E741"]  # l, m, s are the OKLab channel names

@@ -1,14 +1,18 @@
 @echo off
 rem Start Tagcast and open it in your browser (Windows). Close this window to stop it.
-rem Uses uv when it is installed; otherwise Python 3.11+ and a .venv next to this file.
+rem Uses uv when it is installed (set TAGCAST_NO_UV=1 to skip it); otherwise Python 3.11+
+rem and a .venv next to this file.
 setlocal
 cd /d "%~dp0"
 
+if defined TAGCAST_NO_UV goto :python
 where uv >nul 2>nul
 if not errorlevel 1 (
   uv run tagcast --open %*
   goto :done
 )
+
+:python
 
 set "PYTHON=python"
 where py >nul 2>nul
