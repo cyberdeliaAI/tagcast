@@ -15,6 +15,10 @@ from collections import OrderedDict
 from collections.abc import Mapping
 
 ARTWORK_SERVER = "https://artwork.ibroadcast.com"
+FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "audio/mp3": "MP3",
+           "audio/mp4": "AAC/ALAC", "audio/x-m4a": "AAC/ALAC", "audio/m4a": "AAC/ALAC", "audio/aac": "AAC",
+           "audio/ogg": "Ogg", "audio/x-ms-wma": "WMA", "audio/wav": "WAV", "audio/x-wav": "WAV",
+           "audio/aiff": "AIFF", "audio/x-aiff": "AIFF", "audio/x-ape": "APE", "audio/ape": "APE"}
 
 VIEW_FIELDS = {
     "album": ("name", "artist", "year", "disc"),
@@ -124,6 +128,11 @@ class Library:
         # iBroadcast bumps lastmodified on every library change; "" means unknown.
         self.lastmodified = text(status.get("lastmodified"))
         self.expires = text(raw.get("expires"))  # signs streaming URLs
+        playlists = raw.get("playlists") if isinstance(raw.get("playlists"), dict) else None
+        counts = response.get("counts") if isinstance(response.get("counts"), dict) else {}
+        self.playlist_count = (sum(1 for k in playlists if str(k).isdigit()) if playlists is not None
+                               else counts.get("playlists"))  # None: unknown (older cache)
+        self._stats = None
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
@@ -132,6 +141,7 @@ class Library:
                         "artists": self.artists.raw(), "expires": self.expires},
             "settings": {"artwork_server": self.artwork_server},
             "status": {"lastmodified": self.lastmodified},
+            "counts": {"playlists": self.playlist_count},
         }
 
     # -- reading -------------------------------------------------------------
@@ -241,6 +251,74 @@ class Library:
 
     def album_index(self):
         return [self.album_summary(i) for i in self.album_ids()]
+
+    def stats(self, top=10):
+        """Numbers for the overview, worked out once per library copy."""
+        if self._stats is None:
+            self._stats = self._compute_stats(top)
+        return self._stats
+
+    def _compute_stats(self, top):
+        tracks = {i: t for i, t in self.tracks.items() if not t.get("trashed")}
+        album_ids = self.album_ids()
+        size = length = no_genre = no_art = rated = plays = 0
+        formats, uploads, track_plays, album_plays, artist_plays = {}, {}, [], {}, {}
+        for track_id, track in tracks.items():
+            size += number(track.get("size"))
+            length += number(track.get("length"))
+            no_genre += not text(track.get("genre")).strip()
+            no_art += not number(track.get("artwork_id"))
+            rated += number(track.get("rating")) > 0
+            fmt = FORMATS.get(text(track.get("type")).lower()) or (text(track.get("type")).split("/")[-1].upper() or "Unknown")
+            entry = formats.setdefault(fmt, [0, 0])
+            entry[0] += 1
+            entry[1] += number(track.get("size"))
+            year = text(track.get("uploaded_on"))[:4]
+            if year.isdigit():
+                uploads[year] = uploads.get(year, 0) + 1
+            count = number(track.get("plays"))
+            if count:
+                plays += count
+                track_plays.append((count, track_id))
+                album = number(track.get("album_id"))
+                album_plays[album] = album_plays.get(album, 0) + count
+                artist = number(track.get("artist_id"))
+                artist_plays[artist] = artist_plays.get(artist, 0) + count
+
+        album_artists = {number(self.albums[a].get("artist_id")) for a in album_ids} - {0}
+        no_year = sum(1 for a in album_ids if not number(self.albums[a].get("year")))
+        no_image = sum(1 for a in album_artists if not number(self.artists.get(a, {}).get("artwork_id")))
+
+        def track_row(count, track_id):
+            track = tracks[track_id]
+            album_id = number(track.get("album_id"))
+            return {"plays": count, "title": text(track.get("title")) or "Untitled track",
+                    "artist": self.artist_name(track.get("artist_id")), "album_id": str(album_id),
+                    "album": text(self.albums.get(album_id, {}).get("name"))}
+
+        return {
+            "tracks": len(tracks), "albums": len(album_ids), "album_artists": len(album_artists),
+            "track_artists": len({number(t.get("artist_id")) for t in tracks.values()}),
+            "playlists": self.playlist_count, "size": size, "length": length,
+            "plays": plays, "rated": rated,
+            "formats": sorted(({"name": k, "tracks": v[0], "size": v[1]} for k, v in formats.items()),
+                              key=lambda f: -f["tracks"]),
+            "uploads": [{"year": y, "tracks": uploads.get(str(y), 0)}  # empty years count too
+                        for y in range(min(map(int, uploads), default=0), max(map(int, uploads), default=-1) + 1)],
+            "health": {
+                "genre": {"missing": no_genre, "total": len(tracks)},
+                "year": {"missing": no_year, "total": len(album_ids)},
+                "artist_image": {"missing": no_image, "total": len(album_artists)},
+                "cover": {"missing": no_art, "total": len(tracks)},
+            },
+            "top_tracks": [track_row(c, t) for c, t in sorted(track_plays, reverse=True)[:top]],
+            "top_albums": [{"plays": c, "album_id": str(a), "album": text(self.albums.get(a, {}).get("name")),
+                            "artist": self.artist_name(self.albums.get(a, {}).get("artist_id"))}
+                           for a, c in sorted(album_plays.items(), key=lambda x: -x[1])[:top]
+                           if a in self.albums],
+            "top_artists": [{"plays": c, "artist": self.artist_name(a)}
+                            for a, c in sorted(artist_plays.items(), key=lambda x: -x[1])[:top]],
+        }
 
     def artist_names(self):
         return sorted({text(a.get("name")) for a in self.artists.values()

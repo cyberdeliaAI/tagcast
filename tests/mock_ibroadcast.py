@@ -162,8 +162,13 @@ class H(BaseHTTPRequestHandler):
                 STATE["downloads"] += 1
                 return self.send(200, library())
             if mode == "status":
-                return self.send(200, {"result": True, "status": {"lastmodified": lastmodified()},
+                return self.send(200, {"result": True, "status": {"lastmodified": lastmodified(), "plays": 42,
+                                                                  "available": 5, "achievement_status": {"1": {}}},
+                                       "lastfm": {"linked": True, "user": "wilfred", "sessionkey": "secret"},
+                                       "dropbox": {"linked": False}, "googledrive": {"linked": False},
                                        "user": {"username": "wilfred", "id": "7", "token": "x",
+                                                "email_address": "wilfred@example.com", "verified": True,
+                                                "verified_on": "2021-11-28 19:00:00", "premium": False,
                                                 "preferences": {"combine_sets": "1" if STATE["combine_sets"] else "0"}}})
             if mode == "update_album" and STATE["combine_sets"]:
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})

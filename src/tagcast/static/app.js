@@ -122,6 +122,7 @@ const FILTERS = {
   year: ["Missing year", a => !a.year],
   genre: ["Missing genre", a => a.no_genre > 0],
   artist_image: ["Artist without image", a => !a.artist_image && a.artist !== "Various Artists"],
+  cover: ["Missing cover", a => !a.artwork],
   edition: ["Named editions", a => EDITION.test(a.name)],
 };
 const SORTS = {
@@ -162,6 +163,7 @@ function renderArtists() {
 }
 
 function setArtist(artist) {
+  if (state.screen === "overview") showScreen("albums");
   state.artist = artist; state.selected.clear(); state.page = 0;
   $("#search").value = "";
   render();
@@ -197,11 +199,11 @@ function render() {
   $("#album-count").textContent = state.albums.length.toLocaleString("en");
   $("#total-tracks").textContent = state.albums.reduce((sum, a) => sum + a.track_count, 0).toLocaleString("en");
   $("#history-count").textContent = state.history.length;
-  $("#breadcrumb").textContent = state.artist || "Albums";
+  if (state.screen !== "overview") $("#breadcrumb").textContent = state.artist || "Albums";
   $("#page-title").textContent = state.artist || "Your albums.";
   $("#page-subtitle").textContent = state.artist ? "Open an album, or select albums by this artist to edit together." : "Browse your collection, check the details, and make it yours.";
   $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to edit its metadata";
-  $("#all-albums").classList.toggle("active", !state.artist);
+  $("#all-albums").classList.toggle("active", !state.artist && state.screen !== "overview");
   const scope = state.albums.filter(a => !state.artist || a.artist === state.artist);
   for (const option of $("#filter").options) {
     const [label, keep] = FILTERS[option.value];
@@ -326,12 +328,6 @@ function buildReview() {
 
 function showReview(changes) {
   renderReviewChrome(changes);
-  if (live() && changes.some(c => c.kind === "album")) {
-    api("/api/account-settings").then(settings => {
-      if (Boolean(settings.combine_sets) === Boolean(state.connection.combine_sets) || !$("#review").open) return;
-      state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
-    }).catch(() => { /* the save checks again */ });
-  }
   if (live() && changes.some(c => c.kind === "album")) {
     api("/api/account-settings").then(settings => {
       if (Boolean(settings.combine_sets) === Boolean(state.connection.combine_sets) || !$("#review").open) return;
