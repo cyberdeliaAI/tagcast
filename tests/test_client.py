@@ -37,6 +37,8 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["downloads"] = 0
         mock_ibroadcast.STATE["writes"].clear()
         mock_ibroadcast.STATE["uploads"].clear()
+        mock_ibroadcast.STATE["combine_sets"] = False
+        mock_ibroadcast.STATE["busy"] = 0
 
     def connect(self):
         studio = client.Studio(self.home)
@@ -232,6 +234,35 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(Path(self.home, "config.json").stat().st_mode & 0o777, 0o600)
         studio.save_settings({"discogs_token": ""})
         self.assertNotIn("discogs_token", json.loads(Path(self.home, "config.json").read_text()))
+
+    def test_album_changes_wait_while_combine_sets_is_on_but_tracks_are_saved(self):
+        mock_ibroadcast.STATE["combine_sets"] = True
+        studio = self.connect()
+        album = studio.album_details(["74"])[0]
+        track = album["tracks"][0]
+        result = studio.save([edit("album", 74, 74, year=(album["year"], album["year"] + 1)),
+                              edit("track", track["id"], 74, genre=(track["genre"], track["genre"] + "!"))])
+        self.assertEqual({r["kind"]: r["status"] for r in result["results"]},
+                         {"album": "blocked", "track": "sent"})
+        self.assertIn("Combine Multi-Disc Album Sets", result["error"])
+        self.assertEqual([w["mode"] for w in mock_ibroadcast.STATE["writes"]], ["update_track"])
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual({r["kind"]: r["status"] for r in job["results"]},
+                         {"album": "blocked", "track": "saved"})
+        self.assertTrue(studio.status()["combine_sets"])
+
+    def test_a_busy_ibroadcast_is_retried(self):
+        studio = self.connect()
+        track = studio.album_details(["74"])[0]["tracks"][0]
+        mock_ibroadcast.STATE["busy"] = 2
+        original = client.RETRY_DELAYS
+        client.RETRY_DELAYS = (0, 0)
+        try:
+            result = studio.save([edit("track", track["id"], 74, genre=(track["genre"], "Retried"))])
+        finally:
+            client.RETRY_DELAYS = original
+        self.assertEqual([r["status"] for r in result["results"]], ["sent"])
+        self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 1)
 
 
 if __name__ == "__main__":

@@ -37,6 +37,8 @@ STATE = {
     "artist_art": {41: 0, 42: 500},
     "next_artwork": 9000,
     "uploads": [],  # (filename, bytes) of uploaded artwork
+    "combine_sets": False,  # the account setting that blocks update_album
+    "busy": 0,  # answer this many writes with HTTP 503 first
 }
 AUDIO = bytes(range(256)) * 40  # 10 KB of "audio" for stream tests
 # a 1x1 PNG, served at /image.png for image download tests
@@ -125,6 +127,9 @@ class H(BaseHTTPRequestHandler):
         if url.path == "/_reject":
             STATE["reject"] = set(json.loads(raw))
             return self.send(200, {})
+        if url.path == "/_combine_sets":  # body: true or false
+            STATE["combine_sets"] = bool(json.loads(raw or b"false"))
+            return self.send(200, {})
         if url.path == "/_edit_elsewhere":
             STATE["albums"][73]["year"] += 1
             STATE["version"] += 1
@@ -158,9 +163,15 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, library())
             if mode == "status":
                 return self.send(200, {"result": True, "status": {"lastmodified": lastmodified()},
-                                       "user": {"username": "wilfred", "id": "7", "token": "x"}})
+                                       "user": {"username": "wilfred", "id": "7", "token": "x",
+                                                "preferences": {"combine_sets": "1" if STATE["combine_sets"] else "0"}}})
+            if mode == "update_album" and STATE["combine_sets"]:
+                return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode in ("update_album", "update_track", "create_artist", "set_artwork",
                         "set_artist_artwork"):
+                if STATE["busy"]:
+                    STATE["busy"] -= 1
+                    return self.send(503, {"message": "busy"})
                 STATE["writes"].append(body)
                 STATE["version"] += 1
             if mode == "set_artwork":

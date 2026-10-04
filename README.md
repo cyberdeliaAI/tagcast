@@ -81,6 +81,10 @@ The server keeps the library in memory: count on roughly 750 MB for 286,000 trac
 
 Album year changes leave track years alone unless you tick that option. Individual track edits win over album-wide changes.
 
+**“Combine Multi-Disc Album Sets”**: while this iBroadcast setting is on, iBroadcast refuses album changes (title, album artist, year, disc). Library Studio reads the setting, warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. Turn the setting off in iBroadcast, use **Review the rest again** in the results or History, and turn it back on.
+
+Network errors, HTTP 429 and 5xx answers are retried twice (after 2 and 6 seconds); creating an artist is never retried, so it can't happen twice. When iBroadcast refuses a change, its message is shown in the results and in History, and logged with the request in the terminal and in `~/.library-studio/library-studio.log`.
+
 Saving returns as soon as iBroadcast accepts the change. The read-back runs in the background (**Checking…** in History) and the next save reuses that download.
 
 ### Covers and artist images
