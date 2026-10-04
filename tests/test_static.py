@@ -23,6 +23,13 @@ class StaticScriptTests(unittest.TestCase):
         for script in STATIC.glob("*.js"):
             self.assertIn(f'src="{script.name}"', page)
 
+    def test_dark_css_is_built_from_the_current_style_css(self):
+        import sys
+        sys.path.insert(0, str(STATIC.parent.parent.parent / "tools"))
+        from build_dark_css import build
+        self.assertEqual((STATIC / "dark.css").read_text(), build((STATIC / "style.css").read_text()),
+                         "Run python3 tools/build_dark_css.py")
+
 
 if __name__ == "__main__":
     unittest.main()

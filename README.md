@@ -50,6 +50,7 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 - **Change the album cover or the artist image**: from the sources (artist images also from fanart.tv with a key), from images iBroadcast already has, or your own file, pasted image or address. Old and new side by side, with the size.
 - **Play** an album or a track to check what you're tagging.
 - Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.
+- Light and dark theme: **Auto** follows your system; the button at the top switches to Light or Dark.
 - Without an account it still runs with demo data, or with an imported library JSON. Those are never saved online.
 
 ### Online sources and keys
@@ -87,7 +88,11 @@ The server keeps the library in memory: count on roughly 750 MB for 286,000 trac
 
 Album year changes leave track years alone unless you tick that option. Individual track edits win over album-wide changes.
 
-**“Combine Multi-Disc Album Sets”**: while this iBroadcast setting is on, iBroadcast refuses album changes (title, album artist, year, disc). Tagcast reads the setting, warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. Turn the setting off in iBroadcast, use **Review the rest again** in the results or History, and turn it back on.
+**“Combine Multi-Disc Album Sets”**: while this iBroadcast setting is on, iBroadcast merges the discs of a set into one album in the library it sends (disc 1, holding the tracks of every disc), and refuses album changes (title, album artist, year, disc). With the setting off, each disc is its own album, in Tagcast and in every iBroadcast app.
+
+- With the setting on, Tagcast warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. Turn the setting off in iBroadcast and use **Review the rest again** in the results or History.
+- With it off, albums of one set show *Disc 1 of 3*, and **Edit all 3 discs together** in the editor changes the year, genre or album artist of the whole set at once.
+- The cached library belongs to the setting it was downloaded with, so switching the setting makes Tagcast download the library again.
 
 Network errors, HTTP 429 and 5xx answers are retried twice (after 2 and 6 seconds); creating an artist is never retried, so it can't happen twice. When iBroadcast refuses a change, its message is shown in the results and in History, and logged with the request in the terminal and in `~/.tagcast/tagcast.log`.
 
@@ -114,6 +119,10 @@ The [public API reference](https://help.ibroadcast.com/en/developer/api) documen
 - if iBroadcast refuses a write mode for third-party apps, the save reports **Failed** with iBroadcast's message and nothing else is sent.
 
 Tested against a real account (286,789 tracks): loading, caching, `update_track` (genre), streaming and `get_artwork`. Artwork upload and `set_artwork` / `set_artist_artwork` are tested against the fake iBroadcast server (`tests/mock_ibroadcast.py`) only: try one album first, and use **Undo** if it isn't right.
+
+## Styles
+
+`static/dark.css` is generated from `static/style.css` by `tools/build_dark_css.py`: each colour keeps its hue and gets a dark-theme lightness, and a few surfaces are set by hand. Run `python3 tools/build_dark_css.py` after changing `style.css`; a test fails when you forget.
 
 ## Tests
 

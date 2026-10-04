@@ -133,7 +133,7 @@ async function saveArtwork() {
     followJob(result.job, entry);
   } catch (error) {
     save.disabled = false; save.textContent = "Try again";
-    $("#art-status").innerHTML = `<span style="color:#9a4334">${escapeHtml(error.message)}</span>`;
+    $("#art-status").innerHTML = `<span class="error-text">${escapeHtml(error.message)}</span>`;
     if (error.status === 409) { save.textContent = "Reload library"; save.onclick = () => { $("#artwork").close(); $("#editor").close(); loadLive(); }; }
   }
 }

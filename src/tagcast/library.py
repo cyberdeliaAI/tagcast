@@ -128,6 +128,9 @@ class Library:
         # iBroadcast bumps lastmodified on every library change; "" means unknown.
         self.lastmodified = text(status.get("lastmodified"))
         self.expires = text(raw.get("expires"))  # signs streaming URLs
+        # iBroadcast merges the discs of a set into one album while "Combine Multi-Disc
+        # Album Sets" is on, so a copy is only valid for the setting it was downloaded with.
+        self.combine_sets = response.get("combine_sets")
         playlists = raw.get("playlists") if isinstance(raw.get("playlists"), dict) else None
         counts = response.get("counts") if isinstance(response.get("counts"), dict) else {}
         self.playlist_count = (sum(1 for k in playlists if str(k).isdigit()) if playlists is not None
@@ -142,6 +145,7 @@ class Library:
             "settings": {"artwork_server": self.artwork_server},
             "status": {"lastmodified": self.lastmodified},
             "counts": {"playlists": self.playlist_count},
+            "combine_sets": self.combine_sets,
         }
 
     # -- reading -------------------------------------------------------------
