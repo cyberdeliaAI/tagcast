@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -31,10 +32,10 @@ from .library import (
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
 
-log = logging.getLogger("library-studio")
+log = logging.getLogger("tagcast")
 
 SCOPES = ["user.library:read", "user.library:write", "user.account:read"]
-CLIENT_NAME = "library-studio"
+CLIENT_NAME = "tagcast"
 TIMEOUT = 120
 COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings, and "
                         "iBroadcast doesn't accept album changes (title, album artist, year, disc) "
@@ -51,8 +52,8 @@ LIBRARY_URL = "https://library.ibroadcast.com"
 ARTWORK_UPLOAD_URL = "https://artwork-upload.ibroadcast.com"
 STREAM_URL = "https://streaming.ibroadcast.com"
 
-# Point everything at a test server, e.g. LIBRARY_STUDIO_IBROADCAST_BASE=http://127.0.0.1:9000
-_test_base = os.environ.get("LIBRARY_STUDIO_IBROADCAST_BASE", "").rstrip("/")
+# Point everything at a test server, e.g. TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9000
+_test_base = os.environ.get("TAGCAST_IBROADCAST_BASE", "").rstrip("/")
 if _test_base:
     API_URL, LIBRARY_URL = f"{_test_base}/api", f"{_test_base}/library"
     ARTWORK_UPLOAD_URL, STREAM_URL = f"{_test_base}/artwork-upload", f"{_test_base}/stream"
@@ -76,7 +77,7 @@ class StudioClient(ibroadcast.iBroadcast):
 
     def __init__(self, **kwargs):
         super().__init__(client=CLIENT_NAME, version=__version__,
-                         device_name="Library Studio", log=log, **kwargs)
+                         device_name="Tagcast", log=log, **kwargs)
 
     def _post(self, url, args, retry=True):
         """POST JSON. Network errors, HTTP 429 and 5xx are retried (writes here set values,
@@ -200,7 +201,15 @@ class Studio:
 
     @staticmethod
     def default_home():
-        return Path(os.environ.get("LIBRARY_STUDIO_HOME") or Path.home() / ".library-studio")
+        if os.environ.get("TAGCAST_HOME"):
+            return Path(os.environ["TAGCAST_HOME"])
+        home, legacy = Path.home() / ".tagcast", Path.home() / ".library-studio"
+        if not home.exists() and legacy.is_dir():  # settings from before the rename
+            try:
+                shutil.copytree(legacy, home, ignore=shutil.ignore_patterns("*.log*", "*.tmp"))
+            except OSError as error:
+                log.warning("Could not copy settings from %s: %s", legacy, error)
+        return home
 
     def __init__(self, home=None):
         self.home = Path(home) if home else self.default_home()

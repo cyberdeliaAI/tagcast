@@ -1,8 +1,13 @@
-# Library Studio for iBroadcast
+<p align="center"><img src="assets/tagcast-icon.svg" width="96" alt=""></p>
 
-A local editor for your iBroadcast collection, **one album or one album artist at a time**. Sign in with your own iBroadcast app, fix titles, artists, years, disc and track numbers and genres, review every change, then save it to iBroadcast.
+<h1 align="center">Tagcast</h1>
+<p align="center"><b>Tag your iBroadcast library, one album at a time.</b></p>
 
-The server runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
+Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.com/) collection: fix titles, artists, years, disc and track numbers and genres, pick covers and artist images from online sources, play what you're tagging, review every change, then save it to iBroadcast.
+
+It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
+
+> Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
 ## 1. Create an iBroadcast app
 
@@ -17,7 +22,7 @@ Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callba
 With [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv run ibroadcast-editor --open
+uv run tagcast --open
 ```
 
 Or with plain Python 3.11+:
@@ -25,14 +30,14 @@ Or with plain Python 3.11+:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-ibroadcast-editor --open
+tagcast --open
 ```
 
-Open <http://127.0.0.1:8912>, click **Connect iBroadcast**, paste the client ID and choose **Sign in with a code**. Approve Library Studio on the iBroadcast page and your library loads.
+Open <http://127.0.0.1:8912>, click **Connect iBroadcast**, paste the client ID and choose **Sign in with a code**. Approve Tagcast on the iBroadcast page and your library loads.
 
-You can also set the client ID up front: `IBROADCAST_CLIENT_ID=... uv run ibroadcast-editor`.
+You can also set the client ID up front: `IBROADCAST_CLIENT_ID=... uv run tagcast`.
 
-The client ID and sign-in tokens are stored in `~/.library-studio/` (files readable by you only). Set `LIBRARY_STUDIO_HOME` to use a different folder. **Disconnect** revokes the token and deletes it. Use `--port` to change the port; the redirect URI changes with it.
+The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by you only; settings from the earlier name, `~/.library-studio/`, are copied over on first start). Set `TAGCAST_HOME` to use a different folder. **Disconnect** revokes the token and deletes it. Use `--port` to change the port; the redirect URI changes with it.
 
 ## What it does
 
@@ -56,7 +61,7 @@ MusicBrainz, Deezer, Apple Music (iTunes Search) and TheAudioDB work without a k
 | Last.fm | Listener tags as genres, covers | API key: [last.fm/api/account/create](https://www.last.fm/api/account/create) |
 | fanart.tv | Artist images | Personal API key: [fanart.tv/get-an-api-key](https://fanart.tv/get-an-api-key/) |
 
-Keys are stored in `~/.library-studio/config.json` (readable by you only) or come from `DISCOGS_TOKEN`, `LASTFM_API_KEY` and `FANART_API_KEY`. They are never sent to the page.
+Keys are stored in `~/.tagcast/config.json` (readable by you only) or come from `DISCOGS_TOKEN`, `LASTFM_API_KEY` and `FANART_API_KEY`. They are never sent to the page.
 
 By default an album is looked up in all sources when you open it; turn that off in **Sources & keys**. A lookup sends the artist and album name to each source. Requests are spaced per source (MusicBrainz once a second, Apple Music every 3 seconds, and so on) and answers are cached for an hour.
 
@@ -64,9 +69,9 @@ Matching ignores case, accents, "The", and edition text such as "(2011 Remaster)
 
 ### Large libraries
 
-iBroadcast can only send the whole library at once (about 92 MB and 20–30 seconds for 286,000 tracks). Library Studio downloads it only when something changed:
+iBroadcast can only send the whole library at once (about 92 MB and 20–30 seconds for 286,000 tracks). Tagcast downloads it only when something changed:
 
-- Each load first asks iBroadcast when the library last changed (`lastmodified` from the `status` call, the same signal the web player uses). If that matches the copy Library Studio has, the copy is used: from memory (under a second) or from `~/.library-studio/library-cache.json.gz` after a restart (about 2 seconds).
+- Each load first asks iBroadcast when the library last changed (`lastmodified` from the `status` call, the same signal the web player uses). If that matches the copy Tagcast has, the copy is used: from memory (under a second) or from `~/.tagcast/library-cache.json.gz` after a restart (about 2 seconds).
 - The cache holds only library metadata (tracks, albums, artists), no account details. It is readable by you only and deleted when you **Disconnect**. **Download everything again** in the account dialog skips the check.
 - The browser gets a small list of albums (about 5 MB for 18,000 albums). Tracks are fetched when you open an album.
 
@@ -81,15 +86,15 @@ The server keeps the library in memory: count on roughly 750 MB for 286,000 trac
 
 Album year changes leave track years alone unless you tick that option. Individual track edits win over album-wide changes.
 
-**“Combine Multi-Disc Album Sets”**: while this iBroadcast setting is on, iBroadcast refuses album changes (title, album artist, year, disc). Library Studio reads the setting, warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. Turn the setting off in iBroadcast, use **Review the rest again** in the results or History, and turn it back on.
+**“Combine Multi-Disc Album Sets”**: while this iBroadcast setting is on, iBroadcast refuses album changes (title, album artist, year, disc). Tagcast reads the setting, warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. Turn the setting off in iBroadcast, use **Review the rest again** in the results or History, and turn it back on.
 
-Network errors, HTTP 429 and 5xx answers are retried twice (after 2 and 6 seconds); creating an artist is never retried, so it can't happen twice. When iBroadcast refuses a change, its message is shown in the results and in History, and logged with the request in the terminal and in `~/.library-studio/library-studio.log`.
+Network errors, HTTP 429 and 5xx answers are retried twice (after 2 and 6 seconds); creating an artist is never retried, so it can't happen twice. When iBroadcast refuses a change, its message is shown in the results and in History, and logged with the request in the terminal and in `~/.tagcast/tagcast.log`.
 
 Saving returns as soon as iBroadcast accepts the change. The read-back runs in the background (**Checking…** in History) and the next save reuses that download.
 
 ### Covers and artist images
 
-An image is checked before it's sent: JPEG, PNG, WebP or GIF, at most 15 MB. Images from an address are downloaded by Library Studio (not by iBroadcast), and addresses on this computer or the local network are refused.
+An image is checked before it's sent: JPEG, PNG, WebP or GIF, at most 15 MB. Images from an address are downloaded by Tagcast (not by iBroadcast), and addresses on this computer or the local network are refused.
 
 The image is uploaded to iBroadcast's artwork store, then applied with `set_artwork` (all tracks of the album, which is what iBroadcast shows as the album cover) or `set_artist_artwork`. Before anything is written, the current artwork is compared with what you saw; afterwards it is read back. **Undo** in History puts the previous artwork back, track by track.
 
@@ -114,15 +119,15 @@ Tested against a real account (286,789 tracks): loading, caching, `update_track`
 ```bash
 uv run --with pytest pytest          # or:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
-for f in src/ibroadcast_editor/static/*.js; do node --check "$f"; done
+for f in src/tagcast/static/*.js; do node --check "$f"; done
 ```
 
 To click through the full flow without a real account:
 
 ```bash
 python3 tests/mock_ibroadcast.py 9555 &
-LIBRARY_STUDIO_IBROADCAST_BASE=http://127.0.0.1:9555 LIBRARY_STUDIO_HOME=/tmp/ls-test \
-  IBROADCAST_CLIENT_ID=test PYTHONPATH=src python3 -m ibroadcast_editor.app
+TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9555 TAGCAST_HOME=/tmp/ls-test \
+  IBROADCAST_CLIENT_ID=test PYTHONPATH=src python3 -m tagcast.app
 ```
 
 ## Not in scope

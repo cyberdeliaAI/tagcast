@@ -21,17 +21,17 @@ let saveOrder = 0; // only the newest save's read-back replaces the album list
 // Saves to iBroadcast are kept in this browser, so History (and Undo) survive a reload.
 function storedHistory() {
   try {
-    const entries = JSON.parse(localStorage.getItem("library-studio-history") || "[]");
+    const entries = JSON.parse(localStorage.getItem("tagcast-history") || localStorage.getItem("library-studio-history") || "[]");
     return Array.isArray(entries) ? entries.map(h => h.status === "sent" ? {...h, status: "unverified", changes: h.changes.map(c => c.status === "sent" ? {...c, status: "unverified"} : c)} : h) : [];
   } catch { return []; }
 }
 
 function rememberHistory() {
-  try { localStorage.setItem("library-studio-history", JSON.stringify(state.history.filter(h => h.source === "ibroadcast").slice(0, 300))); } catch { /* private window or full */ }
+  try { localStorage.setItem("tagcast-history", JSON.stringify(state.history.filter(h => h.source === "ibroadcast").slice(0, 300))); } catch { /* private window or full */ }
 }
 
 function storedView() {
-  try { return localStorage.getItem("library-studio-view") === "list" ? "list" : "grid"; } catch { return "grid"; }
+  try { return localStorage.getItem("tagcast-view") === "list" ? "list" : "grid"; } catch { return "grid"; }
 }
 
 function demoLibrary() {
@@ -113,7 +113,7 @@ function toast(text) {
 function cover(album, small = false) {
   const initials = album.artist.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.remove('has-art');this.remove()">` : "";
-  return `<div class="cover ${art ? "has-art" : ""}" style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">LIBRARY STUDIO / PLACEHOLDER</span>'}</div>`;
+  return `<div class="cover ${art ? "has-art" : ""}" style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
 }
 
 const EDITION = /remaster|deluxe|anniversary|re-record|live|edition|expanded/i;
@@ -438,9 +438,9 @@ $("#import-file").addEventListener("change", async event => {
 });
 $("#export-button").addEventListener("click", () => {
   if (!state.history.length) { toast("Make and review an edit before exporting the history."); return; }
-  const blob = new Blob([JSON.stringify({format: "library-studio-history", version: 2, exported: new Date().toISOString(), entries: state.history}, null, 2)], {type: "application/json"});
+  const blob = new Blob([JSON.stringify({format: "tagcast-history", version: 2, exported: new Date().toISOString(), entries: state.history}, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob), link = document.createElement("a");
-  link.href = url; link.download = `library-studio-history-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  link.href = url; link.download = `tagcast-history-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 window.addEventListener("beforeunload", event => { if (saving || state.history.some(h => h.status === "preview_only")) { event.preventDefault(); event.returnValue = ""; } });
 useLocal(demoLibrary(), "demo");
@@ -451,12 +451,12 @@ boot();
 // ---- iBroadcast connection --------------------------------------------------
 
 async function api(path, body) {
-  const options = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json", "X-Library-Studio": "1"}, body: JSON.stringify(body)};
+  const options = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json", "X-Tagcast": "1"}, body: JSON.stringify(body)};
   const response = await fetch(path, options);
   let data = {};
   try { data = await response.json(); } catch { /* empty or non-JSON body */ }
   if (!response.ok) {
-    const error = Error(data.error || `Library Studio returned HTTP ${response.status}.`);
+    const error = Error(data.error || `Tagcast returned HTTP ${response.status}.`);
     error.status = response.status; error.data = data;
     throw error;
   }
@@ -528,15 +528,15 @@ function connectView(view, extra = {}) {
   const c = state.connection, box = $("#connect-content");
   const error = extra.error ? `<div class="error-box">${escapeHtml(extra.error)}</div>` : "";
   if (view === "connected") {
-    box.innerHTML = `<div class="connect-step"><p class="muted">Connected${c.account ? ` as <strong>${escapeHtml(c.account)}</strong>` : ""}. Library Studio can read your library and save metadata you review.</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">Disconnect</button><button class="button" id="connect-redownload" title="Normally the library is only downloaded when iBroadcast reports a change">Download everything again</button><button class="button primary" id="connect-reload">Reload library</button></div>`;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Connected${c.account ? ` as <strong>${escapeHtml(c.account)}</strong>` : ""}. Tagcast can read your library and save metadata you review.</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">Disconnect</button><button class="button" id="connect-redownload" title="Normally the library is only downloaded when iBroadcast reports a change">Download everything again</button><button class="button primary" id="connect-reload">Reload library</button></div>`;
   } else if (view === "client") {
-    box.innerHTML = `<div class="connect-step"><p class="muted">Library Studio signs in with your own iBroadcast app, so it only gets the access you approve.</p><ol class="muted"><li>Open <a href="https://media.ibroadcast.com/" target="_blank" rel="noopener noreferrer"><u>media.ibroadcast.com</u></a>, open the side menu and choose <strong>Apps</strong>.</li><li>Click <strong>Developer</strong> at the bottom and create an app.</li><li>Paste its <strong>client ID</strong> below. The client secret is not needed.</li></ol><div class="connect-row"><input id="client-id" placeholder="Client ID" aria-label="Client ID" autocomplete="off" spellcheck="false"><button class="button primary" id="client-save">Save</button></div><p class="muted">Stored on this computer only, in the Library Studio settings folder.</p>${error}</div>`;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Tagcast signs in with your own iBroadcast app, so it only gets the access you approve.</p><ol class="muted"><li>Open <a href="https://media.ibroadcast.com/" target="_blank" rel="noopener noreferrer"><u>media.ibroadcast.com</u></a>, open the side menu and choose <strong>Apps</strong>.</li><li>Click <strong>Developer</strong> at the bottom and create an app.</li><li>Paste its <strong>client ID</strong> below. The client secret is not needed.</li></ol><div class="connect-row"><input id="client-id" placeholder="Client ID" aria-label="Client ID" autocomplete="off" spellcheck="false"><button class="button primary" id="client-save">Save</button></div><p class="muted">Stored on this computer only, in the Tagcast settings folder.</p>${error}</div>`;
     setTimeout(() => $("#client-id")?.focus(), 50);
   } else if (view === "ready") {
-    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in with a short code on the iBroadcast website. Library Studio asks for permission to <strong>read and edit your music library</strong> and to show your account name.</p>${error}</div><div class="dialog-footer">${c.client_id_from_env ? "" : '<button class="text-button" id="client-change" style="color:var(--green);margin-right:auto">Change client ID</button>'}<button class="button" id="browser-start">Use browser redirect</button><button class="button primary" id="device-start">Sign in with a code →</button></div><p class="muted">Browser redirect needs <code>http://127.0.0.1:${location.port || 80}/callback</code> as the redirect URI in your app settings.</p>`;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in with a short code on the iBroadcast website. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name.</p>${error}</div><div class="dialog-footer">${c.client_id_from_env ? "" : '<button class="text-button" id="client-change" style="color:var(--green);margin-right:auto">Change client ID</button>'}<button class="button" id="browser-start">Use browser redirect</button><button class="button primary" id="device-start">Sign in with a code →</button></div><p class="muted">Browser redirect needs <code>http://127.0.0.1:${location.port || 80}/callback</code> as the redirect URI in your app settings.</p>`;
   } else if (view === "device") {
     const d = extra.device, link = d.verification_uri_complete || d.verification_uri;
-    box.innerHTML = `<div class="connect-step"><p class="muted">Open the iBroadcast sign-in page and enter this code:</p><div class="device-code">${escapeHtml(d.user_code)}</div><p class="muted"><span class="spinner"></span>Waiting for you to approve Library Studio…</p>${error}</div><div class="dialog-footer"><button class="button" id="device-cancel">Cancel</button><a class="button primary" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open iBroadcast sign-in ↗</a></div>`;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Open the iBroadcast sign-in page and enter this code:</p><div class="device-code">${escapeHtml(d.user_code)}</div><p class="muted"><span class="spinner"></span>Waiting for you to approve Tagcast…</p>${error}</div><div class="dialog-footer"><button class="button" id="device-cancel">Cancel</button><a class="button primary" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open iBroadcast sign-in ↗</a></div>`;
   }
 }
 
@@ -618,13 +618,13 @@ function renderReviewChrome(changes) {
   $("#review-cancel").disabled = false;
   $("#review-status").innerHTML = "";
   $("#review-intro").textContent = live()
-    ? "Saving writes these values to your iBroadcast library. Library Studio first checks that nothing changed in iBroadcast since you loaded it; if something did, nothing is written."
+    ? "Saving writes these values to your iBroadcast library. Tagcast first checks that nothing changed in iBroadcast since you loaded it; if something did, nothing is written."
     : "These changes apply only to this preview. Connect your account to save them to iBroadcast.";
   const warnings = [];
   if (live()) {
     const known = knownArtists();
     const fresh = [...new Set(changes.flatMap(c => c.fields.artist ? [c.fields.artist.after] : []))].filter(n => !known.has(n.toLocaleLowerCase()));
-    if (fresh.length) warnings.push(`New ${fresh.length === 1 ? "artist" : "artists"} in iBroadcast: ${fresh.map(n => `“${escapeHtml(n)}”`).join(", ")}. Check the spelling; Library Studio will create ${fresh.length === 1 ? "it" : "them"} unless your library already has ${fresh.length === 1 ? "an artist" : "artists"} with that name.`);
+    if (fresh.length) warnings.push(`New ${fresh.length === 1 ? "artist" : "artists"} in iBroadcast: ${fresh.map(n => `“${escapeHtml(n)}”`).join(", ")}. Check the spelling; Tagcast will create ${fresh.length === 1 ? "it" : "them"} unless your library already has ${fresh.length === 1 ? "an artist" : "artists"} with that name.`);
     if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings. iBroadcast doesn't accept album changes (title, album artist, year, disc) while it is, so those will not be sent; track changes such as genres are saved. To save album changes, turn the setting off in iBroadcast first, then use “Review the rest” afterwards.");
     if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push("Changing an album artist can make iBroadcast regroup the album. The library is read back after saving so you see the result.");
   }
@@ -761,7 +761,7 @@ document.addEventListener("click", event => {
   const view = event.target.closest("[data-view]");
   if (view) {
     state.view = view.dataset.view; state.page = 0;
-    try { localStorage.setItem("library-studio-view", state.view); } catch { /* private window */ }
+    try { localStorage.setItem("tagcast-view", state.view); } catch { /* private window */ }
     render(); return;
   }
   if (event.target.closest("#next-album")) {
@@ -771,9 +771,9 @@ document.addEventListener("click", event => {
     $("#editor").close(); openEditor([next]);
   }
 });
-try { $("#then-next").checked = localStorage.getItem("library-studio-then-next") === "1"; } catch { /* private window */ }
+try { $("#then-next").checked = localStorage.getItem("tagcast-then-next") === "1"; } catch { /* private window */ }
 $("#then-next").addEventListener("change", event => {
-  try { localStorage.setItem("library-studio-then-next", event.target.checked ? "1" : "0"); } catch { /* private window */ }
+  try { localStorage.setItem("tagcast-then-next", event.target.checked ? "1" : "0"); } catch { /* private window */ }
 });
 
 document.addEventListener("click", event => {

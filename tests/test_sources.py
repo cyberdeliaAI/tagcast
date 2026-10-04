@@ -2,8 +2,8 @@
 
 import unittest
 
-from ibroadcast_editor import sources
-from ibroadcast_editor.sources import (
+from tagcast import sources
+from tagcast.sources import (
     Lookup,
     SourceError,
     album_score,

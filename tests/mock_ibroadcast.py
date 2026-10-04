@@ -1,8 +1,8 @@
 """A tiny fake iBroadcast (OAuth + API + library) for end-to-end testing.
 
 Run:  python tests/mock_ibroadcast.py 9555
-Then: LIBRARY_STUDIO_IBROADCAST_BASE=http://127.0.0.1:9555 IBROADCAST_CLIENT_ID=test \
-      PYTHONPATH=src python -m ibroadcast_editor.app
+Then: TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9555 IBROADCAST_CLIENT_ID=test \
+      PYTHONPATH=src python -m tagcast.app
 
 The device code is approved automatically on the second poll. Every write
 request is appended to the "writes" list, visible at GET /_writes.

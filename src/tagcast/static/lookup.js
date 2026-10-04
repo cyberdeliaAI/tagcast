@@ -35,7 +35,7 @@ function startLookups(album) {
   lookup.album = album; lookup.results = new Map(); lookup.tokens.album = (lookup.tokens.album || 0) + 1;
   const box = $("#lookup-results");
   if (!box) return;
-  if (!lookup.sources.length) { box.innerHTML = '<p class="muted">Online sources need the Library Studio server. Start it with <code>ibroadcast-editor</code>.</p>'; return; }
+  if (!lookup.sources.length) { box.innerHTML = '<p class="muted">Online sources need the Tagcast server. Start it with <code>tagcast</code>.</p>'; return; }
   if (lookup.auto) runLookups(album.artist, album.name);
   else box.innerHTML = '<p class="muted">Press Search to look this album up.</p>';
 }
@@ -105,14 +105,14 @@ function coverChoices() {
 
 function openSettings() {
   const keyed = lookup.sources.filter(s => s.key);
-  $("#settings-content").innerHTML = !lookup.sources.length ? '<p class="muted">Settings need the Library Studio server.</p>' : `
-    <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Library Studio settings folder.</p>
+  $("#settings-content").innerHTML = !lookup.sources.length ? '<p class="muted">Settings need the Tagcast server.</p>' : `
+    <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     <form id="settings-form">${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
       return `<div class="setting-row"><div><strong>${escapeHtml(s.label)}</strong> <span class="status ${s.enabled ? "saved" : "not_sent"}">${s.enabled ? "Ready" : "Needs a key"}</span><small>${escapeHtml(s.key_help)}</small></div>${env ? '<span class="muted">Set by an environment variable</span>' : `<input type="password" name="${s.key}" autocomplete="off" spellcheck="false" placeholder="${s.enabled ? "Saved · type to replace" : "Paste your key"}" aria-label="${escapeHtml(s.label)} key">${s.enabled ? `<button type="button" class="text-action" data-clear-key="${s.key}">Remove</button>` : ""}`}</div>`;
     }).join("")}
     <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in all sources as soon as you open it</label>
-    <p class="muted">Looking up sends the artist and album name to each source. Library Studio waits between requests so it stays within each source's limits.</p>
+    <p class="muted">Looking up sends the artist and album name to each source. Tagcast waits between requests so it stays within each source's limits.</p>
     <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`;
   $("#settings").showModal();
 }

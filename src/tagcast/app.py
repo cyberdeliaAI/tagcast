@@ -1,4 +1,4 @@
-"""Local web server for Library Studio. Listens on 127.0.0.1 only."""
+"""Local web server for Tagcast. Listens on 127.0.0.1 only."""
 
 import argparse
 import json
@@ -25,7 +25,7 @@ class Handler(SimpleHTTPRequestHandler):
     port = 8912
 
     def log_message(self, fmt, *args):
-        if os.environ.get("LIBRARY_STUDIO_DEBUG"):
+        if os.environ.get("TAGCAST_DEBUG"):
             super().log_message(fmt, *args)
 
     # -- helpers -------------------------------------------------------------
@@ -69,7 +69,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(400, {"error": str(error)})
         except Exception:  # never leak a traceback to the page
             logging.exception("Request failed")
-            self._json(500, {"error": "Something went wrong in Library Studio. See the terminal."})
+            self._json(500, {"error": "Something went wrong in Tagcast. See the terminal."})
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -85,7 +85,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if not self._host_ok():
-            self.send_error(403, "Open Library Studio via http://127.0.0.1")
+            self.send_error(403, "Open Tagcast via http://127.0.0.1")
             return
         url = urlparse(self.path)
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
@@ -130,7 +130,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         # The custom header forces a CORS preflight, which this server never approves,
         # so other websites cannot post to it.
-        if not self._host_ok() or self.headers.get("X-Library-Studio") != "1":
+        if not self._host_ok() or self.headers.get("X-Tagcast") != "1":
             self._json(403, {"error": "Forbidden."})
             return
         path = urlparse(self.path).path
@@ -190,10 +190,10 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def _log_to_file(home):
-    """Problems also go to <settings folder>/library-studio.log (kept small)."""
+    """Problems also go to <settings folder>/tagcast.log (kept small)."""
     try:
         home.mkdir(parents=True, exist_ok=True)
-        handler = logging.handlers.RotatingFileHandler(home / "library-studio.log",
+        handler = logging.handlers.RotatingFileHandler(home / "tagcast.log",
                                                        maxBytes=1_000_000, backupCount=2)
     except OSError:
         return
@@ -202,8 +202,8 @@ def _log_to_file(home):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Library Studio for iBroadcast")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("LIBRARY_STUDIO_PORT", 8912)))
+    parser = argparse.ArgumentParser(description="Tagcast for iBroadcast")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("TAGCAST_PORT", 8912)))
     parser.add_argument("--open", action="store_true", help="open the browser after starting")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -212,7 +212,7 @@ def main(argv=None):
     handler = type("BoundHandler", (Handler,), {"studio": Studio(), "port": args.port})
     with ThreadingHTTPServer(("127.0.0.1", args.port), partial(handler, directory=str(STATIC))) as server:
         url = f"http://127.0.0.1:{args.port}"
-        print(f"Library Studio: {url}", flush=True)
+        print(f"Tagcast: {url}", flush=True)
         print(f"Settings and sign-in tokens: {handler.studio.home}", flush=True)
         if args.open:
             webbrowser.open(url)
