@@ -21,7 +21,17 @@ Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callba
 
 ## 2. Run
 
-With [uv](https://docs.astral.sh/uv/):
+**Double-click** the start script in this folder. It opens Tagcast in your browser; close its window to stop Tagcast.
+
+| System | Start script |
+|---|---|
+| macOS | `start-tagcast.command` (the first time: right-click → Open if macOS asks) |
+| Windows | `start-tagcast.bat` |
+| Linux | `./start-tagcast.sh` |
+
+The scripts use [uv](https://docs.astral.sh/uv/) when it's installed. Otherwise they need Python 3.11 or newer and, on the first start, install Tagcast in a `.venv` next to them. Starting it again while it runs just opens the running Tagcast.
+
+Or from a terminal, with uv:
 
 ```bash
 uv run tagcast --open
@@ -65,6 +75,10 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 **Pick an artist image or cover** from the sources, from images iBroadcast already has, or from your own file, and compare it with the current one.
 
 ![Choosing an artist image](docs/screenshots/artist-image.png)
+
+**Review before saving**: every change, album and track, before and after. Tagcast checks iBroadcast first and reads the result back afterwards.
+
+![Reviewing a draft before it is saved](docs/screenshots/review.png)
 
 **Overview**: the collection in numbers and its metadata health, each row opening the albums to fix (dark theme).
 
