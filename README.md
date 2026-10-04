@@ -14,9 +14,24 @@ It runs on your computer and listens on `127.0.0.1` only. Your music files are n
 
 ## 1. Create an iBroadcast app
 
-1. Open [media.ibroadcast.com](https://media.ibroadcast.com/), open the side menu and choose **Apps**.
-2. Click **Developer** at the bottom and create an app.
-3. Copy the **client ID**. The client secret isn't needed.
+Tagcast signs in with an "app" of your own, so it only gets the access you approve. You create it once, in a minute:
+
+1. Open [media.ibroadcast.com](https://media.ibroadcast.com/) and sign in.
+2. Click **your name at the top right** and choose **Apps**.
+
+   <img src="docs/screenshots/setup-1-apps-menu.png" width="300" alt="The account menu at the top right, with Apps">
+
+3. Scroll to the **bottom** of the Apps page. Under **Developers**, click the **developer** link.
+
+   <img src="docs/screenshots/setup-2-developer-link.png" width="560" alt="The Developers section with the developer link">
+
+4. Next to **Your Apps**, click **+**. Give the app a name (for example *Tagcast*) and a short description, and save it.
+
+   <img src="docs/screenshots/setup-3-your-apps.png" width="420" alt="The developer page with Your Apps and the + button">
+
+5. Open your new app and copy its **client ID**. The client secret isn't needed.
+
+You don't need to request a review: an app you made yourself works for your own account right away.
 
 Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callback` as a redirect URI in the app settings.
 
