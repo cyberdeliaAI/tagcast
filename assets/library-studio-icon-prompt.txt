@@ -1,0 +1,6 @@
+Generator: built-in imagegen
+Upload asset: library-studio-icon-128.png (128 × 128 PNG)
+Master asset: library-studio-icon.png
+
+Prompt:
+Create one polished, minimal square app icon for Library Studio, a personal music library metadata editor. Full-bleed deep forest green background (#1e3027), with a single large centered vinyl record seen straight from above. Use a near-black green disc, two or three subtle concentric grooves, and a clear light sage lime (#d2e59e) center label with a small dark spindle hole. Add one restrained small cream pencil symbol over the lower-right edge of the record to suggest editing. Clean geometric shapes, excellent contrast, generous spacing, balanced composition, flat vector-like aesthetic rendered as a PNG raster image, crisp edges. It must be instantly legible at 128 by 128 pixels. No text, no letters, no numbers, no wordmark, no photographic textures, no mockup, no shadows outside the square, no rounded outer frame, no extra objects. Output a square image.
