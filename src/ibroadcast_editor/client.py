@@ -111,8 +111,11 @@ class Studio:
         self.client = None
         self.library = None
         self.library_user = None
+        self.library_started = 0.0  # time.monotonic() when the copy in memory began downloading
         self.account = None
         self.cache_lock = threading.Lock()
+        self.download_lock = threading.Lock()  # one full library download at a time
+        self.jobs = {}  # background read-backs after a save, by job ID
         self.device = None
         self._device_gen = 0
         self._pkce = {}
@@ -340,32 +343,49 @@ class Studio:
         status = data.get("status") if isinstance(data.get("status"), dict) else {}
         return text(status.get("lastmodified")), text(user.get("id") or user.get("user_id"))
 
-    def _keep(self, library, user_id):
+    def _keep(self, library, user_id, started):
         with self.lock:
-            self.library, self.library_user = library, user_id
+            self.library, self.library_user, self.library_started = library, user_id, started
         self._write_cache(library, user_id)
 
-    def _current(self, client, refresh=False):
+    def _current(self, client, refresh=False, after=None):
         """The library as iBroadcast has it now. Downloads only when it changed since our copy.
 
         iBroadcast has no partial library download, but its status call reports
         "lastmodified", which changes with every library edit (the web player relies on
         the same signal). Returns (library, source) with source memory, cache or download.
+
+        refresh skips that check. after=<monotonic time> also skips it, but accepts a
+        download that started after that time, so a read-back can share a download.
         """
         lastmodified, user_id = self._remote_state(client)
         if lastmodified and not refresh:
-            with self.lock:
-                library, owner = self.library, self.library_user
-            if library and owner == user_id and library.lastmodified == lastmodified:
+            if library := self._in_memory(user_id, lastmodified):
                 return library, "memory"
-            library = self._read_cache(user_id, lastmodified)
-            if library:
+            if library := self._read_cache(user_id, lastmodified):
                 with self.lock:
                     self.library, self.library_user = library, user_id
                 return library, "cache"
-        library = self._fetch(client)
-        self._keep(library, user_id)
+        with self.download_lock:
+            # a download that finished while we waited (e.g. a read-back) may be current
+            if lastmodified and not refresh and after is None \
+                    and (library := self._in_memory(user_id, lastmodified)):
+                return library, "memory"
+            with self.lock:
+                if after is not None and self.library and self.library_user == user_id \
+                        and self.library_started >= after:
+                    return self.library, "memory"
+            started = time.monotonic()
+            library = self._fetch(client)
+            self._keep(library, user_id, started)
         return library, "download"
+
+    def _in_memory(self, user_id, lastmodified):
+        with self.lock:
+            library, owner = self.library, self.library_user
+        if library and owner == user_id and library.lastmodified == lastmodified:
+            return library
+        return None
 
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
@@ -422,17 +442,50 @@ class Studio:
                 error = str(failure)
                 failed.update({(kind, i): "failed" for i in ids})
 
-        try:
-            after, _ = self._current(client, refresh=True)
-        except ApiError as failure:
-            results = [{"kind": i["kind"], "id": str(i["id"]), "label": i["label"],
-                        "fields": sorted(i["patch"]),
-                        "status": failed.get((i["kind"], i["id"]), "unverified")}
-                       for i in plan["items"]]
-            return {"results": results, "albums": None, "created_artists": created,
-                    "error": error or f"Saved, but the library could not be read back: {failure}"}
-        return {"results": verify(after, plan, artist_ids, failed), "albums": after.album_index(),
-                "created_artists": created, "error": error}
+        results = [{"kind": i["kind"], "id": str(i["id"]), "label": i["label"],
+                    "fields": sorted(i["patch"]),
+                    "status": failed.get((i["kind"], i["id"]), "sent")} for i in plan["items"]]
+        job = self._check_later(client, time.monotonic(),
+                                lambda after: verify(after, plan, artist_ids, failed))
+        return {"results": results, "job": job, "created_artists": created, "error": error}
+
+    # -- read-back -----------------------------------------------------------
+
+    def _check_later(self, client, written, check):
+        """Download the library in the background and run check(library) -> results.
+
+        A full download takes as long as half a minute for a large library, so saves
+        return as soon as iBroadcast accepted the writes and the browser asks for the
+        read-back with job(). The next save waits for this download instead of starting
+        another one.
+        """
+        job_id = secrets.token_urlsafe(9)
+        with self.lock:
+            self.jobs[job_id] = {"state": "checking"}
+            for old in list(self.jobs)[:-20]:
+                del self.jobs[old]
+
+        def run():
+            try:
+                after, _ = self._current(client, after=written)
+                result = {"state": "done", "results": check(after), "albums": after.album_index()}
+            except (ApiError, LibraryError) as failure:
+                result = {"state": "error",
+                          "error": f"Saved, but the library could not be read back: {failure}"}
+            except Exception:  # report, never leave the browser waiting
+                log.exception("Read-back failed")
+                result = {"state": "error", "error": "Saved, but the read-back failed. Reload the library."}
+            with self.lock:
+                self.jobs[job_id] = result
+
+        threading.Thread(target=run, daemon=True).start()
+        return job_id
+
+    def job(self, job_id):
+        with self.lock:
+            if job_id not in self.jobs:
+                raise ApiError("This read-back is no longer available. Reload the library.")
+            return self.jobs[job_id]
 
 
 __all__ = ["ApiError", "LibraryError", "NotConnected", "Studio", "StudioClient"]

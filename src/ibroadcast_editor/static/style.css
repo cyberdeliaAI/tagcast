@@ -37,3 +37,31 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:28px;box-shadow:0
 .cover.has-art:before,.cover.has-art:after{display:none}
 .cover img{z-index:2}
 body.busy,body.busy *{cursor:progress!important}
+.status.sent{background:#eef2f6;border-color:#d5dee8;color:#4f6478}
+
+/* ---- large-library layout ---------------------------------------------- */
+.view-toggle{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff}
+.view-toggle button{border:0;background:none;padding:0 13px;font-size:15px;color:#7d8a77}
+.view-toggle button[aria-pressed="true"]{background:#e8efdf;color:var(--green)}
+.album-list{overflow-x:auto}
+.album-table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.album-table th{text-align:left;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:#8a9683;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);background:#fbfcf9}
+.album-table td{padding:6px 12px;border-bottom:1px solid #eef1ea;vertical-align:middle}
+.album-table tr:last-child td{border-bottom:0}
+.album-table tbody tr:hover{background:#f6f9f1}
+.album-table tr.selected{background:#eef4e2}
+.album-table .col-num{text-align:right;width:60px;font-variant-numeric:tabular-nums}
+.album-table .col-thumb{width:52px;padding-right:0}
+.album-table .col-check{width:34px}
+.album-table .album-select{position:static;display:inline-flex;background:none;box-shadow:none;padding:0}
+.row-open,.row-artist{border:0;background:none;padding:0;color:inherit;text-align:left}
+.row-title{font-weight:600}
+.row-title:hover,.row-artist:hover{color:var(--green);text-decoration:underline}
+.row-artist{display:inline-flex;align-items:center;gap:8px}
+.row-artist .artist-avatar{width:22px;height:22px;font-size:8px;background:#c9d4c6;color:#3f5547}
+.thumb{width:40px;height:40px;border-radius:5px;display:grid;place-items:center;position:relative;overflow:hidden;background:var(--cover-color,#afbcaa);color:#ffffffd9;font:italic 15px Georgia,serif}
+.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.artist-avatar{position:relative;overflow:hidden}
+.artist-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.artist-more{font-size:11px;color:#93a497;padding:8px 12px;margin:0}
+.then-next{margin:0 auto 0 0;font-size:12px}

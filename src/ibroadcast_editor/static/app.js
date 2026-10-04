@@ -4,7 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), artistNames: [], artist: null, selected: new Set(), page: 0, history: [], mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {albums: [], details: new Map(), artistNames: [], artist: null, view: storedView(), selected: new Set(), page: 0, history: [], mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const live = () => state.mode === "live";
 let devicePoll = null;
 let saving = false;
@@ -14,6 +14,12 @@ let pending = null;
 let toastTimer;
 let searchTimer;
 let opening = false;
+let checking = 0; // background read-backs still running
+let pendingAlbums = null; // read-back albums waiting for the editor to close
+
+function storedView() {
+  try { return localStorage.getItem("library-studio-view") === "list" ? "list" : "grid"; } catch { return "grid"; }
+}
 
 function demoLibrary() {
   const examples = [
@@ -97,17 +103,49 @@ function cover(album, small = false) {
   return `<div class="cover ${art ? "has-art" : ""}" style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">LIBRARY STUDIO / PLACEHOLDER</span>'}</div>`;
 }
 
+const EDITION = /remaster|deluxe|anniversary|re-record|live|edition|expanded/i;
+const FILTERS = {
+  all: ["All albums", () => true],
+  year: ["Missing year", a => !a.year],
+  genre: ["Missing genre", a => a.no_genre > 0],
+  artist_image: ["Artist without image", a => !a.artist_image && a.artist !== "Various Artists"],
+  edition: ["Named editions", a => EDITION.test(a.name)],
+};
+const SORTS = {
+  artist: (a, b) => a.artist.localeCompare(b.artist) || a.name.localeCompare(b.name),
+  title: (a, b) => a.name.localeCompare(b.name),
+  year: (a, b) => (a.year || 9999) - (b.year || 9999) || a.name.localeCompare(b.name),
+  newest: (a, b) => b.year - a.year || a.name.localeCompare(b.name),
+  no_genre: (a, b) => b.no_genre - a.no_genre || SORTS.artist(a, b),
+};
+const initials = name => name.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
+const pageSize = () => state.view === "list" ? 100 : 24;
+
+function thumb(album) {
+  const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  return `<span class="thumb" style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
+}
+
+function avatar(name, image) {
+  const img = image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  return `<span class="artist-avatar">${img}${escapeHtml(initials(name))}</span>`;
+}
+
 function artistGroups() {
-  const counts = new Map();
-  state.albums.forEach(a => counts.set(a.artist, (counts.get(a.artist) || 0) + 1));
-  return [...counts].sort((a, b) => a[0].localeCompare(b[0]));
+  const groups = new Map();
+  for (const a of state.albums) {
+    const group = groups.get(a.artist) || {count: 0, image: a.artist_image || ""};
+    group.count += 1; groups.set(a.artist, group);
+  }
+  return [...groups].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 function renderArtists() {
   const query = $("#artist-search").value.toLocaleLowerCase();
-  const groups = artistGroups();
-  $("#artist-count").textContent = groups.length;
-  $("#artists").innerHTML = groups.filter(([name]) => name.toLocaleLowerCase().includes(query)).slice(0, 200).map(([name, count]) => `<button class="artist-button ${state.artist === name ? "active" : ""}" data-artist="${escapeHtml(name)}"><span class="artist-avatar">${escapeHtml(name.split(/\s+/).map(s => s[0]).slice(0, 2).join(""))}</span><span>${escapeHtml(name)}</span><b>${count}</b></button>`).join("");
+  const groups = artistGroups(), matches = groups.filter(([name]) => name.toLocaleLowerCase().includes(query));
+  $("#artist-count").textContent = groups.length.toLocaleString("en");
+  $("#artists").innerHTML = matches.slice(0, 200).map(([name, g]) => `<button class="artist-button ${state.artist === name ? "active" : ""}" data-artist="${escapeHtml(name)}">${avatar(name, g.image)}<span>${escapeHtml(name)}</span><b>${g.count}</b></button>`).join("")
+    + (matches.length > 200 ? `<p class="artist-more">${(matches.length - 200).toLocaleString("en")} more. Type to narrow the list.</p>` : "");
 }
 
 function setArtist(artist) {
@@ -117,21 +155,33 @@ function setArtist(artist) {
 }
 
 function filteredAlbums() {
-  const query = $("#search").value.toLocaleLowerCase().trim(), filter = $("#filter").value;
-  const items = state.albums.filter(a => (!state.artist || a.artist === state.artist)
-    && (!query || [a.name, a.artist, ...a.genres].join(" ").toLocaleLowerCase().includes(query))
-    && (filter !== "year" || !a.year)
-    && (filter !== "genre" || a.no_genre > 0)
-    && (filter !== "edition" || /remaster|deluxe|anniversary|re-record|live/i.test(a.name)));
-  const sort = $("#sort").value;
-  items.sort((a, b) => sort === "year" ? (a.year || 9999) - (b.year || 9999) || a.name.localeCompare(b.name)
-    : sort === "title" ? a.name.localeCompare(b.name) : a.artist.localeCompare(b.artist) || a.name.localeCompare(b.name));
-  return items;
+  const query = $("#search").value.toLocaleLowerCase().trim(), keep = (FILTERS[$("#filter").value] || FILTERS.all)[1];
+  const items = state.albums.filter(a => (!state.artist || a.artist === state.artist) && keep(a)
+    && (!query || [a.name, a.artist, ...a.genres].join(" ").toLocaleLowerCase().includes(query)));
+  return items.sort(SORTS[$("#sort").value] || SORTS.artist);
+}
+
+function badge(a) {
+  return !a.year ? '<span class="pill missing">Missing year</span>' : a.no_genre ? '<span class="pill missing">Missing genre</span>' : EDITION.test(a.name) ? '<span class="pill">Edition</span>' : '<span class="pill">Album</span>';
+}
+
+function selectBox(a) {
+  return state.artist ? `<label class="album-select"><input type="checkbox" data-select="${escapeHtml(a.id)}" aria-label="Select ${escapeHtml(a.name)}" ${state.selected.has(String(a.id)) ? "checked" : ""}></label>` : "";
+}
+
+function gridView(items) {
+  return items.map(a => `<article class="album-card ${state.selected.has(String(a.id)) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Edit ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks</span>${badge(a)}</div></article>`).join("");
+}
+
+function listView(items) {
+  const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
+  const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
+  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th></tr></thead><tbody>${items.map(a => `<tr class="${state.selected.has(String(a.id)) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Edit ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${a.disc > 1 ? ` <span class="muted">· Disc ${a.disc}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
   renderArtists();
-  $("#album-count").textContent = state.albums.length;
+  $("#album-count").textContent = state.albums.length.toLocaleString("en");
   $("#total-tracks").textContent = state.albums.reduce((sum, a) => sum + a.track_count, 0).toLocaleString("en");
   $("#history-count").textContent = state.history.length;
   $("#breadcrumb").textContent = state.artist || "Albums";
@@ -139,13 +189,27 @@ function render() {
   $("#page-subtitle").textContent = state.artist ? "Open an album, or select albums by this artist to edit together." : "Browse your collection, check the details, and make it yours.";
   $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to edit its metadata";
   $("#all-albums").classList.toggle("active", !state.artist);
-  const items = filteredAlbums(), size = 20, maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
+  const scope = state.albums.filter(a => !state.artist || a.artist === state.artist);
+  for (const option of $("#filter").options) {
+    const [label, keep] = FILTERS[option.value];
+    option.textContent = option.value === "all" ? label : `${label} · ${scope.filter(keep).length.toLocaleString("en")}`;
+  }
+  for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
+  const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
   state.page = Math.min(state.page, maxPage);
-  $("#results-count").textContent = `${items.length} ${items.length === 1 ? "album" : "albums"}${state.artist ? ` by ${state.artist}` : " in your collection"}`;
-  $("#albums").innerHTML = items.slice(state.page * size, (state.page + 1) * size).map(a => `<article class="album-card ${state.selected.has(String(a.id)) ? "selected" : ""}">${state.artist ? `<label class="album-select"><input type="checkbox" data-select="${escapeHtml(a.id)}" aria-label="Select ${escapeHtml(a.name)}" ${state.selected.has(String(a.id)) ? "checked" : ""}></label>` : ""}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Edit ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks</span>${!a.year ? '<span class="pill missing">Missing year</span>' : a.no_genre ? '<span class="pill missing">Missing genre</span>' : /remaster|deluxe|anniversary|re-record|live/i.test(a.name) ? '<span class="pill">Edition</span>' : '<span class="pill">Album</span>'}</div></article>`).join("") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
+  $("#results-count").textContent = `${items.length.toLocaleString("en")} ${items.length === 1 ? "album" : "albums"}${state.artist ? ` by ${state.artist}` : " in your collection"}`;
+  const page = items.slice(state.page * size, (state.page + 1) * size);
+  $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
+  $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
   $("#selection-bar").hidden = !state.selected.size;
   $("#selection-count").textContent = `${state.selected.size} albums selected · ${state.artist || ""}`;
-  $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${maxPage + 1}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+  $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+}
+
+// The album after this one in the current list, for working through a filter.
+function nextAlbumId(id) {
+  const items = filteredAlbums(), index = items.findIndex(a => String(a.id) === String(id));
+  return index >= 0 && index + 1 < items.length ? String(items[index + 1].id) : null;
 }
 
 function common(items, key) {
@@ -183,7 +247,7 @@ async function openEditor(ids) {
   const album = albums[0], bulk = albums.length > 1;
   editing = {ids: albums.map(a => String(a.id)), originals: structuredClone(albums), trackPatches: {}, bulk, dirty: new Set()};
   const allTracks = albums.flatMap(a => a.tracks);
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${cover(album, true)}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> Disc ${album.disc || "unknown"}` : ""}</div><div class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${field("genre", "Genre · all tracks in this selection", common(allTracks, "genre"), {wide: true, bulk, placeholder: common(allTracks, "genre") ? "" : "Mixed or missing genres"})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Source lookups and edits are always started by you."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : sourceLinks(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr><td>${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / ${escapeHtml(t.genre || "No genre")}</td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button><button class="button primary" id="review-button">Review draft →</button></div>`;
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${cover(album, true)}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> Disc ${album.disc || "unknown"}` : ""}</div><div class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${field("genre", "Genre · all tracks in this selection", common(allTracks, "genre"), {wide: true, bulk, placeholder: common(allTracks, "genre") ? "" : "Mixed or missing genres"})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Source lookups and edits are always started by you."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : sourceLinks(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr><td>${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / ${escapeHtml(t.genre || "No genre")}</td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   $("#editor").showModal();
 }
@@ -264,18 +328,25 @@ function applyDraft() {
     if (!target) { toast("The selection changed. Open the album again."); return; }
     for (const [key, value] of Object.entries(change.fields)) if (target[key] !== value.before) { toast("A value changed since this draft. Review it again."); return; }
   }
-  for (const change of pending.changes) {
-    const album = state.details.get(String(change.albumId));
-    const target = change.kind === "album" ? album : album.tracks.find(t => String(t.id) === String(change.id));
-    for (const [key, value] of Object.entries(change.fields)) target[key] = value.after;
-  }
-  const touched = new Set(pending.changes.map(c => String(c.albumId)));
-  state.albums = state.albums.map(a => touched.has(String(a.id)) ? summarize(state.details.get(String(a.id))) : a);
+  const next = thenNext();
+  applyLocally(pending.changes);
   state.history.unshift({...structuredClone(pending), created: new Date().toISOString(), status: "preview_only", source: state.mode});
   pending = null; editing = null; state.selected.clear();
+  if (next) setTimeout(() => openEditor([next]), 0);
   if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
   $("#review").close(); $("#editor").close(); render();
   toast("Draft applied to this preview. Your iBroadcast library was not changed.");
+}
+
+// Show reviewed values right away; a live save replaces them with iBroadcast's read-back.
+function applyLocally(changes) {
+  for (const change of changes) {
+    const album = state.details.get(String(change.albumId));
+    const target = change.kind === "album" ? album : album?.tracks.find(t => String(t.id) === String(change.id));
+    if (target) for (const [key, value] of Object.entries(change.fields)) target[key] = value.after;
+  }
+  const touched = new Set(changes.map(c => String(c.albumId)));
+  state.albums = state.albums.map(a => touched.has(String(a.id)) && state.details.has(String(a.id)) ? {...summarize(state.details.get(String(a.id))), color: a.color} : a);
 }
 
 function showHistory() {
@@ -364,7 +435,7 @@ function colorize(albums) {
 }
 
 function statusPill(status) {
-  const labels = {saved: "Saved", unverified: "Not confirmed", failed: "Failed", not_sent: "Not sent", preview_only: "Preview only"};
+  const labels = {saved: "Saved", sent: "Checking…", unverified: "Not confirmed", failed: "Failed", not_sent: "Not sent", preview_only: "Preview only"};
   return `<span class="status ${escapeHtml(status)}">${escapeHtml(labels[status] || status)}</span>`;
 }
 
@@ -378,7 +449,7 @@ function updateChrome() {
   $("#logout-button").hidden = !c.connected;
   const badge = $("#mode-badge");
   badge.classList.toggle("live", live());
-  badge.textContent = state.loading ? "LOADING LIBRARY…" : live() ? `LIVE · ${(c.account || "iBroadcast").toUpperCase()}` : state.mode === "imported" ? "IMPORTED SNAPSHOT" : "DEMO · CONNECT ACCOUNT";
+  badge.textContent = state.loading ? "LOADING LIBRARY…" : checking ? "CHECKING SAVES…" : live() ? `LIVE · ${(c.account || "iBroadcast").toUpperCase()}` : state.mode === "imported" ? "IMPORTED SNAPSHOT" : "DEMO · CONNECT ACCOUNT";
   $("#data-notice").textContent = live() ? "Live iBroadcast library. Every save is checked against iBroadcast first and read back afterwards. Your music files are never touched."
     : state.mode === "imported" ? "Imported library snapshot. Drafts stay in this tab; nothing is saved to iBroadcast or to the source file."
     : "Demo library with sample records. Connect your iBroadcast account to edit your own collection.";
@@ -506,6 +577,7 @@ function knownArtists() {
 
 function renderReviewChrome(changes) {
   const apply = $("#apply-draft"), count = changes.length;
+  $("#then-next-label").hidden = pending?.scope !== "album";
   apply.disabled = false; reloadOnApply = false;
   apply.textContent = live() ? `Save ${count} ${count === 1 ? "record" : "records"} to iBroadcast` : "Apply to preview";
   $("#review-cancel").disabled = false;
@@ -523,26 +595,40 @@ function renderReviewChrome(changes) {
   $("#review-warnings").innerHTML = warnings.map(w => `<div class="warn-box">${w}</div>`).join("");
 }
 
+function thenNext() {
+  return pending?.scope === "album" && $("#then-next").checked ? nextAlbumId(pending.selection[0].id) : null;
+}
+
+function overallStatus(statuses) {
+  return statuses.some(s => s === "failed" || s === "not_sent") ? "failed" : statuses.some(s => s === "sent") ? "sent" : statuses.some(s => s === "unverified") ? "unverified" : "saved";
+}
+
 async function saveDraft() {
   if (saving || !pending) return;
   saving = true;
   const apply = $("#apply-draft");
   apply.disabled = true; $("#review-cancel").disabled = true; apply.textContent = "Saving…";
-  $("#review-status").innerHTML = '<span class="spinner"></span>Checking iBroadcast, saving and reading back…';
+  $("#review-status").innerHTML = '<span class="spinner"></span>Checking iBroadcast and saving…';
   try {
     const result = await api("/api/save", {changes: pending.changes});
     const byId = new Map((result.results || []).map(r => [`${r.kind}:${r.id}`, r.status]));
     const statuses = [...byId.values()];
-    const overall = statuses.some(s => s === "failed" || s === "not_sent") ? "failed" : statuses.some(s => s === "unverified") ? "unverified" : "saved";
+    const overall = statuses.length ? overallStatus(statuses) : "saved";
+    const next = thenNext();
     const newArtist = pending.scope === "artist" ? pending.changes.find(c => c.kind === "album" && c.fields.artist)?.fields.artist.after : null;
-    state.history.unshift({...structuredClone(pending), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
-      created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || (statuses.length ? "unverified" : "saved")}))});
+    const entry = {...structuredClone(pending), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
+      created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
+    state.history.unshift(entry);
     if (result.albums) { state.albums = colorize(result.albums); state.details = new Map(); }
+    else applyLocally(pending.changes.filter(c => byId.get(`${c.kind}:${c.id}`) === "sent"));
     pending = null; editing = null; state.selected.clear();
-    if (newArtist && state.albums.some(a => a.artist === newArtist)) state.artist = newArtist;
+    if (newArtist) state.artist = newArtist;
     if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
     $("#review").close(); $("#editor").close(); render();
-    showResults(result, overall);
+    if (overall === "failed" || !statuses.length || result.error) showResults(result, overall);
+    else toast(`${statuses.length} ${statuses.length === 1 ? "record" : "records"} saved. Checking the result with iBroadcast in the background…`);
+    if (result.job) followJob(result.job, entry);
+    if (next && overall !== "failed") openEditor([next]);
   } catch (error) {
     apply.disabled = false; $("#review-cancel").disabled = false;
     apply.textContent = "Try again";
@@ -561,6 +647,38 @@ async function saveDraft() {
   } finally {
     saving = false;
   }
+}
+
+// Poll the background read-back of a save and update its history entry.
+async function followJob(jobId, entry, onDone) {
+  checking += 1; updateChrome();
+  let job;
+  try {
+    for (;;) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+      if (job.state !== "checking") break;
+    }
+  } catch (error) {
+    job = {state: "error", error: error.message};
+  } finally { checking -= 1; updateChrome(); }
+  if (job.state === "error") {
+    entry.status = "unverified"; entry.error = job.error;
+    for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
+    toast(job.error); return;
+  }
+  const byId = new Map(job.results.map(r => [`${r.kind}:${r.id}`, r.status]));
+  for (const c of entry.changes) c.status = byId.get(`${c.kind}:${c.id}`) || c.status;
+  entry.status = overallStatus(entry.changes.map(c => c.status));
+  if (!$("#editor").open && !$("#review").open) {
+    state.albums = colorize(job.albums); state.details = new Map();
+    if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
+    render();
+  } else pendingAlbums = job.albums;
+  onDone?.(job);
+  const done = job.results.filter(r => r.status === "saved").length;
+  if (entry.status === "saved") toast(`Confirmed by iBroadcast: ${done} ${done === 1 ? "record" : "records"} saved.`);
+  else showResults({results: job.results, albums: job.albums}, entry.status);
 }
 
 function showResults(result, overall) {
@@ -584,3 +702,31 @@ document.addEventListener("click", event => {
 document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "client-id") connectAction($("#client-save")); });
 $("#connect-button").addEventListener("click", openConnect);
 $("#mode-badge").addEventListener("click", openConnect);
+
+function flushPendingAlbums() {
+  if (!pendingAlbums || $("#editor").open || $("#review").open) return;
+  state.albums = colorize(pendingAlbums); state.details = new Map(); pendingAlbums = null;
+  if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
+  render();
+}
+$("#editor").addEventListener("close", flushPendingAlbums);
+$("#review").addEventListener("close", flushPendingAlbums);
+
+document.addEventListener("click", event => {
+  const view = event.target.closest("[data-view]");
+  if (view) {
+    state.view = view.dataset.view; state.page = 0;
+    try { localStorage.setItem("library-studio-view", state.view); } catch { /* private window */ }
+    render(); return;
+  }
+  if (event.target.closest("#next-album")) {
+    const next = editing && nextAlbumId(editing.ids[0]);
+    const changed = editing && (editing.dirty.size || Object.keys(editing.trackPatches).length || $("#track-inline")?.dataset.track);
+    if (!next || (changed && !confirm("Leave this album without reviewing your changes?"))) return;
+    $("#editor").close(); openEditor([next]);
+  }
+});
+try { $("#then-next").checked = localStorage.getItem("library-studio-then-next") === "1"; } catch { /* private window */ }
+$("#then-next").addEventListener("change", event => {
+  try { localStorage.setItem("library-studio-then-next", event.target.checked ? "1" : "0"); } catch { /* private window */ }
+});

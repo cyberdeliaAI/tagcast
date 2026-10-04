@@ -86,6 +86,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/library":
             refresh = parse_qs(url.query).get("refresh") == ["1"]
             self._run(lambda: self.studio.load_library(refresh))
+        elif url.path.startswith("/api/jobs/"):
+            self._run(lambda: self.studio.job(url.path.rsplit("/", 1)[1]))
         elif url.path == "/api/albums":
             ids = [i for i in (parse_qs(url.query).get("ids") or [""])[0].split(",") if i]
             self._run(lambda: {"albums": self.studio.album_details(ids)})

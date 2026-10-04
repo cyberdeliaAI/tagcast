@@ -135,6 +135,13 @@ class Library:
 
     # -- reading -------------------------------------------------------------
 
+    def art_url(self, artwork_id, size=300):
+        artwork_id = number(artwork_id)
+        return f"{self.artwork_server}/artwork/{artwork_id}-{size}" if artwork_id else ""
+
+    def artist_image(self, artist_id):
+        return self.art_url(self.artists.get(number(artist_id), {}).get("artwork_id"), 150)
+
     def artist_name(self, artist_id):
         artist_id = number(artist_id)
         if artist_id == 0:
@@ -150,6 +157,18 @@ class Library:
         return [i for i, a in self.albums.items()
                 if not a.get("trashed") and self.active_track_ids(i)]
 
+    def album_artwork(self, track_ids):
+        """The cover iBroadcast shows: the artwork of the first track (by number) that has one."""
+        best = None
+        for track_id in track_ids:
+            track = self.tracks[track_id]
+            artwork = number(track.get("artwork_id"))
+            if artwork:
+                key = (number(track.get("track")) or 9999, track_id)
+                if best is None or key < best[0]:
+                    best = (key, artwork)
+        return best[1] if best else 0
+
     def album_view(self, album_id):
         album = self.albums.get(album_id)
         if not album or album.get("trashed"):
@@ -157,8 +176,7 @@ class Library:
         track_ids = self.active_track_ids(album_id)
         tracks = [self.track_view(t) for t in track_ids]
         tracks.sort(key=lambda t: (t["track"] or 9999, t["title"].lower()))
-        artwork = next((number(self.tracks[t].get("artwork_id")) for t in track_ids
-                        if number(self.tracks[t].get("artwork_id"))), 0)
+        artwork = self.album_artwork(track_ids)
         return {
             "id": str(album_id),
             "name": text(album.get("name")) or "Untitled album",
@@ -166,7 +184,11 @@ class Library:
             "artist_id": number(album.get("artist_id")),
             "year": number(album.get("year")),
             "disc": number(album.get("disc")),
-            "artwork": f"{self.artwork_server}/artwork/{artwork}-300" if artwork else "",
+            "artwork": self.art_url(artwork),
+            "artwork_id": artwork,
+            "artist_image": self.artist_image(album.get("artist_id")),
+            "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
+                                        .get("artwork_id")),
             "tracks": tracks,
         }
 
@@ -183,6 +205,8 @@ class Library:
             "year": number(track.get("year")),
             "genre": text(track.get("genre")),
             "track": number(track.get("track")),
+            "length": number(track.get("length")),
+            "artwork_id": number(track.get("artwork_id")),
         }
 
     def albums_view(self):
@@ -191,7 +215,7 @@ class Library:
     def album_summary(self, album_id):
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
-        artwork, genres, no_genre = 0, set(), 0
+        genres, no_genre = set(), 0
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
@@ -200,14 +224,15 @@ class Library:
                 genres.add(genre)
             else:
                 no_genre += 1
-            artwork = artwork or number(track.get("artwork_id"))
         return {
             "id": str(album_id),
             "name": text(album.get("name")) or "Untitled album",
             "artist": self.artist_name(album.get("artist_id")),
             "year": number(album.get("year")),
             "disc": number(album.get("disc")),
-            "artwork": f"{self.artwork_server}/artwork/{artwork}-300" if artwork else "",
+            "artwork": self.art_url(self.album_artwork(track_ids)),
+            "artist_id": number(album.get("artist_id")),
+            "artist_image": self.artist_image(album.get("artist_id")),
             "track_count": len(track_ids),
             "genres": sorted(genres),
             "no_genre": no_genre,
