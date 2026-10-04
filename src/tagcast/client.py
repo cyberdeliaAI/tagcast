@@ -312,7 +312,8 @@ class Studio:
     def _read_cache(self, user_id, lastmodified):
         try:
             data = json.loads(gzip.decompress((self.home / CACHE_FILE).read_bytes()))
-            if data.get("user_id") != user_id or data.get("status", {}).get("lastmodified") != lastmodified:
+            if data.get("user_id") != user_id or data.get("status", {}).get("lastmodified") != lastmodified \
+                    or data.get("combine_sets") != self.combine_sets:
                 return None
             return Library(data)
         except (OSError, ValueError, AttributeError, EOFError, LibraryError):
@@ -542,13 +543,15 @@ class Studio:
                     return self.library, "memory"
             started = time.monotonic()
             library = self._fetch(client)
+            library.combine_sets = self.combine_sets  # as read by _remote_state just before
             self._keep(library, user_id, started)
         return library, "download"
 
     def _in_memory(self, user_id, lastmodified):
         with self.lock:
             library, owner = self.library, self.library_user
-        if library and owner == user_id and library.lastmodified == lastmodified:
+        if library and owner == user_id and library.lastmodified == lastmodified \
+                and library.combine_sets == self.combine_sets:
             return library
         return None
 

@@ -197,6 +197,10 @@ def _log_to_file(home):
                                                        maxBytes=1_000_000, backupCount=2)
     except OSError:
         return
+    try:
+        os.chmod(home / "tagcast.log", 0o600)  # it can contain titles from your library
+    except OSError:
+        pass
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.getLogger().addHandler(handler)
 

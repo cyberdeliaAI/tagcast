@@ -264,6 +264,22 @@ class ClientTests(unittest.TestCase):
         self.assertEqual([r["status"] for r in result["results"]], ["sent"])
         self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 1)
 
+    def test_switching_combine_sets_downloads_the_library_again(self):
+        studio = self.connect()
+        self.assertEqual(studio.load_library()["source"], "download")
+        self.wait_for_cache(studio)
+        mock_ibroadcast.STATE["combine_sets"] = True  # lastmodified stays the same
+        self.assertEqual(studio.load_library()["source"], "download")
+        import gzip
+        for _ in range(100):  # the cache is rewritten in the background
+            cached = json.loads(gzip.decompress(Path(self.home, client.CACHE_FILE).read_bytes()))
+            if cached.get("combine_sets") is True:
+                break
+            time.sleep(0.05)
+        self.assertEqual(client.Studio(self.home).load_library()["source"], "cache")
+        mock_ibroadcast.STATE["combine_sets"] = False
+        self.assertEqual(client.Studio(self.home).load_library()["source"], "download")
+
 
 if __name__ == "__main__":
     unittest.main()
