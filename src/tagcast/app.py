@@ -228,7 +228,7 @@ def _already_running(port):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Tagcast for iBroadcast")
+    parser = argparse.ArgumentParser(prog="tagcast", description="Tagcast for iBroadcast")
     parser.add_argument("--port", type=int, default=int(os.environ.get("TAGCAST_PORT", 8912)))
     parser.add_argument("--open", action="store_true", help="open the browser after starting")
     args = parser.parse_args(argv)

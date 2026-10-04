@@ -272,7 +272,8 @@ class Studio:
         self.library = None
         self.library_user = None
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
-        self.library_started = 0.0  # time.monotonic() when the copy in memory began downloading
+        self.downloads = 0  # library downloads started so far; numbers each one
+        self.library_started = 0  # the number of the download the copy in memory came from
         self.account = None
         self.cache_lock = threading.Lock()
         self.download_lock = threading.Lock()  # one full library download at a time
@@ -527,8 +528,9 @@ class Studio:
         "lastmodified", which changes with every library edit (the web player relies on
         the same signal). Returns (library, source) with source memory, cache or download.
 
-        refresh skips that check. after=<monotonic time> also skips it, but accepts a
-        download that started after that time, so a read-back can share a download.
+        refresh skips that check. after=<download number> also skips it, but accepts a
+        download that started after that one, so a read-back can share a download.
+        (Numbers, not times: on Windows the clock ticks only every ~15 ms.)
         """
         lastmodified, user_id = self._remote_state(client)
         if lastmodified and not refresh and after is None:  # a read-back always reads fresh data
@@ -547,9 +549,11 @@ class Studio:
                 return library, "memory"
             with self.lock:
                 if after is not None and self.library and self.library_user == user_id \
-                        and self.library_started >= after:
+                        and self.library_started > after:
                     return self.library, "memory"
-            started = time.monotonic()
+            with self.lock:
+                self.downloads += 1
+                started = self.downloads
             library = self._fetch(client)
             library.combine_sets = self.combine_sets  # as read by _remote_state just before
             if not self._keep(library, user_id, started, client):
@@ -641,7 +645,7 @@ class Studio:
         results = [{"kind": i["kind"], "id": str(i["id"]), "label": i["label"],
                     "fields": sorted(i["patch"]),
                     "status": failed.get((i["kind"], i["id"]), "sent")} for i in plan["items"]]
-        job = self._check_later(client, time.monotonic(),
+        job = self._check_later(client, self.downloads,
                                 lambda after: verify(after, plan, artist_ids, failed))
         return {"results": results, "job": job, "created_artists": created, "error": error}
 
@@ -859,7 +863,7 @@ class Studio:
                 return [{"kind": target, "id": str(item_id), "label": label, "fields": [field],
                          "status": status}]
 
-            job = self._check_later(client, time.monotonic(), check)
+            job = self._check_later(client, self.downloads, check)
             return {"artwork_id": new_id, "image": fresh.art_url(new_id, 300), "job": job, "note": note,
                     "previous": {"tracks": {str(k): v for k, v in now.items()}} if target == "album"
                     else {"artwork_id": now},
