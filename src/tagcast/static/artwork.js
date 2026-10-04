@@ -182,7 +182,7 @@ async function undoArtwork(entry) {
     state.history.unshift(undo);
     showNewArt({target: a.target, id: a.id}, result);
     render(); showHistory();
-    toast("The previous image is back. Checking the result with iBroadcast…");
+    toast(result.note ? `The previous cover is back. ${result.note}` : "The previous image is back. Checking the result with iBroadcast…");
     followJob(result.job, undo);
   } catch (error) { toast(error.message); }
 }

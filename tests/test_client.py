@@ -39,6 +39,8 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["uploads"].clear()
         mock_ibroadcast.STATE["combine_sets"] = False
         mock_ibroadcast.STATE["busy"] = 0
+        mock_ibroadcast.STATE["frozen"] = False
+        mock_ibroadcast.STATE["tracks"][901]["artwork_id"] = 601
 
     def connect(self):
         studio = client.Studio(self.home)
@@ -279,6 +281,43 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(client.Studio(self.home).load_library()["source"], "cache")
         mock_ibroadcast.STATE["combine_sets"] = False
         self.assertEqual(client.Studio(self.home).load_library()["source"], "download")
+
+    def test_read_back_downloads_even_when_lastmodified_did_not_change(self):
+        studio = self.connect()
+        track = studio.album_details(["74"])[0]["tracks"][0]
+        downloads = mock_ibroadcast.STATE["downloads"]
+        mock_ibroadcast.STATE["frozen"] = True
+        result = studio.save([edit("track", track["id"], 74, genre=(track["genre"], track["genre"] + "?"))])
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual([r["status"] for r in job["results"]], ["saved"])
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+
+    def test_a_download_finishing_after_disconnect_is_thrown_away(self):
+        studio = self.connect()
+        old_client = studio.client
+        studio.logout()
+        from tagcast.client import NotConnected
+        with self.assertRaises(NotConnected):
+            studio._current(old_client, refresh=True)  # the download that was still running
+        time.sleep(0.3)
+        self.assertIsNone(studio.library)
+        self.assertFalse(Path(self.home, client.CACHE_FILE).exists())
+
+    def test_undo_restores_covers_and_explains_tracks_that_had_none(self):
+        mock_ibroadcast.STATE["tracks"][901]["artwork_id"] = 0
+        studio = self.connect()
+        album = studio.album_details(["72"])[0]
+        before = {"tracks": {t["id"]: t["artwork_id"] for t in album["tracks"]}}
+        changed = studio.change_artwork({"target": "album", "id": "72", "label": "x", "before": before,
+                                         "source": {"artwork_id": 77}})
+        self.wait_job(studio, changed["job"])
+        undo = studio.undo_artwork({"target": "album", "id": "72", "label": "x",
+                                    "before": {"tracks": {"900": 77, "901": 77}},
+                                    "previous": changed["previous"]})
+        self.assertIn("1 track had no cover before", undo["note"])
+        self.assertEqual(self.wait_job(studio, undo["job"])["results"][0]["status"], "saved")
+        restored = {t["id"]: t["artwork_id"] for t in studio.album_details(["72"])[0]["tracks"]}
+        self.assertEqual(restored, {"900": before["tracks"]["900"], "901": 77})
 
 
 if __name__ == "__main__":

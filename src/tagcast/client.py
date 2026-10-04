@@ -319,10 +319,12 @@ class Studio:
         except (OSError, ValueError, AttributeError, EOFError, LibraryError):
             return None
 
-    def _write_cache(self, library, user_id):
+    def _write_cache(self, library, user_id, client):
         """Write the library to disk in the background; a failed write only costs a download."""
         def write():
             with self.cache_lock:
+                if client is not self.client:  # disconnected before the write started
+                    return
                 try:
                     data = {"user_id": user_id, **library.to_cache()}
                     self._write_bytes(CACHE_FILE, gzip.compress(
@@ -509,10 +511,14 @@ class Studio:
         self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
         return text(status.get("lastmodified")), text(user.get("id") or user.get("user_id"))
 
-    def _keep(self, library, user_id, started):
+    def _keep(self, library, user_id, started, client):
+        """Keep a download, unless the session it belongs to ended meanwhile (Disconnect)."""
         with self.lock:
+            if client is not self.client:
+                return False
             self.library, self.library_user, self.library_started = library, user_id, started
-        self._write_cache(library, user_id)
+        self._write_cache(library, user_id, client)
+        return True
 
     def _current(self, client, refresh=False, after=None):
         """The library as iBroadcast has it now. Downloads only when it changed since our copy.
@@ -525,11 +531,13 @@ class Studio:
         download that started after that time, so a read-back can share a download.
         """
         lastmodified, user_id = self._remote_state(client)
-        if lastmodified and not refresh:
+        if lastmodified and not refresh and after is None:  # a read-back always reads fresh data
             if library := self._in_memory(user_id, lastmodified):
                 return library, "memory"
             if library := self._read_cache(user_id, lastmodified):
                 with self.lock:
+                    if client is not self.client:
+                        raise NotConnected("You disconnected from iBroadcast.")
                     self.library, self.library_user = library, user_id
                 return library, "cache"
         with self.download_lock:
@@ -544,7 +552,8 @@ class Studio:
             started = time.monotonic()
             library = self._fetch(client)
             library.combine_sets = self.combine_sets  # as read by _remote_state just before
-            self._keep(library, user_id, started)
+            if not self._keep(library, user_id, started, client):
+                raise NotConnected("You disconnected from iBroadcast.")
         return library, "download"
 
     def _in_memory(self, user_id, lastmodified):
@@ -797,6 +806,7 @@ class Studio:
                     raise ConflictError("The artist image changed in iBroadcast since you loaded it. "
                                         "Reload the library and try again.")
 
+            note = ""
             if previous is None:  # a new image
                 new_id = self._image(client, source, user_id)
                 if target == "album":
@@ -807,14 +817,25 @@ class Studio:
                     wanted = new_id
             elif target == "album":  # undo: the previous artwork per track
                 wanted = {number(k): number(v) for k, v in (previous.get("tracks") or {}).items()}
-                if set(wanted) != set(now) or not all(wanted.values()):
+                if set(wanted) != set(now):
                     raise ApiError("This cover can't be restored: the album's tracks changed.")
+                # iBroadcast has no way to remove a cover, so tracks that had none keep the new one
+                bare = [t for t, artwork_id in wanted.items() if not artwork_id]
+                wanted.update({t: now[t] for t in bare})
                 groups = {}
                 for track_id, artwork_id in wanted.items():
-                    groups.setdefault(artwork_id, []).append(track_id)
+                    if track_id not in bare:
+                        groups.setdefault(artwork_id, []).append(track_id)
+                if not groups:
+                    raise ApiError("This album had no cover before, and iBroadcast can't remove one, "
+                                   "so there is nothing to restore.")
                 for artwork_id, tracks in groups.items():
                     client._jsonrequest("set_artwork", tracks=tracks, artwork_id=artwork_id)
                 new_id = max(groups, key=lambda i: len(groups[i]))
+                if bare:
+                    note = (f"{len(bare)} {'track' if len(bare) == 1 else 'tracks'} had no cover before "
+                            f"and {'keeps' if len(bare) == 1 else 'keep'} the new one: iBroadcast can't "
+                            "remove a cover.")
             else:
                 wanted = new_id = number((previous or {}).get("artwork_id"))
                 if not new_id:
@@ -834,7 +855,7 @@ class Studio:
                          "status": status}]
 
             job = self._check_later(client, time.monotonic(), check)
-            return {"artwork_id": new_id, "image": fresh.art_url(new_id, 300), "job": job,
+            return {"artwork_id": new_id, "image": fresh.art_url(new_id, 300), "job": job, "note": note,
                     "previous": {"tracks": {str(k): v for k, v in now.items()}} if target == "album"
                     else {"artwork_id": now},
                     "results": [{"kind": target, "id": str(item_id), "label": label,
