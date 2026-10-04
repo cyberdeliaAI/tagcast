@@ -17,8 +17,19 @@ import ibroadcast
 import requests
 from ibroadcast import oauth
 
-from . import __version__
-from .library import Library, LibraryError, number, plan_save, text, verify, write_requests
+from . import __version__, artwork
+from .library import (
+    ConflictError,
+    Library,
+    LibraryError,
+    number,
+    plan_save,
+    text,
+    verify,
+    write_requests,
+)
+from .sources import KEYS as SOURCE_KEYS
+from .sources import Lookup
 
 log = logging.getLogger("library-studio")
 
@@ -26,14 +37,19 @@ SCOPES = ["user.library:read", "user.library:write", "user.account:read"]
 CLIENT_NAME = "library-studio"
 TIMEOUT = 120
 CACHE_FILE = "library-cache.json.gz"
+KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
+           "fanart_api_key": "FANART_API_KEY"}
 
 API_URL = "https://api.ibroadcast.com"
 LIBRARY_URL = "https://library.ibroadcast.com"
+ARTWORK_UPLOAD_URL = "https://artwork-upload.ibroadcast.com"
+STREAM_URL = "https://streaming.ibroadcast.com"
 
 # Point everything at a test server, e.g. LIBRARY_STUDIO_IBROADCAST_BASE=http://127.0.0.1:9000
 _test_base = os.environ.get("LIBRARY_STUDIO_IBROADCAST_BASE", "").rstrip("/")
 if _test_base:
     API_URL, LIBRARY_URL = f"{_test_base}/api", f"{_test_base}/library"
+    ARTWORK_UPLOAD_URL, STREAM_URL = f"{_test_base}/artwork-upload", f"{_test_base}/stream"
     oauth.OAUTH_BASE = f"{_test_base}/oauth"
     oauth.AUTHORIZE_URL = f"{oauth.OAUTH_BASE}/authorize"
     oauth.TOKEN_URL = f"{oauth.OAUTH_BASE}/token"
@@ -99,6 +115,63 @@ class StudioClient(ibroadcast.iBroadcast):
     def fetch_library(self):
         return Library(self._jsonrequest("library", url=LIBRARY_URL))
 
+    def _with_fresh_token(self, send):
+        """Run send() and retry once with a refreshed token if iBroadcast refuses it."""
+        token_set = getattr(self, "token_set", None)
+        if token_set and token_set.is_expired and self._refresh_token and self._client_id:
+            self._refresh_or_fail()
+        response = send()
+        if response.status_code in (401, 403) and self._refresh_token and self._client_id:
+            response.close()
+            self._refresh_or_fail()
+            response = send()
+        return response
+
+    def upload_artwork(self, data, filename, mime, user_id):
+        """Store an image in iBroadcast's artwork library and return its artwork ID.
+
+        Mirrors the web editor's upload (artwork-upload.ibroadcast.com, field
+        uploaded_file) without an album or artist, so applying it stays a separate,
+        checked step (set_artwork / set_artist_artwork).
+        """
+        def send():
+            return requests.post(
+                ARTWORK_UPLOAD_URL, timeout=TIMEOUT,
+                headers={"Authorization": f"Bearer {self._access_token}",
+                         "User-Agent": self._user_agent},
+                data={"client": self._client, "version": self._version,
+                      "device_name": self._device_name, "user_id": user_id},
+                files={"uploaded_file": (filename, data, mime)})
+        try:
+            response = self._with_fresh_token(send)
+        except requests.RequestException as error:
+            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+        try:
+            result = response.json()
+        except ValueError:
+            result = {}
+        if not response.ok or result.get("result") is False or not number(result.get("artwork_id")):
+            raise ApiError(result.get("message")
+                           or f"iBroadcast did not accept the image (HTTP {response.status_code}).")
+        return number(result["artwork_id"])
+
+    def open_stream(self, path, file_id, user_id, expires, range_header=None):
+        """Open the audio of one track. The caller closes the returned response."""
+        def send():
+            params = {"Signature": self._access_token, "file_id": file_id, "user_id": user_id,
+                      "platform": self._client, "version": self._version}
+            if expires:
+                params["Expires"] = expires
+            headers = {"User-Agent": self._user_agent}
+            if range_header:
+                headers["Range"] = range_header
+            return requests.get(STREAM_URL + path, params=params, headers=headers,
+                                stream=True, timeout=TIMEOUT)
+        try:
+            return self._with_fresh_token(send)
+        except requests.RequestException as error:
+            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+
 
 class Studio:
     """Holds the connection state for the local server. Thread safe."""
@@ -120,6 +193,7 @@ class Studio:
         self._device_gen = 0
         self._pkce = {}
         self.config = self._read("config.json") or {}
+        self.lookup = Lookup(self.source_keys)
         tokens = self._read("tokens.json")
         if tokens and tokens.get("client_id") == self.client_id and tokens.get("token_set"):
             try:
@@ -486,6 +560,178 @@ class Studio:
             if job_id not in self.jobs:
                 raise ApiError("This read-back is no longer available. Reload the library.")
             return self.jobs[job_id]
+
+
+    # -- settings and online sources ------------------------------------------
+
+    def source_keys(self):
+        return {key: os.environ.get(KEY_ENV[key]) or self.config.get(key, "") for key in KEY_ENV}
+
+    def settings(self):
+        return {"sources": self.lookup.describe(),
+                "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
+                "auto_lookup": self.config.get("auto_lookup", True)}
+
+    def save_settings(self, body):
+        with self.lock:
+            for key in KEY_ENV:
+                if key in body:
+                    value = str(body[key] or "").strip()
+                    if len(value) > 200 or any(c.isspace() for c in value):
+                        raise ApiError(f"That {SOURCE_KEYS[key].label} key doesn't look right.")
+                    if value:
+                        self.config[key] = value
+                    else:
+                        self.config.pop(key, None)
+            if "auto_lookup" in body:
+                self.config["auto_lookup"] = bool(body["auto_lookup"])
+            self._write("config.json", self.config)
+        return self.settings()
+
+    def _library(self):
+        with self.lock:
+            library, user_id = self.library, self.library_user
+        if library is None:
+            library, _ = self._current(self._require_client())
+            with self.lock:
+                user_id = self.library_user
+        return library, user_id
+
+    def lookup_album(self, source, album_id=None, artist=None, album=None):
+        if album_id and not (artist and album):
+            library, _ = self._library()
+            view = library.album_view(number(album_id))
+            artist, album = artist or view["artist"], album or view["name"]
+        return {"source": source, "artist": artist, "album": album,
+                "candidates": self.lookup.album(source, artist, album)}
+
+    def lookup_artist(self, source, name):
+        return {"source": source, "name": name, "candidates": self.lookup.artist(source, name)}
+
+    # -- artwork --------------------------------------------------------------
+
+    def related_artwork(self, album_id=None, artist_id=None):
+        """Images iBroadcast already has for this album or artist (the web editor's picker)."""
+        client = self._require_client()
+        library, _ = self._library()
+        track_id = 0
+        if album_id:
+            track_id = next(iter(library.album_art_state(number(album_id))), 0)
+        data = client._jsonrequest("get_artwork", track_id=track_id, artist_id=number(artist_id))
+        ids = []
+        for item in data.get("art") or []:
+            artwork_id = number(item.get("artwork_id") if isinstance(item, dict) else item)
+            if artwork_id and artwork_id not in ids:
+                ids.append(artwork_id)
+        return {"artwork": [{"artwork_id": i, "thumb": library.art_url(i, 150),
+                             "image": library.art_url(i, 1000)} for i in ids[:40]]}
+
+    def _image(self, client, source, user_id):
+        if number(source.get("artwork_id")):
+            return number(source["artwork_id"])
+        if source.get("url"):
+            data, name, mime = artwork.from_url(source["url"], allow_private=bool(_test_base))
+        else:
+            data, name, mime = artwork.from_data_url(source.get("data"), source.get("name") or "artwork")
+        return client.upload_artwork(data, name, mime, user_id)
+
+    def change_artwork(self, body):
+        """Replace an album's cover (all its tracks) or an artist's image.
+
+        body: {target: album|artist, id, label, before, source}
+          before: album {"tracks": {track_id: artwork_id}}, artist {"artwork_id": n}
+          source: {"url"} | {"data": data URL, "name"} | {"artwork_id"} (already in iBroadcast)
+        """
+        return self._artwork(body, body.get("source") or {})
+
+    def undo_artwork(self, body):
+        """Put back the previous cover or image: body as change_artwork, plus "previous"."""
+        return self._artwork(body, None, body.get("previous"))
+
+    def _artwork(self, body, source, previous=None):
+        target, item_id = body.get("target"), number(body.get("id"))
+        if target not in ("album", "artist") or not item_id:
+            raise ApiError("Choose an album or an artist.")
+        client = self._require_client()
+        if not self.save_lock.acquire(blocking=False):
+            raise ApiError("Another save is still running.")
+        try:
+            fresh, _ = self._current(client)
+            with self.lock:
+                user_id = self.library_user
+            before = body.get("before") if isinstance(body.get("before"), dict) else {}
+            if target == "album":
+                now = fresh.album_art_state(item_id)
+                expected = {number(k): number(v) for k, v in (before.get("tracks") or {}).items()}
+                if now != expected:
+                    raise ConflictError("The cover changed in iBroadcast since you loaded it. "
+                                        "Reload the library and try again.")
+            else:
+                now = fresh.artist_art(item_id)
+                if now != number(before.get("artwork_id")):
+                    raise ConflictError("The artist image changed in iBroadcast since you loaded it. "
+                                        "Reload the library and try again.")
+
+            if previous is None:  # a new image
+                new_id = self._image(client, source, user_id)
+                if target == "album":
+                    client._jsonrequest("set_artwork", tracks=list(now), artwork_id=new_id)
+                    wanted = dict.fromkeys(now, new_id)
+                else:
+                    client._jsonrequest("set_artist_artwork", artist_id=item_id, artwork_id=new_id)
+                    wanted = new_id
+            elif target == "album":  # undo: the previous artwork per track
+                wanted = {number(k): number(v) for k, v in (previous.get("tracks") or {}).items()}
+                if set(wanted) != set(now) or not all(wanted.values()):
+                    raise ApiError("This cover can't be restored: the album's tracks changed.")
+                groups = {}
+                for track_id, artwork_id in wanted.items():
+                    groups.setdefault(artwork_id, []).append(track_id)
+                for artwork_id, tracks in groups.items():
+                    client._jsonrequest("set_artwork", tracks=tracks, artwork_id=artwork_id)
+                new_id = max(groups, key=lambda i: len(groups[i]))
+            else:
+                wanted = new_id = number((previous or {}).get("artwork_id"))
+                if not new_id:
+                    raise ApiError("There was no artist image before, so there is nothing to restore.")
+                client._jsonrequest("set_artist_artwork", artist_id=item_id, artwork_id=new_id)
+
+            label = str(body.get("label") or target)[:300]
+            field = "cover" if target == "album" else "image"
+
+            def check(after):
+                try:
+                    got = after.album_art_state(item_id) if target == "album" else after.artist_art(item_id)
+                    status = "saved" if got == wanted else "unverified"
+                except LibraryError:
+                    status = "unverified"
+                return [{"kind": target, "id": str(item_id), "label": label, "fields": [field],
+                         "status": status}]
+
+            job = self._check_later(client, time.monotonic(), check)
+            return {"artwork_id": new_id, "image": fresh.art_url(new_id, 300), "job": job,
+                    "previous": {"tracks": {str(k): v for k, v in now.items()}} if target == "album"
+                    else {"artwork_id": now},
+                    "results": [{"kind": target, "id": str(item_id), "label": label,
+                                 "fields": [field], "status": "sent"}]}
+        finally:
+            self.save_lock.release()
+
+    # -- playback -------------------------------------------------------------
+
+    def stream(self, track_id, range_header=None):
+        """Open a track's audio from iBroadcast. Returns (response, mime); close the response."""
+        client = self._require_client()
+        library, user_id = self._library()
+        path, mime = library.stream_info(number(track_id))
+        response = client.open_stream(path, number(track_id), user_id, library.expires, range_header)
+        if response.status_code in (401, 403):
+            response.close()
+            raise NotConnected("iBroadcast did not accept the session for playback. Connect again.")
+        if not response.ok and response.status_code != 416:
+            response.close()
+            raise ApiError(f"iBroadcast could not play this track (HTTP {response.status_code}).")
+        return response, mime
 
 
 __all__ = ["ApiError", "LibraryError", "NotConnected", "Studio", "StudioClient"]

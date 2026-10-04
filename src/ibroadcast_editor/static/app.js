@@ -4,7 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), artistNames: [], artist: null, view: storedView(), selected: new Set(), page: 0, history: [], mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {albums: [], details: new Map(), artistNames: [], artist: null, view: storedView(), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const live = () => state.mode === "live";
 let devicePoll = null;
 let saving = false;
@@ -16,6 +16,19 @@ let searchTimer;
 let opening = false;
 let checking = 0; // background read-backs still running
 let pendingAlbums = null; // read-back albums waiting for the editor to close
+let saveOrder = 0; // only the newest save's read-back replaces the album list
+
+// Saves to iBroadcast are kept in this browser, so History (and Undo) survive a reload.
+function storedHistory() {
+  try {
+    const entries = JSON.parse(localStorage.getItem("library-studio-history") || "[]");
+    return Array.isArray(entries) ? entries.map(h => h.status === "sent" ? {...h, status: "unverified", changes: h.changes.map(c => c.status === "sent" ? {...c, status: "unverified"} : c)} : h) : [];
+  } catch { return []; }
+}
+
+function rememberHistory() {
+  try { localStorage.setItem("library-studio-history", JSON.stringify(state.history.filter(h => h.source === "ibroadcast").slice(0, 300))); } catch { /* private window or full */ }
+}
 
 function storedView() {
   try { return localStorage.getItem("library-studio-view") === "list" ? "list" : "grid"; } catch { return "grid"; }
@@ -222,12 +235,6 @@ function field(name, label, value, options = {}) {
   return `<div class="field ${wide ? "wide" : ""}">${bulk ? `<label class="field-check"><input type="checkbox" aria-label="Change ${label}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`}<input aria-label="${label}" name="${name}" type="${type}" value="${escapeHtml(value || "")}" ${type === "number" ? 'min="0" max="9999" step="1"' : 'maxlength="1000"'} placeholder="${escapeHtml(placeholder)}" ${bulk ? "disabled" : ""}>${hint ? `<small>${hint}</small>` : ""}</div>`;
 }
 
-function sourceLinks(album) {
-  const mb = `https://musicbrainz.org/search?query=${encodeURIComponent(`${album.artist} ${album.name}`)}&type=release_group&method=indexed`;
-  const last = `https://www.last.fm/music/${encodeURIComponent(album.artist)}/${encodeURIComponent(album.name)}`;
-  return `<aside class="sources"><div class="eyebrow">CHECK THE DETAILS</div><h3>Metadata sources</h3><p class="muted">Consult a source for this album, then enter the details you want to use.</p><a class="source-link" href="${escapeHtml(mb)}" target="_blank" rel="noopener noreferrer"><span class="source-icon">M</span><span><strong>MusicBrainz</strong><small>Release dates & editions</small></span><span class="arrow">↗</span></a><a class="source-link" href="${escapeHtml(last)}" target="_blank" rel="noopener noreferrer"><span class="source-icon last">lfm</span><span><strong>Last.fm</strong><small>Album information & tags</small></span><span class="arrow">↗</span></a><div class="year-note"><strong>Which year belongs here?</strong>An original release and a later remaster can have different years. Check the edition before changing this field.</div><p class="muted">These are website links. Nothing is looked up automatically.</p></aside>`;
-}
-
 async function openEditor(ids) {
   if (opening) return;
   const chosen = ids.map(id => state.albums.find(a => String(a.id) === String(id))).filter(Boolean);
@@ -247,9 +254,10 @@ async function openEditor(ids) {
   const album = albums[0], bulk = albums.length > 1;
   editing = {ids: albums.map(a => String(a.id)), originals: structuredClone(albums), trackPatches: {}, bulk, dirty: new Set()};
   const allTracks = albums.flatMap(a => a.tracks);
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${cover(album, true)}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> Disc ${album.disc || "unknown"}` : ""}</div><div class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${field("genre", "Genre · all tracks in this selection", common(allTracks, "genre"), {wide: true, bulk, placeholder: common(allTracks, "genre") ? "" : "Mixed or missing genres"})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Source lookups and edits are always started by you."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : sourceLinks(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr><td>${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / ${escapeHtml(t.genre || "No genre")}</td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="Change the cover">${cover(album, true)}<span>Change cover</span></button>`}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> Disc ${album.disc || "unknown"}` : ""}</div><div class="header-actions"><span class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</span>${live() && !bulk ? `<button class="text-action" data-play-album>▶ Play album</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}Artist image</button>` : ""}` : ""}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${field("genre", "Genre · all tracks in this selection", common(allTracks, "genre"), {wide: true, bulk, placeholder: common(allTracks, "genre") ? "" : "Mixed or missing genres"})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Suggestions only fill in the form: nothing is saved until you review it."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : lookupPanel(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button class="play" data-play="${escapeHtml(t.id)}" aria-label="Play ${escapeHtml(t.title)}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / ${escapeHtml(t.genre || "No genre")}</td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   $("#editor").showModal();
+  if (!bulk) startLookups(album);
 }
 
 function readNumber(value) {
@@ -350,7 +358,7 @@ function applyLocally(changes) {
 }
 
 function showHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map(entry => `<section class="history-item">${statusPill(entry.status)}<h3>${escapeHtml(entry.selection.map(a => a.name).join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records${entry.error ? ` · ${escapeHtml(entry.error)}` : ""}</p>${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(v.before || "Empty")} → ${escapeHtml(v.after || "Empty")}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}">Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}<h3>${escapeHtml(entry.selection.map(a => a.name).join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records${entry.error ? ` · ${escapeHtml(entry.error)}` : ""}</p>${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(v.before || "Empty")} → ${escapeHtml(v.after || "Empty")}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
   $("#history").showModal();
 }
 
@@ -619,6 +627,7 @@ async function saveDraft() {
     const entry = {...structuredClone(pending), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
       created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
     state.history.unshift(entry);
+    pendingAlbums = null; // an older read-back; this save's own read-back follows
     if (result.albums) { state.albums = colorize(result.albums); state.details = new Map(); }
     else applyLocally(pending.changes.filter(c => byId.get(`${c.kind}:${c.id}`) === "sent"));
     pending = null; editing = null; state.selected.clear();
@@ -651,6 +660,8 @@ async function saveDraft() {
 
 // Poll the background read-back of a save and update its history entry.
 async function followJob(jobId, entry, onDone) {
+  const order = ++saveOrder;
+  rememberHistory();
   checking += 1; updateChrome();
   let job;
   try {
@@ -665,12 +676,14 @@ async function followJob(jobId, entry, onDone) {
   if (job.state === "error") {
     entry.status = "unverified"; entry.error = job.error;
     for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
-    toast(job.error); return;
+    rememberHistory(); toast(job.error); return;
   }
   const byId = new Map(job.results.map(r => [`${r.kind}:${r.id}`, r.status]));
   for (const c of entry.changes) c.status = byId.get(`${c.kind}:${c.id}`) || c.status;
   entry.status = overallStatus(entry.changes.map(c => c.status));
-  if (!$("#editor").open && !$("#review").open) {
+  rememberHistory();
+  if (order !== saveOrder) { /* a later save's read-back brings newer albums */ }
+  else if (!$("#editor").open && !$("#review").open) {
     state.albums = colorize(job.albums); state.details = new Map();
     if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
     render();

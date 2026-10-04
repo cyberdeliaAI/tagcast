@@ -7,6 +7,9 @@
   <title>Library Studio · iBroadcast editor</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
+  <script src="lookup.js" defer></script>
+  <script src="artwork.js" defer></script>
+  <script src="player.js" defer></script>
 </head>
 <body>
   <aside class="sidebar">
@@ -17,7 +20,7 @@
     <div class="nav-label artist-label">ALBUM ARTISTS <span id="artist-count"></span></div>
     <input id="artist-search" class="artist-search" aria-label="Find an artist" placeholder="Find an artist…">
     <div id="artists" class="artist-list"></div>
-    <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="import-button">Import library JSON ↗</button></div><input id="import-file" type="file" accept=".json,application/json" hidden></div>
+    <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="settings-button">Sources &amp; keys ⚙</button><button class="text-button muted-link" id="import-button">Import library JSON ↗</button></div><input id="import-file" type="file" accept=".json,application/json" hidden></div>
   </aside>
   <main>
     <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
@@ -32,9 +35,12 @@
   </main>
   <dialog id="editor" class="editor-dialog"><div id="editor-content"></div></dialog>
   <dialog id="review" class="review-dialog"><div class="dialog-heading"><div><div class="eyebrow">BEFORE / AFTER</div><h2>Review your draft</h2></div><button class="close" data-close="review" aria-label="Close review">×</button></div><p class="muted" id="review-intro">These changes apply only to the preview. Live saving is not connected.</p><div id="review-warnings"></div><div id="review-changes"></div><div class="dialog-footer"><label class="checkline then-next" id="then-next-label"><input type="checkbox" id="then-next"> Open the next album afterwards</label><span class="muted" id="review-status"></span><button class="button" data-close="review" id="review-cancel">Keep editing</button><button class="button primary" id="apply-draft">Apply to preview</button></div></dialog>
-  <dialog id="history" class="history-dialog"><div class="dialog-heading"><div><div class="eyebrow">THIS SESSION</div><h2>Change history</h2></div><button class="close" data-close="history" aria-label="Close history">×</button></div><div id="history-content"></div><p class="muted" id="history-note">Export the history before closing this tab. Preview drafts are not saved to iBroadcast.</p></dialog>
+  <dialog id="history" class="history-dialog"><div class="dialog-heading"><div><div class="eyebrow">SAVED CHANGES</div><h2>Change history</h2></div><button class="close" data-close="history" aria-label="Close history">×</button></div><div id="history-content"></div><p class="muted" id="history-note">Export the history before closing this tab. Preview drafts are not saved to iBroadcast.</p></dialog>
   <dialog id="connect" class="connect-dialog"><div class="dialog-heading"><div><div class="eyebrow">YOUR ACCOUNT</div><h2>Connect iBroadcast</h2></div><button class="close" data-close="connect" aria-label="Close">×</button></div><div id="connect-content"></div></dialog>
   <dialog id="results" class="review-dialog"><div class="dialog-heading"><div><div class="eyebrow">SAVED TO iBROADCAST</div><h2 id="results-title">Save results</h2></div><button class="close" data-close="results" aria-label="Close">×</button></div><div id="results-content"></div><div class="dialog-footer"><button class="button primary" data-close="results">Done</button></div></dialog>
+  <dialog id="artwork" class="artwork-dialog"><div id="artwork-content"></div></dialog>
+  <dialog id="settings" class="settings-dialog"><div class="dialog-heading"><div><div class="eyebrow">ONLINE SOURCES</div><h2>Sources &amp; keys</h2></div><button class="close" data-close="settings" aria-label="Close">×</button></div><div id="settings-content"></div></dialog>
+  <div id="player" class="player" hidden><img id="player-art" alt=""><div class="player-text"><strong id="player-title"></strong><span id="player-artist"></span></div><button class="player-button" id="player-prev" aria-label="Previous track">⏮</button><audio id="audio" controls preload="none"></audio><button class="player-button" id="player-next" aria-label="Next track">⏭</button><button class="player-button" id="player-close" aria-label="Stop and close the player">×</button></div>
   <div id="toast" role="status" class="toast" hidden></div>
 </body>
 </html>

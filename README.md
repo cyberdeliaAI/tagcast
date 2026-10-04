@@ -37,12 +37,30 @@ The client ID and sign-in tokens are stored in `~/.library-studio/` (files reada
 ## What it does
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
-- Search, filter on missing years, missing genres or named editions.
+- Covers or a compact list. Search, and filter on missing year, missing genre, artist without image or named editions, with counts. **Next album** walks through a filter.
 - Edit one album: title, album artist, year, disc number, genre for all tracks, and each track individually.
 - Select albums **within one artist** and change only the fields you tick.
-- Review before/after values, then **Save to iBroadcast**.
-- Look up the album on MusicBrainz or Last.fm (website links, nothing automatic).
+- **Online sources** next to every album, side by side like a tag editor's tag sources: year, genres and covers from MusicBrainz (with Cover Art Archive), Deezer, Apple Music, TheAudioDB, and with your own key Discogs and Last.fm. Click a year or genre to put it in the form.
+- **Change the album cover or the artist image**: from the sources (artist images also from fanart.tv with a key), from images iBroadcast already has, or your own file, pasted image or address. Old and new side by side, with the size.
+- **Play** an album or a track to check what you're tagging.
+- Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.
 - Without an account it still runs with demo data, or with an imported library JSON. Those are never saved online.
+
+### Online sources and keys
+
+MusicBrainz, Deezer, Apple Music (iTunes Search) and TheAudioDB work without a key. For the others, open **Sources & keys** in the sidebar:
+
+| Source | What it adds | Key |
+|---|---|---|
+| Discogs | Styles and genres, original year, covers, artist images | Personal token: Discogs → Settings → Developers |
+| Last.fm | Listener tags as genres, covers | API key: [last.fm/api/account/create](https://www.last.fm/api/account/create) |
+| fanart.tv | Artist images | Personal API key: [fanart.tv/get-an-api-key](https://fanart.tv/get-an-api-key/) |
+
+Keys are stored in `~/.library-studio/config.json` (readable by you only) or come from `DISCOGS_TOKEN`, `LASTFM_API_KEY` and `FANART_API_KEY`. They are never sent to the page.
+
+By default an album is looked up in all sources when you open it; turn that off in **Sources & keys**. A lookup sends the artist and album name to each source. Requests are spaced per source (MusicBrainz once a second, Apple Music every 3 seconds, and so on) and answers are cached for an hour.
+
+Matching ignores case, accents, "The", and edition text such as "(2011 Remaster)" or "- Deluxe Edition"; each suggestion shows how well title and artist match. MusicBrainz and Discogs give the **first release** year; Deezer and Apple Music give the date of the edition they have, which for a remaster is the remaster's date.
 
 ### Large libraries
 
@@ -63,24 +81,36 @@ The server keeps the library in memory: count on roughly 750 MB for 286,000 trac
 
 Album year changes leave track years alone unless you tick that option. Individual track edits win over album-wide changes.
 
+Saving returns as soon as iBroadcast accepts the change. The read-back runs in the background (**Checking…** in History) and the next save reuses that download.
+
+### Covers and artist images
+
+An image is checked before it's sent: JPEG, PNG, WebP or GIF, at most 15 MB. Images from an address are downloaded by Library Studio (not by iBroadcast), and addresses on this computer or the local network are refused.
+
+The image is uploaded to iBroadcast's artwork store, then applied with `set_artwork` (all tracks of the album, which is what iBroadcast shows as the album cover) or `set_artist_artwork`. Before anything is written, the current artwork is compared with what you saw; afterwards it is read back. **Undo** in History puts the previous artwork back, track by track.
+
+### Playback
+
+Audio is passed through the local server (`/api/stream/<track>`), so the iBroadcast token stays out of the page. Seeking works. Plays are not reported to iBroadcast (no play counts or scrobbles).
+
 ## API notes
 
 Built on [ibroadcast-python](https://github.com/ctrueden/ibroadcast-python) for OAuth (device code and PKCE authorization code flows), token refresh and the request format.
 
-The [public API reference](https://help.ibroadcast.com/en/developer/api) documents reading the library, tags, playlists and ratings. Metadata writes (`update_album`, `update_track`, `create_artist`) come from the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. They aren't documented publicly, so:
+The [public API reference](https://help.ibroadcast.com/en/developer/api) documents reading the library, tags, playlists and ratings. Metadata writes (`update_album`, `update_track`, `create_artist`) and artwork (`artwork-upload.ibroadcast.com`, `set_artwork`, `set_artist_artwork`, `get_artwork`) come from the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. Streaming follows the web player: `streaming.ibroadcast.com` plus the track's `file`, signed with the access token. These aren't documented publicly, so:
 
 - year and disc are sent as strings, the way the web editor sends input values; track number is sent as `track_no`;
 - the app requests the scopes `user.library:read`, `user.library:write` and `user.account:read`;
 - if iBroadcast refuses a write mode for third-party apps, the save reports **Failed** with iBroadcast's message and nothing else is sent.
 
-The whole flow is tested against a fake iBroadcast server (`tests/mock_ibroadcast.py`), not yet against a real account. Try a single, easy-to-undo edit first.
+Tested against a real account (286,789 tracks): loading, caching, `update_track` (genre), streaming and `get_artwork`. Artwork upload and `set_artwork` / `set_artist_artwork` are tested against the fake iBroadcast server (`tests/mock_ibroadcast.py`) only: try one album first, and use **Undo** if it isn't right.
 
 ## Tests
 
 ```bash
 uv run --with pytest pytest          # or:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
-node --check src/ibroadcast_editor/static/app.js
+for f in src/ibroadcast_editor/static/*.js; do node --check "$f"; done
 ```
 
 To click through the full flow without a real account:
@@ -93,4 +123,4 @@ LIBRARY_STUDIO_IBROADCAST_BASE=http://127.0.0.1:9555 LIBRARY_STUDIO_HOME=/tmp/ls
 
 ## Not in scope
 
-Whole-library automatic enrichment, uploads, deletions, artwork changes and local file edits.
+Automatic changes without review (every suggestion goes through you), uploading music, deleting, renaming an artist in place (iBroadcast has no mode for it: a new name creates a new artist), and editing local files.

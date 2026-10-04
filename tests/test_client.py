@@ -36,6 +36,7 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["polls"] = 0
         mock_ibroadcast.STATE["downloads"] = 0
         mock_ibroadcast.STATE["writes"].clear()
+        mock_ibroadcast.STATE["uploads"].clear()
 
     def connect(self):
         studio = client.Studio(self.home)
@@ -156,6 +157,81 @@ class ClientTests(unittest.TestCase):
         saved = json.loads(Path(self.home, "tokens.json").read_text())
         self.assertEqual(saved["token_set"]["access_token"], mock_ibroadcast.TOKEN)
         del studio
+
+    def test_album_cover_is_uploaded_applied_checked_and_undone(self):
+        studio = self.connect()
+        album = studio.album_details(["72"])[0]
+        before = {"tracks": {t["id"]: t["artwork_id"] for t in album["tracks"]}}
+        result = studio.change_artwork({
+            "target": "album", "id": "72", "label": "Hounds of Love", "before": before,
+            "source": {"url": f"http://127.0.0.1:{SERVER.server_port}/image.png"}})
+        new_id = result["artwork_id"]
+        self.assertIn(b'filename="image.png"', mock_ibroadcast.STATE["uploads"][-1])
+        self.assertEqual(mock_ibroadcast.STATE["writes"][-1],
+                         {**mock_ibroadcast.STATE["writes"][-1], "mode": "set_artwork",
+                          "tracks": [900, 901], "artwork_id": new_id})
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual(job["results"][0]["status"], "saved")
+        self.assertEqual(result["previous"], before)
+
+        undo = studio.undo_artwork({"target": "album", "id": "72", "label": "x",
+                                    "before": {"tracks": {"900": new_id, "901": new_id}},
+                                    "previous": result["previous"]})
+        self.assertEqual(self.wait_job(studio, undo["job"])["results"][0]["status"], "saved")
+        restored = studio.album_details(["72"])[0]["tracks"]
+        self.assertEqual({t["id"]: t["artwork_id"] for t in restored}, before["tracks"])
+
+    def test_artist_image_from_an_uploaded_file(self):
+        studio = self.connect()
+        import base64
+        data = "data:image/png;base64," + base64.b64encode(mock_ibroadcast.PNG).decode()
+        current = studio.album_details(["74"])[0]["artist_artwork_id"]
+        result = studio.change_artwork({"target": "artist", "id": "42", "label": "Pink Floyd",
+                                        "before": {"artwork_id": current},
+                                        "source": {"data": data, "name": "floyd.png"}})
+        self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["mode"], "set_artist_artwork")
+        self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+        self.assertEqual(studio.album_details(["74"])[0]["artist_artwork_id"], result["artwork_id"])
+
+    def test_artwork_conflict_and_bad_images_write_nothing(self):
+        studio = self.connect()
+        with self.assertRaises(ConflictError):
+            studio.change_artwork({"target": "artist", "id": "42", "before": {"artwork_id": 1},
+                                   "source": {"artwork_id": 77}})
+        current = studio.album_details(["74"])[0]["artist_artwork_id"]
+        from ibroadcast_editor.artwork import ArtworkError
+        with self.assertRaises(ArtworkError):
+            studio.change_artwork({"target": "artist", "id": "42", "before": {"artwork_id": current},
+                                   "source": {"data": "data:image/png;base64,bm90IGFuIGltYWdl"}})
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
+    def test_related_artwork_lists_images_ibroadcast_already_has(self):
+        studio = self.connect()
+        art = studio.related_artwork(album_id="72")["artwork"]
+        self.assertEqual([a["artwork_id"] for a in art], [77, 78])
+        self.assertTrue(art[0]["thumb"].endswith("/artwork/77-150"))
+
+    def test_stream_passes_ranges_through_with_the_token_kept_server_side(self):
+        studio = self.connect()
+        studio.load_library()
+        response, _mime = studio.stream("903", "bytes=10-19")
+        with response:
+            self.assertEqual(response.status_code, 206)
+            self.assertEqual(response.content, mock_ibroadcast.AUDIO[10:20])
+        from ibroadcast_editor.library import LibraryError
+        with self.assertRaises(LibraryError):
+            studio.stream("902")  # trashed
+
+    def test_source_keys_are_saved_privately_and_never_returned(self):
+        studio = self.connect()
+        settings = studio.save_settings({"discogs_token": "abc123", "auto_lookup": False})
+        discogs = next(s for s in settings["sources"] if s["name"] == "discogs")
+        self.assertTrue(discogs["enabled"])
+        self.assertNotIn("abc123", json.dumps(settings))
+        self.assertFalse(settings["auto_lookup"])
+        self.assertEqual(Path(self.home, "config.json").stat().st_mode & 0o777, 0o600)
+        studio.save_settings({"discogs_token": ""})
+        self.assertNotIn("discogs_token", json.loads(Path(self.home, "config.json").read_text()))
 
 
 if __name__ == "__main__":

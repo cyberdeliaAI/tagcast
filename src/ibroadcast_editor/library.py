@@ -123,12 +123,13 @@ class Library:
         status = response.get("status") if isinstance(response.get("status"), dict) else {}
         # iBroadcast bumps lastmodified on every library change; "" means unknown.
         self.lastmodified = text(status.get("lastmodified"))
+        self.expires = text(raw.get("expires"))  # signs streaming URLs
 
     def to_cache(self):
         """Only what Library Studio needs: no account details or third-party session keys."""
         return {
             "library": {"tracks": self.tracks.raw(), "albums": self.albums.raw(),
-                        "artists": self.artists.raw()},
+                        "artists": self.artists.raw(), "expires": self.expires},
             "settings": {"artwork_server": self.artwork_server},
             "status": {"lastmodified": self.lastmodified},
         }
@@ -258,6 +259,25 @@ class Library:
         if wanted == "Various Artists" and not folded:
             return 0
         return None
+
+    def album_art_state(self, album_id):
+        """{track_id: artwork_id} for the album's active tracks; raises if the album is gone."""
+        album = self.albums.get(album_id)
+        if not album or album.get("trashed"):
+            raise LibraryError("This album is no longer available. Reload the library.")
+        return {t: number(self.tracks[t].get("artwork_id")) for t in self.active_track_ids(album_id)}
+
+    def artist_art(self, artist_id):
+        artist = self.artists.get(artist_id)
+        if not artist or artist.get("trashed"):
+            raise LibraryError("This artist is no longer available. Reload the library.")
+        return number(artist.get("artwork_id"))
+
+    def stream_info(self, track_id):
+        track = self.tracks.get(track_id)
+        if not track or track.get("trashed") or not text(track.get("file")).startswith("/"):
+            raise LibraryError("This track can't be played. Reload the library.")
+        return text(track.get("file")), text(track.get("type"))
 
     def current(self, kind, item_id):
         return self.album_view(item_id) if kind == "album" else self.track_view(item_id)
