@@ -126,7 +126,7 @@ class Library:
         self.expires = text(raw.get("expires"))  # signs streaming URLs
 
     def to_cache(self):
-        """Only what Library Studio needs: no account details or third-party session keys."""
+        """Only what Tagcast needs: no account details or third-party session keys."""
         return {
             "library": {"tracks": self.tracks.raw(), "albums": self.albums.raw(),
                         "artists": self.artists.raw(), "expires": self.expires},

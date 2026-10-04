@@ -15,7 +15,7 @@ import requests
 
 MAX_IMAGE = 15 * 1024 * 1024
 TIMEOUT = 30
-USER_AGENT = "LibraryStudio (+https://github.com/cyberdeliaAI/ibroadcast-library-studio)"
+USER_AGENT = "Tagcast (+https://github.com/cyberdeliaAI/tagcast)"
 
 
 class ArtworkError(ValueError):

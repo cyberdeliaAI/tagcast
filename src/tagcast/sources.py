@@ -23,8 +23,8 @@ import requests
 
 from . import __version__
 
-USER_AGENT = (f"LibraryStudio/{__version__} "
-              "( https://github.com/cyberdeliaAI/ibroadcast-library-studio )")
+USER_AGENT = (f"Tagcast/{__version__} "
+              "( https://github.com/cyberdeliaAI/tagcast )")
 TIMEOUT = 20
 MIN_SCORE = 0.45
 LASTFM_PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"

@@ -158,3 +158,5 @@ body.busy,body.busy *{cursor:progress!important}
 body.has-player main{padding-bottom:80px}
 @media(max-width:1100px){.player{left:225px}.edit-layout{grid-template-columns:minmax(0,1fr) 290px}}
 @media(max-width:760px){.player{left:0}.player-text{width:120px}.edit-layout{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr}}
+img.brand-mark{background:none;border-radius:10px;padding:0}
+.brand small{font-size:8px;letter-spacing:1.6px}

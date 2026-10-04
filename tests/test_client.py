@@ -16,11 +16,11 @@ import mock_ibroadcast  # noqa: E402
 
 SERVER = ThreadingHTTPServer(("127.0.0.1", 0), mock_ibroadcast.H)
 threading.Thread(target=SERVER.serve_forever, daemon=True).start()
-os.environ["LIBRARY_STUDIO_IBROADCAST_BASE"] = f"http://127.0.0.1:{SERVER.server_port}"
+os.environ["TAGCAST_IBROADCAST_BASE"] = f"http://127.0.0.1:{SERVER.server_port}"
 os.environ.pop("IBROADCAST_CLIENT_ID", None)
 
-from ibroadcast_editor import client  # noqa: E402
-from ibroadcast_editor.library import ConflictError  # noqa: E402
+from tagcast import client  # noqa: E402
+from tagcast.library import ConflictError  # noqa: E402
 
 client = importlib.reload(client)  # pick up the test base URL even if imported earlier
 
@@ -201,7 +201,7 @@ class ClientTests(unittest.TestCase):
             studio.change_artwork({"target": "artist", "id": "42", "before": {"artwork_id": 1},
                                    "source": {"artwork_id": 77}})
         current = studio.album_details(["74"])[0]["artist_artwork_id"]
-        from ibroadcast_editor.artwork import ArtworkError
+        from tagcast.artwork import ArtworkError
         with self.assertRaises(ArtworkError):
             studio.change_artwork({"target": "artist", "id": "42", "before": {"artwork_id": current},
                                    "source": {"data": "data:image/png;base64,bm90IGFuIGltYWdl"}})
@@ -220,7 +220,7 @@ class ClientTests(unittest.TestCase):
         with response:
             self.assertEqual(response.status_code, 206)
             self.assertEqual(response.content, mock_ibroadcast.AUDIO[10:20])
-        from ibroadcast_editor.library import LibraryError
+        from tagcast.library import LibraryError
         with self.assertRaises(LibraryError):
             studio.stream("902")  # trashed
 

@@ -2,8 +2,8 @@ import base64
 import unittest
 from unittest import mock
 
-from ibroadcast_editor import artwork
-from ibroadcast_editor.artwork import ArtworkError
+from tagcast import artwork
+from tagcast.artwork import ArtworkError
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489")
 

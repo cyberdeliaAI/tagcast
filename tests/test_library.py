@@ -1,7 +1,7 @@
 from copy import deepcopy
 import unittest
 
-from ibroadcast_editor.library import (
+from tagcast.library import (
     ConflictError, Library, LibraryError, decode_table, plan_save, verify, write_requests,
 )
 

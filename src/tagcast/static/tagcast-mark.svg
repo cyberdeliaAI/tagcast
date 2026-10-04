@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Tagcast</title>
+  <rect width="512" height="512" rx="116" fill="#d2e59e"/>
+  <g fill="none" stroke="#1e3027" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the tag -->
+    <path d="M300 172 H182 L98 256 L182 340 H300 Q324 340 324 316 V196 Q324 172 300 172 Z" fill="#1e3027" stroke-width="20"/>
+    <!-- its hole -->
+    <circle cx="164" cy="256" r="21" fill="#d2e59e" stroke="none"/>
+    <!-- metadata lines -->
+    <path d="M214 232 H290 M214 280 H266" stroke="#d2e59e" stroke-width="16"/>
+    <!-- broadcast waves -->
+    <path d="M370 210 A66 66 0 0 1 370 302" stroke-width="24"/>
+    <path d="M408 168 A124 124 0 0 1 408 344" stroke-width="24"/>
+  </g>
+</svg>
