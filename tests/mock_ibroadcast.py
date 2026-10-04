@@ -191,6 +191,7 @@ class H(BaseHTTPRequestHandler):
                 STATE["artist_art"][body["artist_id"]] = body["artwork_id"]
                 return self.send(200, {"result": True})
             if mode == "get_artwork":
+                STATE["last_get_artwork"] = {"track_id": body.get("track_id"), "artist_id": body.get("artist_id")}
                 return self.send(200, {"result": True, "art": [{"artwork_id": 77}, {"artwork_id": 78}]})
             if mode == "create_artist":
                 STATE["next_artist"] += 1

@@ -9,6 +9,8 @@ It runs on your computer and listens on `127.0.0.1` only. Your music files are n
 
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
+![An album artist's page in Tagcast: covers, the artist image and what's still missing](docs/screenshots/artist-page.png)
+
 ## 1. Create an iBroadcast app
 
 1. Open [media.ibroadcast.com](https://media.ibroadcast.com/), open the side menu and choose **Apps**.
@@ -53,6 +55,20 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 - Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.
 - Light and dark theme: **Auto** follows your system; the button at the top switches to Light or Dark.
 - Without an account it still runs with demo data, or with an imported library JSON. Those are never saved online.
+
+### Screenshots
+
+**Edit an album** with suggestions from MusicBrainz, Deezer, Apple Music and more next to it. A click puts a year or genre in the form; nothing is saved until you review it.
+
+![The album editor with online suggestions](docs/screenshots/editor.png)
+
+**Pick an artist image or cover** from the sources, from images iBroadcast already has, or from your own file, and compare it with the current one.
+
+![Choosing an artist image](docs/screenshots/artist-image.png)
+
+**Overview**: the collection in numbers and its metadata health, each row opening the albums to fix (dark theme).
+
+![The overview in the dark theme](docs/screenshots/overview-dark.png)
 
 ### Online sources and keys
 
