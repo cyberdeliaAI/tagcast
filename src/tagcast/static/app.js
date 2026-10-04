@@ -374,6 +374,30 @@ function buildReview() {
 }
 
 const shown = value => (Array.isArray(value) ? genresText(value) : value) || "Empty";
+const fieldLabel = key => key === "name" ? "Title" : key === "track" ? "Track number" : key[0].toUpperCase() + key.slice(1);
+
+// Albums one by one; track changes grouped by field and value, so twelve tracks that get
+// the same genre read as one line instead of twelve.
+function reviewList(changes) {
+  const row = (key, v) => `<div class="diff-row"><span>${escapeHtml(fieldLabel(key))}</span><del>${escapeHtml(shown(v.before))}</del><span>→</span><ins>${escapeHtml(shown(v.after))}</ins></div>`;
+  const albums = changes.filter(c => c.kind === "album");
+  const tracks = changes.filter(c => c.kind === "track");
+  const severalAlbums = new Set(tracks.map(c => String(c.albumId))).size > 1;
+  const albumName = id => state.details.get(String(id))?.name || editing?.originals.find(a => String(a.id) === String(id))?.name || "";
+  const groups = new Map();
+  for (const c of tracks) {
+    for (const [key, v] of Object.entries(c.fields)) {
+      const id = JSON.stringify([key, v.before, v.after]);
+      if (!groups.has(id)) groups.set(id, {key, values: v, labels: []});
+      groups.get(id).labels.push(severalAlbums && albumName(c.albumId) ? `${c.label} · ${albumName(c.albumId)}` : c.label);
+    }
+  }
+  const trackRows = [...groups.values()].map(g => `${row(g.key, g.values)}${g.labels.length === 1
+    ? `<p class="diff-tracks">${escapeHtml(g.labels[0])}</p>`
+    : `<details class="diff-tracks"><summary>${g.labels.length} tracks</summary><ul>${g.labels.map(l => `<li>${escapeHtml(l)}</li>`).join("")}</ul></details>`}`).join("");
+  return albums.map(c => `<section class="diff-group"><h3>Album · ${escapeHtml(c.label)}</h3>${Object.entries(c.fields).map(([key, v]) => row(key, v)).join("")}</section>`).join("")
+    + (tracks.length ? `<section class="diff-group"><h3>${tracks.length === 1 ? "Track" : `Tracks · ${tracks.length} changed`}</h3>${trackRows}</section>` : "");
+}
 
 function showReview(changes) {
   renderReviewChrome(changes);
@@ -383,7 +407,7 @@ function showReview(changes) {
       state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
     }).catch(() => { /* the save checks again */ });
   }
-    $("#review-changes").innerHTML = changes.map(change => `<section class="diff-group"><h3>${escapeHtml(change.kind === "album" ? "Album" : "Track")} · ${escapeHtml(change.label)}</h3>${Object.entries(change.fields).map(([key, values]) => `<div class="diff-row"><span>${escapeHtml(key === "name" ? "Title" : key === "track" ? "Track number" : key[0].toUpperCase() + key.slice(1))}</span><del>${escapeHtml(shown(values.before))}</del><span>→</span><ins>${escapeHtml(shown(values.after))}</ins></div>`).join("")}</section>`).join("");
+    $("#review-changes").innerHTML = reviewList(changes);
   $("#review").showModal();
 }
 
