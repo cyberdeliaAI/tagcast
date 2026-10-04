@@ -36,6 +36,12 @@ log = logging.getLogger("library-studio")
 SCOPES = ["user.library:read", "user.library:write", "user.account:read"]
 CLIENT_NAME = "library-studio"
 TIMEOUT = 120
+COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings, and "
+                        "iBroadcast doesn't accept album changes (title, album artist, year, disc) "
+                        "while it is. Turn it off in iBroadcast, save the album changes, then turn "
+                        "it back on.")
+RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
+NO_RETRY = {"create_artist"}  # not safe to repeat: a lost answer would create a second artist
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
            "fanart_api_key": "FANART_API_KEY"}
@@ -72,21 +78,37 @@ class StudioClient(ibroadcast.iBroadcast):
         super().__init__(client=CLIENT_NAME, version=__version__,
                          device_name="Library Studio", log=log, **kwargs)
 
-    def _post(self, url, args):
-        headers = self._auth_headers()
-        try:
-            response = requests.post(url, data=json.dumps(args), headers=headers, timeout=TIMEOUT)
-        except requests.RequestException as error:
-            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
-        try:
-            data = response.json()
-        except ValueError:
-            data = {}
-        if response.status_code == 401:
-            data.setdefault("authenticated", False)
-        elif not response.ok:
-            raise ApiError(data.get("message") or f"iBroadcast returned HTTP {response.status_code}.")
-        return data
+    def _post(self, url, args, retry=True):
+        """POST JSON. Network errors, HTTP 429 and 5xx are retried (writes here set values,
+        so sending one twice does no harm), except for modes in NO_RETRY."""
+        retry = retry and args.get("mode") not in NO_RETRY
+        for attempt, delay in enumerate((0, *RETRY_DELAYS) if retry else (0,)):
+            time.sleep(delay)
+            last = attempt == (len(RETRY_DELAYS) if retry else 0)
+            headers = self._auth_headers()
+            try:
+                response = requests.post(url, data=json.dumps(args), headers=headers,
+                                         timeout=TIMEOUT if url == LIBRARY_URL else 45)
+            except requests.RequestException as error:
+                log.warning("%s: %s (attempt %d)", args.get("mode", "library"),
+                            error.__class__.__name__, attempt + 1)
+                if last:
+                    raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+                continue
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+            if (response.status_code == 429 or response.status_code >= 500) and not last:
+                log.warning("%s: HTTP %d (attempt %d)", args.get("mode", "library"),
+                            response.status_code, attempt + 1)
+                continue
+            if response.status_code == 401:
+                data.setdefault("authenticated", False)
+            elif not response.ok:
+                raise ApiError(data.get("message") or f"iBroadcast returned HTTP {response.status_code}.")
+            return data
+        raise ApiError("iBroadcast did not answer.")
 
     def _jsonrequest(self, mode, url=None, **kwargs):
         token_set = getattr(self, "token_set", None)
@@ -176,14 +198,18 @@ class StudioClient(ibroadcast.iBroadcast):
 class Studio:
     """Holds the connection state for the local server. Thread safe."""
 
+    @staticmethod
+    def default_home():
+        return Path(os.environ.get("LIBRARY_STUDIO_HOME") or Path.home() / ".library-studio")
+
     def __init__(self, home=None):
-        self.home = Path(home or os.environ.get("LIBRARY_STUDIO_HOME")
-                         or Path.home() / ".library-studio")
+        self.home = Path(home) if home else self.default_home()
         self.lock = threading.RLock()
         self.save_lock = threading.Lock()
         self.client = None
         self.library = None
         self.library_user = None
+        self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
         self.library_started = 0.0  # time.monotonic() when the copy in memory began downloading
         self.account = None
         self.cache_lock = threading.Lock()
@@ -298,6 +324,7 @@ class Studio:
             "configured": bool(self.client_id),
             "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
             "connected": bool(client),
+            "combine_sets": self.combine_sets,
             "account": self.account or "",
             "device": device,
             "scopes": SCOPES,
@@ -415,6 +442,8 @@ class Studio:
             raise
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
         status = data.get("status") if isinstance(data.get("status"), dict) else {}
+        prefs = user.get("preferences") if isinstance(user.get("preferences"), dict) else {}
+        self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
         return text(status.get("lastmodified")), text(user.get("id") or user.get("user_id"))
 
     def _keep(self, library, user_id, started):
@@ -461,10 +490,21 @@ class Studio:
             return library
         return None
 
+    def account_settings(self):
+        """iBroadcast settings that change what can be saved, checked now."""
+        self._remote_state(self._require_client())
+        return {"combine_sets": self.combine_sets}
+
+    def account_settings(self):
+        """iBroadcast settings that change what can be saved, checked now."""
+        self._remote_state(self._require_client())
+        return {"combine_sets": self.combine_sets}
+
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
         return {"albums": library.album_index(), "artists": library.artist_names(),
-                "source": source, "lastmodified": library.lastmodified}
+                "source": source, "lastmodified": library.lastmodified,
+                "combine_sets": self.combine_sets}
 
     def album_details(self, ids):
         with self.lock:
@@ -491,8 +531,18 @@ class Studio:
             return {"results": [], "albums": fresh.album_index(), "created_artists": [],
                     "error": "", "message": "iBroadcast already has these values."}
 
-        artist_ids, created, error = dict(plan["artists"]), [], ""
-        for name in plan["new_artists"]:
+        failed, error = {}, ""
+        if self.combine_sets and any(i["kind"] == "album" for i in plan["items"]):
+            blocked = [i for i in plan["items"] if i["kind"] == "album"]
+            failed.update({("album", i["id"]): "blocked" for i in blocked})
+            error = (f"{COMBINE_SETS_MESSAGE} {len(blocked)} album "
+                     f"{'change was' if len(blocked) == 1 else 'changes were'} not sent; "
+                     "track changes were saved as usual.")
+        sendable = {**plan, "items": [i for i in plan["items"] if (i["kind"], i["id"]) not in failed]}
+        needed = {i["patch"]["artist"] for i in sendable["items"] if "artist" in i["patch"]}
+
+        artist_ids, created = dict(plan["artists"]), []
+        for name in [n for n in plan["new_artists"] if n in needed]:
             try:
                 artist_id = number(client._jsonrequest("create_artist", name=name).get("artist_id"))
             except ApiError as failure:
@@ -502,18 +552,21 @@ class Studio:
             artist_ids[name] = artist_id
             created.append(name)
 
-        failed = {}
-        for mode, body in write_requests(plan, artist_ids):
+        stopped = False
+        for mode, body in write_requests(sendable, artist_ids):
             kind = "album" if mode == "update_album" else "track"
             rows = next(iter(body.values()))
             ids = [row["album_id" if kind == "album" else "file_id"] for row in rows]
-            if error:
+            if stopped:
                 failed.update({(kind, i): "not_sent" for i in ids})
                 continue
             try:
                 client._jsonrequest(mode, **body)
             except ApiError as failure:
-                error = str(failure)
+                stopped = True
+                error = f"{error} iBroadcast refused {mode}: {failure}".strip()
+                log.error("%s for %s %s failed: %s — request: %s", mode, kind, ids, failure,
+                          json.dumps(body, ensure_ascii=False)[:2000])
                 failed.update({(kind, i): "failed" for i in ids})
 
         results = [{"kind": i["kind"], "id": str(i["id"]), "label": i["label"],

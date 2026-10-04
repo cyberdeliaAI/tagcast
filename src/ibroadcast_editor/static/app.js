@@ -320,10 +320,36 @@ function buildReview() {
     }
     if (!changes.length) { toast("There are no changes to review."); return; }
     pending = {scope: editing.bulk ? "artist" : "album", selection: editing.originals.map(a => ({id: a.id, name: a.name, artist: a.artist})), changes};
-    renderReviewChrome(changes);
-    $("#review-changes").innerHTML = changes.map(change => `<section class="diff-group"><h3>${escapeHtml(change.kind === "album" ? "Album" : "Track")} · ${escapeHtml(change.label)}</h3>${Object.entries(change.fields).map(([key, values]) => `<div class="diff-row"><span>${escapeHtml(key === "name" ? "Title" : key === "track" ? "Track number" : key[0].toUpperCase() + key.slice(1))}</span><del>${escapeHtml(values.before || "Empty")}</del><span>→</span><ins>${escapeHtml(values.after || "Empty")}</ins></div>`).join("")}</section>`).join("");
-    $("#review").showModal();
+    showReview(changes);
   } catch (error) { toast(error.message); }
+}
+
+function showReview(changes) {
+  renderReviewChrome(changes);
+  if (live() && changes.some(c => c.kind === "album")) {
+    api("/api/account-settings").then(settings => {
+      if (Boolean(settings.combine_sets) === Boolean(state.connection.combine_sets) || !$("#review").open) return;
+      state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
+    }).catch(() => { /* the save checks again */ });
+  }
+  if (live() && changes.some(c => c.kind === "album")) {
+    api("/api/account-settings").then(settings => {
+      if (Boolean(settings.combine_sets) === Boolean(state.connection.combine_sets) || !$("#review").open) return;
+      state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
+    }).catch(() => { /* the save checks again */ });
+  }
+    $("#review-changes").innerHTML = changes.map(change => `<section class="diff-group"><h3>${escapeHtml(change.kind === "album" ? "Album" : "Track")} · ${escapeHtml(change.label)}</h3>${Object.entries(change.fields).map(([key, values]) => `<div class="diff-row"><span>${escapeHtml(key === "name" ? "Title" : key === "track" ? "Track number" : key[0].toUpperCase() + key.slice(1))}</span><del>${escapeHtml(values.before || "Empty")}</del><span>→</span><ins>${escapeHtml(values.after || "Empty")}</ins></div>`).join("")}</section>`).join("");
+  $("#review").showModal();
+}
+
+// Put the changes of a save that didn't (fully) go through back in review.
+function reviewRest(entry) {
+  const changes = entry.changes.filter(c => ["failed", "not_sent", "blocked"].includes(c.status)).map(({status, ...change}) => change);
+  if (!changes.length) return;
+  pending = {scope: entry.scope || "album", selection: entry.selection, changes};
+  if ($("#results").open) $("#results").close();
+  if ($("#history").open) $("#history").close();
+  showReview(changes);
 }
 
 function applyDraft() {
@@ -358,7 +384,7 @@ function applyLocally(changes) {
 }
 
 function showHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}">Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}<h3>${escapeHtml(entry.selection.map(a => a.name).join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records${entry.error ? ` · ${escapeHtml(entry.error)}` : ""}</p>${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(v.before || "Empty")} → ${escapeHtml(v.after || "Empty")}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}">Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}<h3>${escapeHtml(entry.selection.map(a => a.name).join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(v.before || "Empty")} → ${escapeHtml(v.after || "Empty")}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
   $("#history").showModal();
 }
 
@@ -443,7 +469,7 @@ function colorize(albums) {
 }
 
 function statusPill(status) {
-  const labels = {saved: "Saved", sent: "Checking…", unverified: "Not confirmed", failed: "Failed", not_sent: "Not sent", preview_only: "Preview only"};
+  const labels = {saved: "Saved", sent: "Checking…", blocked: "Not sent · setting", unverified: "Not confirmed", failed: "Failed", not_sent: "Not sent", preview_only: "Preview only"};
   return `<span class="status ${escapeHtml(status)}">${escapeHtml(labels[status] || status)}</span>`;
 }
 
@@ -484,6 +510,7 @@ async function loadLive(refresh = false) {
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    state.connection.combine_sets = Boolean(data.combine_sets);
     const count = `${state.albums.length.toLocaleString("en")} albums`;
     toast(data.source === "download" ? `Downloaded ${count} from iBroadcast.` : `Loaded ${count}. Nothing changed in iBroadcast since the last download.`);
   } catch (error) {
@@ -598,6 +625,7 @@ function renderReviewChrome(changes) {
     const known = knownArtists();
     const fresh = [...new Set(changes.flatMap(c => c.fields.artist ? [c.fields.artist.after] : []))].filter(n => !known.has(n.toLocaleLowerCase()));
     if (fresh.length) warnings.push(`New ${fresh.length === 1 ? "artist" : "artists"} in iBroadcast: ${fresh.map(n => `“${escapeHtml(n)}”`).join(", ")}. Check the spelling; Library Studio will create ${fresh.length === 1 ? "it" : "them"} unless your library already has ${fresh.length === 1 ? "an artist" : "artists"} with that name.`);
+    if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings. iBroadcast doesn't accept album changes (title, album artist, year, disc) while it is, so those will not be sent; track changes such as genres are saved. To save album changes, turn the setting off in iBroadcast first, then use “Review the rest” afterwards.");
     if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push("Changing an album artist can make iBroadcast regroup the album. The library is read back after saving so you see the result.");
   }
   $("#review-warnings").innerHTML = warnings.map(w => `<div class="warn-box">${w}</div>`).join("");
@@ -608,7 +636,7 @@ function thenNext() {
 }
 
 function overallStatus(statuses) {
-  return statuses.some(s => s === "failed" || s === "not_sent") ? "failed" : statuses.some(s => s === "sent") ? "sent" : statuses.some(s => s === "unverified") ? "unverified" : "saved";
+  return statuses.some(s => s === "failed" || s === "not_sent" || s === "blocked") ? "failed" : statuses.some(s => s === "sent") ? "sent" : statuses.some(s => s === "unverified") ? "unverified" : "saved";
 }
 
 async function saveDraft() {
@@ -634,7 +662,7 @@ async function saveDraft() {
     if (newArtist) state.artist = newArtist;
     if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
     $("#review").close(); $("#editor").close(); render();
-    if (overall === "failed" || !statuses.length || result.error) showResults(result, overall);
+    if (overall === "failed" || !statuses.length || result.error) showResults(result, overall, entry);
     else toast(`${statuses.length} ${statuses.length === 1 ? "record" : "records"} saved. Checking the result with iBroadcast in the background…`);
     if (result.job) followJob(result.job, entry);
     if (next && overall !== "failed") openEditor([next]);
@@ -674,7 +702,7 @@ async function followJob(jobId, entry, onDone) {
     job = {state: "error", error: error.message};
   } finally { checking -= 1; updateChrome(); }
   if (job.state === "error") {
-    entry.status = "unverified"; entry.error = job.error;
+    entry.status = "unverified"; entry.error = [entry.error, job.error].filter(Boolean).join(" ");
     for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
     rememberHistory(); toast(job.error); return;
   }
@@ -691,10 +719,10 @@ async function followJob(jobId, entry, onDone) {
   onDone?.(job);
   const done = job.results.filter(r => r.status === "saved").length;
   if (entry.status === "saved") toast(`Confirmed by iBroadcast: ${done} ${done === 1 ? "record" : "records"} saved.`);
-  else showResults({results: job.results, albums: job.albums}, entry.status);
+  else showResults({results: job.results, error: entry.error}, entry.status, entry);
 }
 
-function showResults(result, overall) {
+function showResults(result, overall, entry) {
   const rows = result.results || [];
   const saved = rows.filter(r => r.status === "saved").length;
   $("#results-title").textContent = !rows.length ? "Already up to date" : overall === "saved" ? `${saved} ${saved === 1 ? "record" : "records"} saved` : overall === "unverified" ? "Saved, partly not confirmed" : "Save incomplete";
@@ -703,9 +731,13 @@ function showResults(result, overall) {
   if (result.error) notes.push(`<div class="error-box">${escapeHtml(result.error)}</div>`);
   if (result.created_artists?.length) notes.push(`<p class="muted">New artists created: ${result.created_artists.map(n => `“${escapeHtml(n)}”`).join(", ")}.</p>`);
   if (overall === "unverified") notes.push('<div class="warn-box">iBroadcast accepted the request, but the library it returned does not show every new value yet. Reload the library in a minute to check.</div>');
-  if (!result.albums) notes.push('<div class="warn-box">The library could not be read back. Reload it before editing further.</div>');
+  if (result.readBackFailed) notes.push('<div class="warn-box">The library could not be read back. Reload it before editing further.</div>');
+  const index = entry ? state.history.indexOf(entry) : -1;
+  if (index >= 0 && !entry.artwork && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
+    notes.push(`<p><button class="button small" data-review-rest="${index}">Review the rest again →</button> <span class="muted">Sends only what wasn't saved.</span></p>`);
+  }
   $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${escapeHtml(r.kind === "album" ? "Album" : "Track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(f => f === "name" ? "title" : f === "track" ? "track number" : f).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");
-  $("#results").showModal();
+  if (!$("#results").open) $("#results").showModal();
 }
 
 document.addEventListener("click", event => {
@@ -742,4 +774,10 @@ document.addEventListener("click", event => {
 try { $("#then-next").checked = localStorage.getItem("library-studio-then-next") === "1"; } catch { /* private window */ }
 $("#then-next").addEventListener("change", event => {
   try { localStorage.setItem("library-studio-then-next", event.target.checked ? "1" : "0"); } catch { /* private window */ }
+});
+
+document.addEventListener("click", event => {
+  const rest = event.target.closest("[data-review-rest]");
+  if (rest && live()) reviewRest(state.history[Number(rest.dataset.reviewRest)]);
+  else if (rest) toast("Connect your iBroadcast account to save these changes.");
 });

@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import logging.handlers
 import os
 import webbrowser
 from functools import partial
@@ -99,6 +100,10 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/library":
             refresh = parse_qs(url.query).get("refresh") == ["1"]
             self._run(lambda: self.studio.load_library(refresh))
+        elif url.path == "/api/account-settings":
+            self._run(self.studio.account_settings)
+        elif url.path == "/api/account-settings":
+            self._run(self.studio.account_settings)
         elif url.path == "/api/settings":
             self._run(self.studio.settings)
         elif url.path == "/api/lookup/album":
@@ -184,12 +189,25 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
 
+def _log_to_file(home):
+    """Problems also go to <settings folder>/library-studio.log (kept small)."""
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(home / "library-studio.log",
+                                                       maxBytes=1_000_000, backupCount=2)
+    except OSError:
+        return
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(handler)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Library Studio for iBroadcast")
     parser.add_argument("--port", type=int, default=int(os.environ.get("LIBRARY_STUDIO_PORT", 8912)))
     parser.add_argument("--open", action="store_true", help="open the browser after starting")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    _log_to_file(Studio.default_home())
 
     handler = type("BoundHandler", (Handler,), {"studio": Studio(), "port": args.port})
     with ThreadingHTTPServer(("127.0.0.1", args.port), partial(handler, directory=str(STATIC))) as server:
