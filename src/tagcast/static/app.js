@@ -201,6 +201,8 @@ function render() {
   $("#history-count").textContent = state.history.length;
   if (state.screen !== "overview") $("#breadcrumb").textContent = state.artist || "Albums";
   $("#page-title").textContent = state.artist || "Your albums.";
+  $("#page-eyebrow").textContent = state.artist ? "ALBUM ARTIST" : "A LITTLE ORDER. ONE ALBUM AT A TIME.";
+  renderArtistPanel();
   $("#page-subtitle").textContent = state.artist ? "Open an album, or select albums by this artist to edit together." : "Browse your collection, check the details, and make it yours.";
   $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to edit its metadata";
   $("#all-albums").classList.toggle("active", !state.artist && state.screen !== "overview");
@@ -219,6 +221,18 @@ function render() {
   $("#selection-bar").hidden = !state.selected.size;
   $("#selection-count").textContent = `${state.selected.size} albums selected · ${state.artist || ""}`;
   $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+}
+
+// On an artist's page the artist image takes the place of the library total.
+function renderArtistPanel() {
+  const panel = $("#artist-panel"), albums = state.artist ? state.albums.filter(a => a.artist === state.artist) : [];
+  $("#library-total").hidden = Boolean(state.artist);
+  panel.hidden = !state.artist;
+  if (!state.artist) return;
+  const image = albums.find(a => a.artist_image)?.artist_image || "";
+  const canChange = live() && albums.some(a => a.artist_id) && state.artist !== "Various Artists";
+  const tracks = albums.reduce((sum, a) => sum + a.track_count, 0);
+  panel.innerHTML = `<div class="artist-photo">${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<span>${escapeHtml(initials(state.artist))}</span></div><div class="artist-meta"><strong>${tracks.toLocaleString("en")}</strong><span>${tracks === 1 ? "track" : "tracks"} on these albums</span>${canChange ? `<button class="text-action" id="change-artist-page-image">${image ? "Change image" : "Add an image"}</button>` : ""}</div>`;
 }
 
 // The album after this one in the current list, for working through a filter.

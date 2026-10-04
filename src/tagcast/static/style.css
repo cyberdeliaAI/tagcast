@@ -221,3 +221,11 @@ img.brand-mark{background:none;border-radius:10px;padding:0}
 .chart-tip strong{font-size:12.5px}
 .chart-tip span{color:#b9c8bc}
 @media(max-width:1100px){.overview-grid{grid-template-columns:1fr}.top-grid{grid-template-columns:1fr}}
+.artist-panel{display:flex;align-items:center;gap:16px;min-width:0}
+.artist-photo{width:96px;height:96px;border-radius:50%;overflow:hidden;position:relative;display:grid;place-items:center;background:#c9d4c6;color:#3f5547;font:italic 30px Georgia,serif;flex-shrink:0;box-shadow:0 4px 14px #1d332a1a}
+.artist-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.artist-meta{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.artist-meta strong{font-size:24px;font-weight:500;letter-spacing:-.5px}
+.artist-meta span{font-size:10px;color:#8b9487}
+.artist-meta .text-action{margin-top:6px}
+@media(max-width:760px){.artist-panel .artist-photo{width:64px;height:64px}}
