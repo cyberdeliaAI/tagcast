@@ -10,11 +10,13 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
+from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio
 from .library import ConflictError, LibraryError
+from .sources import SourceError
 
 STATIC = Path(__file__).parent / "static"
-MAX_BODY = 8 * 1024 * 1024
+MAX_BODY = 24 * 1024 * 1024  # an uploaded image arrives base64-encoded
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -62,7 +64,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(409, {"error": str(error), "conflict": True})
         except NotConnected as error:
             self._json(401, {"error": str(error), "connected": False})
-        except (ApiError, LibraryError) as error:
+        except (ApiError, LibraryError, ArtworkError, SourceError) as error:
             self._json(400, {"error": str(error)})
         except Exception:  # never leak a traceback to the page
             logging.exception("Request failed")
@@ -76,16 +78,36 @@ class Handler(SimpleHTTPRequestHandler):
 
     # -- routes --------------------------------------------------------------
 
+    def _same_site(self):
+        # Browsers say where a request comes from; other websites may not read or embed /api/.
+        return self.headers.get("Sec-Fetch-Site", "same-origin") in ("same-origin", "none")
+
     def do_GET(self):
         if not self._host_ok():
             self.send_error(403, "Open Library Studio via http://127.0.0.1")
             return
         url = urlparse(self.path)
+        query = {k: v[0] for k, v in parse_qs(url.query).items()}
+        if url.path.startswith("/api/") and not self._same_site():
+            self._json(403, {"error": "Forbidden."})
+            return
+        if url.path.startswith("/api/stream/"):
+            self._stream(url.path.rsplit("/", 1)[1])
+            return
         if url.path == "/api/status":
             self._run(self.studio.status)
         elif url.path == "/api/library":
             refresh = parse_qs(url.query).get("refresh") == ["1"]
             self._run(lambda: self.studio.load_library(refresh))
+        elif url.path == "/api/settings":
+            self._run(self.studio.settings)
+        elif url.path == "/api/lookup/album":
+            self._run(lambda: self.studio.lookup_album(query.get("source"), query.get("album_id"),
+                                                       query.get("artist"), query.get("album")))
+        elif url.path == "/api/lookup/artist":
+            self._run(lambda: self.studio.lookup_artist(query.get("source"), query.get("name")))
+        elif url.path == "/api/artwork/related":
+            self._run(lambda: self.studio.related_artwork(query.get("album_id"), query.get("artist_id")))
         elif url.path.startswith("/api/jobs/"):
             self._run(lambda: self.studio.job(url.path.rsplit("/", 1)[1]))
         elif url.path == "/api/albums":
@@ -115,11 +137,38 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/auth/browser": lambda b: {"url": self.studio.browser_url(self._redirect_uri())},
             "/api/auth/logout": lambda b: (self.studio.logout(), {"ok": True})[1],
             "/api/save": lambda b: self.studio.save(b.get("changes")),
+            "/api/settings": self.studio.save_settings,
+            "/api/artwork": self.studio.change_artwork,
+            "/api/artwork/undo": self.studio.undo_artwork,
         }
         if path not in routes:
             self._json(404, {"error": "Unknown endpoint."})
             return
         self._run(lambda: routes[path](self._body()))
+
+    def _stream(self, track_id):
+        """Pass a track's audio through, so the access token never reaches the page."""
+        try:
+            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"))
+        except NotConnected as error:
+            self._json(401, {"error": str(error)})
+            return
+        except (ApiError, LibraryError) as error:
+            self._json(404 if isinstance(error, LibraryError) else 502, {"error": str(error)})
+            return
+        with upstream:
+            self.send_response(upstream.status_code)
+            self.send_header("Content-Type", upstream.headers.get("Content-Type") or mime or "audio/mpeg")
+            for name in ("Content-Length", "Content-Range", "Accept-Ranges"):
+                if upstream.headers.get(name):
+                    self.send_header(name, upstream.headers[name])
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                for chunk in upstream.iter_content(65536):
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the player skipped or stopped
 
     def _callback(self, query):
         error = (query.get("error_description") or query.get("error") or [""])[0]

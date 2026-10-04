@@ -1,6 +1,6 @@
 [project]
 name = "ibroadcast-library-studio"
-version = "0.3.0"
+version = "0.4.0"
 description = "A local, album-by-album metadata editor for your iBroadcast library"
 requires-python = ">=3.11"
 dependencies = ["ibroadcast>=2.0.1,<3"]
