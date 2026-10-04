@@ -39,6 +39,7 @@ STATE = {
     "uploads": [],  # (filename, bytes) of uploaded artwork
     "combine_sets": False,  # the account setting that blocks update_album
     "busy": 0,  # answer this many writes with HTTP 503 first
+    "frozen": False,  # writes leave lastmodified unchanged (as within the same second)
 }
 AUDIO = bytes(range(256)) * 40  # 10 KB of "audio" for stream tests
 # a 1x1 PNG, served at /image.png for image download tests
@@ -178,7 +179,8 @@ class H(BaseHTTPRequestHandler):
                     STATE["busy"] -= 1
                     return self.send(503, {"message": "busy"})
                 STATE["writes"].append(body)
-                STATE["version"] += 1
+                if not STATE["frozen"]:
+                    STATE["version"] += 1
             if mode == "set_artwork":
                 for track_id in body["tracks"]:
                     STATE["tracks"][track_id]["artwork_id"] = body["artwork_id"]

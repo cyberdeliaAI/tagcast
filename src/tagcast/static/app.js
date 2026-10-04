@@ -82,7 +82,8 @@ function summarize(album) {
   const genres = [...new Set(album.tracks.map(t => t.genre.trim()).filter(Boolean))].sort();
   return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc,
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
-    no_genre: album.tracks.filter(t => !t.genre.trim()).length};
+    no_genre: album.tracks.filter(t => !t.genre.trim()).length,
+    no_cover: album.tracks.filter(t => !(t.artwork_id ?? album.artwork)).length};
 }
 
 function useLocal(albums, mode) {
@@ -122,7 +123,7 @@ const FILTERS = {
   year: ["Missing year", a => !a.year],
   genre: ["Missing genre", a => a.no_genre > 0],
   artist_image: ["Artist without image", a => !a.artist_image && a.artist !== "Various Artists"],
-  cover: ["Missing cover", a => !a.artwork],
+  cover: ["Missing cover", a => a.no_cover > 0],  // any track without a cover, like the overview counts
   edition: ["Named editions", a => EDITION.test(a.name)],
 };
 const SORTS = {

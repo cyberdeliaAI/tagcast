@@ -230,7 +230,7 @@ class Library:
     def album_summary(self, album_id):
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
-        genres, no_genre = set(), 0
+        genres, no_genre, no_cover = set(), 0, 0
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
@@ -239,6 +239,7 @@ class Library:
                 genres.add(genre)
             else:
                 no_genre += 1
+            no_cover += not number(track.get("artwork_id"))
         return {
             "id": str(album_id),
             "name": text(album.get("name")) or "Untitled album",
@@ -253,6 +254,7 @@ class Library:
             "track_count": len(track_ids),
             "genres": sorted(genres),
             "no_genre": no_genre,
+            "no_cover": no_cover,
         }
 
     def album_index(self):

@@ -61,6 +61,13 @@ class DecodeTests(unittest.TestCase):
         self.assertEqual(lib().album_view(12)["tracks"][0]["track"], 1)
 
 
+class SummaryTests(unittest.TestCase):
+    def test_album_summary_counts_tracks_without_genre_or_cover(self):
+        summary = lib().album_summary(10)  # Song One: no genre, no cover; Song Two: both
+        self.assertEqual((summary["no_genre"], summary["no_cover"], summary["track_count"]), (1, 1, 2))
+        self.assertNotIn("tracks", summary)
+
+
 class PlanTests(unittest.TestCase):
     def test_album_year_maps_to_string_payload_and_leaves_tracks_alone(self):
         plan = plan_save(lib(), [change("album", 10, year=(1982, 1981))])
