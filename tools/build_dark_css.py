@@ -9,7 +9,6 @@ Run after changing style.css:  python3 tools/build_dark_css.py
 (tests/test_static.py fails when dark.css is out of date.)
 """
 
-import math
 import re
 import sys
 from pathlib import Path
@@ -153,10 +152,10 @@ def build(css):
 
 
 def main():
-    output = build((STATIC / "style.css").read_text())
+    output = build((STATIC / "style.css").read_text(encoding="utf-8"))
     if "--check" in sys.argv:
-        sys.exit(0 if (STATIC / "dark.css").read_text() == output else 1)
-    (STATIC / "dark.css").write_text(output)
+        sys.exit(0 if (STATIC / "dark.css").read_text(encoding="utf-8") == output else 1)
+    (STATIC / "dark.css").write_text(output, encoding="utf-8")
     print(f"wrote {STATIC / 'dark.css'} ({len(output):,} bytes)")
 
 

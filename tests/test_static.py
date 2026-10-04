@@ -13,13 +13,13 @@ class StaticScriptTests(unittest.TestCase):
     def test_top_level_names_are_unique_across_scripts(self):
         seen = {}
         for script in sorted(STATIC.glob("*.js")):
-            for match in DECLARATION.finditer(script.read_text()):
+            for match in DECLARATION.finditer(script.read_text(encoding="utf-8")):
                 name = match.group(1) or match.group(2)
                 self.assertNotIn(name, seen, f"{name} is declared in {seen.get(name)} and {script.name}")
                 seen[name] = script.name
 
     def test_every_script_is_loaded_by_the_page(self):
-        page = (STATIC / "index.html").read_text()
+        page = (STATIC / "index.html").read_text(encoding="utf-8")
         for script in STATIC.glob("*.js"):
             self.assertIn(f'src="{script.name}"', page)
 
@@ -27,7 +27,7 @@ class StaticScriptTests(unittest.TestCase):
         import sys
         sys.path.insert(0, str(STATIC.parent.parent.parent / "tools"))
         from build_dark_css import build
-        self.assertEqual((STATIC / "dark.css").read_text(), build((STATIC / "style.css").read_text()),
+        self.assertEqual((STATIC / "dark.css").read_text(encoding="utf-8"), build((STATIC / "style.css").read_text(encoding="utf-8")),
                          "Run python3 tools/build_dark_css.py")
 
 

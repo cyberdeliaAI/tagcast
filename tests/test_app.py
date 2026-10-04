@@ -51,6 +51,11 @@ class StartTests(unittest.TestCase):
         self.assertIn("in use by another program", out)
         browser.assert_not_called()
 
+    def test_scripts_and_styles_are_served_with_their_own_types(self):
+        types = app.Handler.extensions_map
+        self.assertEqual((types[".js"], types[".css"], types[".svg"]),
+                         ("text/javascript", "text/css", "image/svg+xml"))
+
 
 if __name__ == "__main__":
     unittest.main()

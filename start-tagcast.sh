@@ -1,9 +1,10 @@
 #!/bin/sh
 # Start Tagcast and open it in your browser (macOS and Linux).
-# Uses uv when it's installed; otherwise Python 3.11+ and a .venv next to this script.
+# Uses uv when it's installed (set TAGCAST_NO_UV=1 to skip it); otherwise Python 3.11+
+# and a .venv next to this script.
 cd "$(dirname "$0")" || exit 1
 
-if command -v uv >/dev/null 2>&1; then
+if [ -z "$TAGCAST_NO_UV" ] && command -v uv >/dev/null 2>&1; then
   exec uv run tagcast --open "$@"
 fi
 

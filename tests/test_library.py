@@ -1,8 +1,14 @@
-from copy import deepcopy
 import unittest
+from copy import deepcopy
 
 from tagcast.library import (
-    ConflictError, Library, LibraryError, decode_table, plan_save, verify, write_requests,
+    ConflictError,
+    Library,
+    LibraryError,
+    decode_table,
+    plan_save,
+    verify,
+    write_requests,
 )
 
 

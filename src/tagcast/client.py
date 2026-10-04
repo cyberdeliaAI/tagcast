@@ -293,7 +293,7 @@ class Studio:
 
     def _read(self, name):
         try:
-            return json.loads((self.home / name).read_text())
+            return json.loads((self.home / name).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
 
