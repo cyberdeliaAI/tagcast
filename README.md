@@ -46,7 +46,8 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 - Covers or a compact list. Search, and filter on missing year, missing genre, artist without image or named editions, with counts. **Next album** walks through a filter.
 - Edit one album: title, album artist, year, disc number, genre for all tracks, and each track individually.
 - Select albums **within one artist** and change only the fields you tick.
-- **Online sources** next to every album, side by side like a tag editor's tag sources: year, genres and covers from MusicBrainz (with Cover Art Archive), Deezer, Apple Music, TheAudioDB, and with your own key Discogs and Last.fm. Click a year or genre to put it in the form.
+- **Genres as labels**: the first is the main genre, the others go to iBroadcast's additional genres, so a track shows up under each of them. Tags uploaded as one text, such as “Pop;Rock”, are marked; **Split** turns them into separate genres (per label, or **Split combined genres** for the whole album), and the **Combined genres** filter lists every album that has them.
+- **Online sources** next to every album, side by side like a tag editor's tag sources: year, genres and covers from MusicBrainz (with Cover Art Archive), Deezer, Apple Music, TheAudioDB, and with your own key Discogs and Last.fm. Click a year or genre to put it in the form, Shift-click to add a genre, or **Use all**.
 - **Change the album cover or the artist image**: from the sources (artist images also from fanart.tv with a key), from images iBroadcast already has, or your own file, pasted image or address. Old and new side by side, with the size.
 - **Play** an album or a track to check what you're tagging.
 - Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.

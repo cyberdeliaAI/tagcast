@@ -39,6 +39,7 @@ HAND = """
 .overview{--chart:#52a874;--chart-track:#26372d}
 .error-text{color:#f0a89b}
 dialog::backdrop{background:#030806b3}
+.field .genre-input input{border:0;background:none}
 .art-compare img,.art-empty{background:#1f2a24}
 """
 

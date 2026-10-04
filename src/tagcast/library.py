@@ -22,8 +22,9 @@ FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "a
 
 VIEW_FIELDS = {
     "album": ("name", "artist", "year", "disc"),
-    "track": ("title", "artist", "year", "genre", "track"),
+    "track": ("title", "artist", "year", "genre", "genres", "track"),
 }
+MAX_GENRES = 20
 NUMBER_FIELDS = {"year", "disc", "track"}
 REQUIRED_TEXT = {"name", "title", "artist"}
 MAX_CHANGES = 2000
@@ -98,6 +99,22 @@ def decode_table(table):
         else:
             raise LibraryError("Unrecognized library format.")
     return Table(rows, fields)
+
+
+def stored_genres(track):
+    """A track's genres as iBroadcast keeps them: the main genre, then genres_additional.
+
+    A tag like "Pop;Rock" uploaded as one text stays one genre here, so the editor can
+    show it and offer to split it.
+    """
+    main = text(track.get("genre")).strip()
+    extra = track.get("genres_additional") if isinstance(track.get("genres_additional"), list) else []
+    out = [main] if main else []
+    for genre in extra:
+        genre = text(genre).strip()
+        if genre and genre.casefold() not in {g.casefold() for g in out}:
+            out.append(genre)
+    return out
 
 
 def number(value):
@@ -219,6 +236,7 @@ class Library:
             "artist_id": number(track.get("artist_id")),
             "year": number(track.get("year")),
             "genre": text(track.get("genre")),
+            "genres": stored_genres(track),
             "track": number(track.get("track")),
             "length": number(track.get("length")),
             "artwork_id": number(track.get("artwork_id")),
@@ -230,13 +248,14 @@ class Library:
     def album_summary(self, album_id):
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
-        genres, no_genre, no_cover = set(), 0, 0
+        genres, no_genre, no_cover, combined = set(), 0, 0, 0
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
-            genre = text(track.get("genre")).strip()
-            if genre:
-                genres.add(genre)
+            stored = stored_genres(track)
+            if stored:
+                genres.update(g.strip() for genre in stored for g in genre.split(";") if g.strip())
+                combined += any(";" in genre for genre in stored)
             else:
                 no_genre += 1
             no_cover += not number(track.get("artwork_id"))
@@ -255,6 +274,7 @@ class Library:
             "genres": sorted(genres),
             "no_genre": no_genre,
             "no_cover": no_cover,
+            "combined_genres": combined,
         }
 
     def album_index(self):
@@ -269,12 +289,14 @@ class Library:
     def _compute_stats(self, top):
         tracks = {i: t for i, t in self.tracks.items() if not t.get("trashed")}
         album_ids = self.album_ids()
-        size = length = no_genre = no_art = rated = plays = 0
+        size = length = no_genre = combined = no_art = rated = plays = 0
         formats, uploads, track_plays, album_plays, artist_plays = {}, {}, [], {}, {}
         for track_id, track in tracks.items():
             size += number(track.get("size"))
             length += number(track.get("length"))
-            no_genre += not text(track.get("genre")).strip()
+            stored = stored_genres(track)
+            no_genre += not stored
+            combined += any(";" in genre for genre in stored)
             no_art += not number(track.get("artwork_id"))
             rated += number(track.get("rating")) > 0
             fmt = FORMATS.get(text(track.get("type")).lower()) or (text(track.get("type")).split("/")[-1].upper() or "Unknown")
@@ -315,6 +337,7 @@ class Library:
                         for y in range(min(map(int, uploads), default=0), max(map(int, uploads), default=-1) + 1)],
             "health": {
                 "genre": {"missing": no_genre, "total": len(tracks)},
+                "combined": {"missing": combined, "total": len(tracks)},
                 "year": {"missing": no_year, "total": len(album_ids)},
                 "artist_image": {"missing": no_image, "total": len(album_artists)},
                 "cover": {"missing": no_art, "total": len(tracks)},
@@ -386,6 +409,17 @@ def _clean_value(key, value):
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 9999:
             raise LibraryError(f"{key} must be a whole number from 0 to 9999.")
         return value
+    if key == "genres":
+        if not isinstance(value, list) or len(value) > MAX_GENRES:
+            raise LibraryError(f"Genres must be a list of at most {MAX_GENRES}.")
+        out = []
+        for genre in value:
+            if not isinstance(genre, str) or len(genre.strip()) > 100:
+                raise LibraryError("Each genre must be text of at most 100 characters.")
+            genre = genre.strip()
+            if genre and genre.casefold() not in {g.casefold() for g in out}:
+                out.append(genre)
+        return out
     if not isinstance(value, str) or len(value) > 1000:
         raise LibraryError(f"{key} must be text of at most 1,000 characters.")
     value = value.strip()
@@ -482,6 +516,9 @@ def _wire(kind, patch, artist_ids):
             out["track_no"] = value
         elif key in ("year", "disc"):
             out[key] = str(value)  # the web editor sends input values as strings
+        elif key == "genres":  # the main genre, then the rest, as the web editor sends them
+            out["genre"] = value[0] if value else ""
+            out["genres_additional"] = list(value[1:])
         else:
             out[key] = value
     return out

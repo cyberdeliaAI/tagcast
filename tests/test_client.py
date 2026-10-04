@@ -319,6 +319,17 @@ class ClientTests(unittest.TestCase):
         restored = {t["id"]: t["artwork_id"] for t in studio.album_details(["72"])[0]["tracks"]}
         self.assertEqual(restored, {"900": before["tracks"]["900"], "901": 77})
 
+    def test_genres_round_trip_through_genres_additional(self):
+        studio = self.connect()
+        track = studio.album_details(["73"])[0]["tracks"][0]
+        result = studio.save([edit("track", track["id"], 73, genres=(track["genres"], ["Art Pop", "Art Rock"]))])
+        self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"],
+                         [{"file_id": int(track["id"]), "genre": "Art Pop", "genres_additional": ["Art Rock"]}])
+        self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+        self.assertEqual(studio.album_details(["73"])[0]["tracks"][0]["genres"], ["Art Pop", "Art Rock"])
+        undo = studio.save([edit("track", track["id"], 73, genres=(["Art Pop", "Art Rock"], track["genres"]))])
+        self.wait_job(studio, undo["job"])
+
 
 if __name__ == "__main__":
     unittest.main()

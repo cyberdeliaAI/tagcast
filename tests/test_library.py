@@ -68,6 +68,43 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn("tracks", summary)
 
 
+class GenreTests(unittest.TestCase):
+    def library(self):
+        return Library({"library": {
+            "artists": {"map": {"name": 0}, "4": ["A"]},
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2}, "10": ["X", 4, [1, 2, 3]]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "genre": 3, "genres_additional": 4},
+                       "1": ["a", 10, 4, "Rock", ["Metal", "rock"]],
+                       "2": ["b", 10, 4, "Pop;Rock", []],
+                       "3": ["c", 10, 4, "", []]}}})
+
+    def test_main_genre_comes_first_and_combined_tags_stay_one_genre(self):
+        library = self.library()
+        self.assertEqual(library.track_view(1)["genres"], ["Rock", "Metal"])
+        self.assertEqual(library.track_view(2)["genres"], ["Pop;Rock"])
+        self.assertEqual(library.track_view(3)["genres"], [])
+
+    def test_summary_splits_combined_genres_for_search_and_counts_them(self):
+        summary = self.library().album_summary(10)
+        self.assertEqual(summary["genres"], ["Metal", "Pop", "Rock"])
+        self.assertEqual((summary["combined_genres"], summary["no_genre"]), (1, 1))
+
+    def test_genres_are_sent_as_main_genre_plus_additional(self):
+        plan = plan_save(self.library(), [change("track", 2, 10, genres=(["Pop;Rock"], ["Pop", " Rock ", "pop"]))])
+        self.assertEqual(write_requests(plan, {}), [("update_track", {"tracks": [
+            {"file_id": 2, "genre": "Pop", "genres_additional": ["Rock"]}]})])
+
+    def test_clearing_genres(self):
+        plan = plan_save(self.library(), [change("track", 1, 10, genres=(["Rock", "Metal"], []))])
+        self.assertEqual(write_requests(plan, {})[0][1]["tracks"][0],
+                         {"file_id": 1, "genre": "", "genres_additional": []})
+
+    def test_bad_genre_lists_are_refused(self):
+        for bad in ("Rock", ["x" * 101], ["a"] * 21, [1]):
+            with self.assertRaises(LibraryError):
+                plan_save(self.library(), [change("track", 1, 10, genres=(["Rock", "Metal"], bad))])
+
+
 class PlanTests(unittest.TestCase):
     def test_album_year_maps_to_string_payload_and_leaves_tracks_alone(self):
         plan = plan_save(lib(), [change("album", 10, year=(1982, 1981))])
