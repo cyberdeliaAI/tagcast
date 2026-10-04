@@ -230,3 +230,24 @@ img.brand-mark{background:none;border-radius:10px;padding:0}
 .artist-meta .text-action{margin-top:6px}
 @media(max-width:760px){.artist-panel .artist-photo{width:64px;height:64px}}
 .error-text{color:#9a4334}
+
+/* ---- genre labels --------------------------------------------------------- */
+.genre-input{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:6px 8px;min-height:40px;background:#fff;border:1px solid #d7dfd0;border-radius:5px;cursor:text}
+.genre-input:focus-within{outline:3px solid #9cbd6a;outline-offset:2px}
+.genre-input.disabled{background:#f4f6f1;cursor:not-allowed;opacity:.6}
+.genre-input input{flex:1;min-width:140px;border:0;outline:0;padding:4px 2px;background:none;font-size:13px;color:var(--ink)}
+.genre-chips{display:contents}
+.genre-chip{display:inline-flex;align-items:center;border:1px solid #d6e0cd;background:#f4f8ee;border-radius:20px;font-size:12px;color:#3f5d3c;overflow:hidden}
+.genre-chip.main{background:#e2edd4;border-color:#b9cba7;font-weight:600}
+.genre-chip.combined{background:#fbf4e4;border-color:#efdfb4;color:#7b6125}
+.genre-chip button{border:0;background:none;color:inherit;font:inherit;padding:3px 4px 3px 9px}
+.genre-chip .chip-remove{padding:3px 8px 3px 4px;color:#8a9683;font-weight:400}
+.genre-chip .chip-split{font-size:10px;font-weight:600;text-decoration:underline;padding:3px 2px}
+.genre-chip .chip-remove:hover,.genre-chip .chip-split:hover{color:var(--ink)}
+.genre-input.filled{animation:filled 1.2s ease-out}
+.genre-note{grid-column:1/-1;margin:-4px 0 0;padding:8px 11px;border-radius:5px;background:#fbf4e4;color:#7b6125;font-size:11.5px;line-height:1.6}
+[data-genre-cell].combined{color:#8a6420}
+[data-genre-cell].drafted{color:var(--green);font-weight:600}
+.chip.use-all{background:none;border-style:dashed}
+.field .genre-input input{border:0;background:none;padding:4px 2px;border-radius:0;min-width:140px}
+.field .genre-input input:focus-visible{outline:0}

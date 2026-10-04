@@ -73,20 +73,25 @@ function importLibrary(input) {
       id: String(id), artist: artistName(a.artist_id), name: String(a.name || "Untitled album"),
       year: Number(a.year) || 0, disc: Number(a.disc) || 0, color: colors[index % colors.length],
       tracks: albumTracks.map(([tid, t]) => ({id: String(tid), title: String(t.title || "Untitled track"),
-        artist: artistName(t.artist_id), year: Number(t.year) || 0, genre: String(t.genre || ""), track: Number(t.track) || 0})),
+        artist: artistName(t.artist_id), year: Number(t.year) || 0, genre: String(t.genre || ""), track: Number(t.track) || 0,
+        genres: [String(t.genre || "").trim(), ...(Array.isArray(t.genres_additional) ? t.genres_additional.map(String) : [])].filter(Boolean)})),
     };
   }).filter(a => a.tracks.length);
 }
 
+const trackGenres = t => t.genres ?? (t.genre?.trim() ? [t.genre.trim()] : []);
+
 function summarize(album) {
-  const genres = [...new Set(album.tracks.map(t => t.genre.trim()).filter(Boolean))].sort();
+  const genres = splitGenres(album.tracks.flatMap(trackGenres)).sort();
   return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc,
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
-    no_genre: album.tracks.filter(t => !t.genre.trim()).length,
+    no_genre: album.tracks.filter(t => !trackGenres(t).length).length,
+    combined_genres: album.tracks.filter(t => hasCombined(trackGenres(t))).length,
     no_cover: album.tracks.filter(t => !(t.artwork_id ?? album.artwork)).length};
 }
 
 function useLocal(albums, mode) {
+  for (const album of albums) for (const t of album.tracks) t.genres = trackGenres(t);
   state.mode = mode; state.artistNames = [];
   state.details = new Map(albums.map(a => [String(a.id), a]));
   state.albums = albums.map(summarize);
@@ -123,7 +128,8 @@ const FILTERS = {
   year: ["Missing year", a => !a.year],
   genre: ["Missing genre", a => a.no_genre > 0],
   artist_image: ["Artist without image", a => !a.artist_image && a.artist !== "Various Artists"],
-  cover: ["Missing cover", a => a.no_cover > 0],  // any track without a cover, like the overview counts
+  cover: ["Missing cover", a => a.no_cover > 0],
+  combined: ["Combined genres", a => a.combined_genres > 0],  // tags like "Pop;Rock" stored as one genre  // any track without a cover, like the overview counts
   edition: ["Named editions", a => EDITION.test(a.name)],
 };
 const SORTS = {
@@ -290,7 +296,7 @@ async function openEditor(ids) {
   const album = albums[0], bulk = albums.length > 1;
   editing = {ids: albums.map(a => String(a.id)), originals: structuredClone(albums), trackPatches: {}, bulk, dirty: new Set()};
   const allTracks = albums.flatMap(a => a.tracks);
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="Change the cover">${cover(album, true)}<span>Change cover</span></button>`}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> ${discLabel(album) || `Disc ${album.disc || "unknown"}`}` : ""}${!bulk && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">Edit all ${discSet(album).length} discs together →</button>` : ""}</div><div class="header-actions"><span class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</span>${live() && !bulk ? `<button class="text-action" data-play-album>▶ Play album</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}Artist image</button>` : ""}` : ""}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${field("genre", "Genre · all tracks in this selection", common(allTracks, "genre"), {wide: true, bulk, placeholder: common(allTracks, "genre") ? "" : "Mixed or missing genres"})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Suggestions only fill in the form: nothing is saved until you review it."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : lookupPanel(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button class="play" data-play="${escapeHtml(t.id)}" aria-label="Play ${escapeHtml(t.title)}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / ${escapeHtml(t.genre || "No genre")}</td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="Change the cover">${cover(album, true)}<span>Change cover</span></button>`}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> ${discLabel(album) || `Disc ${album.disc || "unknown"}`}` : ""}${!bulk && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">Edit all ${discSet(album).length} discs together →</button>` : ""}</div><div class="header-actions"><span class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</span>${live() && !bulk ? `<button class="text-action" data-play-album>▶ Play album</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}Artist image</button>` : ""}` : ""}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${genreField("genres", "Genres · all tracks in this selection", allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: "The first genre is the main one; click another to make it the main genre."})}${allTracks.some(t => hasCombined(t.genres)) ? `<p class="genre-note wide">${allTracks.filter(t => hasCombined(t.genres)).length} ${allTracks.filter(t => hasCombined(t.genres)).length === 1 ? "track has" : "tracks have"} several genres stored as one text, like “${escapeHtml(allTracks.find(t => hasCombined(t.genres)).genres.find(g => g.includes(";")))}”. <button type="button" class="text-action" data-split-album-genres>Split combined genres</button></p>` : ""}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Suggestions only fill in the form: nothing is saved until you review it."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : lookupPanel(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button class="play" data-play="${escapeHtml(t.id)}" aria-label="Play ${escapeHtml(t.title)}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${escapeHtml(genresText(t.genres) || "No genre")}</span></td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   $("#editor").showModal();
   if (!bulk) startLookups(album);
@@ -307,21 +313,24 @@ function stashTrack() {
   const pane = $("#track-inline");
   if (!pane?.dataset.track) return;
   const data = {};
-  for (const input of pane.querySelectorAll("input")) {
+  for (const input of pane.querySelectorAll("input[data-key]")) {
     data[input.dataset.key] = input.type === "number" ? readNumber(input.value) : input.value.trim();
   }
+  const genres = pane.querySelector('[data-genres="track-genres"]');
+  if (genres) { commitTyped(genres); data.genres = getGenres(genres); }
   if (!data.title) throw Error("A track title cannot be empty.");
   const original = editing.originals[0].tracks.find(t => String(t.id) === pane.dataset.track);
-  editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => original[key] !== value));
+  editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => !sameValue(original[key], value)));
 }
 
 function editTrack(id) {
   try { stashTrack(); } catch (error) { toast(error.message); return; }
+  showTrackGenres();
   const original = editing.originals[0].tracks.find(t => String(t.id) === id);
   if (!original) return;
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
-  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"], ["genre", "Track genre", "text"]].map(([key, label, type]) => `<label class="field ${key === "title" || key === "genre" ? "wide" : ""}"><span>${label}</span><input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? 'min="0" max="9999" step="1"' : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}"></label>`).join("")}</div><p class="muted">Individual track edits take priority over album-wide track changes.</p></div>`;
+  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"]].map(([key, label, type]) => `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span><input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? 'min="0" max="9999" step="1"' : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}"></label>`).join("")}${genreField("track-genres", "Track genres", track.genres || [])}</div><p class="muted">Individual track edits take priority over album-wide track changes.</p></div>`;
   pane.scrollIntoView({block: "nearest", behavior: "smooth"});
 }
 
@@ -331,15 +340,19 @@ function buildReview() {
     const form = $("#metadata-form");
     if (!form.reportValidity()) return;
     const albumPatch = {}, trackPatch = {}, allTracks = editing.originals.flatMap(a => a.tracks);
-    for (const key of ["name", "artist", "year", "disc", "genre"]) {
+    for (const key of ["name", "artist", "year", "disc"]) {
       const input = form.elements.namedItem(key);
       if (!input || input.disabled || (!editing.bulk && !editing.dirty.has(key))) continue;
       const value = input.type === "number" ? readNumber(input.value) : input.value.trim();
       if (["name", "artist"].includes(key) && !value) throw Error("Album title and artist cannot be empty.");
-      const originals = key === "genre" ? allTracks : editing.originals;
-      if (originals.every(item => item[key] === value)) continue;
-      if (key === "genre") trackPatch.genre = value;
-      else albumPatch[key] = value;
+      if (editing.originals.every(item => item[key] === value)) continue;
+      albumPatch[key] = value;
+    }
+    const genres = form.querySelector('[data-genres="genres"]');
+    if (genres && !genres.classList.contains("disabled") && (editing.bulk || editing.dirty.has("genres"))) {
+      commitTyped(genres);
+      const value = getGenres(genres);
+      if (!allTracks.every(t => sameValue(t.genres, value))) trackPatch.genres = value;
     }
     if ($("#track-years").checked) {
       if (form.elements.year.disabled) throw Error("Enable Release year before applying it to tracks.");
@@ -347,7 +360,7 @@ function buildReview() {
     }
     const changes = [];
     function diff(kind, item, patch, albumId) {
-      const fields = Object.fromEntries(Object.entries(patch).filter(([key, value]) => item[key] !== value).map(([key, value]) => [key, {before: item[key], after: value}]));
+      const fields = Object.fromEntries(Object.entries(patch).filter(([key, value]) => !sameValue(item[key], value)).map(([key, value]) => [key, {before: item[key], after: value}]));
       if (Object.keys(fields).length) changes.push({kind, id: item.id, albumId, label: item.name || item.title, fields});
     }
     for (const album of editing.originals) {
@@ -360,6 +373,8 @@ function buildReview() {
   } catch (error) { toast(error.message); }
 }
 
+const shown = value => (Array.isArray(value) ? genresText(value) : value) || "Empty";
+
 function showReview(changes) {
   renderReviewChrome(changes);
   if (live() && changes.some(c => c.kind === "album")) {
@@ -368,7 +383,7 @@ function showReview(changes) {
       state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
     }).catch(() => { /* the save checks again */ });
   }
-    $("#review-changes").innerHTML = changes.map(change => `<section class="diff-group"><h3>${escapeHtml(change.kind === "album" ? "Album" : "Track")} · ${escapeHtml(change.label)}</h3>${Object.entries(change.fields).map(([key, values]) => `<div class="diff-row"><span>${escapeHtml(key === "name" ? "Title" : key === "track" ? "Track number" : key[0].toUpperCase() + key.slice(1))}</span><del>${escapeHtml(values.before || "Empty")}</del><span>→</span><ins>${escapeHtml(values.after || "Empty")}</ins></div>`).join("")}</section>`).join("");
+    $("#review-changes").innerHTML = changes.map(change => `<section class="diff-group"><h3>${escapeHtml(change.kind === "album" ? "Album" : "Track")} · ${escapeHtml(change.label)}</h3>${Object.entries(change.fields).map(([key, values]) => `<div class="diff-row"><span>${escapeHtml(key === "name" ? "Title" : key === "track" ? "Track number" : key[0].toUpperCase() + key.slice(1))}</span><del>${escapeHtml(shown(values.before))}</del><span>→</span><ins>${escapeHtml(shown(values.after))}</ins></div>`).join("")}</section>`).join("");
   $("#review").showModal();
 }
 
@@ -407,14 +422,17 @@ function applyLocally(changes) {
   for (const change of changes) {
     const album = state.details.get(String(change.albumId));
     const target = change.kind === "album" ? album : album?.tracks.find(t => String(t.id) === String(change.id));
-    if (target) for (const [key, value] of Object.entries(change.fields)) target[key] = value.after;
+    if (target) for (const [key, value] of Object.entries(change.fields)) {
+      target[key] = value.after;
+      if (key === "genres") target.genre = value.after[0] || "";
+    }
   }
   const touched = new Set(changes.map(c => String(c.albumId)));
   state.albums = state.albums.map(a => touched.has(String(a.id)) && state.details.has(String(a.id)) ? {...summarize(state.details.get(String(a.id))), color: a.color} : a);
 }
 
 function showHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}">Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}<h3>${escapeHtml(entry.selection.map(a => a.name).join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(v.before || "Empty")} → ${escapeHtml(v.after || "Empty")}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}">Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}<h3>${escapeHtml(entry.selection.map(a => a.name).join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(shown(v.before))} → ${escapeHtml(shown(v.after))}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
   $("#history").showModal();
 }
 
@@ -438,7 +456,9 @@ document.addEventListener("change", event => {
     render();
   }
   if (event.target.matches("[data-enable]")) {
-    $("#metadata-form").elements.namedItem(event.target.dataset.enable).disabled = !event.target.checked;
+    const name = event.target.dataset.enable, labels = document.querySelector(`#metadata-form [data-genres="${name}"]`);
+    if (labels) { labels.classList.toggle("disabled", !event.target.checked); labels.querySelector("input").disabled = !event.target.checked; }
+    else $("#metadata-form").elements.namedItem(name).disabled = !event.target.checked;
   }
 });
 document.addEventListener("input", event => {

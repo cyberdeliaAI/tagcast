@@ -111,6 +111,15 @@
 :root[data-theme="dark"] .artist-photo{background:#4f554d;color:#b2cbba;box-shadow:0 4px 14px #1d332a1a}
 :root[data-theme="dark"] .artist-meta span{color:#959e90}
 :root[data-theme="dark"] .error-text{color:#fa9987}
+:root[data-theme="dark"] .genre-input{background:#1b2520;border:1px solid #40443d}
+:root[data-theme="dark"] .genre-input:focus-within{outline:3px solid #71903e}
+:root[data-theme="dark"] .genre-input.disabled{background:#282927}
+:root[data-theme="dark"] .genre-chip{border:1px solid #3f443b;background:#272924;color:#a8caa4}
+:root[data-theme="dark"] .genre-chip.main{background:#32372c;border-color:#5b6b4b}
+:root[data-theme="dark"] .genre-chip.combined{background:#2c2922;border-color:#453d28;color:#ceb276}
+:root[data-theme="dark"] .genre-chip .chip-remove{color:#929e8b}
+:root[data-theme="dark"] .genre-note{background:#2c2922;color:#ceb276}
+:root[data-theme="dark"] [data-genre-cell].combined{color:#d4ab6a}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -119,6 +128,7 @@
 :root[data-theme="dark"] .overview{--chart:#52a874;--chart-track:#26372d}
 :root[data-theme="dark"] .error-text{color:#f0a89b}
 :root[data-theme="dark"] dialog::backdrop{background:#030806b3}
+:root[data-theme="dark"] .field .genre-input input{border:0;background:none}
 :root[data-theme="dark"] .art-compare img,:root[data-theme="dark"] .art-empty{background:#1f2a24}
 
 @media (prefers-color-scheme: dark){
@@ -234,6 +244,15 @@
 :root:not([data-theme="light"]) .artist-photo{background:#4f554d;color:#b2cbba;box-shadow:0 4px 14px #1d332a1a}
 :root:not([data-theme="light"]) .artist-meta span{color:#959e90}
 :root:not([data-theme="light"]) .error-text{color:#fa9987}
+:root:not([data-theme="light"]) .genre-input{background:#1b2520;border:1px solid #40443d}
+:root:not([data-theme="light"]) .genre-input:focus-within{outline:3px solid #71903e}
+:root:not([data-theme="light"]) .genre-input.disabled{background:#282927}
+:root:not([data-theme="light"]) .genre-chip{border:1px solid #3f443b;background:#272924;color:#a8caa4}
+:root:not([data-theme="light"]) .genre-chip.main{background:#32372c;border-color:#5b6b4b}
+:root:not([data-theme="light"]) .genre-chip.combined{background:#2c2922;border-color:#453d28;color:#ceb276}
+:root:not([data-theme="light"]) .genre-chip .chip-remove{color:#929e8b}
+:root:not([data-theme="light"]) .genre-note{background:#2c2922;color:#ceb276}
+:root:not([data-theme="light"]) [data-genre-cell].combined{color:#d4ab6a}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}
@@ -242,5 +261,6 @@
 :root:not([data-theme="light"]) .overview{--chart:#52a874;--chart-track:#26372d}
 :root:not([data-theme="light"]) .error-text{color:#f0a89b}
 :root:not([data-theme="light"]) dialog::backdrop{background:#030806b3}
+:root:not([data-theme="light"]) .field .genre-input input{border:0;background:none}
 :root:not([data-theme="light"]) .art-compare img,:root:not([data-theme="light"]) .art-empty{background:#1f2a24}
 }

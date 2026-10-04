@@ -71,12 +71,13 @@ function renderOverview({account: a, stats: s}) {
 function healthCard(s) {
   const rows = [
     ["genre", "Tracks with a genre", ["track", "tracks"], "without a genre", "genre"],
+    ["combined", "Genres stored as separate labels", ["track", "tracks"], "with several genres in one text, like “Pop;Rock”", "combined"],
     ["year", "Albums with a year", ["album", "albums"], "without a year", "year"],
     ["artist_image", "Album artists with an image", ["album artist", "album artists"], "without an image", "artist_image"],
     ["cover", "Tracks with a cover", ["track", "tracks"], "without a cover", "cover"],
   ];
   return `<section class="card"><h2>Metadata health</h2><p class="muted">What's still missing. Open a row to work through it album by album.</p>${rows.map(([key, label, noun, missing, filter]) => {
-    const h = s.health[key], done = h.total ? (h.total - h.missing) / h.total : 1, pct = (done * 100).toFixed(done < 1 && done > 0.995 ? 2 : 1);
+    const h = s.health[key] || {missing: 0, total: 0}, done = h.total ? (h.total - h.missing) / h.total : 1, pct = (done * 100).toFixed(done < 1 && done > 0.995 ? 2 : 1);
     return `<div class="health-row"><div class="health-head"><span>${label}</span><strong>${pct}%</strong></div>
       <div class="meter" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${done * 100}%"></span></div>
       <div class="health-foot"><span class="muted">${h.missing ? `${fmt(h.missing)} ${noun[h.missing === 1 ? 0 : 1]} ${missing}` : "Nothing missing"}</span>${h.missing ? `<button class="text-action" data-health="${filter}">Show albums →</button>` : ""}</div></div>`;

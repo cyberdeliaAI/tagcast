@@ -25,7 +25,7 @@ function websiteLinks(artist, album) {
 function lookupPanel(album) {
   return `<aside class="sources lookup"><div class="eyebrow">ONLINE SOURCES</div><h3>Suggestions</h3>
     <form id="lookup-form" class="lookup-form"><input name="artist" value="${escapeHtml(album.artist)}" aria-label="Artist to search for" placeholder="Artist"><input name="album" value="${escapeHtml(album.name)}" aria-label="Album to search for" placeholder="Album"><button class="button small">Search</button></form>
-    <p class="muted lookup-hint">Click a year or genre to put it in the form; Shift-click a genre to add it. Nothing is saved until you review.</p>
+    <p class="muted lookup-hint">Click a year or genre to put it in the form; Shift-click a genre to add it to the others. Nothing is saved until you review.</p>
     <div id="lookup-results"></div>
     <p class="lookup-links">Websites: ${websiteLinks(album.artist, album.name)}</p>
     <p class="lookup-links"><button class="text-action" data-open-settings>Sources &amp; keys ⚙</button></p></aside>`;
@@ -79,7 +79,7 @@ function suggestionCard(source, c, index) {
   const score = Math.round(c.score * 100);
   const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="Use this cover"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.suggestion-art').remove()"><span>Use cover</span></button>` : "";
   const year = c.year ? `<div class="suggestion-year"><button class="chip year" data-use-year="${c.year}" title="Use ${c.year} as the release year">${c.year}</button><span>${escapeHtml(c.note || "")}</span></div>` : "";
-  const genres = c.genres.length ? `<div class="chips">${c.genres.map(g => `<button class="chip" data-use-genre="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}</div>` : "";
+  const genres = c.genres.length ? `<div class="chips">${c.genres.map(g => `<button class="chip" data-use-genre="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}${c.genres.length > 1 ? `<button class="chip use-all" data-use-genres="${escapeHtml(JSON.stringify(c.genres))}" title="Use these genres, the first as the main genre">Use all</button>` : ""}</div>` : "";
   const title = c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>` : escapeHtml(c.title);
   return `<article class="suggestion">${art}<div class="suggestion-body"><div class="suggestion-title">${title}<span class="score ${score < 75 ? "low" : ""}" title="How well the title and artist match">${score}%</span></div><div class="suggestion-artist">${escapeHtml(c.artist)}</div>${year}${genres}</div></article>`;
 }
@@ -131,11 +131,13 @@ async function saveSettings(form, clear) {
 document.addEventListener("click", event => {
   const year = event.target.closest("[data-use-year]");
   if (year) { setFormField("year", year.dataset.useYear); return; }
-  const genre = event.target.closest("[data-use-genre]");
-  if (genre) {
-    const input = $("#metadata-form")?.elements.namedItem("genre"), value = genre.dataset.useGenre;
-    const current = input?.value.trim() || "";
-    setFormField("genre", event.shiftKey && current && !current.split(/;\s*/).includes(value) ? `${current}; ${value}` : value);
+  const genre = event.target.closest("[data-use-genre]"), all = event.target.closest("[data-use-genres]");
+  if (genre || all) {
+    const field = document.querySelector('#metadata-form [data-genres="genres"]');
+    if (!field || field.classList.contains("disabled")) return;
+    const picked = all ? JSON.parse(all.dataset.useGenres) : [genre.dataset.useGenre];
+    setGenres(field, event.shiftKey && genre ? addGenres(getGenres(field), picked[0]) : addGenres([], picked.join(";")));
+    showTrackGenres();
     return;
   }
   const cover = event.target.closest("[data-use-cover]");

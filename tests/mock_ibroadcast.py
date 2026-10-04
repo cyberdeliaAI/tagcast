@@ -25,7 +25,7 @@ STATE = {
         900: {"title": "Running Up That Hill", "album_id": 72, "artist_id": 41, "year": 1985, "genre": "", "track": 1, "trashed": False, "artwork_id": 600},
         901: {"title": "Hounds of Love", "album_id": 72, "artist_id": 41, "year": 1985, "genre": "", "track": 2, "trashed": False, "artwork_id": 601},
         902: {"title": "Old deleted", "album_id": 72, "artist_id": 41, "year": 1985, "genre": "", "track": 3, "trashed": True, "artwork_id": 0},
-        903: {"title": "Sat in Your Lap", "album_id": 73, "artist_id": 41, "year": 1982, "genre": "Art Pop", "track": 1, "trashed": False, "artwork_id": 0},
+        903: {"title": "Sat in Your Lap", "album_id": 73, "artist_id": 41, "year": 1982, "genre": "Art Pop;New Wave", "track": 1, "trashed": False, "artwork_id": 0},
         904: {"title": "Wish You Were Here", "album_id": 74, "artist_id": 42, "year": 1975, "genre": "Rock", "track": 4, "trashed": False, "artwork_id": 0},
     },
     "writes": [],
@@ -52,11 +52,13 @@ TOKEN = "access-1"
 def library():
     tmap = {"title": 0, "album_id": 1, "artist_id": 2, "year": 3, "genre": 4, "track": 5,
             "trashed": 6, "artwork_id": 7, "artists_additional": 8, "file": 9, "type": 10,
+            "genres_additional": 11,
             "artists_additional_map": {"artist_id": 0, "phrase": 1}}
     tracks = {"map": tmap}
     for i, t in STATE["tracks"].items():
         tracks[str(i)] = [t["title"], t["album_id"], t["artist_id"], t["year"], t["genre"],
-                          t["track"], t["trashed"], t["artwork_id"], [], f"/128/abc/{i}", "audio/mpeg"]
+                          t["track"], t["trashed"], t["artwork_id"], [], f"/128/abc/{i}", "audio/mpeg",
+                          t.get("genres_additional", [])]
     albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5}}
     for i, a in STATE["albums"].items():
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"]]
@@ -207,7 +209,7 @@ class H(BaseHTTPRequestHandler):
             if mode == "update_track":
                 for row in body["tracks"]:
                     t = STATE["tracks"][row["file_id"]]
-                    for k in ("title", "genre", "artist_id"):
+                    for k in ("title", "genre", "artist_id", "genres_additional"):
                         if k in row:
                             t[k] = row[k]
                     if "year" in row:
