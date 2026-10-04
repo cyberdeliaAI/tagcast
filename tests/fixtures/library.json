@@ -1,0 +1,12 @@
+{
+  "library": {
+    "artists": {"map": {"name": 0}, "41": ["Example Artist"]},
+    "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2, "year": 3, "disc": 4}, "72": ["First & Last", 41, [90, 91, 92], 2001, 1]},
+    "tracks": {
+      "map": {"title": 0, "album_id": 1, "artist_id": 2, "year": 3, "genre": 4, "track": 5, "trashed": 6},
+      "90": ["A < B", 72, 41, 2001, "", 1, false],
+      "91": ["Second Song", 72, 41, 2001, "Alternative", 2, false],
+      "92": ["Hidden in trash", 72, 41, 2001, "", 3, true]
+    }
+  }
+}

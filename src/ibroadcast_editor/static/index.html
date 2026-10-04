@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Library Studio · iBroadcast editor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#" id="home"><span class="brand-mark">≋</span><span>Library Studio<small>FOR YOUR iBROADCAST COLLECTION</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <button class="nav active" id="all-albums"><span>▦</span> Albums <b id="album-count">0</b></button>
+    <button class="nav" id="show-history"><span>◷</span> History <b id="history-count">0</b></button>
+    <div class="nav-label artist-label">ALBUM ARTISTS <span id="artist-count"></span></div>
+    <input id="artist-search" class="artist-search" aria-label="Find an artist" placeholder="Find an artist…">
+    <div id="artists" class="artist-list"></div>
+    <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="import-button">Import library JSON ↗</button></div><input id="import-file" type="file" accept=".json,application/json" hidden></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
+    <div class="notice"><span>ⓘ</span><span id="data-notice">Demo library with sample records. Nothing you edit here changes iBroadcast.</span></div>
+    <section class="page-intro"><div><div class="eyebrow">A LITTLE ORDER. ONE ALBUM AT A TIME.</div><h1 id="page-title">Your albums<span>.</span></h1><p id="page-subtitle">Browse your collection, check the details, and make it yours.</p></div><div class="library-total"><strong id="total-tracks">0</strong><span>tracks in this workspace</span></div></section>
+    <section class="toolbar"><label class="search"><span>⌕</span><input id="search" placeholder="Search albums, artists, or genres" aria-label="Search albums"></label><select id="filter" aria-label="Filter albums"><option value="all">All albums</option><option value="year">Missing year</option><option value="genre">Missing genre</option><option value="edition">Named editions</option></select><select id="sort" aria-label="Sort albums"><option value="artist">Artist · A–Z</option><option value="title">Album · A–Z</option><option value="year">Year · oldest first</option></select></section>
+    <div class="results-line"><span id="results-count"></span><span id="selection-help">Open an album to edit its metadata</span></div>
+    <div class="selection-bar" id="selection-bar" hidden><strong id="selection-count"></strong><button class="button" id="clear-selection">Clear</button><button class="button primary" id="edit-selection">Edit selected albums</button></div>
+    <section id="albums" class="album-grid" aria-label="Albums"></section>
+    <div class="pagination" id="pagination"></div>
+    <footer class="main-footer">Your collection. Your choices.<span>MusicBrainz & Last.fm links are available inside each album.</span></footer>
+  </main>
+  <dialog id="editor" class="editor-dialog"><div id="editor-content"></div></dialog>
+  <dialog id="review" class="review-dialog"><div class="dialog-heading"><div><div class="eyebrow">BEFORE / AFTER</div><h2>Review your draft</h2></div><button class="close" data-close="review" aria-label="Close review">×</button></div><p class="muted" id="review-intro">These changes apply only to the preview. Live saving is not connected.</p><div id="review-warnings"></div><div id="review-changes"></div><div class="dialog-footer"><span class="muted" id="review-status"></span><button class="button" data-close="review" id="review-cancel">Keep editing</button><button class="button primary" id="apply-draft">Apply to preview</button></div></dialog>
+  <dialog id="history" class="history-dialog"><div class="dialog-heading"><div><div class="eyebrow">THIS SESSION</div><h2>Change history</h2></div><button class="close" data-close="history" aria-label="Close history">×</button></div><div id="history-content"></div><p class="muted" id="history-note">Export the history before closing this tab. Preview drafts are not saved to iBroadcast.</p></dialog>
+  <dialog id="connect" class="connect-dialog"><div class="dialog-heading"><div><div class="eyebrow">YOUR ACCOUNT</div><h2>Connect iBroadcast</h2></div><button class="close" data-close="connect" aria-label="Close">×</button></div><div id="connect-content"></div></dialog>
+  <dialog id="results" class="review-dialog"><div class="dialog-heading"><div><div class="eyebrow">SAVED TO iBROADCAST</div><h2 id="results-title">Save results</h2></div><button class="close" data-close="results" aria-label="Close">×</button></div><div id="results-content"></div><div class="dialog-footer"><button class="button primary" data-close="results">Done</button></div></dialog>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>
