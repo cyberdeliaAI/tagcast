@@ -64,6 +64,59 @@ if _test_base:
     oauth.REVOKE_URL = f"{oauth.OAUTH_BASE}/revoke"
 
 
+def mask_email(value):
+    name, at, domain = str(value or "").partition("@")
+    if not at:
+        return ""
+    return f"{name[:1]}•••••@{domain}"  # the same length for every name
+
+
+def account_view(data):
+    """The account details worth showing. Leaves out tokens, payment details, IP addresses,
+    sessions and messages."""
+    def section(key):
+        value = data.get(key)
+        return value if isinstance(value, dict) else {}
+    user, status, lastfm = section("user"), section("status"), section("lastfm")
+    prefs = user.get("preferences") if isinstance(user.get("preferences"), dict) else {}
+    profiles = user.get("profiles") if isinstance(user.get("profiles"), list) else []
+    profile = profiles[0].get("settings", {}) if profiles and isinstance(profiles[0], dict) else {}
+    sub = user.get("subscription") if isinstance(user.get("subscription"), dict) else {}
+    plan = sub.get("plan") if isinstance(sub.get("plan"), dict) else {}
+
+    def flag(value):
+        return str(value) in ("1", "True", "true")
+
+    return {
+        "username": text(user.get("username")),
+        "email": mask_email(user.get("email_address")),
+        "verified": bool(user.get("verified")),
+        "verified_on": text(user.get("verified_on"))[:10],
+        "premium": bool(user.get("premium")),
+        "tester": bool(user.get("tester")),
+        "subscription": {"name": text(plan.get("name") or sub.get("display_title")),
+                         "frequency": text(plan.get("frequency")),
+                         "started_on": text(sub.get("started_on"))[:10],
+                         "renews_on": text(sub.get("due_on"))[:10],
+                         "canceled": bool(sub.get("canceled")), "expired": bool(sub.get("expired"))}
+        if sub else None,
+        "plays": number(status.get("plays")),
+        "tracks": number(status.get("available")),
+        "achievements": len(status.get("achievement_status") or {}),
+        "lastmodified": text(status.get("lastmodified")),
+        "preferences": {
+            "bitrate": text(prefs.get("bitratepref") or profile.get("bitratepref")),
+            "one_queue": flag(prefs.get("onequeue")),
+            "combine_sets": flag(prefs.get("combine_sets")),
+            "artist_images": profile.get("artistimages") if "artistimages" in profile else None,
+            "replay_gain": profile.get("replaygain") if "replaygain" in profile else None,
+        },
+        "linked": {"lastfm": text(lastfm.get("user")) if lastfm.get("linked") else "",
+                   "dropbox": bool(section("dropbox").get("linked")),
+                   "googledrive": bool(section("googledrive").get("linked"))},
+    }
+
+
 class ApiError(Exception):
     pass
 
@@ -504,11 +557,6 @@ class Studio:
         self._remote_state(self._require_client())
         return {"combine_sets": self.combine_sets}
 
-    def account_settings(self):
-        """iBroadcast settings that change what can be saved, checked now."""
-        self._remote_state(self._require_client())
-        return {"combine_sets": self.combine_sets}
-
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
         return {"albums": library.album_index(), "artists": library.artist_names(),
@@ -623,6 +671,18 @@ class Studio:
                 raise ApiError("This read-back is no longer available. Reload the library.")
             return self.jobs[job_id]
 
+
+    # -- overview -----------------------------------------------------------------
+
+    def overview(self):
+        client = self._require_client()
+        try:
+            data = client._jsonrequest("status")
+        except NotConnected:
+            self._disconnect()
+            raise
+        library, _ = self._library()
+        return {"account": account_view(data), "stats": library.stats()}
 
     # -- settings and online sources ------------------------------------------
 

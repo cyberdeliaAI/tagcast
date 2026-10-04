@@ -100,8 +100,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/library":
             refresh = parse_qs(url.query).get("refresh") == ["1"]
             self._run(lambda: self.studio.load_library(refresh))
-        elif url.path == "/api/account-settings":
-            self._run(self.studio.account_settings)
+        elif url.path == "/api/overview":
+            self._run(self.studio.overview)
         elif url.path == "/api/account-settings":
             self._run(self.studio.account_settings)
         elif url.path == "/api/settings":

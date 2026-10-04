@@ -42,6 +42,7 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 ## What it does
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
+- **Overview**: your account and iBroadcast settings, the collection in numbers (size, playing time, formats, uploads per year), what you play most, and **metadata health** (tracks without a genre, albums without a year, artists without an image, tracks without a cover), each opening the matching album filter. Payment details, IP addresses, sessions, messages and keys are never shown or sent to the page.
 - Covers or a compact list. Search, and filter on missing year, missing genre, artist without image or named editions, with counts. **Next album** walks through a filter.
 - Edit one album: title, album artist, year, disc number, genre for all tracks, and each track individually.
 - Select albums **within one artist** and change only the fields you tick.
