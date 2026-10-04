@@ -63,6 +63,14 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.05)
         self.fail("cache was not written")
 
+    def wait_job(self, studio, job_id):
+        for _ in range(100):
+            job = studio.job(job_id)
+            if job["state"] != "checking":
+                return job
+            time.sleep(0.05)
+        self.fail("read-back did not finish")
+
     def test_save_writes_and_reads_back(self):
         studio = self.connect()
         studio.load_library()
@@ -70,14 +78,27 @@ class ClientTests(unittest.TestCase):
         downloads = mock_ibroadcast.STATE["downloads"]
         result = studio.save([edit("track", 904, 74, genre=(before["genre"], "Psychedelic Rock"),
                                    track=(before["track"], 5))])
-        self.assertEqual([r["status"] for r in result["results"]], ["saved"])
+        self.assertEqual([r["status"] for r in result["results"]], ["sent"])
         self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"],
                          [{"file_id": 904, "genre": "Psychedelic Rock", "track_no": 5}])
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual([r["status"] for r in job["results"]], ["saved"])
         # unchanged since loading: no download before writing, one to read back
         self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
-        album = next(a for a in result["albums"] if a["id"] == "74")
+        album = next(a for a in job["albums"] if a["id"] == "74")
         self.assertEqual(album["genres"], ["Psychedelic Rock"])
         self.assertNotIn("tracks", album)
+
+    def test_next_save_waits_for_the_read_back_instead_of_downloading_again(self):
+        studio = self.connect()
+        before = studio.album_details(["73"])[0]
+        first = studio.save([edit("album", 73, 73, disc=(before["disc"], before["disc"] + 1))])
+        second = studio.save([edit("album", 73, 73, disc=(before["disc"] + 1, before["disc"]))])
+        self.assertEqual([r["status"] for r in second["results"]], ["sent"])
+        self.wait_job(studio, first["job"])
+        self.wait_job(studio, second["job"])
+        # initial load, read-back of the first save (reused by the second), read-back of the second
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], 3)
 
     def test_library_is_downloaded_only_when_ibroadcast_changed(self):
         studio = self.connect()
