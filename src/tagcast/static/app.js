@@ -87,11 +87,13 @@ function summarize(album) {
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
     no_genre: album.tracks.filter(t => !trackGenres(t).length).length,
     combined_genres: album.tracks.filter(t => hasCombined(trackGenres(t))).length,
+    no_composer: album.tracks.filter(t => !(t.composers || []).length).length,
+    track_gaps: (numbers => numbers.size ? Math.max(...numbers) - numbers.size : 0)(new Set(album.tracks.map(t => t.track).filter(Boolean))),
     no_cover: album.tracks.filter(t => !(t.artwork_id ?? album.artwork)).length};
 }
 
 function useLocal(albums, mode) {
-  for (const album of albums) for (const t of album.tracks) t.genres = trackGenres(t);
+  for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
   state.mode = mode; state.artistNames = [];
   state.details = new Map(albums.map(a => [String(a.id), a]));
   state.albums = albums.map(summarize);
@@ -129,7 +131,10 @@ const FILTERS = {
   genre: ["Missing genre", a => a.no_genre > 0],
   artist_image: ["Artist without image", a => !a.artist_image && a.artist !== "Various Artists"],
   cover: ["Missing cover", a => a.no_cover > 0],
-  combined: ["Combined genres", a => a.combined_genres > 0],  // tags like "Pop;Rock" stored as one genre  // any track without a cover, like the overview counts
+  combined: ["Combined genres", a => a.combined_genres > 0],  // tags like "Pop;Rock" stored as one genre
+  composer: ["Missing composer", a => a.no_composer > 0],  // search "classical" to narrow it down
+  small: ["1–2 tracks", a => a.track_count <= 2],
+  incomplete: ["Possibly incomplete", a => a.track_gaps > 0],  // e.g. tracks 1, 2 and 5  // any track without a cover, like the overview counts
   edition: ["Named editions", a => EDITION.test(a.name)],
 };
 const SORTS = {
@@ -138,6 +143,7 @@ const SORTS = {
   year: (a, b) => (a.year || 9999) - (b.year || 9999) || a.name.localeCompare(b.name),
   newest: (a, b) => b.year - a.year || a.name.localeCompare(b.name),
   no_genre: (a, b) => b.no_genre - a.no_genre || SORTS.artist(a, b),
+  fewest: (a, b) => a.track_count - b.track_count || SORTS.artist(a, b),
 };
 const initials = name => name.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
 const pageSize = () => state.view === "list" ? 100 : 24;
@@ -296,7 +302,7 @@ async function openEditor(ids) {
   const album = albums[0], bulk = albums.length > 1;
   editing = {ids: albums.map(a => String(a.id)), originals: structuredClone(albums), trackPatches: {}, bulk, dirty: new Set()};
   const allTracks = albums.flatMap(a => a.tracks);
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="Change the cover">${cover(album, true)}<span>Change cover</span></button>`}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> ${discLabel(album) || `Disc ${album.disc || "unknown"}`}` : ""}${!bulk && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">Edit all ${discSet(album).length} discs together →</button>` : ""}</div><div class="header-actions"><span class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</span>${live() && !bulk ? `<button class="text-action" data-play-album>▶ Play album</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}Artist image</button>` : ""}` : ""}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${genreField("genres", "Genres · all tracks in this selection", allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: "The first genre is the main one; click another to make it the main genre."})}${allTracks.some(t => hasCombined(t.genres)) ? `<p class="genre-note wide">${allTracks.filter(t => hasCombined(t.genres)).length} ${allTracks.filter(t => hasCombined(t.genres)).length === 1 ? "track has" : "tracks have"} several genres stored as one text, like “${escapeHtml(allTracks.find(t => hasCombined(t.genres)).genres.find(g => g.includes(";")))}”. <button type="button" class="text-action" data-split-album-genres>Split combined genres</button></p>` : ""}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Suggestions only fill in the form: nothing is saved until you review it."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : lookupPanel(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button class="play" data-play="${escapeHtml(t.id)}" aria-label="Play ${escapeHtml(t.title)}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${escapeHtml(genresText(t.genres) || "No genre")}</span></td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><button class="close" data-close="editor" aria-label="Close album editor">×</button></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="Change the cover">${cover(album, true)}<span>Change cover</span></button>`}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${!bulk ? ` <span aria-hidden="true">·</span> ${discLabel(album) || `Disc ${album.disc || "unknown"}`}` : ""}${!bulk && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">Edit all ${discSet(album).length} discs together →</button>` : ""}</div><div class="header-actions"><span class="pill">${live() ? "Live iBroadcast library" : state.mode === "imported" ? "Imported library · local draft" : "Sample data · local draft"}</span>${live() && !bulk ? `<button class="text-action" data-play-album>▶ Play album</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}Artist image</button>` : ""}` : ""}</div></div></div><div class="edit-layout"><form id="metadata-form"><div class="fields">${bulk ? "" : field("name", "Album title", album.name, {wide: true})}${field("artist", "Album artist", common(albums, "artist"), {wide: true, bulk, hint: "Track artists stay unchanged."})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "Use 0 to clear the year."})}${field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${genreField("genres", "Genres · all tracks in this selection", allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: "The first genre is the main one; click another to make it the main genre."})}${allTracks.some(t => hasCombined(t.genres)) ? `<p class="genre-note wide">${allTracks.filter(t => hasCombined(t.genres)).length} ${allTracks.filter(t => hasCombined(t.genres)).length === 1 ? "track has" : "tracks have"} several genres stored as one text, like “${escapeHtml(allTracks.find(t => hasCombined(t.genres)).genres.find(g => g.includes(";")))}”. <button type="button" class="text-action" data-split-album-genres>Split combined genres</button></p>` : ""}${genreField("composers", "Composers · all tracks in this selection", allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: "Mostly for classical music. A name iBroadcast doesn't know yet is added as an artist when you save."})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Suggestions only fill in the form: nothing is saved until you review it."}</div><div id="track-inline"></div></form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : lookupPanel(album)}</div>${bulk ? "" : `<div class="tracks-heading"><h3>Tracks <span class="muted">(${album.tracks.length})</span></h3><span class="muted">Edit a track individually</span></div><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${album.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button class="play" data-play="${escapeHtml(t.id)}" aria-label="Play ${escapeHtml(t.title)}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}${t.composers?.length ? `<small class="track-composer">${escapeHtml(t.composers.join(", "))}</small>` : ""}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${escapeHtml(genresText(t.genres) || "No genre")}</span></td><td><button class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`).join("")}</tbody></table>`}<div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   $("#editor").showModal();
   if (!bulk) startLookups(album);
@@ -318,6 +324,8 @@ function stashTrack() {
   }
   const genres = pane.querySelector('[data-genres="track-genres"]');
   if (genres) { commitTyped(genres); data.genres = getGenres(genres); }
+  const composers = pane.querySelector('[data-genres="track-composers"]');
+  if (composers) { commitTyped(composers); data.composers = getGenres(composers); }
   if (!data.title) throw Error("A track title cannot be empty.");
   const original = editing.originals[0].tracks.find(t => String(t.id) === pane.dataset.track);
   editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => !sameValue(original[key], value)));
@@ -330,7 +338,7 @@ function editTrack(id) {
   if (!original) return;
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
-  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"]].map(([key, label, type]) => `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span><input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? 'min="0" max="9999" step="1"' : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}"></label>`).join("")}${genreField("track-genres", "Track genres", track.genres || [])}</div><p class="muted">Individual track edits take priority over album-wide track changes.</p></div>`;
+  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"]].map(([key, label, type]) => `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span><input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? 'min="0" max="9999" step="1"' : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}"></label>`).join("")}${genreField("track-genres", "Track genres", track.genres || [])}${genreField("track-composers", "Track composers", track.composers || [], {ordered: false, noun: "composer"})}</div><p class="muted">Individual track edits take priority over album-wide track changes.</p></div>`;
   pane.scrollIntoView({block: "nearest", behavior: "smooth"});
 }
 
@@ -353,6 +361,12 @@ function buildReview() {
       commitTyped(genres);
       const value = getGenres(genres);
       if (!allTracks.every(t => sameValue(t.genres, value))) trackPatch.genres = value;
+    }
+    const composers = form.querySelector('[data-genres="composers"]');
+    if (composers && !composers.classList.contains("disabled") && (editing.bulk || editing.dirty.has("composers"))) {
+      commitTyped(composers);
+      const value = getGenres(composers);
+      if (!allTracks.every(t => sameValue(t.composers, value))) trackPatch.composers = value;
     }
     if ($("#track-years").checked) {
       if (form.elements.year.disabled) throw Error("Enable Release year before applying it to tracks.");
@@ -680,7 +694,7 @@ async function connectAction(target) {
 
 function knownArtists() {
   const names = new Set(state.artistNames.map(n => n.toLocaleLowerCase()));
-  for (const a of state.details.values()) { names.add(a.artist.toLocaleLowerCase()); for (const t of a.tracks) names.add(t.artist.toLocaleLowerCase()); }
+  for (const a of state.details.values()) { names.add(a.artist.toLocaleLowerCase()); for (const t of a.tracks) { names.add(t.artist.toLocaleLowerCase()); for (const c of t.composers || []) names.add(c.toLocaleLowerCase()); } }
   return names;
 }
 
@@ -697,7 +711,7 @@ function renderReviewChrome(changes) {
   const warnings = [];
   if (live()) {
     const known = knownArtists();
-    const fresh = [...new Set(changes.flatMap(c => c.fields.artist ? [c.fields.artist.after] : []))].filter(n => !known.has(n.toLocaleLowerCase()));
+    const fresh = [...new Set(changes.flatMap(c => [...(c.fields.artist ? [c.fields.artist.after] : []), ...(c.fields.composers?.after || [])]))].filter(n => !known.has(n.toLocaleLowerCase()));
     if (fresh.length) warnings.push(`New ${fresh.length === 1 ? "artist" : "artists"} in iBroadcast: ${fresh.map(n => `“${escapeHtml(n)}”`).join(", ")}. Check the spelling; Tagcast will create ${fresh.length === 1 ? "it" : "them"} unless your library already has ${fresh.length === 1 ? "an artist" : "artists"} with that name.`);
     if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings. iBroadcast doesn't accept album changes (title, album artist, year, disc) while it is, so those will not be sent; track changes such as genres are saved. To save album changes, turn the setting off in iBroadcast first, then use “Review the rest” afterwards.");
     if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push("Changing an album artist can make iBroadcast regroup the album. The library is read back after saving so you see the result.");

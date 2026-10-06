@@ -612,7 +612,8 @@ class Studio:
                      f"{'change was' if len(blocked) == 1 else 'changes were'} not sent; "
                      "track changes were saved as usual.")
         sendable = {**plan, "items": [i for i in plan["items"] if (i["kind"], i["id"]) not in failed]}
-        needed = {i["patch"]["artist"] for i in sendable["items"] if "artist" in i["patch"]}
+        needed = {i["patch"]["artist"] for i in sendable["items"] if "artist" in i["patch"]} \
+            | {name for i in sendable["items"] for name in i["patch"].get("composers", [])}
 
         artist_ids, created = dict(plan["artists"]), []
         for name in [n for n in plan["new_artists"] if n in needed]:

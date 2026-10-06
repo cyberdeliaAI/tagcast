@@ -28,22 +28,22 @@ function addGenres(list, text) {
   return out;
 }
 
-function genreChips(list) {
-  return list.map((g, i) => `<span class="genre-chip ${i === 0 ? "main" : ""} ${g.includes(";") ? "combined" : ""}"><button type="button" class="chip-name" data-genre-main="${i}" title="${i === 0 ? "Main genre" : "Make this the main genre"}">${escapeHtml(g)}</button>${g.includes(";") ? `<button type="button" class="chip-split" data-genre-split="${i}" title="One text with several genres. Split it into separate genres.">split</button>` : ""}<button type="button" class="chip-remove" data-genre-remove="${i}" aria-label="Remove ${escapeHtml(g)}">×</button></span>`).join("");
+function genreChips(list, ordered = true) {
+  return list.map((g, i) => `<span class="genre-chip ${ordered && i === 0 ? "main" : ""} ${g.includes(";") ? "combined" : ""}"><button type="button" class="chip-name" data-genre-main="${i}" title="${!ordered ? "Move to the front" : i === 0 ? "Main genre" : "Make this the main genre"}">${escapeHtml(g)}</button>${g.includes(";") ? `<button type="button" class="chip-split" data-genre-split="${i}" title="One text with several genres. Split it into separate genres.">split</button>` : ""}<button type="button" class="chip-remove" data-genre-remove="${i}" aria-label="Remove ${escapeHtml(g)}">×</button></span>`).join("");
 }
 
-function genreField(name, label, genres, {bulk = false, hint = "", mixed = false} = {}) {
+function genreField(name, label, genres, {bulk = false, hint = "", mixed = false, ordered = true, noun = "genre"} = {}) {
   const head = bulk ? `<label class="field-check"><input type="checkbox" aria-label="Change ${label}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`;
-  return `<div class="field wide">${head}<div class="genre-input ${bulk ? "disabled" : ""}" data-genres="${name}" data-value="${escapeHtml(JSON.stringify(genres))}"><span class="genre-chips">${genreChips(genres)}</span><input aria-label="Add a genre: ${escapeHtml(label)}" placeholder="${mixed ? "Mixed: the tracks have different genres" : genres.length ? "Add a genre" : "Add a genre, Enter or ; for the next"}" maxlength="400" ${bulk ? "disabled" : ""}></div>${hint ? `<small>${hint}</small>` : ""}</div>`;
+  return `<div class="field wide">${head}<div class="genre-input ${bulk ? "disabled" : ""}" data-genres="${name}" data-ordered="${ordered ? 1 : 0}" data-noun="${noun}" data-value="${escapeHtml(JSON.stringify(genres))}"><span class="genre-chips">${genreChips(genres, ordered)}</span><input aria-label="Add a ${noun}: ${escapeHtml(label)}" placeholder="${mixed ? `Mixed: the tracks have different ${noun}s` : genres.length ? `Add a ${noun}` : `Add a ${noun}, Enter or ; for the next`}" maxlength="400" ${bulk ? "disabled" : ""}></div>${hint ? `<small>${hint}</small>` : ""}</div>`;
 }
 
 const getGenres = el => JSON.parse(el.dataset.value || "[]");
 
 function setGenres(el, list) {
   el.dataset.value = JSON.stringify(list);
-  el.querySelector(".genre-chips").innerHTML = genreChips(list);
-  const input = el.querySelector("input");
-  input.placeholder = list.length ? "Add a genre" : "Add a genre, Enter or ; for the next";
+  el.querySelector(".genre-chips").innerHTML = genreChips(list, el.dataset.ordered !== "0");
+  const input = el.querySelector("input"), noun = el.dataset.noun || "genre";
+  input.placeholder = list.length ? `Add a ${noun}` : `Add a ${noun}, Enter or ; for the next`;
   if (editing) editing.dirty.add(el.dataset.genres);
   el.classList.remove("filled"); void el.offsetWidth; el.classList.add("filled");
 }
