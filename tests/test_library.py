@@ -111,6 +111,40 @@ class GenreTests(unittest.TestCase):
                 plan_save(self.library(), [change("track", 1, 10, genres=(["Rock", "Metal"], bad))])
 
 
+class ComposerAndGapTests(unittest.TestCase):
+    def library(self):
+        return Library({"library": {
+            "artists": {"map": {"name": 0, "trashed": 1, "artwork_id": 2},
+                        "4": ["Duo", True, 0], "5": ["Bach", False, 0], "6": ["Guest", False, 0]},
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2}, "10": ["X", 4, [1, 2, 3]]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "track": 3, "artists_additional": 4,
+                               "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}},
+                       "1": ["a", 10, 6, 1, [[5, None, "composer"], [6, "feat.", "artist"]]],
+                       "2": ["b", 10, 6, 2, []],
+                       "3": ["c", 10, 6, 5, []]}}})
+
+    def test_trashed_album_artist_is_still_an_artist(self):
+        library = self.library()
+        self.assertEqual(library.artist_art(4), 0)
+        self.assertIn("Duo", library.artist_names())
+
+    def test_composers_and_gaps_in_track_numbers(self):
+        library = self.library()
+        self.assertEqual(library.track_view(1)["composers"], ["Bach"])
+        summary = library.album_summary(10)
+        self.assertEqual((summary["no_composer"], summary["track_gaps"]), (2, 2))  # 3 and 4 missing
+
+    def test_composers_keep_other_extra_artists(self):
+        plan = plan_save(self.library(), [change("track", 1, 10, composers=(["Bach"], ["Bach", "Guest"]))])
+        self.assertEqual(write_requests(plan, plan["artists"])[0][1]["tracks"][0]["artists_additional"], [
+            {"artist_id": 6, "phrase": "feat.", "type": "artist"},
+            {"artist_id": 5, "type": "composer"}, {"artist_id": 6, "type": "composer"}])
+
+    def test_nested_maps_survive_the_cache(self):
+        library = Library(self.library().to_cache())
+        self.assertEqual(library.track_view(1)["composers"], ["Bach"])
+
+
 class PlanTests(unittest.TestCase):
     def test_album_year_maps_to_string_payload_and_leaves_tracks_alone(self):
         plan = plan_save(lib(), [change("album", 10, year=(1982, 1981))])

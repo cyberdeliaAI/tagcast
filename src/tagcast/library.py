@@ -22,7 +22,7 @@ FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "a
 
 VIEW_FIELDS = {
     "album": ("name", "artist", "year", "disc"),
-    "track": ("title", "artist", "year", "genre", "genres", "track"),
+    "track": ("title", "artist", "year", "genre", "genres", "composers", "track"),
 }
 MAX_GENRES = 20
 NUMBER_FIELDS = {"year", "disc", "track"}
@@ -67,8 +67,9 @@ class Record(Mapping):
 class Table(Mapping):
     """ID -> Record for one iBroadcast table ({"map": {field: index}, "<id>": [values]})."""
 
-    def __init__(self, rows, fields):
+    def __init__(self, rows, fields, nested=None):
         self.rows, self.fields = rows, fields
+        self.nested = nested or {}  # maps for list fields, e.g. artists_additional_map
 
     def __getitem__(self, key):
         return Record(self.rows[key], None if isinstance(self.rows[key], dict) else self.fields)
@@ -81,7 +82,7 @@ class Table(Mapping):
 
     def raw(self):
         """The table in iBroadcast's own format, for the disk cache."""
-        return {"map": dict(self.fields), **{str(k): v for k, v in self.rows.items()}}
+        return {"map": {**self.fields, **self.nested}, **{str(k): v for k, v in self.rows.items()}}
 
 
 def decode_table(table):
@@ -90,6 +91,7 @@ def decode_table(table):
     mapping = table.get("map") or {}
     fields = {name: index for name, index in mapping.items()
               if isinstance(index, int) and not isinstance(index, bool) and index >= 0}
+    nested = {name: value for name, value in mapping.items() if isinstance(value, dict)}
     rows = {}
     for key, row in table.items():
         if not str(key).isdigit():
@@ -98,7 +100,28 @@ def decode_table(table):
             rows[int(key)] = row
         else:
             raise LibraryError("Unrecognized library format.")
-    return Table(rows, fields)
+    return Table(rows, fields, nested)
+
+
+ADDITIONAL_MAP = {"artist_id": 0, "phrase": 1, "type": 2}
+
+
+def additional_artists(track, mapping=None):
+    """A track's extra artists as [{"artist_id", "phrase", "type"}]: composers, featured…"""
+    mapping = mapping or ADDITIONAL_MAP
+    out = []
+    for entry in track.get("artists_additional") or []:
+        if isinstance(entry, dict):
+            item = {k: entry.get(k) for k in ("artist_id", "phrase", "type")}
+        elif isinstance(entry, list):
+            item = {k: entry[i] if isinstance(i, int) and i < len(entry) else None
+                    for k, i in mapping.items() if k in ("artist_id", "phrase", "type")}
+        else:
+            continue
+        if number(item.get("artist_id")):
+            item["artist_id"] = number(item["artist_id"])
+            out.append(item)
+    return out
 
 
 def stored_genres(track):
@@ -189,6 +212,12 @@ class Library:
         return [i for i, a in self.albums.items()
                 if not a.get("trashed") and self.active_track_ids(i)]
 
+    def extra_artists(self, track):
+        return additional_artists(track, self.tracks.nested.get("artists_additional_map"))
+
+    def composer_entries(self, track):
+        return [e for e in self.extra_artists(track) if e.get("type") == "composer"]
+
     def album_artwork(self, track_ids):
         """The cover iBroadcast shows: the artwork of the first track (by number) that has one."""
         best = None
@@ -237,6 +266,8 @@ class Library:
             "year": number(track.get("year")),
             "genre": text(track.get("genre")),
             "genres": stored_genres(track),
+            "composers": [self.artist_name(e["artist_id"]) for e in self.composer_entries(track)],
+            "composer_ids": [e["artist_id"] for e in self.composer_entries(track)],
             "track": number(track.get("track")),
             "length": number(track.get("length")),
             "artwork_id": number(track.get("artwork_id")),
@@ -248,7 +279,7 @@ class Library:
     def album_summary(self, album_id):
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
-        genres, no_genre, no_cover, combined = set(), 0, 0, 0
+        genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
@@ -259,6 +290,8 @@ class Library:
             else:
                 no_genre += 1
             no_cover += not number(track.get("artwork_id"))
+            no_composer += not self.composer_entries(track)
+            numbers.add(number(track.get("track")))
         return {
             "id": str(album_id),
             "name": text(album.get("name")) or "Untitled album",
@@ -275,6 +308,9 @@ class Library:
             "no_genre": no_genre,
             "no_cover": no_cover,
             "combined_genres": combined,
+            "no_composer": no_composer,
+            # numbers missing below the highest one, e.g. 1, 2, 5 -> 2: maybe incomplete
+            "track_gaps": (max(numbers) - len(numbers - {0})) if numbers - {0} else 0,
         }
 
     def album_index(self):
@@ -352,8 +388,8 @@ class Library:
         }
 
     def artist_names(self):
-        return sorted({text(a.get("name")) for a in self.artists.values()
-                       if not a.get("trashed") and text(a.get("name"))}, key=str.casefold)
+        return sorted({text(a.get("name")) for a in self.artists.values() if text(a.get("name"))},
+                      key=str.casefold)
 
     def find_artist(self, name):
         """Return the ID of an existing artist with this name, or None."""
@@ -377,8 +413,10 @@ class Library:
         return {t: number(self.tracks[t].get("artwork_id")) for t in self.active_track_ids(album_id)}
 
     def artist_art(self, artist_id):
+        # iBroadcast marks an artist "trashed" when no track is credited to it, which is
+        # normal for an album artist like a duo whose tracks name its members.
         artist = self.artists.get(artist_id)
-        if not artist or artist.get("trashed"):
+        if not artist:
             raise LibraryError("This artist is no longer available. Reload the library.")
         return number(artist.get("artwork_id"))
 
@@ -417,13 +455,13 @@ def _clean_value(key, value):
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 9999:
             raise LibraryError(f"{key} must be a whole number from 0 to 9999.")
         return value
-    if key == "genres":
+    if key in ("genres", "composers"):
         if not isinstance(value, list) or len(value) > MAX_GENRES:
-            raise LibraryError(f"Genres must be a list of at most {MAX_GENRES}.")
+            raise LibraryError(f"{key.title()} must be a list of at most {MAX_GENRES}.")
         out = []
         for genre in value:
             if not isinstance(genre, str) or len(genre.strip()) > 100:
-                raise LibraryError("Each genre must be text of at most 100 characters.")
+                raise LibraryError(f"Each of the {key} must be text of at most 100 characters.")
             genre = genre.strip()
             if genre and genre.casefold() not in {g.casefold() for g in out}:
                 out.append(genre)
@@ -491,8 +529,12 @@ def plan_save(library, changes):
                 continue
             patch[key] = after
         if patch:
-            items.append({"kind": kind, "id": item_id, "album_id": album_id,
-                          "label": now.get("name") or now.get("title"), "patch": patch})
+            item = {"kind": kind, "id": item_id, "album_id": album_id,
+                    "label": now.get("name") or now.get("title"), "patch": patch}
+            if "composers" in patch:  # other extra artists (featured, ...) stay as they are
+                item["keep"] = [e for e in library.extra_artists(library.tracks[item_id])
+                                if e.get("type") != "composer"]
+            items.append(item)
 
     if len(album_artists) > 1:
         raise LibraryError("A save must stay within one album or one album artist.")
@@ -503,8 +545,9 @@ def plan_save(library, changes):
 
     names = OrderedDict()
     for item in items:
-        if "artist" in item["patch"]:
-            names.setdefault(item["patch"]["artist"], library.find_artist(item["patch"]["artist"]))
+        for name in ([item["patch"]["artist"]] if "artist" in item["patch"] else []) \
+                + item["patch"].get("composers", []):
+            names.setdefault(name, library.find_artist(name))
     return {
         "items": items,
         "artists": {name: artist_id for name, artist_id in names.items() if artist_id is not None},
@@ -512,7 +555,7 @@ def plan_save(library, changes):
     }
 
 
-def _wire(kind, patch, artist_ids):
+def _wire(kind, patch, artist_ids, keep=None):
     """Translate view fields to the field names and types the web editor sends."""
     out = {}
     for key, value in patch.items():
@@ -524,6 +567,13 @@ def _wire(kind, patch, artist_ids):
             out["track_no"] = value
         elif key in ("year", "disc"):
             out[key] = str(value)  # the web editor sends input values as strings
+        elif key == "composers":  # composers next to the extra artists that stay
+            missing = [n for n in value if n not in artist_ids]
+            if missing:
+                raise LibraryError(f"No artist ID for “{missing[0]}”.")
+            kept = [{k: v for k, v in e.items() if v is not None} for e in keep or []]
+            out["artists_additional"] = kept + [{"artist_id": artist_ids[n], "type": "composer"}
+                                                for n in value]
         elif key == "genres":  # the main genre, then the rest, as the web editor sends them
             out["genre"] = value[0] if value else ""
             out["genres_additional"] = list(value[1:])
@@ -536,7 +586,7 @@ def write_requests(plan, artist_ids):
     """Group identical patches, like the web editor does, into update requests."""
     groups = OrderedDict()
     for item in plan["items"]:
-        wire = _wire(item["kind"], item["patch"], artist_ids)
+        wire = _wire(item["kind"], item["patch"], artist_ids, item.get("keep"))
         key = (item["kind"], tuple(sorted((k, repr(v)) for k, v in wire.items())))
         groups.setdefault(key, (item["kind"], wire, []))[2].append(item["id"])
     requests = []
@@ -552,6 +602,8 @@ def write_requests(plan, artist_ids):
 def _matches(now, key, value, artist_ids):
     if key == "artist" and value in artist_ids:
         return now["artist_id"] == artist_ids[value]
+    if key == "composers":
+        return now["composer_ids"] == [artist_ids.get(n) for n in value]
     return now[key] == value
 
 

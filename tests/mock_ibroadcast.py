@@ -40,6 +40,7 @@ STATE = {
     "combine_sets": False,  # the account setting that blocks update_album
     "busy": 0,  # answer this many writes with HTTP 503 first
     "frozen": False,  # writes leave lastmodified unchanged (as within the same second)
+    "album_only_artists": {42},  # no tracks credited to them, so iBroadcast marks them trashed
 }
 AUDIO = bytes(range(256)) * 40  # 10 KB of "audio" for stream tests
 # a 1x1 PNG, served at /image.png for image download tests
@@ -53,18 +54,18 @@ def library():
     tmap = {"title": 0, "album_id": 1, "artist_id": 2, "year": 3, "genre": 4, "track": 5,
             "trashed": 6, "artwork_id": 7, "artists_additional": 8, "file": 9, "type": 10,
             "genres_additional": 11,
-            "artists_additional_map": {"artist_id": 0, "phrase": 1}}
+            "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}}
     tracks = {"map": tmap}
     for i, t in STATE["tracks"].items():
         tracks[str(i)] = [t["title"], t["album_id"], t["artist_id"], t["year"], t["genre"],
-                          t["track"], t["trashed"], t["artwork_id"], [], f"/128/abc/{i}", "audio/mpeg",
+                          t["track"], t["trashed"], t["artwork_id"], t.get("additional", []), f"/128/abc/{i}", "audio/mpeg",
                           t.get("genres_additional", [])]
     albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5}}
     for i, a in STATE["albums"].items():
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"]]
     artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3}}
     for i, name in STATE["artists"].items():
-        artists[str(i)] = [name, [], False, STATE["artist_art"].get(i, 0)]
+        artists[str(i)] = [name, [], i in STATE["album_only_artists"], STATE["artist_art"].get(i, 0)]
     return {"result": True, "authenticated": True, "settings": {"artwork_server": "http://127.0.0.1:1"},
             "status": {"lastmodified": lastmodified()},
             "lastfm": {"sessionkey": "secret-lastfm-session"},
@@ -213,6 +214,9 @@ class H(BaseHTTPRequestHandler):
                     for k in ("title", "genre", "artist_id", "genres_additional"):
                         if k in row:
                             t[k] = row[k]
+                    if "artists_additional" in row:
+                        t["additional"] = [[e["artist_id"], e.get("phrase"), e.get("type")]
+                                           for e in row["artists_additional"]]
                     if "year" in row:
                         t["year"] = int(row["year"] or 0)
                     if "track_no" in row:

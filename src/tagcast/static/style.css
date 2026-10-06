@@ -259,3 +259,4 @@ img.brand-mark{background:none;border-radius:10px;padding:0}
 @media(max-width:760px){.diff-tracks ul{columns:1}}
 .diff-tracks{padding-left:107px}
 @media(max-width:760px){.diff-tracks{padding-left:72px}}
+.track-composer{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}

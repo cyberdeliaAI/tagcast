@@ -336,6 +336,29 @@ class ClientTests(unittest.TestCase):
         undo = studio.save([edit("track", track["id"], 73, genres=(["Art Pop", "Art Rock"], track["genres"]))])
         self.wait_job(studio, undo["job"])
 
+    def test_album_only_artist_marked_trashed_still_gets_an_image(self):
+        studio = self.connect()  # Pink Floyd (42) is marked trashed in the mock library
+        current = studio.album_details(["74"])[0]["artist_artwork_id"]
+        result = studio.change_artwork({"target": "artist", "id": "42", "label": "Pink Floyd",
+                                        "before": {"artwork_id": current}, "source": {"artwork_id": 77}})
+        self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+        self.assertIn("Pink Floyd", studio.load_library()["artists"])
+
+    def test_composers_are_saved_next_to_other_extra_artists(self):
+        mock_ibroadcast.STATE["tracks"][904]["additional"] = [[41, None, "artist"]]
+        studio = self.connect()
+        track = studio.album_details(["74"])[0]["tracks"][0]
+        self.assertEqual(track["composers"], [])
+        result = studio.save([edit("track", 904, 74, composers=([], ["Roger Waters", "Kate Bush"]))])
+        self.assertEqual(result["created_artists"], ["Roger Waters"])
+        new_id = mock_ibroadcast.STATE["next_artist"]
+        self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [{"file_id": 904, "artists_additional": [
+            {"artist_id": 41, "type": "artist"}, {"artist_id": new_id, "type": "composer"},
+            {"artist_id": 41, "type": "composer"}]}])
+        self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+        self.assertEqual(studio.album_details(["74"])[0]["tracks"][0]["composers"], ["Roger Waters", "Kate Bush"])
+        mock_ibroadcast.STATE["tracks"][904]["additional"] = []
+
 
 if __name__ == "__main__":
     unittest.main()

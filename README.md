@@ -71,7 +71,8 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
 - **Overview**: your account and iBroadcast settings, the collection in numbers (size, playing time, formats, uploads per year), what you play most, and **metadata health** (tracks without a genre, albums without a year, artists without an image, tracks without a cover), each opening the matching album filter. Payment details, IP addresses, sessions, messages and keys are never shown or sent to the page.
-- Covers or a compact list. Search, and filter on missing year, missing genre, artist without image or named editions, with counts. **Next album** walks through a filter.
+- Covers or a compact list. Search, and filter with counts on missing year, genre, cover or composer, artists without an image, combined genres, albums with only 1–2 tracks, albums that look incomplete (gaps in the track numbers, like 1, 2, 5) and named editions. **Next album** walks through a filter.
+- **Composers** (handy for classical music) as labels per album or per track, saved as iBroadcast's composer credits; other credits such as featured artists stay as they are.
 - Edit one album: title, album artist, year, disc number, genre for all tracks, and each track individually.
 - Select albums **within one artist** and change only the fields you tick.
 - **Genres as labels**: the first is the main genre, the others go to iBroadcast's additional genres, so a track shows up under each of them. Tags uploaded as one text, such as “Pop;Rock”, are marked; **Split** turns them into separate genres (per label, or **Split combined genres** for the whole album), and the **Combined genres** filter lists every album that has them.
