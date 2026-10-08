@@ -192,15 +192,6 @@ function artistGroups() {
   return [...groups].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
-function renderArtists() {
-  const query = $("#artist-search").value.toLocaleLowerCase();
-  const groups = artistGroups(), matches = groups.filter(([name]) => name.toLocaleLowerCase().includes(query));
-  $("#artist-count").textContent = groups.length.toLocaleString("en");
-  $("#browse-artist-count").textContent = groups.length.toLocaleString("en");
-  $("#artists").innerHTML = matches.slice(0, 200).map(([name, g]) => `<button class="artist-button ${state.artist === name ? "active" : ""}" data-artist="${escapeHtml(name)}">${avatar(name, g.image)}<span>${escapeHtml(name)}</span><b>${g.count}</b></button>`).join("")
-    + (matches.length > 200 ? `<p class="artist-more">${(matches.length - 200).toLocaleString("en")} more. Type to narrow the list.</p>` : "");
-}
-
 function setArtist(artist) {
   if (state.screen && state.screen !== "albums") showScreen("albums");
   state.artist = artist; state.selected.clear(); state.page = 0;
@@ -234,7 +225,7 @@ function listView(items) {
 }
 
 function render() {
-  renderArtists();
+  $("#browse-artist-count").textContent = artistGroups().length.toLocaleString("en");
   $("#album-count").textContent = state.albums.length.toLocaleString("en");
   $("#total-tracks").textContent = state.albums.reduce((sum, a) => sum + a.track_count, 0).toLocaleString("en");
   $("#history-count").textContent = state.history.length;
@@ -520,7 +511,6 @@ document.addEventListener("input", event => {
 });
 $("#home").addEventListener("click", event => { event.preventDefault(); setArtist(null); });
 $("#all-albums").addEventListener("click", () => setArtist(null));
-$("#artist-search").addEventListener("input", renderArtists);
 for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => { state.page = 0; render(); });
 $("#search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.page = 0; render(); }, 150); });
 $("#clear-selection").addEventListener("click", () => { state.selected.clear(); render(); });

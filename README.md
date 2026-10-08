@@ -8,15 +8,15 @@ Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.
 
 It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
 
-> **0.9.0 beta 2:** browse **Album artists** as cards with photos and album counts,
+> **0.9.0:** browse **Album artists** as cards with photos and album counts,
 > search or sort their names, then open an artist's albums. Opening an album shows
 > its tracks and playback controls.
 > Choose **Edit album** to open the existing metadata editor. Playback continues
-> while browsing. This beta adds no shuffle, repeat or additional queue controls.
-> Download it into a separate folder and stop any running Tagcast server before
-> starting the beta; otherwise the start script opens the existing instance.
-> The usual account settings are shared with the stable version unless you set
-> a separate `TAGCAST_HOME`. Stable 0.8.1 remains available on GitHub.
+> while browsing. The sidebar now contains Overview, Albums, Album artists and
+> History; artist search is available in the full Album artists overview.
+> Stop any running Tagcast server before starting the updated version; otherwise
+> the start script opens the existing instance. Your usual account settings remain
+> available in `~/.tagcast/`, or your configured `TAGCAST_HOME`.
 
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
@@ -80,8 +80,7 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 ## What it does
 
 - **Album artists** as a searchable, paginated grid with photos or initials and
-  album counts. Choose a card to browse all albums by that artist; the sidebar
-  remains available for quick navigation.
+  album counts. Choose a card to browse all albums by that artist.
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
 - **Overview**: your account and iBroadcast settings, the collection in numbers (size, playing time, formats, uploads per year), what you play most, and **metadata health** (tracks without a genre, albums without a year, artists without an image, tracks without a cover), each opening the matching album filter. Payment details, IP addresses, sessions, messages and keys are never shown or sent to the page.
