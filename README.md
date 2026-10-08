@@ -20,7 +20,7 @@ It runs on your computer and listens on `127.0.0.1` only. Your music files are n
 
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
-![An album artist's page in Tagcast: covers, the artist image and what's still missing](docs/screenshots/artist-page.png)
+![Album artists in Tagcast 0.9.0: photos, album counts and playback while browsing in the dark theme](docs/screenshots/album-artists-dark.png)
 
 ## 1. Create an iBroadcast app
 
@@ -99,9 +99,21 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 
 ### Screenshots
 
-**Edit an album** with suggestions from MusicBrainz, Deezer, Apple Music and more next to it. A click puts a year or genre in the form; nothing is saved until you review it.
+**Browse albums** in the light theme: search your collection, filter missing metadata and switch between covers and a compact list. Playback continues while browsing.
 
-![The album editor with online suggestions](docs/screenshots/editor.png)
+![The album collection with search, filters, cover artwork and the player in the light theme](docs/screenshots/albums-light.png)
+
+**Open an album** to see its cover, track list and durations. Play the album or start from any track; choose **Edit album** to open the metadata editor. The player can keep playing another album while you browse.
+
+![Album details for Come Cry with Me, with track durations, Play album and Edit album controls in the dark theme](docs/screenshots/album-details-dark.png)
+
+**Edit an album** with suggestions from MusicBrainz, Deezer, Apple Music and more next to it. Edit genres and composers as labels. A click puts a suggested year or genre in the form; nothing is saved until you review it.
+
+![The album editor with genre and composer fields and online suggestions in the dark theme](docs/screenshots/editor-dark.png)
+
+**Overview**: the collection in numbers and its metadata health, with links to the albums to fix (light theme).
+
+![The Overview page with collection totals and metadata health in the light theme](docs/screenshots/overview-light.png)
 
 **Pick an artist image or cover** from the sources, from images iBroadcast already has, or from your own file, and compare it with the current one.
 
@@ -110,10 +122,6 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 **Review before saving**: every change, album and track, before and after. Tagcast checks iBroadcast first and reads the result back afterwards.
 
 ![Reviewing a draft before it is saved](docs/screenshots/review.png)
-
-**Overview**: the collection in numbers and its metadata health, each row opening the albums to fix (dark theme).
-
-![The overview in the dark theme](docs/screenshots/overview-dark.png)
 
 ### Online sources and keys
 
