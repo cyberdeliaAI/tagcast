@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/album-player-beta]
   pull_request:
 
 permissions:
@@ -112,3 +112,20 @@ jobs:
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
           gh release create v0.8.1 --target "$RELEASE_COMMIT" --title "Tagcast 0.8.1" --notes-file .github/release-notes/0.8.1.md --latest
+
+  release-0-9-0-beta-1:
+    name: Publish Tagcast 0.9.0 beta 1
+    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/album-player-beta' && github.event.head_commit.message == 'Publish Tagcast 0.9.0 beta 1'
+    needs: [tests, start-scripts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the tested beta commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create v0.9.0-beta.1 --target "$RELEASE_COMMIT" --title "Tagcast 0.9.0 beta 1" --notes-file .github/release-notes/0.9.0-beta.1.md --prerelease --latest=false

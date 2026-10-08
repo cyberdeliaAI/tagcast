@@ -8,6 +8,14 @@ Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.
 
 It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
 
+> **0.9.0 beta 1:** opening an album now shows its tracks and playback controls.
+> Choose **Edit album** to open the existing metadata editor. Playback continues
+> while browsing. This beta adds no shuffle, repeat or additional queue controls.
+> Download it into a separate folder and stop any running Tagcast server before
+> starting the beta; otherwise the start script opens the existing instance.
+> The usual account settings are shared with the stable version unless you set
+> a separate `TAGCAST_HOME`. Stable 0.8.1 remains available on GitHub.
+
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
 ![An album artist's page in Tagcast: covers, the artist image and what's still missing](docs/screenshots/artist-page.png)
@@ -78,7 +86,8 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 - **Genres as labels**: the first is the main genre, the others go to iBroadcast's additional genres, so a track shows up under each of them. Tags uploaded as one text, such as “Pop;Rock”, are marked; **Split** turns them into separate genres (per label, or **Split combined genres** for the whole album), and the **Combined genres** filter lists every album that has them.
 - **Online sources** next to every album, side by side like a tag editor's tag sources: year, genres and covers from MusicBrainz (with Cover Art Archive), Deezer, Apple Music, TheAudioDB, and with your own key Discogs and Last.fm. Click a year or genre to put it in the form, Shift-click to add a genre, or **Use all**.
 - **Change the album cover or the artist image**: from the sources (artist images also from fanart.tv with a key), from images iBroadcast already has, or your own file, pasted image or address. Old and new side by side, with the size.
-- **Play** an album or a track to check what you're tagging.
+- **Open an album** to see its cover, details, tracks and durations; play the album
+  or start from a chosen track. **Edit album** opens the metadata editor.
 - Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.
 - Light and dark theme: **Auto** follows your system; the button at the top switches to Light or Dark.
 - Without an account it still runs with demo data, or with an imported library JSON. Those are never saved online.

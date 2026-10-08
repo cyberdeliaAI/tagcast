@@ -1,13 +1,14 @@
 "use strict";
 
-// A small player to check what you're tagging. Audio comes through the local server
+// Album playback for browsing and editing. Audio comes through the local server
 // (/api/stream/<track>), so the iBroadcast token never reaches this page.
 
 const player = {queue: [], index: -1, album: null};
 const audio = $("#audio");
 
 function playTracks(album, startId) {
-  player.album = album;
+  if (!live() || !album.tracks.length) return;
+  player.album = structuredClone(album);
   player.queue = album.tracks.map(t => ({id: String(t.id), title: t.title, artist: t.artist}));
   player.index = Math.max(0, player.queue.findIndex(t => t.id === String(startId)));
   playCurrent();
@@ -46,7 +47,7 @@ function step(delta) {
 function stopPlayer() {
   audio.pause(); audio.removeAttribute("src"); audio.load();
   $("#player").hidden = true; document.body.classList.remove("has-player");
-  player.queue = []; player.index = -1; markPlaying();
+  player.queue = []; player.index = -1; player.album = null; markPlaying();
 }
 
 audio.addEventListener("ended", () => (player.index < player.queue.length - 1 ? step(1) : markPlaying()));
@@ -68,7 +69,9 @@ document.addEventListener("click", event => {
   const play = event.target.closest("[data-play]");
   const all = event.target.closest("[data-play-album]");
   if (!play && !all) return;
-  const album = editing?.originals[0];
+  if (!live()) return;
+  const albumId = (play || all).dataset.playAlbumId;
+  const album = albumId ? state.details.get(String(albumId)) : event.target.closest("#editor") && !editing?.bulk ? editing?.originals[0] : null;
   if (!album) return;
   const id = play?.dataset.play;
   if (id && player.queue[player.index]?.id === id && player.album?.id === album.id) {

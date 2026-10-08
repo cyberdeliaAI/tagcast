@@ -121,6 +121,8 @@
 :root[data-theme="dark"] .genre-note{background:#2c2922;color:#ceb276}
 :root[data-theme="dark"] [data-genre-cell].combined{color:#d4ab6a}
 :root[data-theme="dark"] .diff-tracks{border-bottom:1px solid #2d2e2b}
+:root[data-theme="dark"] .album-tracks{background:#1b2520}
+:root[data-theme="dark"] .album-tracks tr.playing td{background:#2b2e26}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -255,6 +257,8 @@
 :root:not([data-theme="light"]) .genre-note{background:#2c2922;color:#ceb276}
 :root:not([data-theme="light"]) [data-genre-cell].combined{color:#d4ab6a}
 :root:not([data-theme="light"]) .diff-tracks{border-bottom:1px solid #2d2e2b}
+:root:not([data-theme="light"]) .album-tracks{background:#1b2520}
+:root:not([data-theme="light"]) .album-tracks tr.playing td{background:#2b2e26}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

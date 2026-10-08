@@ -74,6 +74,7 @@ function importLibrary(input) {
       year: Number(a.year) || 0, disc: Number(a.disc) || 0, color: colors[index % colors.length],
       tracks: albumTracks.map(([tid, t]) => ({id: String(tid), title: String(t.title || "Untitled track"),
         artist: artistName(t.artist_id), year: Number(t.year) || 0, genre: String(t.genre || ""), track: Number(t.track) || 0,
+        length: Number(t.length) || 0,
         genres: [String(t.genre || "").trim(), ...(Array.isArray(t.genres_additional) ? t.genres_additional.map(String) : [])].filter(Boolean)})),
     };
   }).filter(a => a.tracks.length);
@@ -94,6 +95,8 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  if (typeof stopPlayer === "function") stopPlayer();
+  if (typeof resetAlbumView === "function") resetAlbumView();
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
   state.mode = mode; state.artistNames = [];
   state.details = new Map(albums.map(a => [String(a.id), a]));
@@ -101,15 +104,16 @@ function useLocal(albums, mode) {
 }
 
 async function albumDetails(ids) {
-  const missing = ids.filter(id => !state.details.has(String(id)));
+  const details = state.details;
+  const missing = ids.filter(id => !details.has(String(id)));
   if (missing.length && live()) {
     const colorsById = new Map(state.albums.map(a => [String(a.id), a.color]));
     for (let i = 0; i < missing.length; i += 100) {
       const data = await api(`/api/albums?ids=${missing.slice(i, i + 100).map(encodeURIComponent).join(",")}`);
-      for (const album of data.albums) state.details.set(String(album.id), {...album, color: colorsById.get(String(album.id))});
+      for (const album of data.albums) details.set(String(album.id), {...album, color: colorsById.get(String(album.id))});
     }
   }
-  return ids.map(id => state.details.get(String(id))).filter(Boolean);
+  return ids.map(id => details.get(String(id))).filter(Boolean);
 }
 
 function toast(text) {
@@ -196,7 +200,7 @@ function renderArtists() {
 }
 
 function setArtist(artist) {
-  if (state.screen === "overview") showScreen("albums");
+  if (state.screen && state.screen !== "albums") showScreen("albums");
   state.artist = artist; state.selected.clear(); state.page = 0;
   $("#search").value = "";
   render();
@@ -218,13 +222,13 @@ function selectBox(a) {
 }
 
 function gridView(items) {
-  return items.map(a => `<article class="album-card ${state.selected.has(String(a.id)) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Edit ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks${discLabel(a) ? ` <span aria-hidden="true">·</span> ${discLabel(a)}` : ""}</span>${badge(a)}</div></article>`).join("");
+  return items.map(a => `<article class="album-card ${state.selected.has(String(a.id)) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks${discLabel(a) ? ` <span aria-hidden="true">·</span> ${discLabel(a)}` : ""}</span>${badge(a)}</div></article>`).join("");
 }
 
 function listView(items) {
   const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
   const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
-  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th></tr></thead><tbody>${items.map(a => `<tr class="${state.selected.has(String(a.id)) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Edit ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${discLabel(a) ? ` <span class="muted">· ${discLabel(a)}</span>` : a.disc > 1 ? ` <span class="muted">· Disc ${a.disc}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th></tr></thead><tbody>${items.map(a => `<tr class="${state.selected.has(String(a.id)) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${discLabel(a) ? ` <span class="muted">· ${discLabel(a)}</span>` : a.disc > 1 ? ` <span class="muted">· Disc ${a.disc}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
@@ -232,13 +236,13 @@ function render() {
   $("#album-count").textContent = state.albums.length.toLocaleString("en");
   $("#total-tracks").textContent = state.albums.reduce((sum, a) => sum + a.track_count, 0).toLocaleString("en");
   $("#history-count").textContent = state.history.length;
-  if (state.screen !== "overview") $("#breadcrumb").textContent = state.artist || "Albums";
+  if (!state.screen || state.screen === "albums") $("#breadcrumb").textContent = state.artist || "Albums";
   $("#page-title").textContent = state.artist || "Your albums.";
   $("#page-eyebrow").textContent = state.artist ? "ALBUM ARTIST" : "A LITTLE ORDER. ONE ALBUM AT A TIME.";
   renderArtistPanel();
-  $("#page-subtitle").textContent = state.artist ? "Open an album, or select albums by this artist to edit together." : "Browse your collection, check the details, and make it yours.";
-  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to edit its metadata";
-  $("#all-albums").classList.toggle("active", !state.artist && state.screen !== "overview");
+  $("#page-subtitle").textContent = state.artist ? "Open an album to listen, or select albums by this artist to edit together." : "Browse your collection, play an album, and edit its details when you choose.";
+  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to see its tracks and listen";
+  $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   const scope = state.albums.filter(a => !state.artist || a.artist === state.artist);
   for (const option of $("#filter").options) {
     const [label, keep] = FILTERS[option.value];
@@ -254,6 +258,7 @@ function render() {
   $("#selection-bar").hidden = !state.selected.size;
   $("#selection-count").textContent = `${state.selected.size} albums selected · ${state.artist || ""}`;
   $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+  if (typeof renderAlbumView === "function") renderAlbumView();
 }
 
 // On an artist's page the artist image takes the place of the library total.
@@ -488,7 +493,7 @@ document.addEventListener("click", event => {
   const artist = event.target.closest("[data-artist]");
   if (artist) { setArtist(artist.dataset.artist); return; }
   const album = event.target.closest("[data-album]");
-  if (album) { openEditor([album.dataset.album]); return; }
+  if (album) { openAlbum(album.dataset.album); return; }
   const track = event.target.closest("[data-track]");
   if (track) { editTrack(track.dataset.track); return; }
   const page = event.target.closest("[data-page]");
@@ -601,6 +606,7 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  if (typeof resetAlbumView === "function") resetAlbumView();
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear();
   updateChrome(); render();
   try {
