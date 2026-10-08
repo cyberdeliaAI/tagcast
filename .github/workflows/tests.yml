@@ -95,3 +95,20 @@ jobs:
           $out = "" | cmd /c start-tagcast.bat --help 2>&1 | Out-String
           Write-Output $out
           if ($out -notmatch "usage: tagcast") { exit 1 }
+
+  release-0-8-1:
+    name: Publish Tagcast 0.8.1
+    if: github.event_name == 'push' && github.event.head_commit.message == 'Publish Tagcast 0.8.1'
+    needs: [tests, start-scripts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the tested commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create v0.8.1 --target "$RELEASE_COMMIT" --title "Tagcast 0.8.1" --notes-file .github/release-notes/0.8.1.md --latest
