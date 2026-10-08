@@ -24,9 +24,12 @@ function showScreen(name) {
   $("#overview-page").hidden = name !== "overview";
   $("#albums-page").hidden = name !== "albums";
   $("#album-page").hidden = name !== "album";
+  $("#artists-page").hidden = name !== "artists";
   $("#show-overview").classList.toggle("active", name === "overview");
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
-  $("#breadcrumb").textContent = name === "overview" ? "Overview" : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
+  $("#show-artists").classList.toggle("active", name === "artists");
+  $("#breadcrumb").textContent = name === "overview" ? "Overview" : name === "artists" ? "Album artists"
+    : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (name === "overview") loadOverview();
 }
 
