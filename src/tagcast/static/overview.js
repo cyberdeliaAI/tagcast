@@ -19,12 +19,14 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  if (name !== "album") { albumView.request += 1; albumView.loading = false; }
   state.screen = name;
   $("#overview-page").hidden = name !== "overview";
   $("#albums-page").hidden = name !== "albums";
+  $("#album-page").hidden = name !== "album";
   $("#show-overview").classList.toggle("active", name === "overview");
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
-  $("#breadcrumb").textContent = name === "overview" ? "Overview" : state.artist || "Albums";
+  $("#breadcrumb").textContent = name === "overview" ? "Overview" : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (name === "overview") loadOverview();
 }
 

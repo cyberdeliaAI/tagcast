@@ -260,3 +260,25 @@ img.brand-mark{background:none;border-radius:10px;padding:0}
 .diff-tracks{padding-left:107px}
 @media(max-width:760px){.diff-tracks{padding-left:72px}}
 .track-composer{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+
+/* ---- album browsing and playback --------------------------------------- */
+.album-detail{padding:30px 0}
+.album-detail-header{display:flex;align-items:center;gap:30px;margin:26px 0 34px}
+.album-detail-header>.cover{width:220px;flex-shrink:0}
+.album-detail-info{min-width:0}
+.album-detail-info h1{font-size:34px;overflow-wrap:anywhere}
+.album-detail-info>.text-action{font-size:16px}
+.album-detail-info p{line-height:1.6}
+.album-detail-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.album-detail .tracks-heading h2{font-size:16px;margin:0}
+.album-tracks{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);font-size:13px}
+.album-tracks th{text-align:left;padding:12px 16px;font-size:10px;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line)}
+.album-tracks td{padding:14px 16px;border-bottom:1px solid var(--line)}
+.album-tracks strong{display:block;font-weight:500;overflow-wrap:anywhere}
+.album-tracks small{display:block;color:var(--muted);margin-top:5px;font-size:11px}
+.album-tracks .track-number{width:78px;white-space:nowrap}
+.album-tracks .track-time{width:80px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.album-track-play{border:0;background:none;color:var(--green);padding:6px;margin-right:5px;font-size:12px}
+.album-tracks tr.playing td{background:#eef4e2}
+.album-tracks tr.playing .album-track-play{color:var(--orange)}
+@media(max-width:760px){.album-detail-header{align-items:flex-start;gap:18px}.album-detail-header>.cover{width:110px}.album-detail-header .cover-caption{display:none}.album-detail-info h1{font-size:24px;letter-spacing:-.7px}.album-tracks td,.album-tracks th{padding:12px 9px}.album-tracks .track-number{width:65px}.album-tracks .track-time{width:60px}.topbar{height:auto;min-height:70px;padding:14px 0;flex-direction:column;align-items:flex-start;gap:12px}.top-actions{gap:8px;flex-wrap:wrap;justify-content:flex-start}.topbar>div:first-child{min-width:0;overflow-wrap:anywhere}}
