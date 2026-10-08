@@ -29,6 +29,8 @@ jobs:
       - name: Page scripts parse
         shell: bash
         run: for f in src/tagcast/static/*.js; do node --check "$f"; done
+      - name: Frontend regressions
+        run: node --test tests/frontend.test.cjs
 
   start-scripts:
     name: Start scripts · ${{ matrix.os }}
@@ -57,6 +59,14 @@ jobs:
           rm -rf .venv
           ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
           test -x .venv/bin/tagcast
+      - name: Recover unavailable interpreter
+        if: runner.os != 'Windows'
+        env:
+          TAGCAST_NO_UV: "1"
+        run: |
+          rm .venv/bin/python
+          ln -s "$PWD/missing-python" .venv/bin/python
+          ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
       - name: With uv (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -75,3 +85,13 @@ jobs:
           Write-Output $out
           if ($out -notmatch "usage: tagcast") { exit 1 }
           if (-not (Test-Path .venv\Scripts\tagcast.exe)) { exit 1 }
+      - name: Recover unavailable interpreter (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAGCAST_NO_UV: "1"
+        run: |
+          Remove-Item .venv\Scripts\python.exe
+          $out = "" | cmd /c start-tagcast.bat --help 2>&1 | Out-String
+          Write-Output $out
+          if ($out -notmatch "usage: tagcast") { exit 1 }

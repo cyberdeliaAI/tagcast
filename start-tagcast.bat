@@ -25,13 +25,18 @@ if errorlevel 1 (
   goto :done
 )
 
-if not exist ".venv\Scripts\tagcast.exe" (
+if not exist ".venv\Scripts\tagcast.exe" goto :install
+".venv\Scripts\python.exe" -c "import sys; sys.exit(sys.version_info < (3, 11))" >nul 2>nul
+if errorlevel 1 goto :install
+goto :launch
+
+:install
   echo First start: installing Tagcast in %CD%\.venv ...
-  %PYTHON% -m venv .venv || goto :failed
+  %PYTHON% -m venv --clear .venv || goto :failed
   ".venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
   ".venv\Scripts\python.exe" -m pip install --quiet -e . || goto :failed
-)
 
+:launch
 ".venv\Scripts\tagcast.exe" --open %*
 goto :done
 
