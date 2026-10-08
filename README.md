@@ -193,6 +193,11 @@ TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9555 TAGCAST_HOME=/tmp/ls-test \
 
 Automatic changes without review (every suggestion goes through you), uploading music, deleting, renaming an artist in place (iBroadcast has no mode for it: a new name creates a new artist), and editing local files.
 
+## Development credits
+
+Developed by Cyberdelia, with AI-assisted development using Claude (Anthropic)
+and ChatGPT / Codex (OpenAI).
+
 ## License
 
 [MIT](LICENSE). Tagcast is an independent project and not affiliated with iBroadcast.
