@@ -253,9 +253,9 @@ test("a save refreshes visible album details without restarting playback", async
   assert.equal(p.run("player.album.name"), "Wish You Were Here", "Playback retains its independent snapshot");
 });
 
-test("album artist overview includes all album artists, independently of album and sidebar filters", async () => {
+test("album artist overview includes all album artists, independently of album filters", async () => {
   const p = page();
-  p.run('state.artist = "Pink Floyd"; state.artistNames = ["Track-only artist"]; $("#filter").value = "genre"; $("#artist-search").value = "Pink"');
+  p.run('state.artist = "Pink Floyd"; state.artistNames = ["Track-only artist"]; $("#filter").value = "genre"');
   await p.nodes.get("#show-artists").emit("click");
   assert.equal(p.run("state.screen"), "artists");
   assert.equal(p.nodes.get("#breadcrumb").textContent, "Album artists");
@@ -269,7 +269,7 @@ test("album artist overview includes all album artists, independently of album a
   assert.ok(p.requests.every(r => ["/api/status", "/api/settings"].includes(r.url)), "Overview uses summaries without downloading tracks");
 });
 
-test("artist overview paginates beyond the sidebar limit and resets paging on search and sort", async () => {
+test("artist overview paginates a large collection and resets paging on search and sort", async () => {
   const p = page();
   p.run(`state.albums = Array.from({length: 202}, (_, i) => ({...state.albums[0], id: String(i), artist: "Artist " + String(i).padStart(3, "0")})); showArtistBrowse()`);
   assert.equal((p.nodes.get("#artists-grid").innerHTML.match(/data-browse-artist=/g) || []).length, 24);
@@ -334,7 +334,7 @@ test("artist overview updates after local edits and handles library loading and 
   assert.match(p.nodes.get("#artists-grid").innerHTML, /No album artists match/);
 });
 
-test("sidebar artist navigation and overview remain reachable from the artist grid", async () => {
+test("album artist links and overview remain reachable from the artist grid", async () => {
   const p = page();
   p.run("showArtistBrowse()");
   await p.click({"[data-artist]": {dataset: {artist: "Pink Floyd"}}});

@@ -26,13 +26,10 @@
     <button class="nav active" id="all-albums"><span>▦</span> Albums <b id="album-count">0</b></button>
     <button class="nav" id="show-artists"><span>◉</span> Album artists <b id="browse-artist-count">0</b></button>
     <button class="nav" id="show-history"><span>◷</span> History <b id="history-count">0</b></button>
-    <div class="nav-label artist-label">ALBUM ARTISTS <span id="artist-count"></span></div>
-    <input id="artist-search" class="artist-search" aria-label="Find an artist" placeholder="Find an artist…">
-    <div id="artists" class="artist-list"></div>
     <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="settings-button">Sources &amp; keys ⚙</button><button class="text-button muted-link" id="import-button">Import library JSON ↗</button></div><input id="import-file" type="file" accept=".json,application/json" hidden></div>
   </aside>
   <main>
-    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><span class="pill">0.9.0 beta 2</span><button class="button small theme-button" id="theme-button" title="Light or dark: follows your system">◐ Auto</button><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><span class="pill">0.9.0</span><button class="button small theme-button" id="theme-button" title="Light or dark: follows your system">◐ Auto</button><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
     <div class="notice"><span>ⓘ</span><span id="data-notice">Demo library with sample records. Nothing you edit here changes iBroadcast.</span></div>
     <section id="overview-page" class="overview" hidden aria-live="polite"></section>
     <section id="album-page" class="album-detail" hidden aria-label="Album details"></section>
