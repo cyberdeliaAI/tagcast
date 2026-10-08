@@ -10,6 +10,8 @@ import time
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
 import mock_ibroadcast  # noqa: E402
@@ -62,6 +64,100 @@ class ClientTests(unittest.TestCase):
         tokens = Path(self.home, "tokens.json")
         self.assertPrivate(tokens)
         self.assertTrue(client.Studio(self.home).status()["connected"])
+
+    def local_connection(self):
+        studio = client.Studio(self.home)
+        studio.set_client_id("test")
+        studio._connect(client.oauth.TokenSet(mock_ibroadcast.TOKEN, "refresh-1", 0))
+        return studio
+
+    def run_paused(self, operation, helper, result, during):
+        started, resume = threading.Event(), threading.Event()
+        errors = []
+
+        def paused(*args):
+            started.set()
+            if not resume.wait(5):
+                raise TimeoutError("Test did not resume the request")
+            return result
+
+        def run():
+            try:
+                operation()
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(client.auth, helper, side_effect=paused):
+            worker = threading.Thread(target=run, daemon=True)
+            worker.start()
+            try:
+                self.assertTrue(started.wait(5))
+                during()
+            finally:
+                resume.set()
+                worker.join(5)
+        self.assertFalse(worker.is_alive())
+        return errors
+
+    def test_late_refresh_after_logout_cannot_restore_tokens(self):
+        studio = self.local_connection()
+        tokens = client.oauth.TokenSet(mock_ibroadcast.TOKEN, "late-refresh", time.time() + 3600)
+        errors = self.run_paused(studio.load_library, "refresh_access_token", tokens, studio.logout)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], client.NotConnected)
+        self.assertIsNone(studio.client)
+        self.assertFalse(Path(self.home, "tokens.json").exists())
+        self.assertIsNone(client.Studio(self.home).client)
+
+    def test_old_connection_refresh_cannot_overwrite_new_connection_tokens(self):
+        studio = self.local_connection()
+        old = studio.client
+        tokens = client.oauth.TokenSet("late-access", "late-refresh", time.time() + 3600)
+        replacement = client.oauth.TokenSet("new-access", "new-refresh", time.time() + 3600)
+        self.assertEqual(self.run_paused(old._refresh, "refresh_access_token", tokens,
+                                        lambda: studio._connect(replacement)), [])
+        self.assertEqual(studio._read("tokens.json")["token_set"], replacement.to_dict())
+
+    def test_disconnect_cancels_pending_browser_sign_in(self):
+        studio = self.local_connection()
+        url = studio.browser_url("http://127.0.0.1/callback")
+        state = parse_qs(urlparse(url).query)["state"][0]
+        studio.logout()
+        with patch.object(client.auth, "exchange_auth_code") as exchange:
+            with self.assertRaises(client.ApiError):
+                studio.finish_browser("code", state)
+            exchange.assert_not_called()
+
+    def test_disconnect_during_browser_exchange_cannot_reconnect(self):
+        studio = self.local_connection()
+        url = studio.browser_url("http://127.0.0.1/callback")
+        state = parse_qs(urlparse(url).query)["state"][0]
+        tokens = client.oauth.TokenSet("late-access", "late-refresh", time.time() + 3600)
+        errors = self.run_paused(lambda: studio.finish_browser("code", state),
+                                 "exchange_auth_code", tokens, studio.logout)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], client.ApiError)
+        self.assertIsNone(studio.client)
+        self.assertFalse(Path(self.home, "tokens.json").exists())
+
+    def test_browser_sign_in_is_one_use_and_persists_tokens(self):
+        studio = self.local_connection()
+        url = studio.browser_url("http://127.0.0.1/callback")
+        state = parse_qs(urlparse(url).query)["state"][0]
+        tokens = client.oauth.TokenSet("new-access", "new-refresh", time.time() + 3600)
+        with patch.object(client.auth, "exchange_auth_code", return_value=tokens):
+            studio.finish_browser("code", state)
+            self.assertEqual(studio._read("tokens.json")["token_set"], tokens.to_dict())
+            with self.assertRaises(client.ApiError):
+                studio.finish_browser("code", state)
+
+    def test_disconnect_during_device_code_request_cancels_sign_in(self):
+        studio = self.local_connection()
+        errors = self.run_paused(studio.start_device, "device_code_request",
+                                 {"device_code": "test", "user_code": "test"}, studio.logout)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], client.ApiError)
+        self.assertIsNone(studio.device)
 
     def wait_for_cache(self, studio):
         with studio.cache_lock:  # the cache is written in the background

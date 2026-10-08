@@ -18,7 +18,7 @@ import ibroadcast
 import requests
 from ibroadcast import oauth
 
-from . import __version__, artwork
+from . import __version__, artwork, auth
 from .library import (
     ConflictError,
     Library,
@@ -188,6 +188,14 @@ class StudioClient(ibroadcast.iBroadcast):
         except (oauth.OAuthError, requests.RequestException, KeyError, ValueError):
             raise NotConnected("Your iBroadcast session expired. Connect again.") from None
 
+    def _refresh(self):
+        token_set = auth.refresh_access_token(self._client_id, self._refresh_token)
+        self._access_token = token_set.access_token
+        self._refresh_token = token_set.refresh_token
+        self.token_set = token_set
+        if self._token_refreshed_callback:
+            self._token_refreshed_callback(token_set)
+
     def fetch_library(self):
         return Library(self._jsonrequest("library", url=LIBRARY_URL))
 
@@ -281,6 +289,7 @@ class Studio:
         self.device = None
         self._device_gen = 0
         self._pkce = {}
+        self._pkce_gen = 0
         self.config = self._read("config.json") or {}
         self.lookup = Lookup(self.source_keys)
         tokens = self._read("tokens.json")
@@ -357,24 +366,29 @@ class Studio:
 
     # -- connection ----------------------------------------------------------
 
-    def _save_tokens(self, token_set):
-        self._write("tokens.json", {"client_id": self.client_id, "token_set": token_set.to_dict()})
+    def _save_tokens(self, token_set, client):
+        with self.lock:
+            if client is self.client:
+                self._write("tokens.json", {"client_id": self.client_id,
+                                            "token_set": token_set.to_dict()})
 
     def _connect(self, token_set, save=True):
         client = StudioClient(access_token=token_set.access_token,
                               refresh_token=token_set.refresh_token,
                               client_id=self.client_id,
-                              token_refreshed_callback=self._save_tokens)
+                              token_refreshed_callback=lambda tokens: self._save_tokens(tokens, client))
         client.token_set = token_set
         with self.lock:
             self.client, self.library, self.account = client, None, None
-        if save:
-            self._save_tokens(token_set)
+            if save:
+                self._save_tokens(token_set, client)
 
     def _disconnect(self):
         with self.lock:
             self.client = self.library = self.account = self.device = None
             self._device_gen += 1
+            self._pkce.clear()
+            self._pkce_gen += 1
             try:
                 (self.home / "tokens.json").unlink()
             except OSError:
@@ -410,15 +424,18 @@ class Studio:
     def start_device(self):
         if not self.client_id:
             raise ApiError("Enter your app's client ID first.")
+        with self.lock:
+            self._device_gen += 1
+            gen, client_id = self._device_gen, self.client_id
         try:
-            code = oauth.device_code_request(self.client_id, SCOPES)
+            code = auth.device_code_request(client_id, SCOPES)
         except (oauth.OAuthError, requests.RequestException, ValueError) as error:
             raise ApiError(f"iBroadcast did not start the sign-in: {error}") from None
         if "device_code" not in code or "user_code" not in code:
             raise ApiError("iBroadcast returned an unexpected sign-in response.")
         with self.lock:
-            self._device_gen += 1
-            gen = self._device_gen
+            if gen != self._device_gen:
+                raise ApiError("This sign-in was canceled. Try again.")
             self.device = {
                 "state": "pending",
                 "user_code": code["user_code"],
@@ -434,7 +451,7 @@ class Studio:
 
     def _poll(self, gen, device_code, interval):
         try:
-            token_set = oauth.poll_for_token(self.client_id, device_code, interval)
+            token_set = auth.poll_for_token(self.client_id, device_code, interval)
         except Exception as error:  # report any failure to the browser
             with self.lock:
                 if gen == self._device_gen and self.device:
@@ -457,7 +474,8 @@ class Studio:
         state = secrets.token_urlsafe(24)
         verifier = oauth.generate_code_verifier()
         with self.lock:
-            self._pkce = {state: (verifier, redirect_uri, time.time())}
+            self._pkce_gen += 1
+            self._pkce = {state: (verifier, redirect_uri, time.time(), self._pkce_gen)}
         return oauth.build_authorize_url(self.client_id, state,
                                          oauth.generate_code_challenge(verifier),
                                          SCOPES, redirect_uri)
@@ -465,24 +483,29 @@ class Studio:
     def finish_browser(self, code, state):
         with self.lock:
             entry = self._pkce.pop(state, None)
+            client_id = self.client_id
         if not entry or time.time() - entry[2] > 900:
             raise ApiError("This sign-in link expired or was not started here. Try again.")
         try:
-            token_set = oauth.exchange_auth_code(self.client_id, code, entry[1], entry[0])
+            token_set = auth.exchange_auth_code(client_id, code, entry[1], entry[0])
         except (oauth.OAuthError, requests.RequestException, KeyError, ValueError) as error:
             raise ApiError(f"iBroadcast did not complete the sign-in: {error}") from None
-        self._connect(token_set)
+        with self.lock:
+            if entry[3] != self._pkce_gen:
+                raise ApiError("This sign-in was canceled. Try again.")
+            self._connect(token_set)
 
     def logout(self):
         with self.lock:
             client = self.client
+            client_id = self.client_id
+            self._disconnect()
+        self._forget_cache()
         if client and client._refresh_token:
             try:
-                oauth.revoke_token(self.client_id, client._refresh_token)
+                auth.revoke_token(client_id, client._refresh_token)
             except Exception:  # still forget the tokens locally
                 pass
-        self._disconnect()
-        self._forget_cache()
 
     # -- library -------------------------------------------------------------
 

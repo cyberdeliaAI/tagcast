@@ -178,6 +178,7 @@ Tested against a real account (286,789 tracks): loading, caching, `update_track`
 uv run --with pytest pytest          # or:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 for f in src/tagcast/static/*.js; do node --check "$f"; done
+node --test tests/frontend.test.cjs
 ```
 
 To click through the full flow without a real account:

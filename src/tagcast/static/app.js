@@ -84,6 +84,7 @@ const trackGenres = t => t.genres ?? (t.genre?.trim() ? [t.genre.trim()] : []);
 function summarize(album) {
   const genres = splitGenres(album.tracks.flatMap(trackGenres)).sort();
   return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc,
+    artist_id: album.artist_id || 0, artist_image: album.artist_image || "", artist_artwork_id: album.artist_artwork_id || 0,
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
     no_genre: album.tracks.filter(t => !trackGenres(t).length).length,
     combined_genres: album.tracks.filter(t => hasCombined(trackGenres(t))).length,
@@ -443,7 +444,7 @@ function applyDraft() {
     const album = state.details.get(String(change.albumId));
     const target = change.kind === "album" ? album : album?.tracks.find(t => String(t.id) === String(change.id));
     if (!target) { toast("The selection changed. Open the album again."); return; }
-    for (const [key, value] of Object.entries(change.fields)) if (target[key] !== value.before) { toast("A value changed since this draft. Review it again."); return; }
+    for (const [key, value] of Object.entries(change.fields)) if (!sameValue(target[key], value.before)) { toast("A value changed since this draft. Review it again."); return; }
   }
   const next = thenNext();
   applyLocally(pending.changes);
@@ -463,6 +464,13 @@ function applyLocally(changes) {
     if (target) for (const [key, value] of Object.entries(change.fields)) {
       target[key] = value.after;
       if (key === "genres") target.genre = value.after[0] || "";
+      if (change.kind === "album" && key === "artist") {
+        // Reuse a known artist; a newly created artist gets its ID from the read-back.
+        const artist = state.albums.find(a => a.artist === value.after && a.artist_id);
+        target.artist_id = artist?.artist_id || 0;
+        target.artist_image = artist?.artist_image || "";
+        target.artist_artwork_id = artist?.artist_artwork_id || 0;
+      }
     }
   }
   const touched = new Set(changes.map(c => String(c.albumId)));

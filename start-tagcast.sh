@@ -16,9 +16,9 @@ if [ -z "$PYTHON" ] || ! "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (
   exit 1
 fi
 
-if [ ! -x .venv/bin/tagcast ]; then
-  echo "First start: installing Tagcast in $(pwd)/.venv …"
-  "$PYTHON" -m venv .venv \
+if [ ! -x .venv/bin/tagcast ] || ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+  echo "Installing Tagcast in $(pwd)/.venv (new or unavailable environment) …"
+  "$PYTHON" -m venv --clear .venv \
     && .venv/bin/python -m pip install --quiet --upgrade pip \
     && .venv/bin/python -m pip install --quiet -e . \
     || { echo "Installing Tagcast failed. See the messages above."; exit 1; }
