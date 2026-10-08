@@ -27,10 +27,12 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/sources.py`: external source adapters, matching, request pacing
   and a shared response cache.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and seven JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and eight JavaScript files:
   `app.js`, `genres.js`, `lookup.js`, `artwork.js`, `player.js`, `album.js`,
-  `overview.js`. `album.js` provides read-only album browsing; editing remains
-  in `app.js`, and `player.js` plays one album independently of the editor.
+  `artists.js`, `overview.js`. `album.js` provides read-only album browsing;
+  `artists.js` provides a searchable, paginated album artist grid using album
+  summaries. Editing remains in `app.js`, and `player.js` plays one album
+  independently of the editor.
 - `tests/`: unittest tests that also run through pytest, fixtures and
   `mock_ibroadcast.py`.
 - `tools/build_dark_css.py`: generates `static/dark.css` from `static/style.css`.

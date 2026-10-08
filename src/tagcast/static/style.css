@@ -261,6 +261,18 @@ img.brand-mark{background:none;border-radius:10px;padding:0}
 @media(max-width:760px){.diff-tracks{padding-left:72px}}
 .track-composer{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
 
+/* ---- album artist browsing --------------------------------------------- */
+.artists-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:26px 24px;padding-bottom:24px}
+.artist-card{border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);padding:20px;text-align:center;min-width:0;transition:background .15s}
+.artist-card:hover{background:#edf2e7}
+.artist-card-photo{display:grid;place-items:center;position:relative;aspect-ratio:1;border-radius:50%;overflow:hidden;background:#c9d4c6;color:#3f5547;font:italic 48px Georgia,serif;margin-bottom:18px}
+.artist-card-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.artist-card strong{display:block;font-size:15px;font-weight:500;overflow-wrap:anywhere}
+.artist-card-count{display:block;font-size:12px;color:var(--muted);margin-top:7px}
+@media(min-width:1450px){.artists-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(max-width:1100px){.artists-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.artists-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.artist-card{padding:14px}.artist-card-photo{font-size:34px;margin-bottom:12px}.artist-card strong{font-size:13px}.artist-card-count{font-size:11px}}
+
 /* ---- album browsing and playback --------------------------------------- */
 .album-detail{padding:30px 0}
 .album-detail-header{display:flex;align-items:center;gap:30px;margin:26px 0 34px}

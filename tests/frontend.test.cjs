@@ -12,6 +12,8 @@ const staticDir = path.join(root, "src/tagcast/static");
 function page() {
   const nodes = new Map(), requests = [];
   const documentEvents = new Map();
+  const timers = new Map();
+  let nextTimer = 1;
   let respond = null;
   function element() {
     const classes = new Set();
@@ -40,7 +42,8 @@ function page() {
   document.querySelector("#sort").value = "artist";
   const context = vm.createContext({document, window: {addEventListener() {}}, location: {search: ""}, navigator: {}, console,
     localStorage: {getItem() { return null; }, setItem() {}}, structuredClone, URL, URLSearchParams, Blob,
-    setTimeout() { return 1; }, clearTimeout() {}, setInterval() { return 1; }, clearInterval() {},
+    setTimeout(callback, delay) { const id = nextTimer++; timers.set(id, {callback, delay}); return id; },
+    clearTimeout(id) { timers.delete(id); }, setInterval() { return 1; }, clearInterval() {},
     fetch: async (url, options) => {
       requests.push({url, options});
       if (respond && url !== "/api/status") return respond(url, options);
@@ -51,6 +54,9 @@ function page() {
   for (const [, file] of scripts) vm.runInContext(readFileSync(path.join(staticDir, file), "utf8"), context, {filename: file});
   return {run: source => vm.runInContext(source, context), nodes, requests,
     setFetch(handler) { respond = handler; },
+    flushTimers(delay) {
+      for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
+    },
     async click(matches) {
       const event = {target: {closest: selector => matches[selector] || null}};
       for (const handler of documentEvents.get("click") || []) await handler(event);
@@ -245,4 +251,97 @@ test("a save refreshes visible album details without restarting playback", async
   assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
   assert.equal(p.nodes.get("#audio").paused, false);
   assert.equal(p.run("player.album.name"), "Wish You Were Here", "Playback retains its independent snapshot");
+});
+
+test("album artist overview includes all album artists, independently of album and sidebar filters", async () => {
+  const p = page();
+  p.run('state.artist = "Pink Floyd"; state.artistNames = ["Track-only artist"]; $("#filter").value = "genre"; $("#artist-search").value = "Pink"');
+  await p.nodes.get("#show-artists").emit("click");
+  assert.equal(p.run("state.screen"), "artists");
+  assert.equal(p.nodes.get("#breadcrumb").textContent, "Album artists");
+  assert.equal(p.nodes.get("#show-artists").classList.contains("active"), true);
+  assert.equal(p.nodes.get("#albums-page").hidden, true);
+  assert.equal(p.nodes.get("#artists-results").textContent, "3 album artists");
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), ["Kate Bush", "Massive Attack", "Pink Floyd"]);
+  assert.deepEqual(p.json("filteredArtistGroups().map(([, group]) => group.count)"), [2, 2, 2]);
+  assert.doesNotMatch(p.nodes.get("#artists-grid").innerHTML, /Track-only artist/);
+  assert.equal(p.run("editing"), null);
+  assert.ok(p.requests.every(r => ["/api/status", "/api/settings"].includes(r.url)), "Overview uses summaries without downloading tracks");
+});
+
+test("artist overview paginates beyond the sidebar limit and resets paging on search and sort", async () => {
+  const p = page();
+  p.run(`state.albums = Array.from({length: 202}, (_, i) => ({...state.albums[0], id: String(i), artist: "Artist " + String(i).padStart(3, "0")})); showArtistBrowse()`);
+  assert.equal((p.nodes.get("#artists-grid").innerHTML.match(/data-browse-artist=/g) || []).length, 24);
+  assert.equal(p.nodes.get("#artists-results").textContent, "202 album artists");
+  await p.click({"[data-artist-page]": {dataset: {artistPage: "1"}}});
+  assert.equal(p.run("artistBrowse.page"), 1);
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /Artist 024/);
+  p.nodes.get("#artists-sort").value = "za";
+  await p.nodes.get("#artists-sort").emit("change");
+  assert.equal(p.run("artistBrowse.page"), 0);
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /Artist 201/);
+  await p.click({"[data-artist-page]": {dataset: {artistPage: "1"}}});
+  p.nodes.get("#artists-search").value = "  ARTIST 201  ";
+  await p.nodes.get("#artists-search").emit("input");
+  p.flushTimers(150);
+  assert.equal(p.run("artistBrowse.page"), 0);
+  assert.equal(p.nodes.get("#artists-results").textContent, "1 album artist");
+  assert.equal((p.nodes.get("#artists-grid").innerHTML.match(/data-browse-artist=/g) || []).length, 1);
+  assert.equal(p.nodes.get("#artists-pagination").innerHTML, "");
+  p.nodes.get("#artists-search").value = "No matching artist";
+  await p.nodes.get("#artists-search").emit("input"); p.flushTimers(150);
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /No album artists match/);
+});
+
+test("artist cards use an available image, safe metadata and initials when an image is missing", () => {
+  const p = page();
+  p.run(`state.albums[0].artist_image = ""; state.albums[1].artist_image = "https://example.test/artist-150";
+    state.albums[2].artist = '<img onerror="bad">'; showArtistBrowse()`);
+  const html = p.nodes.get("#artists-grid").innerHTML;
+  assert.match(html, /https:\/\/example.test\/artist-300/);
+  assert.match(html, /&lt;img onerror=&quot;bad&quot;&gt;/);
+  assert.match(html, /<span>MA<\/span>/);
+  assert.doesNotMatch(html, /<img onerror=/);
+  assert.match(html, /loading="lazy" referrerpolicy="no-referrer"/);
+});
+
+test("an artist card opens all of that artist's albums and keeps music playing", async () => {
+  const p = livePage();
+  p.run('playTracks(state.details.get("1"), "100"); $("#filter").value = "cover"; $("#search").value = "No match"; showArtistBrowse()');
+  await p.click({"[data-browse-artist]": {dataset: {browseArtist: "Kate Bush"}}});
+  assert.equal(p.run("state.screen"), "albums");
+  assert.equal(p.run("state.artist"), "Kate Bush");
+  assert.equal(p.nodes.get("#filter").value, "all");
+  assert.equal(p.nodes.get("#search").value, "");
+  assert.equal(p.run("filteredAlbums().length"), 2);
+  assert.equal(p.nodes.get("#show-artists").classList.contains("active"), false);
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.ok(p.requests.every(r => !r.options?.body));
+});
+
+test("artist overview updates after local edits and handles library loading and empty results", () => {
+  const p = page();
+  p.run('showArtistBrowse(); applyLocally([{kind: "album", albumId: "1", fields: {artist: {after: "New artist"}}}]); render()');
+  assert.equal(p.nodes.get("#artists-results").textContent, "4 album artists");
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /New artist/);
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /1 album<\/span>/);
+  p.run("state.albums = []; state.loading = true; artistBrowse.page = 9; render()");
+  assert.equal(p.run("artistBrowse.page"), 0);
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /Loading album artists/);
+  p.run("state.loading = false; render()");
+  assert.match(p.nodes.get("#artists-grid").innerHTML, /No album artists match/);
+});
+
+test("sidebar artist navigation and overview remain reachable from the artist grid", async () => {
+  const p = page();
+  p.run("showArtistBrowse()");
+  await p.click({"[data-artist]": {dataset: {artist: "Pink Floyd"}}});
+  assert.equal(p.run("state.screen"), "albums");
+  assert.equal(p.run("state.artist"), "Pink Floyd");
+  p.run("showArtistBrowse()");
+  await p.click({"#show-overview": {}});
+  assert.equal(p.run("state.screen"), "overview");
+  assert.equal(p.nodes.get("#artists-page").hidden, true);
 });

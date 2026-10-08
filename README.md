@@ -8,7 +8,9 @@ Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.
 
 It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
 
-> **0.9.0 beta 1:** opening an album now shows its tracks and playback controls.
+> **0.9.0 beta 2:** browse **Album artists** as cards with photos and album counts,
+> search or sort their names, then open an artist's albums. Opening an album shows
+> its tracks and playback controls.
 > Choose **Edit album** to open the existing metadata editor. Playback continues
 > while browsing. This beta adds no shuffle, repeat or additional queue controls.
 > Download it into a separate folder and stop any running Tagcast server before
@@ -76,6 +78,10 @@ You can also set the client ID up front: `IBROADCAST_CLIENT_ID=... uv run tagcas
 The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by you only; settings from the earlier name, `~/.library-studio/`, are copied over on first start). Set `TAGCAST_HOME` to use a different folder. **Disconnect** revokes the token and deletes it. Use `--port` to change the port; the redirect URI changes with it.
 
 ## What it does
+
+- **Album artists** as a searchable, paginated grid with photos or initials and
+  album counts. Choose a card to browse all albums by that artist; the sidebar
+  remains available for quick navigation.
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
 - **Overview**: your account and iBroadcast settings, the collection in numbers (size, playing time, formats, uploads per year), what you play most, and **metadata health** (tracks without a genre, albums without a year, artists without an image, tracks without a cover), each opening the matching album filter. Payment details, IP addresses, sessions, messages and keys are never shown or sent to the page.

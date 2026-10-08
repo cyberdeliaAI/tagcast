@@ -186,6 +186,7 @@ function artistGroups() {
   const groups = new Map();
   for (const a of state.albums) {
     const group = groups.get(a.artist) || {count: 0, image: a.artist_image || ""};
+    group.image ||= a.artist_image || "";
     group.count += 1; groups.set(a.artist, group);
   }
   return [...groups].sort((a, b) => a[0].localeCompare(b[0]));
@@ -195,6 +196,7 @@ function renderArtists() {
   const query = $("#artist-search").value.toLocaleLowerCase();
   const groups = artistGroups(), matches = groups.filter(([name]) => name.toLocaleLowerCase().includes(query));
   $("#artist-count").textContent = groups.length.toLocaleString("en");
+  $("#browse-artist-count").textContent = groups.length.toLocaleString("en");
   $("#artists").innerHTML = matches.slice(0, 200).map(([name, g]) => `<button class="artist-button ${state.artist === name ? "active" : ""}" data-artist="${escapeHtml(name)}">${avatar(name, g.image)}<span>${escapeHtml(name)}</span><b>${g.count}</b></button>`).join("")
     + (matches.length > 200 ? `<p class="artist-more">${(matches.length - 200).toLocaleString("en")} more. Type to narrow the list.</p>` : "");
 }
@@ -259,6 +261,7 @@ function render() {
   $("#selection-count").textContent = `${state.selected.size} albums selected · ${state.artist || ""}`;
   $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
   if (typeof renderAlbumView === "function") renderAlbumView();
+  if (typeof renderArtistBrowse === "function") renderArtistBrowse();
 }
 
 // On an artist's page the artist image takes the place of the library total.

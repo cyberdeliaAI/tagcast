@@ -15,6 +15,7 @@
   <script src="artwork.js" defer></script>
   <script src="player.js" defer></script>
   <script src="album.js" defer></script>
+  <script src="artists.js" defer></script>
   <script src="overview.js" defer></script>
 </head>
 <body>
@@ -23,6 +24,7 @@
     <div class="nav-label">WORKSPACE</div>
     <button class="nav" id="show-overview"><span>◎</span> Overview</button>
     <button class="nav active" id="all-albums"><span>▦</span> Albums <b id="album-count">0</b></button>
+    <button class="nav" id="show-artists"><span>◉</span> Album artists <b id="browse-artist-count">0</b></button>
     <button class="nav" id="show-history"><span>◷</span> History <b id="history-count">0</b></button>
     <div class="nav-label artist-label">ALBUM ARTISTS <span id="artist-count"></span></div>
     <input id="artist-search" class="artist-search" aria-label="Find an artist" placeholder="Find an artist…">
@@ -30,10 +32,17 @@
     <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="settings-button">Sources &amp; keys ⚙</button><button class="text-button muted-link" id="import-button">Import library JSON ↗</button></div><input id="import-file" type="file" accept=".json,application/json" hidden></div>
   </aside>
   <main>
-    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><span class="pill">0.9.0 beta 1</span><button class="button small theme-button" id="theme-button" title="Light or dark: follows your system">◐ Auto</button><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><span class="pill">0.9.0 beta 2</span><button class="button small theme-button" id="theme-button" title="Light or dark: follows your system">◐ Auto</button><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
     <div class="notice"><span>ⓘ</span><span id="data-notice">Demo library with sample records. Nothing you edit here changes iBroadcast.</span></div>
     <section id="overview-page" class="overview" hidden aria-live="polite"></section>
     <section id="album-page" class="album-detail" hidden aria-label="Album details"></section>
+    <section id="artists-page" hidden aria-label="Album artists">
+      <div class="page-intro"><div><div class="eyebrow">THE PEOPLE BEHIND YOUR ALBUMS</div><h1>Album artists<span>.</span></h1><p>Explore your collection by artist. Open a card to see their albums.</p></div></div>
+      <div class="toolbar"><label class="search"><span>⌕</span><input id="artists-search" placeholder="Search album artists" aria-label="Search album artists"></label><select id="artists-sort" aria-label="Sort album artists"><option value="az">Name · A–Z</option><option value="za">Name · Z–A</option></select></div>
+      <div class="results-line"><span id="artists-results" role="status"></span></div>
+      <div id="artists-grid" class="artists-grid"></div>
+      <div id="artists-pagination" class="pagination"></div>
+    </section>
     <div id="albums-page">
     <section class="page-intro"><div><div class="eyebrow" id="page-eyebrow">A LITTLE ORDER. ONE ALBUM AT A TIME.</div><h1 id="page-title">Your albums<span>.</span></h1><p id="page-subtitle">Browse your collection, check the details, and make it yours.</p></div><div class="library-total" id="library-total"><strong id="total-tracks">0</strong><span>tracks in this workspace</span></div><div class="artist-panel" id="artist-panel" hidden></div></section>
     <section class="toolbar"><label class="search"><span>⌕</span><input id="search" placeholder="Search albums, artists, or genres" aria-label="Search albums"></label><select id="filter" aria-label="Filter albums"><option value="all">All albums</option><option value="year">Missing year</option><option value="genre">Missing genre</option><option value="artist_image">Artist without image</option><option value="cover">Missing cover</option><option value="combined">Combined genres</option><option value="composer">Missing composer</option><option value="small">1–2 tracks</option><option value="incomplete">Possibly incomplete</option><option value="edition">Named editions</option></select><select id="sort" aria-label="Sort albums"><option value="artist">Artist · A–Z</option><option value="title">Album · A–Z</option><option value="year">Year · oldest first</option><option value="newest">Year · newest first</option><option value="no_genre">Most tracks without genre</option><option value="fewest">Fewest tracks</option></select><div class="view-toggle" role="group" aria-label="View"><button data-view="grid" title="Covers" aria-label="Show covers">▦</button><button data-view="list" title="List" aria-label="Show list">☰</button></div></section>
