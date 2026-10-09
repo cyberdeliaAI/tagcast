@@ -2,23 +2,23 @@ name: Builds
 
 # Stand-alone Tagcast programs made with PyInstaller (tools/build_binary.py), for people
 # without Python or uv. A release gets them as downloads: a release you publish on GitHub,
-# and a "Publish Tagcast ..." commit once its release job in tests.yml has run. A push that
-# changes the build only checks that the programs start. Run this workflow by hand with a
-# tag to add the downloads to an existing release.
+# and a "Publish Tagcast ..." commit once its release job in tests.yml has run. Every push
+# goes through native checks too. Run this workflow by hand with a tag to add the
+# verified downloads and checksums to an existing release containing this build recipe.
 on:
   release:
     types: [published]
   workflow_run:
     workflows: [Tests]
     types: [completed]
-    branches: [main]
+    branches: [main, codex/album-player-beta]
+  pull_request:
   push:
     branches: [main]
-    paths: [tools/build_binary.py, tools/pyinstaller_entry.py, .github/workflows/builds.yml]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to add the downloads to, for example v0.10.0 (empty: only build)"
+        description: "Release tag to add the downloads to, for example v0.10.1 (empty: only build)"
         required: false
 
 permissions:
@@ -26,36 +26,81 @@ permissions:
 
 jobs:
   build:
-    name: Build · ${{ matrix.os }}
+    name: Build and check · ${{ matrix.target }}
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
        startsWith(github.event.workflow_run.head_commit.message, 'Publish Tagcast '))
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        # macos-latest is Apple Silicon; macos-15-intel builds for Intel Macs
-        os: [macos-latest, macos-15-intel, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-14
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+          - os: windows-2022
+            target: windows-x64
+          - os: ubuntu-22.04
+            target: linux-x64
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
-      # Tagcast comes from the release, the build files from this workflow's commit, so a
-      # release made before the build files existed (0.10.0) can get downloads too.
-      - name: Use the current build files
-        run: git checkout ${{ github.sha }} -- tools/build_binary.py tools/pyinstaller_entry.py
-      - uses: astral-sh/setup-uv@v6
+      - name: Keep older releases on their one-file recipe
+        if: hashFiles('tagcast.spec') == ''
+        run: git checkout 805bbeba3cec10a8b41fbb8672d0a8f34d23a87c -- tools/build_binary.py tools/pyinstaller_entry.py
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build and check that the program starts
-        run: uv run --frozen --with pyinstaller==6.22.3 python tools/build_binary.py
+      - uses: astral-sh/setup-uv@v6
+      - name: Check release tag
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          tag = 'v' + re.sub(r'b(\d+)$', r'-beta.\1', version)
+          if os.environ['RELEASE_TAG'] and os.environ['RELEASE_TAG'] != tag:
+              raise SystemExit(f'Release tag must be {tag}')
+          PY
+      - name: Install display support (Linux)
+        if: runner.os == 'Linux' && hashFiles('tagcast.spec') != ''
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+      - name: Build and verify extracted downloads (Linux)
+        if: runner.os == 'Linux' && hashFiles('tagcast.spec') != ''
+        run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
+      - name: Build and verify extracted downloads
+        if: runner.os != 'Linux' && hashFiles('tagcast.spec') != ''
+        shell: bash
+        run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
       - uses: actions/upload-artifact@v4
+        if: hashFiles('tagcast.spec') != ''
         with:
-          name: tagcast-${{ matrix.os }}
+          name: tagcast-${{ matrix.target }}
+          path: dist/packages/*
+          if-no-files-found: error
+      - name: Build legacy console download
+        if: hashFiles('tagcast.spec') == ''
+        run: uv run --frozen --python python --with pyinstaller==6.22.3 python tools/build_binary.py
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('tagcast.spec') == ''
+        with:
+          name: tagcast-${{ matrix.target }}
           path: dist/*.zip
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-reports-${{ matrix.target }}
+          path: build/reports/*.json
+          if-no-files-found: ignore
 
   release:
     name: Add the downloads to the release
@@ -87,4 +132,4 @@ jobs:
             echo "No release for this commit, so there is nothing to add the downloads to."
             exit 0
           fi
-          gh release upload "$TAG" downloads/*.zip --clobber
+          gh release upload "$TAG" downloads/* --clobber

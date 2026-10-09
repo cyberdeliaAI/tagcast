@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
+from . import __version__
 from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio
 from .library import ConflictError, LibraryError
@@ -230,17 +231,31 @@ def _already_running(port):
         return False
 
 
+def open_server(port):
+    """Bind before loading settings; callers own this server's lifecycle."""
+    handler = type("BoundHandler", (Handler,), {"studio": None, "port": port})
+    server = Server(("127.0.0.1", port), partial(handler, directory=str(STATIC)))
+    handler.port = server.server_port
+    try:
+        _log_to_file(Studio.default_home())
+        handler.studio = Studio()
+    except Exception:
+        server.server_close()
+        raise
+    return server
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="tagcast", description="Tagcast for iBroadcast")
+    parser.add_argument("--version", action="version", version=f"Tagcast {__version__}")
     parser.add_argument("--port", type=int, default=int(os.environ.get("TAGCAST_PORT", 8912)))
     parser.add_argument("--open", action="store_true", help="open the browser after starting")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     url = f"http://127.0.0.1:{args.port}"
 
-    handler = type("BoundHandler", (Handler,), {"studio": None, "port": args.port})
     try:
-        server = Server(("127.0.0.1", args.port), partial(handler, directory=str(STATIC)))
+        server = open_server(args.port)
     except OSError as error:
         if _already_running(args.port):
             print(f"Tagcast is already running: {url}", flush=True)
@@ -251,11 +266,10 @@ def main(argv=None):
               "Start Tagcast with --port 8913, for example.", flush=True)
         return 1
 
-    _log_to_file(Studio.default_home())
-    handler.studio = Studio()
     with server:
+        url = f"http://127.0.0.1:{server.server_port}"
         print(f"Tagcast: {url}", flush=True)
-        print(f"Settings and sign-in tokens: {handler.studio.home}", flush=True)
+        print(f"Settings and sign-in tokens: {server.RequestHandlerClass.func.studio.home}", flush=True)
         print("Stop Tagcast with Ctrl+C, or by closing this window.", flush=True)
         if args.open:
             webbrowser.open(url)

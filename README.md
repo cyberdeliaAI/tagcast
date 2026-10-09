@@ -8,6 +8,12 @@ Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.
 
 It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
 
+> **0.10.1:** desktop downloads now include a macOS **Tagcast.app**, a Windows
+> launcher without a console and a Linux package, each with the existing icon,
+> a separate CLI and a SHA-256 checksum. The launcher opens the browser and lets
+> you stop its local server. Builds verify the extracted download before release.
+> See [native builds](docs/native-builds.md).
+
 > **0.10.0:** a new **Tracks** page searches all your tracks by title, artist,
 > album or composer; play a track or open its album. The discs of a multi-disc set
 > are one album with one cover. **Move to trash** removes tracks, such as
@@ -47,6 +53,34 @@ Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callba
 
 ## 2. Run
 
+### Standalone downloads (no Python installation)
+
+Download the package for your system from [Releases](https://github.com/cyberdeliaAI/tagcast/releases/latest).
+
+| System | Package ending | Start |
+|---|---|---|
+| macOS, Apple Silicon | `macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `linux-x64.tar.gz` | Extract and run `./Tagcast` inside the `Tagcast` folder. |
+
+From **0.10.1**, a small launcher window opens your browser. Keep it open while
+using Tagcast; **Stop Tagcast and close** or closing that window stops the server
+it started. An already-running server stays running. Keep the Windows/Linux
+executables and `_internal` folder together.
+
+The programs are not certificate signed. If your OS blocks them:
+
+- macOS: **System Settings → Privacy & Security → Open Anyway**.
+- Windows: **More info → Run anyway**.
+
+Settings remain in `~/.tagcast/`, or your configured `TAGCAST_HOME`. See the
+[native build guide](docs/native-builds.md) for CLI usage, checksums and platform coverage.
+The older **0.10.0** downloads contain a single console program named `tagcast`
+(`tagcast.exe` on Windows); close its console or use Ctrl+C to stop it.
+
+### Run from source
+
 **Double-click** the start script in this folder. It opens Tagcast in your browser; close its window to stop Tagcast.
 
 | System | Start script |
@@ -56,13 +90,6 @@ Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callba
 | Linux | `./start-tagcast.sh` |
 
 The scripts use [uv](https://docs.astral.sh/uv/) when it's installed (set `TAGCAST_NO_UV=1` to skip it). Otherwise they need Python 3.11 or newer and, on the first start, install Tagcast in a `.venv` next to them. Starting it again while it runs just opens the running Tagcast.
-
-No Python? From 0.10.0 on, every [release](https://github.com/cyberdeliaAI/tagcast/releases/latest) has a ready-made program under **Assets**: `tagcast-<version>-macos-arm64.zip` (Apple Silicon), `-macos-x64.zip` (Intel Mac), `-windows-x64.zip` or `-linux-x64.zip`. Unpack it and double-click `tagcast` (`tagcast.exe` on Windows). The program isn't signed, so the first time your computer asks whether to trust it:
-
-- macOS: if it refuses to open, go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
-- Windows: if "Windows protected your PC" appears, click **More info**, then **Run anyway**.
-
-The program keeps its settings in `~/.tagcast/` too.
 
 Or from a terminal, with uv:
 
@@ -119,6 +146,10 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 - Without an account it still runs with demo data, which is never saved online.
 
 ### Screenshots
+
+The workspace screenshots below show **0.9.0**. They illustrate browsing,
+playback and editing; the current version also has Tracks, multi-disc sets,
+trash review and the updated sidebar described above.
 
 **Browse albums** in the light theme: search your collection, filter missing metadata and switch between covers and a compact list. Playback continues while browsing.
 
@@ -214,7 +245,13 @@ The [public API reference](https://help.ibroadcast.com/en/developer/api) documen
 - the app requests the scopes `user.library:read`, `user.library:write` and `user.account:read`;
 - if iBroadcast refuses a write mode for third-party apps, the save reports **Failed** with iBroadcast's message and nothing else is sent.
 
-Tested against a real account (286,789 tracks): loading, caching, `update_track` (genre), streaming and `get_artwork`. Artwork upload, `set_artwork` / `set_artist_artwork` and `trash` are tested against the fake iBroadcast server (`tests/mock_ibroadcast.py`) only: try one album first, and use **Undo** if it isn't right.
+Tested against a real account (286,789 tracks): loading, caching, `update_track`
+(genre), streaming and `get_artwork`. The 0.10.0 release notes also record track
+search, disc sets and trash being tried on a real library. Automated write tests
+use the fake iBroadcast server (`tests/mock_ibroadcast.py`); they do not establish
+live-service compatibility. Artwork upload and `set_artwork` / `set_artist_artwork`
+have only documented mock coverage. **Undo** in Tagcast applies to covers and
+artist images; Tagcast cannot restore tracks from trash.
 
 ## Styles
 
@@ -223,7 +260,10 @@ Tested against a real account (286,789 tracks): loading, caching, `update_track`
 ## Tests
 
 ```bash
-uv run --with pytest pytest          # or:
+uv run --frozen pytest -q
+uv run --frozen ruff check src tests tools
+python3 tools/release_info.py
+# Without uv:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 for f in src/tagcast/static/*.js; do node --check "$f"; done
 node --test tests/frontend.test.cjs
