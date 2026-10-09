@@ -60,6 +60,8 @@ Or install Tagcast and `requirements-build.txt` in a venv and run
 The existing SVG supplies the native icons. Generated assets, work files and
 reports are under ignored `build/`; verified archives are under `dist/packages/`.
 Project and bundled dependency license notices are included.
+If Python omits the Tcl/Tk license files, the build retrieves their notices from
+the matching upstream release tags and records the source URLs in the package.
 
 Both executables are tested from the extracted archive, outside the checkout in
 a path containing spaces. Checks start the real launcher with temporary settings,
@@ -74,7 +76,7 @@ and the Tagcast entry in `uv.lock` consistent. `python tools/release_info.py`
 checks them. Store release notes in `.github/release-notes/VERSION.md`.
 
 A main commit named exactly `Publish Tagcast VERSION` creates the stable release
-after all regression and start-script checks pass. The beta branch retains the
+after all regression, start-script and native build checks pass. The beta branch retains the
 `Publish Tagcast X.Y.Z beta N` convention, Python version `X.Y.ZbN`, release tag
 `vX.Y.Z-beta.N` and matching `X.Y.Z-beta.N.md` notes. Beta releases do not replace
 the latest stable release.

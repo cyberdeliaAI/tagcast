@@ -1,5 +1,6 @@
 """A release must not carry a different page, package or lockfile version."""
 
+import json
 import os
 import sys
 import tempfile
@@ -8,10 +9,27 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-from release_info import main, release_info  # noqa: E402
+from release_info import main, release_info, wait_for_native_builds  # noqa: E402
 
 
 class ReleaseInfoTests(unittest.TestCase):
+    def test_publication_waits_for_native_build_success(self):
+        def response(status, conclusion):
+            return json.dumps({"workflow_runs": [{"id": 1, "head_sha": "abc",
+                "event": "push", "status": status, "conclusion": conclusion,
+                "html_url": "https://github.com/example/build"}]})
+        with patch.dict(os.environ, {"GH_REPO": "cyberdeliaAI/tagcast"}), patch("release_info.subprocess.check_output", side_effect=[response("in_progress", None), response("completed", "success")]), patch("release_info.time.sleep") as wait:
+            wait_for_native_builds("abc")
+        wait.assert_called_once_with(15)
+
+    def test_native_failure_blocks_publication(self):
+        response = json.dumps({"workflow_runs": [{"id": 1, "head_sha": "abc",
+            "event": "push", "status": "completed", "conclusion": "failure",
+            "html_url": "https://github.com/example/build"}]})
+        with patch.dict(os.environ, {"GH_REPO": "cyberdeliaAI/tagcast"}), patch("release_info.subprocess.check_output", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "Native builds failed"):
+                wait_for_native_builds("abc")
+
     def fixture(self, version="0.10.1", display="0.10.1"):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

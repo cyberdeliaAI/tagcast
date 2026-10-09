@@ -157,7 +157,8 @@ python3 tools/build_dark_css.py --check
   extraction, CLI help/version, HTTP assets and macOS signature integrity.
   Preserve symlinks, license notices, SHA-256 files and tag/version checks.
 - Release creation uses the matching `Publish Tagcast VERSION` commit after
-  tests pass. Stable/beta conventions and rebuilds are in `docs/native-builds.md`.
+  tests pass; stable releases also wait for all four native builds to pass.
+  Stable/beta conventions and rebuilds are in `docs/native-builds.md`.
 - Preserve the start scripts for these platforms, with both uv and the
   Python/venv fallback.
 - Preserve explicit MIME types for static files and platform-specific
