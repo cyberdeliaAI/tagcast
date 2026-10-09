@@ -1,0 +1,84 @@
+name: Builds
+
+# Stand-alone Tagcast programs made with PyInstaller (tools/build_binary.py), for people
+# without Python or uv. A release gets them as downloads: a release you publish on GitHub,
+# and a "Publish Tagcast ..." commit once its release job in tests.yml has run. A push that
+# changes the build only checks that the programs start. Run this workflow by hand with a
+# tag to add the downloads to an existing release.
+on:
+  release:
+    types: [published]
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths: [tools/build_binary.py, tools/pyinstaller_entry.py, .github/workflows/builds.yml]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to add the downloads to, for example v0.10.0 (empty: only build)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build · ${{ matrix.os }}
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_commit.message, 'Publish Tagcast '))
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Build and check that the program starts
+        run: uv run --frozen --with pyinstaller==6.22.3 python tools/build_binary.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tagcast-${{ matrix.os }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Add the downloads to the release
+    needs: build
+    if: >-
+      github.event_name == 'release' || github.event_name == 'workflow_run' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tagcast-*
+          path: downloads
+          merge-multiple: true
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$TAG" ]; then
+            # the release job in tests.yml publishes a "Publish Tagcast" commit as its own target
+            TAG=$(gh api "repos/$GH_REPO/releases" --jq ".[] | select(.target_commitish == \"$COMMIT\") | .tag_name" | head -n 1)
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No release for this commit, so there is nothing to add the downloads to."
+            exit 0
+          fi
+          gh release upload "$TAG" downloads/*.zip --clobber

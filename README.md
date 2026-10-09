@@ -57,6 +57,13 @@ Want to use browser sign-in instead of a code? Add `http://127.0.0.1:8912/callba
 
 The scripts use [uv](https://docs.astral.sh/uv/) when it's installed (set `TAGCAST_NO_UV=1` to skip it). Otherwise they need Python 3.11 or newer and, on the first start, install Tagcast in a `.venv` next to them. Starting it again while it runs just opens the running Tagcast.
 
+No Python? From 0.10.0 on, every [release](https://github.com/cyberdeliaAI/tagcast/releases/latest) has a ready-made program under **Assets**: `tagcast-<version>-macos-arm64.zip` (Apple Silicon), `-windows-x64.zip` or `-linux-x64.zip`. Unpack it and double-click `tagcast` (`tagcast.exe` on Windows). The program isn't signed, so the first time your computer asks whether to trust it:
+
+- macOS: if it refuses to open, go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+- Windows: if "Windows protected your PC" appears, click **More info**, then **Run anyway**.
+
+The program keeps its settings in `~/.tagcast/` too.
+
 Or from a terminal, with uv:
 
 ```bash
