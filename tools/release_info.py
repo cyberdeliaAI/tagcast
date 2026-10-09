@@ -5,10 +5,32 @@ import json
 import os
 import re
 import subprocess
+import time
 import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def wait_for_native_builds(commit):
+    """Do not publish a release whose four native downloads failed to build."""
+    repository = os.environ["GH_REPO"]
+    deadline = time.monotonic() + 1800
+    while time.monotonic() < deadline:
+        output = subprocess.check_output([
+            "gh", "api", f"repos/{repository}/actions/workflows/builds.yml/runs"
+            f"?head_sha={commit}&event=push&per_page=10"], text=True)
+        runs = [run for run in json.loads(output)["workflow_runs"]
+                if run["head_sha"] == commit and run["event"] == "push"]
+        if runs:
+            latest = max(runs, key=lambda run: run["id"])
+            if latest["status"] == "completed":
+                if latest["conclusion"] != "success":
+                    raise RuntimeError(f'Native builds failed: {latest["html_url"]}')
+                return
+        print("Waiting for all native builds to pass", flush=True)
+        time.sleep(15)
+    raise RuntimeError("Timed out waiting for native builds")
 
 
 def release_info(root=ROOT):
@@ -50,6 +72,8 @@ def main():
         raise ValueError("The release commit message does not match the package version")
     if not (ROOT / info["notes"]).is_file():
         raise ValueError(f'Release notes are missing: {info["notes"]}')
+    if not info["prerelease"]:
+        wait_for_native_builds(commit)
     command = ["gh", "release", "create", info["tag"], "--target", commit,
                "--title", f'Tagcast {info["display"]}', "--notes-file", info["notes"]]
     command += ["--prerelease", "--latest=false"] if info["prerelease"] else ["--latest"]

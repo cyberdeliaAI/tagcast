@@ -1,6 +1,7 @@
 """Desktop ownership checks use real local HTTP with a display-independent UI."""
 
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -16,6 +17,14 @@ class DesktopTests(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.TemporaryDirectory()
         self.addCleanup(self.home.cleanup)
+        handlers = set(logging.getLogger().handlers)
+
+        def close_test_logs():
+            for handler in set(logging.getLogger().handlers) - handlers:
+                logging.getLogger().removeHandler(handler)
+                handler.close()
+
+        self.addCleanup(close_test_logs)
         env = patch.dict(os.environ, {"TAGCAST_HOME": self.home.name})
         env.start()
         self.addCleanup(env.stop)

@@ -6,6 +6,7 @@ import importlib.metadata as metadata
 import io
 import json
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -15,9 +16,32 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+import requests
 from release_info import release_info
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def copy_tk_license(name, library, version, destination):
+    """Some Python distributions omit the Tcl/Tk license beside the runtime."""
+    destination.mkdir(parents=True, exist_ok=True)
+    notice = next((p for folder in (library, library.parent)
+                   for p in folder.glob("license*") if p.is_file()), None)
+    if notice is not None:
+        shutil.copyfile(notice, destination / notice.name)
+        return
+    if name not in {"Tcl", "Tk"} or not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        raise RuntimeError(f"Cannot locate a license for {name} {version}")
+    # Retrieve the notice for the exact installed release, never a moving main branch.
+    url = (f"https://raw.githubusercontent.com/tcltk/{name.lower()}/"
+           f"core-{version.replace('.', '-')}/license.terms")
+    with requests.get(url, timeout=45, stream=True) as response:
+        response.raise_for_status()
+        content = response.raw.read(32769, decode_content=True)
+    if len(content) > 32768 or not content.startswith(b"This software is copyrighted"):
+        raise RuntimeError(f"Invalid upstream license notice for {name} {version}")
+    (destination / "license.terms").write_bytes(content)
+    (destination / "SOURCE.txt").write_text(url + "\n", encoding="utf-8")
 
 
 def system_name():
@@ -57,14 +81,8 @@ def prepare_assets():
     try:
         for name, expression in (("Tcl", "info library"), ("Tk", "set tk_library")):
             library = Path(root.tk.eval(expression))
-            notice = next((p for folder in (library, library.parent)
-                           for p in folder.glob("license*") if p.is_file()), None)
-            if notice is None:
-                raise RuntimeError(f"The bundled {name} license is missing")
-            (licenses / name).mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(notice, licenses / name / notice.name)
-        versions["Tcl"] = root.tk.call("info", "patchlevel")
-        versions["Tk"] = root.tk.call("package", "present", "Tk")
+            versions[name] = str(root.tk.call("package", "present", name))
+            copy_tk_license(name, library, versions[name], licenses / name)
     finally:
         root.destroy()
     for name in ("ibroadcast", "requests", "certifi", "charset-normalizer", "idna", "urllib3", "PyInstaller"):
