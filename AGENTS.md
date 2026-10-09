@@ -41,7 +41,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   `mock_ibroadcast.py`.
 - `tools/build_dark_css.py`: generates `static/dark.css` from `static/style.css`.
 - `tools/build_binary.py` and `tools/pyinstaller_entry.py`: build a stand-alone
-  program with PyInstaller. `.github/workflows/builds.yml` builds it on macOS,
+  program with PyInstaller. `.github/workflows/builds.yml` builds it on macOS (Apple Silicon and Intel),
   Windows and Linux and adds the zips to each release.
 
 The JavaScript files share a single global scope. Keep top-level names unique
