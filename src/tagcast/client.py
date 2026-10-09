@@ -42,6 +42,7 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "while it is. Turn it off in iBroadcast, save the album changes, then turn "
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
+MAX_TRASH = 500  # tracks per trash request
 NO_RETRY = {"create_artist"}  # not safe to repeat: a lost answer would create a second artist
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
@@ -611,6 +612,16 @@ class Studio:
             raise ApiError("Choose between 1 and 500 albums.")
         return [library.album_view(number(i)) for i in ids]
 
+    def search_tracks(self, query):
+        query = str(query or "").strip()
+        if len(query) > 200:
+            raise ApiError("Use a shorter search.")
+        with self.lock:
+            library = self.library
+        if library is None:
+            library, _ = self._current(self._require_client())
+        return library.search_tracks(query)
+
     def save(self, changes):
         client = self._require_client()
         if not self.save_lock.acquire(blocking=False):
@@ -893,6 +904,42 @@ class Studio:
                     else {"artwork_id": now},
                     "results": [{"kind": target, "id": str(item_id), "label": label,
                                  "fields": [field], "status": "sent"}]}
+        finally:
+            self.save_lock.release()
+
+    def trash_tracks(self, body):
+        """Move tracks to iBroadcast's trash after checking them against the library.
+
+        body: {"tracks": [{"id", "album_id", "title"}]}, the tracks as the page showed them.
+        An album is in the trash once all of its tracks are. Tagcast can't take tracks
+        out of the trash again.
+        """
+        items = [i for i in body.get("tracks") or [] if isinstance(i, dict)]
+        wanted = {number(i.get("id")): (number(i.get("album_id")), text(i.get("title"))[:300]) for i in items}
+        if not wanted or len(wanted) != len(items) or 0 in wanted or any(not a for a, _ in wanted.values()):
+            raise ApiError("Choose the tracks to move to the trash.")
+        if len(wanted) > MAX_TRASH:
+            raise ApiError(f"Move at most {MAX_TRASH} tracks to the trash at once.")
+        client = self._require_client()
+        if not self.save_lock.acquire(blocking=False):
+            raise ApiError("Another save is still running.")
+        try:
+            fresh, _ = self._current(client)
+            if any(track_id not in fresh.active_track_ids(album_id) for track_id, (album_id, _) in wanted.items()):
+                raise ConflictError("These tracks changed in iBroadcast since you loaded them. "
+                                    "Reload the library and try again.")
+            client._jsonrequest("trash", tracks=list(wanted))
+
+            def result(track_id, status):
+                return {"kind": "track", "id": str(track_id), "label": wanted[track_id][1] or "Track",
+                        "fields": ["trash"], "status": status}
+
+            def check(after):
+                return [result(t, "saved" if t not in after.tracks or after.tracks[t].get("trashed")
+                               else "unverified") for t in wanted]
+
+            job = self._check_later(client, self.downloads, check)
+            return {"results": [result(t, "sent") for t in wanted], "job": job}
         finally:
             self.save_lock.release()
 

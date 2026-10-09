@@ -125,6 +125,7 @@
 :root[data-theme="dark"] .artist-card:hover{background:#2d2f2a}
 :root[data-theme="dark"] .artist-card-photo{background:#4f554d;color:#b2cbba}
 :root[data-theme="dark"] .album-tracks{background:#1b2520}
+:root[data-theme="dark"] .album-tracks tr.found td{background:#2d2924}
 :root[data-theme="dark"] .album-tracks tr.playing td{background:#2b2e26}
 
 /* set by hand */
@@ -264,6 +265,7 @@
 :root:not([data-theme="light"]) .artist-card:hover{background:#2d2f2a}
 :root:not([data-theme="light"]) .artist-card-photo{background:#4f554d;color:#b2cbba}
 :root:not([data-theme="light"]) .album-tracks{background:#1b2520}
+:root:not([data-theme="light"]) .album-tracks tr.found td{background:#2d2924}
 :root:not([data-theme="light"]) .album-tracks tr.playing td{background:#2b2e26}
 
 /* set by hand */

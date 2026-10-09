@@ -1,6 +1,6 @@
 [project]
 name = "tagcast"
-version = "0.9.0"
+version = "0.10.0"
 description = "Tagcast for iBroadcast: an album-by-album metadata editor with online sources, covers and playback"
 requires-python = ">=3.11"
 license = "MIT"

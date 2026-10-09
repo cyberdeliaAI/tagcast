@@ -11,6 +11,7 @@ view built from a freshly downloaded library, so a conflict is detected no matte
 where the other edit came from.
 """
 
+import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
 
@@ -29,6 +30,7 @@ NUMBER_FIELDS = {"year", "disc", "track"}
 REQUIRED_TEXT = {"name", "title", "artist"}
 MAX_CHANGES = 2000
 MAX_IDS_PER_REQUEST = 500
+MAX_TRACK_RESULTS = 1000
 
 
 class LibraryError(ValueError):
@@ -124,6 +126,19 @@ def additional_artists(track, mapping=None):
     return out
 
 
+def title_key(value):
+    """A track title for comparing: case and spacing don't count."""
+    return " ".join(text(value).casefold().split())
+
+
+def fold(value):
+    """Text for searching: case, accents and spacing don't count ("Björk" finds "bjork")."""
+    value = text(value)
+    if not value.isascii():
+        value = "".join(c for c in unicodedata.normalize("NFKD", value) if not unicodedata.combining(c))
+    return " ".join(value.casefold().split())
+
+
 def stored_genres(track):
     """A track's genres as iBroadcast keeps them: the main genre, then genres_additional.
 
@@ -176,6 +191,7 @@ class Library:
         self.playlist_count = (sum(1 for k in playlists if str(k).isdigit()) if playlists is not None
                                else counts.get("playlists"))  # None: unknown (older cache)
         self._stats = None
+        self._search = None
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
@@ -280,6 +296,7 @@ class Library:
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
         genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
+        titles = []
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
@@ -292,6 +309,8 @@ class Library:
             no_cover += not number(track.get("artwork_id"))
             no_composer += not self.composer_entries(track)
             numbers.add(number(track.get("track")))
+            titles.append(title_key(track.get("title")))
+        titles = [t for t in titles if t]
         return {
             "id": str(album_id),
             "name": text(album.get("name")) or "Untitled album",
@@ -311,10 +330,62 @@ class Library:
             "no_composer": no_composer,
             # numbers missing below the highest one, e.g. 1, 2, 5 -> 2: maybe incomplete
             "track_gaps": (max(numbers) - len(numbers - {0})) if numbers - {0} else 0,
+            # tracks whose title appears twice in this album, e.g. one file uploaded twice
+            "duplicates": len(titles) - len(set(titles)),
         }
 
     def album_index(self):
         return [self.album_summary(i) for i in self.album_ids()]
+
+    def search_tracks(self, query, limit=MAX_TRACK_RESULTS):
+        """Active tracks whose title, artist, album or composers hold every word of the query,
+        in album order. The search text is worked out once per library copy."""
+        words = fold(query).split()
+        if not words:
+            return {"tracks": [], "total": 0}
+        if self._search is None:
+            self._search = self._search_index()
+        found = [(track_id, album_id) for haystack, track_id, album_id in self._search
+                 if all(word in haystack for word in words)]
+        return {"tracks": [self.track_row(*f) for f in found[:limit]], "total": len(found)}
+
+    def _search_index(self):
+        rows, names = [], {}
+
+        def name(artist_id):  # artist names repeat a lot: fold each one once
+            if artist_id not in names:
+                names[artist_id] = fold(self.artist_name(artist_id))
+            return names[artist_id]
+
+        for album_id in self.album_ids():
+            album = self.albums[album_id]
+            title, album_artist = fold(album.get("name")), name(number(album.get("artist_id")))
+            order = (album_artist, title, number(album.get("disc")), album_id)
+            for track_id in self.active_track_ids(album_id):
+                track = self.tracks[track_id]
+                track_title = fold(track.get("title"))
+                words = " ".join([track_title, name(number(track.get("artist_id"))), title, album_artist,
+                                  *(name(e["artist_id"]) for e in self.composer_entries(track))])
+                rows.append((order + (number(track.get("track")) or 9999, track_title, track_id),
+                             words, track_id, album_id))
+        rows.sort(key=lambda row: row[0])
+        return [row[1:] for row in rows]
+
+    def track_row(self, track_id, album_id):
+        """One search result: the track plus the album it is on."""
+        track, album = self.tracks[track_id], self.albums[album_id]
+        return {
+            "id": str(track_id),
+            "album_id": str(album_id),
+            "title": text(track.get("title")) or "Untitled track",
+            "artist": self.artist_name(track.get("artist_id")),
+            "composers": [self.artist_name(e["artist_id"]) for e in self.composer_entries(track)],
+            "album": text(album.get("name")) or "Untitled album",
+            "disc": number(album.get("disc")),
+            "track": number(track.get("track")),
+            "year": number(track.get("year")) or number(album.get("year")),
+            "length": number(track.get("length")),
+        }
 
     def stats(self, top=10):
         """Numbers for the overview, worked out once per library copy."""

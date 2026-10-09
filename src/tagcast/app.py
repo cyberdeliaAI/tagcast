@@ -125,6 +125,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/albums":
             ids = [i for i in (parse_qs(url.query).get("ids") or [""])[0].split(",") if i]
             self._run(lambda: {"albums": self.studio.album_details(ids)})
+        elif url.path == "/api/tracks":
+            self._run(lambda: self.studio.search_tracks(query.get("q")))
         elif url.path == "/callback":
             self._callback(parse_qs(url.query))
         elif url.path.startswith("/api/"):
@@ -152,6 +154,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/settings": self.studio.save_settings,
             "/api/artwork": self.studio.change_artwork,
             "/api/artwork/undo": self.studio.undo_artwork,
+            "/api/trash": self.studio.trash_tracks,
         }
         if path not in routes:
             self._json(404, {"error": "Unknown endpoint."})

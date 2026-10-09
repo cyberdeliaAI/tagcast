@@ -288,9 +288,19 @@ img.brand-mark{background:none;border-radius:10px;padding:0}
 .album-tracks td{padding:14px 16px;border-bottom:1px solid var(--line)}
 .album-tracks strong{display:block;font-weight:500;overflow-wrap:anywhere}
 .album-tracks small{display:block;color:var(--muted);margin-top:5px;font-size:11px}
+.disc-icons{display:inline-flex;align-items:center;gap:3px;vertical-align:-3px}.disc-icons svg{width:15px;height:15px;fill:currentColor;fill-opacity:.15;fill-rule:evenodd;stroke:currentColor;stroke-width:1.2}.disc-icons small{margin-left:3px;font-size:inherit}
+.track-open{border:0;background:none;padding:0;color:inherit;text-align:left;font:inherit}.track-open:hover{color:var(--green);text-decoration:underline}.track-results .track-number{width:52px}.track-results .track-year{width:70px;color:var(--muted);font-variant-numeric:tabular-nums}@media(max-width:760px){.track-results .track-year{display:none}}
+.trash-check{margin:0 8px 0 0;accent-color:var(--green);vertical-align:middle}.album-tracks.trash-mode .track-number{width:104px}.trash-bar{margin:0 0 14px}.trash-row{font-size:12px;margin:7px 0}
+.album-tracks tr.disc-row td{padding:20px 16px 8px;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.album-tracks tr.disc-gap td{height:32px;padding:0;background:var(--paper);border-left:hidden;border-right:hidden}
+.disc-row .text-action{margin-left:14px;font-size:11px;letter-spacing:0;text-transform:none;font-weight:400}
+.track-table tr.disc-row td{width:auto;padding:16px 9px 6px;font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.track-table tr.disc-row:not(:first-child) td{padding-top:34px}
 .album-tracks .track-number{width:78px;white-space:nowrap}
 .album-tracks .track-time{width:80px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 .album-track-play{border:0;background:none;color:var(--green);padding:6px;margin-right:5px;font-size:12px}
+.album-tracks tr.found td{background:#fbf3e6}.album-tracks tr.found td:first-child{box-shadow:inset 3px 0 0 var(--orange)}
 .album-tracks tr.playing td{background:#eef4e2}
 .album-tracks tr.playing .album-track-play{color:var(--orange)}
 @media(max-width:760px){.album-detail-header{align-items:flex-start;gap:18px}.album-detail-header>.cover{width:110px}.album-detail-header .cover-caption{display:none}.album-detail-info h1{font-size:24px;letter-spacing:-.7px}.album-tracks td,.album-tracks th{padding:12px 9px}.album-tracks .track-number{width:65px}.album-tracks .track-time{width:60px}.topbar{height:auto;min-height:70px;padding:14px 0;flex-direction:column;align-items:flex-start;gap:12px}.top-actions{gap:8px;flex-wrap:wrap;justify-content:flex-start}.topbar>div:first-child{min-width:0;overflow-wrap:anywhere}}
+.page-back{margin-top:30px}.page-back+.page-intro{padding-top:26px}

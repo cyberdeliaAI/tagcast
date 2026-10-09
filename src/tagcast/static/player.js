@@ -14,6 +14,12 @@ function playTracks(album, startId) {
   playCurrent();
 }
 
+// An album of several discs plays as one album, disc after disc.
+function playableAlbum(id) {
+  const discs = shelfIds(id).map(i => state.details.get(i));
+  return discs.every(Boolean) ? joinDiscs(discs) : state.details.get(String(id));
+}
+
 function playCurrent() {
   const track = player.queue[player.index];
   if (!track) return;
@@ -71,7 +77,7 @@ document.addEventListener("click", event => {
   if (!play && !all) return;
   if (!live()) return;
   const albumId = (play || all).dataset.playAlbumId;
-  const album = albumId ? state.details.get(String(albumId)) : event.target.closest("#editor") && !editing?.bulk ? editing?.originals[0] : null;
+  const album = albumId ? playableAlbum(albumId) : event.target.closest("#editor") && editing && !editing.bulk ? joinDiscs(editing.originals) : null;
   if (!album) return;
   const id = play?.dataset.play;
   if (id && player.queue[player.index]?.id === id && player.album?.id === album.id) {

@@ -8,12 +8,12 @@ Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.
 
 It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
 
-> **0.9.0:** browse **Album artists** as cards with photos and album counts,
-> search or sort their names, then open an artist's albums. Opening an album shows
-> its tracks and playback controls.
-> Choose **Edit album** to open the existing metadata editor. Playback continues
-> while browsing. The sidebar now contains Overview, Albums, Album artists and
-> History; artist search is available in the full Album artists overview.
+> **0.10.0:** a new **Tracks** page searches all your tracks by title, artist,
+> album or composer; play a track or open its album. The discs of a multi-disc set
+> are one album with one cover. **Move to trash** removes tracks, such as
+> duplicates, after a review. New filters find albums with duplicate tracks and
+> album artists without an image, you choose how many items a page shows, and the
+> browser's Back and Forward buttons work on every page.
 > Stop any running Tagcast server before starting the updated version; otherwise
 > the start script opens the existing instance. Your usual account settings remain
 > available in `~/.tagcast/`, or your configured `TAGCAST_HOME`.
@@ -80,14 +80,28 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 ## What it does
 
 - **Album artists** as a searchable, paginated grid with photos or initials and
-  album counts. Choose a card to browse all albums by that artist.
+  album counts; Tagcast opens here. Choose a card to browse all albums by that artist.
+- Album artists can be filtered to those **without an image**.
+- Choose **24, 50, 100 or 200 per page**, for albums and for album artists separately
+  (Tracks: 50, 100 or 200); Tagcast remembers it in this browser.
+- **Back** works like on any website: the browser's Back and Forward buttons, and
+  "← Back" on an album or artist page, return to the page you came from with its
+  search, filter and page. Every page has its own address (for example `#/album/123`).
+- **Albums of several discs are one album**: a 3-CD set is one card with all its
+  tracks, and its album page lists the discs one after the other. See
+  [Combine Multi-Disc Album Sets](#combine-multi-disc-album-sets) below.
+- **Tracks**: search all your tracks at once by title, artist, album or composer.
+  Case and accents don't count, so `bjork` finds Björk. Results are listed album by
+  album. ▶ plays a track with the rest of its album after it; the title or album
+  opens the album page with that track marked. A search shows at most 1,000 tracks.
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
 - **Overview**: your account and iBroadcast settings, the collection in numbers (size, playing time, formats, uploads per year), what you play most, and **metadata health** (tracks without a genre, albums without a year, artists without an image, tracks without a cover), each opening the matching album filter. Payment details, IP addresses, sessions, messages and keys are never shown or sent to the page.
-- Covers or a compact list. Search, and filter with counts on missing year, genre, cover or composer, artists without an image, combined genres, albums with only 1–2 tracks, albums that look incomplete (gaps in the track numbers, like 1, 2, 5) and named editions. **Next album** walks through a filter.
+- Covers or a compact list. Search, and filter with counts on missing year, genre, cover or composer, artists without an image, combined genres, albums with only 1–2 tracks, albums that look incomplete (gaps in the track numbers, like 1, 2, 5), **duplicate tracks** (the same title twice in one album, ignoring case and spacing; the album page marks both copies) and named editions. **Next album** walks through a filter.
 - **Composers** (handy for classical music) as labels per album or per track, saved as iBroadcast's composer credits; other credits such as featured artists stay as they are.
 - Edit one album: title, album artist, year, disc number, genre for all tracks, and each track individually.
 - Select albums **within one artist** and change only the fields you tick.
+- **Move to trash**: on an album page, choose **Move to trash…**, tick tracks (or **Select extra copies** of duplicate tracks, or **Select all** for the whole album), review them and confirm. Tagcast first checks that the tracks are still on that album in iBroadcast, then moves them to iBroadcast's trash and reads the library back. An album without tracks disappears. Tagcast can't take tracks back out of the trash.
 - **Genres as labels**: the first is the main genre, the others go to iBroadcast's additional genres, so a track shows up under each of them. Tags uploaded as one text, such as “Pop;Rock”, are marked; **Split** turns them into separate genres (per label, or **Split combined genres** for the whole album), and the **Combined genres** filter lists every album that has them.
 - **Online sources** next to every album, side by side like a tag editor's tag sources: year, genres and covers from MusicBrainz (with Cover Art Archive), Deezer, Apple Music, TheAudioDB, and with your own key Discogs and Last.fm. Click a year or genre to put it in the form, Shift-click to add a genre, or **Use all**.
 - **Change the album cover or the artist image**: from the sources (artist images also from fanart.tv with a key), from images iBroadcast already has, or your own file, pasted image or address. Old and new side by side, with the size.
@@ -95,7 +109,7 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
   or start from a chosen track. **Edit album** opens the metadata editor.
 - Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.
 - Light and dark theme: **Auto** follows your system; the button at the top switches to Light or Dark.
-- Without an account it still runs with demo data, or with an imported library JSON. Those are never saved online.
+- Without an account it still runs with demo data, which is never saved online.
 
 ### Screenshots
 
@@ -146,6 +160,7 @@ iBroadcast can only send the whole library at once (about 92 MB and 20–30 seco
 - Each load first asks iBroadcast when the library last changed (`lastmodified` from the `status` call, the same signal the web player uses). If that matches the copy Tagcast has, the copy is used: from memory (under a second) or from `~/.tagcast/library-cache.json.gz` after a restart (about 2 seconds).
 - The cache holds only library metadata (tracks, albums, artists), no account details. It is readable by you only and deleted when you **Disconnect**. **Download everything again** in the account dialog skips the check.
 - The browser gets a small list of albums (about 5 MB for 18,000 albums). Tracks are fetched when you open an album.
+- A track search runs on the server, in the library it already holds, and sends back only the matches. It asks iBroadcast for nothing. The first search after a download builds a search list: about 2 seconds and 50 MB for 288,000 tracks (measured on a generated library); later searches take about a tenth of a second.
 
 The server keeps the library in memory: count on roughly 750 MB for 286,000 tracks.
 
@@ -158,15 +173,19 @@ The server keeps the library in memory: count on roughly 750 MB for 286,000 trac
 
 Album year changes leave track years alone unless you tick that option. Individual track edits win over album-wide changes.
 
-**“Combine Multi-Disc Album Sets”**: while this iBroadcast setting is on, iBroadcast merges the discs of a set into one album in the library it sends (disc 1, holding the tracks of every disc), and refuses album changes (title, album artist, year, disc). With the setting off, each disc is its own album, in Tagcast and in every iBroadcast app.
-
-- With the setting on, Tagcast warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. Turn the setting off in iBroadcast and use **Review the rest again** in the results or History.
-- With it off, albums of one set show *Disc 1 of 3*, and **Edit all 3 discs together** in the editor changes the year, genre or album artist of the whole set at once.
-- The cached library belongs to the setting it was downloaded with, so switching the setting makes Tagcast download the library again.
-
 Network errors, HTTP 429 and 5xx answers are retried twice (after 2 and 6 seconds); creating an artist is never retried, so it can't happen twice. When iBroadcast refuses a change, its message is shown in the results and in History, and logged with the request in the terminal and in `~/.tagcast/tagcast.log`.
 
 Saving returns as soon as iBroadcast accepts the change. The read-back runs in the background (**Checking…** in History) and the next save reuses that download.
+
+### Combine Multi-Disc Album Sets
+
+**Keep this iBroadcast setting off.** Tagcast then shows a set of several discs as one album and can save every change to it. The iBroadcast apps show each disc as its own album; only the setting changes that.
+
+Why: while the setting is on, iBroadcast merges the discs of a set into one album in the library it sends (disc 1, holding the tracks of every disc), and refuses album changes (title, album artist, year, disc). Tagcast can't switch the setting itself. With the setting off, each disc is its own album in iBroadcast.
+
+- **Setting off:** discs with the same title and album artist and different disc numbers are one album in Tagcast: one card in the lists (a CD icon per disc, with all tracks counted), one album page with the discs one after the other, and **Play album** plays them all. **Edit album** changes the title, album artist, year, genres or composers of every disc at once; the review lists the change per disc, because iBroadcast gets it once per disc. **Change cover** there puts one cover on every disc: the image is uploaded once and then set disc by disc, with a History entry per disc, so **Undo** works per disc. With a large library each disc waits for the read-back of the disc before. A disc number is changed per disc, with **Edit disc 2** on the album page. Discs whose titles differ, such as “Album (CD1)” and “Album (CD2)”, are not recognised as a set. The Overview counts albums as iBroadcast does, every disc separately.
+- **Setting on:** Tagcast warns in the review, still saves the track changes (genres, track years) and marks the album changes *Not sent · setting*. To save them, turn the setting off in iBroadcast and use **Review the rest again** in the results or History.
+- The cached library belongs to the setting it was downloaded with, so switching the setting makes Tagcast download the library again.
 
 ### Covers and artist images
 
@@ -182,13 +201,13 @@ Audio is passed through the local server (`/api/stream/<track>`), so the iBroadc
 
 Built on [ibroadcast-python](https://github.com/ctrueden/ibroadcast-python) for OAuth (device code and PKCE authorization code flows), token refresh and the request format.
 
-The [public API reference](https://help.ibroadcast.com/en/developer/api) documents reading the library, tags, playlists and ratings. Metadata writes (`update_album`, `update_track`, `create_artist`) and artwork (`artwork-upload.ibroadcast.com`, `set_artwork`, `set_artist_artwork`, `get_artwork`) come from the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. Streaming follows the web player: `streaming.ibroadcast.com` plus the track's `file`, signed with the access token. These aren't documented publicly, so:
+The [public API reference](https://help.ibroadcast.com/en/developer/api) documents reading the library, tags, playlists and ratings; `trash` (tracks to the trash) is part of ibroadcast-python. Metadata writes (`update_album`, `update_track`, `create_artist`) and artwork (`artwork-upload.ibroadcast.com`, `set_artwork`, `set_artist_artwork`, `get_artwork`) come from the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. Streaming follows the web player: `streaming.ibroadcast.com` plus the track's `file`, signed with the access token. These aren't documented publicly, so:
 
 - year and disc are sent as strings, the way the web editor sends input values; track number is sent as `track_no`;
 - the app requests the scopes `user.library:read`, `user.library:write` and `user.account:read`;
 - if iBroadcast refuses a write mode for third-party apps, the save reports **Failed** with iBroadcast's message and nothing else is sent.
 
-Tested against a real account (286,789 tracks): loading, caching, `update_track` (genre), streaming and `get_artwork`. Artwork upload and `set_artwork` / `set_artist_artwork` are tested against the fake iBroadcast server (`tests/mock_ibroadcast.py`) only: try one album first, and use **Undo** if it isn't right.
+Tested against a real account (286,789 tracks): loading, caching, `update_track` (genre), streaming and `get_artwork`. Artwork upload, `set_artwork` / `set_artist_artwork` and `trash` are tested against the fake iBroadcast server (`tests/mock_ibroadcast.py`) only: try one album first, and use **Undo** if it isn't right.
 
 ## Styles
 
@@ -213,7 +232,7 @@ TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9555 TAGCAST_HOME=/tmp/ls-test \
 
 ## Not in scope
 
-Automatic changes without review (every suggestion goes through you), uploading music, deleting, renaming an artist in place (iBroadcast has no mode for it: a new name creates a new artist), and editing local files.
+Automatic changes without review (every suggestion goes through you), uploading music, deleting for good (Tagcast only moves tracks to iBroadcast's trash), renaming an artist in place (iBroadcast has no mode for it: a new name creates a new artist), and editing local files.
 
 ## Development credits
 
