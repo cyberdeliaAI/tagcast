@@ -40,6 +40,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      # Tagcast comes from the release, the build files from this workflow's commit, so a
+      # release made before the build files existed (0.10.0) can get downloads too.
+      - name: Use the current build files
+        run: git checkout ${{ github.sha }} -- tools/build_binary.py tools/pyinstaller_entry.py
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
