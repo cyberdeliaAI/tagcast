@@ -41,15 +41,19 @@ The application consists of a Python server and a plain JavaScript frontend.
   `mock_ibroadcast.py`.
 - `tools/build_dark_css.py`: generates `static/dark.css` from `static/style.css`.
 - `tools/build_binary.py` and `tools/pyinstaller_entry.py`: build a stand-alone
-  program with PyInstaller. `.github/workflows/builds.yml` builds it on macOS (Apple Silicon and Intel),
-  Windows and Linux and adds the zips to each release.
+  desktop launcher and CLI with `tagcast.spec`. `src/tagcast/desktop.py` owns
+  only the local server it starts; the main interface stays in the browser.
+  `tools/bundle_check.py` verifies extracted downloads with temporary settings.
+  `.github/workflows/builds.yml` builds macOS (Apple Silicon and Intel), Windows
+  and Linux archives and checksums. See `docs/native-builds.md`.
 
 The JavaScript files share a single global scope. Keep top-level names unique
 and preserve a valid script order in `index.html`.
 
 ## Technology and coding conventions
 
-- Python 3.11 or newer is required.
+- Source runs require Python 3.11 or newer; standalone downloads bundle Python.
+  The desktop launcher uses Tk; normal source/CLI browser use does not require Tk.
 - Runtime dependency: `ibroadcast>=2.0.1,<3`; the code also uses `requests`,
   currently a transitive dependency of `ibroadcast`.
 - Packaging uses Hatchling; the CLI entry point is `tagcast.app:main`.
@@ -63,6 +67,9 @@ and preserve a valid script order in `index.html`.
   unless the user approves that architecture change.
 - Do not edit `dark.css` by hand. Regenerate it after changes to
   `style.css`.
+- Keep package, `__version__`, page badge and lockfile versions consistent;
+  `python3 tools/release_info.py` checks them. Native build dependencies are
+  separate in `requirements-build.txt`; runtime dependencies stay unchanged.
 
 ## Behavior to preserve
 
@@ -114,6 +121,8 @@ and preserve a valid script order in `index.html`.
   undo retains previous artwork IDs per track.
 - Playback goes through the local server, supports Range requests and does
   not report plays or scrobbles to iBroadcast.
+- Closing the desktop launcher stops only its own server. Reusing an existing
+  Tagcast instance must not stop it when the launcher closes.
 - iBroadcast write and artwork modes partly follow undocumented endpoints.
   Verify assumptions before changing their payloads or behavior.
 
@@ -124,6 +133,7 @@ Run the relevant checks for changed components. The existing CI checks are:
 ```sh
 uv run --frozen pytest -q
 uv run --frozen ruff check src tests tools
+python3 tools/release_info.py
 for f in src/tagcast/static/*.js; do node --check "$f"; done
 node --test tests/frontend.test.cjs
 ```
@@ -143,6 +153,11 @@ python3 tools/build_dark_css.py --check
   they do not check full browser interaction.
   Check relevant interaction behavior when changing the frontend.
 - CI tests Python 3.11 and 3.13 on Linux, macOS and Windows.
+- Native builds use Python 3.13 with Tk and check both executables after archive
+  extraction, CLI help/version, HTTP assets and macOS signature integrity.
+  Preserve symlinks, license notices, SHA-256 files and tag/version checks.
+- Release creation uses the matching `Publish Tagcast VERSION` commit after
+  tests pass. Stable/beta conventions and rebuilds are in `docs/native-builds.md`.
 - Preserve the start scripts for these platforms, with both uv and the
   Python/venv fallback.
 - Preserve explicit MIME types for static files and platform-specific

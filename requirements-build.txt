@@ -1,0 +1,4 @@
+# Build-only dependencies; the browser frontend has no build step.
+PyInstaller==6.22.3
+Pillow==12.0.0
+resvg_py==0.5.0
