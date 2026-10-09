@@ -1,12 +1,15 @@
 "use strict";
 
 // Album artists come from compact album summaries; opening this view loads no tracks.
-const artistBrowse = {page: 0, pageSize: 24};
+const artistBrowse = {page: 0, pageSize: storedPageSize("tagcast-artists-per-page") || 24};
 let artistBrowseTimer;
 
+// Album artists without an image, like the albums filter "Artist without image".
+const noArtistImage = ([name, group]) => !group.image && name !== "Various Artists";
+
 function filteredArtistGroups() {
-  const query = $("#artists-search").value.toLocaleLowerCase().trim();
-  const groups = artistGroups().filter(([name]) => name.toLocaleLowerCase().includes(query));
+  const query = $("#artists-search").value.toLocaleLowerCase().trim(), bare = $("#artists-filter").value === "no_image";
+  const groups = artistGroups().filter(entry => entry[0].toLocaleLowerCase().includes(query) && (!bare || noArtistImage(entry)));
   return $("#artists-sort").value === "za" ? groups.reverse() : groups;
 }
 
@@ -15,6 +18,9 @@ function renderArtistBrowse() {
   const groups = filteredArtistGroups(), size = artistBrowse.pageSize;
   const maxPage = Math.max(0, Math.ceil(groups.length / size) - 1);
   artistBrowse.page = Math.max(0, Math.min(artistBrowse.page, maxPage));
+  $("#artists-per-page").value = String(size);
+  const bareOption = $("#artists-filter").options[1];
+  if (bareOption) bareOption.textContent = `Without image · ${artistGroups().filter(noArtistImage).length.toLocaleString("en")}`;
   $("#artists-results").textContent = `${groups.length.toLocaleString("en")} ${groups.length === 1 ? "album artist" : "album artists"}`;
   $("#artists-grid").innerHTML = groups.slice(artistBrowse.page * size, (artistBrowse.page + 1) * size).map(([name, group]) => {
     const image = group.image ? `<img src="${escapeHtml(group.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
@@ -24,6 +30,7 @@ function renderArtistBrowse() {
   }).join("") || (state.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading album artists…</div>'
     : '<div class="empty">No album artists match your search.</div>');
   $("#artists-pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-artist-page="-1" ${artistBrowse.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${artistBrowse.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-artist-page="1" ${artistBrowse.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+  if (typeof syncHistory === "function") syncHistory();
 }
 
 function showArtistBrowse() {
@@ -37,7 +44,12 @@ $("#artists-search").addEventListener("input", () => {
   clearTimeout(artistBrowseTimer);
   artistBrowseTimer = setTimeout(() => { artistBrowse.page = 0; renderArtistBrowse(); }, 150);
 });
-$("#artists-sort").addEventListener("change", () => { artistBrowse.page = 0; renderArtistBrowse(); });
+for (const id of ["#artists-sort", "#artists-filter"]) $(id).addEventListener("change", () => { artistBrowse.page = 0; renderArtistBrowse(); });
+$("#artists-per-page").addEventListener("change", event => {
+  const size = Number(event.target.value);
+  artistBrowse.page = Math.floor(artistBrowse.page * artistBrowse.pageSize / size); artistBrowse.pageSize = size;
+  rememberPageSize("tagcast-artists-per-page", size); renderArtistBrowse();
+});
 document.addEventListener("click", event => {
   const artist = event.target.closest("[data-browse-artist]");
   if (artist) {

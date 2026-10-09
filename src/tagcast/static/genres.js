@@ -83,7 +83,7 @@ function showTrackGenres() {
   if (!editing || editing.bulk) return;
   const field = document.querySelector('#metadata-form [data-genres="genres"]');
   const albumGenres = field && editing.dirty.has("genres") ? getGenres(field) : null;
-  for (const t of editing.originals[0].tracks) {
+  for (const t of editing.originals.flatMap(a => a.tracks)) {
     const cell = document.querySelector(`[data-genre-cell="${CSS.escape(String(t.id))}"]`);
     if (!cell) continue;
     const genres = editing.trackPatches[String(t.id)]?.genres || albumGenres || t.genres;

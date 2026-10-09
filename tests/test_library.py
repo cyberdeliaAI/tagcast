@@ -134,6 +134,16 @@ class ComposerAndGapTests(unittest.TestCase):
         summary = library.album_summary(10)
         self.assertEqual((summary["no_composer"], summary["track_gaps"]), (2, 2))  # 3 and 4 missing
 
+    def test_duplicate_titles_in_an_album_are_counted(self):
+        self.assertEqual(self.library().album_summary(10)["duplicates"], 0)
+        library = Library({"library": {
+            "artists": {"map": {"name": 0}, "6": ["Guest"]},
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2}, "10": ["X", 6, [1, 2, 3, 4]]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2},
+                       "1": ["Angel", 10, 6], "2": ["  angel ", 10, 6],  # case and spacing don't count
+                       "3": ["", 10, 6], "4": ["", 10, 6]}}})  # empty titles are not duplicates
+        self.assertEqual(library.album_summary(10)["duplicates"], 1)
+
     def test_composers_keep_other_extra_artists(self):
         plan = plan_save(self.library(), [change("track", 1, 10, composers=(["Bach"], ["Bach", "Guest"]))])
         self.assertEqual(write_requests(plan, plan["artists"])[0][1]["tracks"][0]["artists_additional"], [
@@ -143,6 +153,44 @@ class ComposerAndGapTests(unittest.TestCase):
     def test_nested_maps_survive_the_cache(self):
         library = Library(self.library().to_cache())
         self.assertEqual(library.track_view(1)["composers"], ["Bach"])
+
+
+class SearchTests(unittest.TestCase):
+    def library(self):
+        return Library({"library": {
+            "artists": {"map": {"name": 0}, "4": ["Björk"], "5": ["Bach"], "6": ["Choir"]},
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2, "year": 3, "disc": 4, "trashed": 5},
+                       "10": ["Post", 4, [1, 2, 3], 1995, 1, False], "11": ["Mass", 6, [5, 4], 0, 2, False],
+                       "12": ["Gone", 4, [6], 2001, 1, True]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "track": 3, "trashed": 4,
+                               "length": 5, "year": 6, "artists_additional": 7,
+                               "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}},
+                       "1": ["Army of Me", 10, 4, 1, False, 234, 0, []],
+                       "2": ["Hyper-Ballad", 10, 4, 4, False, 321, 1995, []],
+                       "3": ["Army of Me (Remix)", 10, 4, 2, True, 200, 0, []],
+                       "4": ["Kyrie", 11, 6, 1, False, 300, 1749, [[5, None, "composer"]]],
+                       "5": ["Gloria", 11, 6, 2, False, 400, 0, [[5, None, "composer"]]],
+                       "6": ["Army of None", 12, 4, 1, False, 100, 0, []]}}})
+
+    def titles(self, query, **options):
+        return [t["title"] for t in self.library().search_tracks(query, **options)["tracks"]]
+
+    def test_every_word_must_match_title_artist_album_or_composer(self):
+        self.assertEqual(self.titles("army"), ["Army of Me"])  # not trashed tracks or albums
+        self.assertEqual(self.titles("bjork post"), ["Army of Me", "Hyper-Ballad"])  # accents don't count
+        self.assertEqual(self.titles("BACH"), ["Kyrie", "Gloria"])  # composer, in track order
+        self.assertEqual(self.titles("bach army"), [])
+        self.assertEqual(self.titles("   "), [])
+
+    def test_results_say_where_the_track_is_and_are_capped(self):
+        library = self.library()
+        kyrie = library.search_tracks("kyrie")["tracks"][0]
+        self.assertEqual(kyrie, {"id": "4", "album_id": "11", "title": "Kyrie", "artist": "Choir",
+                                 "composers": ["Bach"], "album": "Mass", "disc": 2, "track": 1,
+                                 "year": 1749, "length": 300})
+        self.assertEqual(library.search_tracks("army")["tracks"][0]["year"], 1995)  # album year
+        capped = library.search_tracks("o", limit=2)
+        self.assertEqual((len(capped["tracks"]), capped["total"]), (2, 4))
 
 
 class PlanTests(unittest.TestCase):

@@ -177,7 +177,7 @@ class H(BaseHTTPRequestHandler):
             if mode == "update_album" and STATE["combine_sets"]:
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode in ("update_album", "update_track", "create_artist", "set_artwork",
-                        "set_artist_artwork"):
+                        "set_artist_artwork", "trash"):
                 if STATE["busy"]:
                     STATE["busy"] -= 1
                     return self.send(503, {"message": "busy"})
@@ -187,6 +187,10 @@ class H(BaseHTTPRequestHandler):
             if mode == "set_artwork":
                 for track_id in body["tracks"]:
                     STATE["tracks"][track_id]["artwork_id"] = body["artwork_id"]
+                return self.send(200, {"result": True})
+            if mode == "trash":
+                for track_id in body["tracks"]:
+                    STATE["tracks"][track_id]["trashed"] = True
                 return self.send(200, {"result": True})
             if mode == "set_artist_artwork":
                 STATE["artist_art"][body["artist_id"]] = body["artwork_id"]

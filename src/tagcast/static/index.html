@@ -15,34 +15,46 @@
   <script src="artwork.js" defer></script>
   <script src="player.js" defer></script>
   <script src="album.js" defer></script>
+  <script src="trash.js" defer></script>
   <script src="artists.js" defer></script>
+  <script src="tracks.js" defer></script>
   <script src="overview.js" defer></script>
+  <script src="navigation.js" defer></script>
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="#" id="home"><img class="brand-mark" src="tagcast-mark.svg" alt=""><span>Tagcast<small>FOR iBROADCAST</small></span></a>
     <div class="nav-label">WORKSPACE</div>
+    <button class="nav active" id="show-artists"><span>◉</span> Album artists <b id="browse-artist-count">0</b></button>
+    <button class="nav" id="all-albums"><span>▦</span> Albums <b id="album-count">0</b></button>
+    <button class="nav" id="show-tracks"><span>♪</span> Tracks <b id="track-count">0</b></button>
     <button class="nav" id="show-overview"><span>◎</span> Overview</button>
-    <button class="nav active" id="all-albums"><span>▦</span> Albums <b id="album-count">0</b></button>
-    <button class="nav" id="show-artists"><span>◉</span> Album artists <b id="browse-artist-count">0</b></button>
     <button class="nav" id="show-history"><span>◷</span> History <b id="history-count">0</b></button>
-    <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="settings-button">Sources &amp; keys ⚙</button><button class="text-button muted-link" id="import-button">Import library JSON ↗</button></div><input id="import-file" type="file" accept=".json,application/json" hidden></div>
+    <div class="sidebar-bottom"><span class="status-dot" id="status-dot"></span><strong id="connection-title">Preview workspace</strong><p id="connection-text">No account connected.<br>Edits stay in this browser tab.</p><div class="sidebar-actions"><button class="text-button" id="connect-button">Connect iBroadcast →</button><button class="text-button" id="reload-button" hidden>Reload library ↻</button><button class="text-button muted-link" id="logout-button" hidden>Disconnect</button><button class="text-button muted-link" id="settings-button">Sources &amp; keys ⚙</button></div></div>
   </aside>
   <main>
-    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Albums</span></div><div class="top-actions"><span class="pill">0.9.0</span><button class="button small theme-button" id="theme-button" title="Light or dark: follows your system">◐ Auto</button><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><span id="breadcrumb">Album artists</span></div><div class="top-actions"><span class="pill">0.10.0</span><button class="button small theme-button" id="theme-button" title="Light or dark: follows your system">◐ Auto</button><button class="mode-badge" id="mode-badge">DEMO · CONNECT ACCOUNT</button><button class="button small" id="export-button">Export history ↓</button></div></header>
     <div class="notice"><span>ⓘ</span><span id="data-notice">Demo library with sample records. Nothing you edit here changes iBroadcast.</span></div>
     <section id="overview-page" class="overview" hidden aria-live="polite"></section>
     <section id="album-page" class="album-detail" hidden aria-label="Album details"></section>
-    <section id="artists-page" hidden aria-label="Album artists">
+    <section id="artists-page" aria-label="Album artists">
       <div class="page-intro"><div><div class="eyebrow">THE PEOPLE BEHIND YOUR ALBUMS</div><h1>Album artists<span>.</span></h1><p>Explore your collection by artist. Open a card to see their albums.</p></div></div>
-      <div class="toolbar"><label class="search"><span>⌕</span><input id="artists-search" placeholder="Search album artists" aria-label="Search album artists"></label><select id="artists-sort" aria-label="Sort album artists"><option value="az">Name · A–Z</option><option value="za">Name · Z–A</option></select></div>
+      <div class="toolbar"><label class="search"><span>⌕</span><input id="artists-search" placeholder="Search album artists" aria-label="Search album artists"></label><select id="artists-filter" aria-label="Filter album artists"><option value="all">All album artists</option><option value="no_image">Without image</option></select><select id="artists-sort" aria-label="Sort album artists"><option value="az">Name · A–Z</option><option value="za">Name · Z–A</option></select><select id="artists-per-page" aria-label="Album artists per page"><option value="24">24 per page</option><option value="50">50 per page</option><option value="100">100 per page</option><option value="200">200 per page</option></select></div>
       <div class="results-line"><span id="artists-results" role="status"></span></div>
       <div id="artists-grid" class="artists-grid"></div>
       <div id="artists-pagination" class="pagination"></div>
     </section>
-    <div id="albums-page">
+    <section id="tracks-page" hidden aria-label="Tracks">
+      <div class="page-intro"><div><div class="eyebrow">EVERY SONG, ON EVERY ALBUM</div><h1>Tracks<span>.</span></h1><p>Search all your tracks by title, artist, album or composer. Play one, or open its album.</p></div></div>
+      <div class="toolbar"><label class="search"><span>⌕</span><input id="tracks-search" placeholder="Search titles, artists, albums or composers" aria-label="Search tracks"></label><select id="tracks-per-page" aria-label="Tracks per page"><option value="50">50 per page</option><option value="100">100 per page</option><option value="200">200 per page</option></select></div>
+      <div class="results-line"><span id="tracks-results" role="status"></span></div>
+      <div id="tracks-list"></div>
+      <div id="tracks-pagination" class="pagination"></div>
+    </section>
+    <div id="albums-page" hidden>
+    <button class="button small page-back" id="artist-back" hidden></button>
     <section class="page-intro"><div><div class="eyebrow" id="page-eyebrow">A LITTLE ORDER. ONE ALBUM AT A TIME.</div><h1 id="page-title">Your albums<span>.</span></h1><p id="page-subtitle">Browse your collection, check the details, and make it yours.</p></div><div class="library-total" id="library-total"><strong id="total-tracks">0</strong><span>tracks in this workspace</span></div><div class="artist-panel" id="artist-panel" hidden></div></section>
-    <section class="toolbar"><label class="search"><span>⌕</span><input id="search" placeholder="Search albums, artists, or genres" aria-label="Search albums"></label><select id="filter" aria-label="Filter albums"><option value="all">All albums</option><option value="year">Missing year</option><option value="genre">Missing genre</option><option value="artist_image">Artist without image</option><option value="cover">Missing cover</option><option value="combined">Combined genres</option><option value="composer">Missing composer</option><option value="small">1–2 tracks</option><option value="incomplete">Possibly incomplete</option><option value="edition">Named editions</option></select><select id="sort" aria-label="Sort albums"><option value="artist">Artist · A–Z</option><option value="title">Album · A–Z</option><option value="year">Year · oldest first</option><option value="newest">Year · newest first</option><option value="no_genre">Most tracks without genre</option><option value="fewest">Fewest tracks</option></select><div class="view-toggle" role="group" aria-label="View"><button data-view="grid" title="Covers" aria-label="Show covers">▦</button><button data-view="list" title="List" aria-label="Show list">☰</button></div></section>
+    <section class="toolbar"><label class="search"><span>⌕</span><input id="search" placeholder="Search albums, artists, or genres" aria-label="Search albums"></label><select id="filter" aria-label="Filter albums"><option value="all">All albums</option><option value="year">Missing year</option><option value="genre">Missing genre</option><option value="artist_image">Artist without image</option><option value="cover">Missing cover</option><option value="combined">Combined genres</option><option value="composer">Missing composer</option><option value="small">1–2 tracks</option><option value="incomplete">Possibly incomplete</option><option value="duplicates">Duplicate tracks</option><option value="edition">Named editions</option></select><select id="sort" aria-label="Sort albums"><option value="artist">Artist · A–Z</option><option value="title">Album · A–Z</option><option value="year">Year · oldest first</option><option value="newest">Year · newest first</option><option value="no_genre">Most tracks without genre</option><option value="fewest">Fewest tracks</option></select><select id="per-page" aria-label="Albums per page"><option value="24">24 per page</option><option value="50">50 per page</option><option value="100">100 per page</option><option value="200">200 per page</option></select><div class="view-toggle" role="group" aria-label="View"><button data-view="grid" title="Covers" aria-label="Show covers">▦</button><button data-view="list" title="List" aria-label="Show list">☰</button></div></section>
     <div class="results-line"><span id="results-count"></span><span id="selection-help">Open an album to see its tracks and listen</span></div>
     <div class="selection-bar" id="selection-bar" hidden><strong id="selection-count"></strong><button class="button" id="clear-selection">Clear</button><button class="button primary" id="edit-selection">Edit selected albums</button></div>
     <section id="albums" class="album-grid" aria-label="Albums"></section>
@@ -56,6 +68,7 @@
   <dialog id="connect" class="connect-dialog"><div class="dialog-heading"><div><div class="eyebrow">YOUR ACCOUNT</div><h2>Connect iBroadcast</h2></div><button class="close" data-close="connect" aria-label="Close">×</button></div><div id="connect-content"></div></dialog>
   <dialog id="results" class="review-dialog"><div class="dialog-heading"><div><div class="eyebrow">SAVED TO iBROADCAST</div><h2 id="results-title">Save results</h2></div><button class="close" data-close="results" aria-label="Close">×</button></div><div id="results-content"></div><div class="dialog-footer"><button class="button primary" data-close="results">Done</button></div></dialog>
   <dialog id="artwork" class="artwork-dialog"><div id="artwork-content"></div></dialog>
+  <dialog id="trash-review" class="review-dialog"><div id="trash-content"></div></dialog>
   <dialog id="settings" class="settings-dialog"><div class="dialog-heading"><div><div class="eyebrow">ONLINE SOURCES</div><h2>Sources &amp; keys</h2></div><button class="close" data-close="settings" aria-label="Close">×</button></div><div id="settings-content"></div></dialog>
   <div id="player" class="player" hidden><img id="player-art" alt=""><div class="player-text"><strong id="player-title"></strong><span id="player-artist"></span></div><button class="player-button" id="player-prev" aria-label="Previous track">⏮</button><audio id="audio" controls preload="none"></audio><button class="player-button" id="player-next" aria-label="Next track">⏭</button><button class="player-button" id="player-close" aria-label="Stop and close the player">×</button></div>
   <div id="chart-tip" class="chart-tip" role="tooltip" hidden></div>

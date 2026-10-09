@@ -25,12 +25,15 @@ function showScreen(name) {
   $("#albums-page").hidden = name !== "albums";
   $("#album-page").hidden = name !== "album";
   $("#artists-page").hidden = name !== "artists";
+  $("#tracks-page").hidden = name !== "tracks";
   $("#show-overview").classList.toggle("active", name === "overview");
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
   $("#show-artists").classList.toggle("active", name === "artists");
-  $("#breadcrumb").textContent = name === "overview" ? "Overview" : name === "artists" ? "Album artists"
+  $("#show-tracks").classList.toggle("active", name === "tracks");
+  $("#breadcrumb").textContent = name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (name === "overview") loadOverview();
+  if (typeof syncHistory === "function") syncHistory();
 }
 
 async function loadOverview() {
@@ -173,7 +176,7 @@ window.addEventListener("scroll", hideTip, true);
 
 document.addEventListener("click", event => {
   if (event.target.closest("#show-overview")) { showScreen("overview"); return; }
-  if (event.target.closest("#all-albums") || event.target.closest("#home")) { if (state.screen === "overview") showScreen("albums"); return; }
+  if (event.target.closest("#all-albums")) { if (state.screen === "overview") showScreen("albums"); return; }
   const health = event.target.closest("[data-health]");
   if (health) {
     $("#filter").value = health.dataset.health; $("#search").value = ""; state.artist = null; state.page = 0;

@@ -43,6 +43,7 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["busy"] = 0
         mock_ibroadcast.STATE["frozen"] = False
         mock_ibroadcast.STATE["tracks"][901]["artwork_id"] = 601
+        mock_ibroadcast.STATE["tracks"][901]["trashed"] = False
 
     def assertPrivate(self, path):
         if sys.platform != "win32":  # Windows has no owner-only file mode bits
@@ -404,6 +405,32 @@ class ClientTests(unittest.TestCase):
         time.sleep(0.3)
         self.assertIsNone(studio.library)
         self.assertFalse(Path(self.home, client.CACHE_FILE).exists())
+
+    def test_tracks_go_to_the_trash_after_a_check_and_are_read_back(self):
+        studio = self.connect()
+        with self.assertRaises(client.ApiError):
+            studio.trash_tracks({"tracks": []})
+        with self.assertRaises(ConflictError):  # not a track of that album
+            studio.trash_tracks({"tracks": [{"id": "901", "album_id": "73", "title": "Hounds of Love"}]})
+        with self.assertRaises(ConflictError):  # already in the trash
+            studio.trash_tracks({"tracks": [{"id": "902", "album_id": "72", "title": "Old deleted"}]})
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        result = studio.trash_tracks({"tracks": [{"id": "901", "album_id": "72", "title": "Hounds of Love"}]})
+        self.assertEqual([(w["mode"], w["tracks"]) for w in mock_ibroadcast.STATE["writes"]], [("trash", [901])])
+        self.assertEqual([(r["label"], r["status"]) for r in result["results"]], [("Hounds of Love", "sent")])
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual([(r["id"], r["status"]) for r in job["results"]], [("901", "saved")])
+        self.assertEqual(next(a for a in job["albums"] if a["id"] == "72")["track_count"], 1)
+
+    def test_track_search_finds_active_tracks_in_album_order(self):
+        studio = self.connect()
+        found = studio.search_tracks("kate bush")
+        self.assertEqual([(t["id"], t["album"]) for t in found["tracks"]],
+                         [("900", "Hounds of Love"), ("901", "Hounds of Love"), ("903", "The Dreaming")])
+        self.assertEqual(studio.search_tracks("old deleted")["total"], 0)  # in the trash
+        self.assertEqual(studio.search_tracks("")["tracks"], [])
+        with self.assertRaises(client.ApiError):
+            studio.search_tracks("x" * 201)
 
     def test_undo_restores_covers_and_explains_tracks_that_had_none(self):
         mock_ibroadcast.STATE["tracks"][901]["artwork_id"] = 0

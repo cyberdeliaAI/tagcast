@@ -27,12 +27,16 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/sources.py`: external source adapters, matching, request pacing
   and a shared response cache.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and eight JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and eleven JavaScript files:
   `app.js`, `genres.js`, `lookup.js`, `artwork.js`, `player.js`, `album.js`,
-  `artists.js`, `overview.js`. `album.js` provides read-only album browsing;
+  `trash.js`, `artists.js`, `tracks.js`, `overview.js`, `navigation.js`. `album.js` provides read-only album browsing;
+  `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
-  summaries. Editing remains in `app.js`, and `player.js` plays one album
-  independently of the editor.
+  summaries; `tracks.js` searches every track through `/api/tracks` (the demo
+  searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` plays one album
+  independently of the editor. `navigation.js` gives every page a hash address
+  (`#/artists`, `#/artist/<name>`, `#/albums`, `#/album/<id>`, `#/tracks`, `#/overview`) and
+  browser history; it loads last.
 - `tests/`: unittest tests that also run through pytest, fixtures and
   `mock_ibroadcast.py`.
 - `tools/build_dark_css.py`: generates `static/dark.css` from `static/style.css`.
@@ -67,10 +71,14 @@ and preserve a valid script order in `index.html`.
 - Settings, tokens, cache and logs default to `~/.tagcast/`; `TAGCAST_HOME` can
   override this. Preserve existing migration support for the earlier name
   `library-studio`.
-- Demo and imported JSON libraries remain local previews and are never saved
-  to iBroadcast.
+- The demo library remains a local preview and is never saved to iBroadcast.
+- Tagcast starts on Album artists. Back and Forward follow the browser history;
+  dialogs get no history entry, and Back never closes an open editor.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
+- Tracks go to iBroadcast's trash (`trash`) only from the album page, after the
+  trash review; the server first checks that every track is still active on its
+  album. Never delete permanently.
 - A metadata save remains limited to one album or one album artist.
   Only changed, supported fields are sent.
 - Compare `before` values with the current library view before writes.
@@ -88,8 +96,16 @@ and preserve a valid script order in `index.html`.
   credits. An artist marked `trashed` can still be a valid album artist.
 - With `Combine Multi-Disc Album Sets` enabled, album changes are blocked;
   track changes can proceed. The cache must match this setting.
+- With that setting off, the album lists and the album page show the discs of a
+  set (same title and album artist, different disc numbers) as one album
+  (`albumShelf`, `mergeDiscs`); every write still goes to the disc's own album.
+  Never offer one disc number for two discs of the same set. A set's cover is
+  saved disc by disc (`/api/artwork` per disc, reusing the first upload's
+  `artwork_id`), with one History entry per disc.
 - Preserve compact album summaries, lazy track details and caching keyed by
-  account, `lastmodified` and `combine_sets`.
+  account, `lastmodified` and `combine_sets`. Track search runs on the server's
+  library copy (`Library.search_tracks`, at most 1,000 results); the browser never
+  loads every track.
 - Artwork uses JPEG, PNG, WebP or GIF, up to 15 MB. Preserve checks for local
   addresses and redirects. Album covers are applied to active tracks;
   undo retains previous artwork IDs per track.
