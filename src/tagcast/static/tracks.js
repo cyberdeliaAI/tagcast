@@ -21,7 +21,7 @@ function localTracks(query) {
       const text = foldText([t.title, t.artist, album.name, album.artist, ...(t.composers || [])].join(" "));
       if (words.every(word => text.includes(word))) found.push({id: String(t.id), album_id: String(album.id), title: t.title,
         artist: t.artist, composers: t.composers || [], album: album.name, disc: album.disc, track: t.track,
-        year: t.year || album.year, length: t.length || 0});
+        year: t.year || album.year, length: t.length || 0, rating: t.rating || 0});
     }
   }
   return {tracks: found, total: found.length};
@@ -61,7 +61,7 @@ function foundTrackRow(t) {
   return `<tr data-row="${id}"><td class="track-number"><button class="album-track-play" data-track-play="${id}" data-track-album="${album}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button></td>
     <td><button class="track-open" data-track-open="${id}" data-track-album="${album}"><strong>${escapeHtml(t.title)}</strong></button><small>${escapeHtml(t.artist)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td>
     <td><button class="track-open" data-track-open="${id}" data-track-album="${album}">${escapeHtml(t.album)}</button>${where ? `<small>${where}</small>` : ""}</td>
-    <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}</td></tr>`;
+    <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}</td><td class="track-heart">${queueButton(t.album_id, t)}${heartButton(t)}</td></tr>`;
 }
 
 function renderTrackSearch() {
@@ -79,7 +79,7 @@ function renderTrackSearch() {
   $("#tracks-list").innerHTML = state.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading your library…</div>'
     : query.length < 2 ? '<div class="empty">Type at least two letters to search your tracks by title, artist, album or composer.</div>'
     : trackSearch.error ? `<p class="error-box" role="alert">${escapeHtml(trackSearch.error)}</p>`
-    : page.length ? `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>Title / Artist</th><th>Album</th><th class="track-year">Year</th><th class="track-time">Time</th></tr></thead><tbody>${page.map(foundTrackRow).join("")}</tbody></table>`
+    : page.length ? `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>Title / Artist</th><th>Album</th><th class="track-year">Year</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>${page.map(foundTrackRow).join("")}</tbody></table>`
     : trackSearch.loading ? '<div class="empty" role="status"><span class="spinner"></span>Searching your tracks…</div>'
     : `<div class="empty">No tracks match “${escapeHtml(query)}”.</div>`;
   $("#tracks-pagination").innerHTML = maxPage > 0 && !state.loading && query.length >= 2 ? `<button class="button small" data-track-page="-1" ${trackSearch.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${trackSearch.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-track-page="1" ${trackSearch.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
@@ -99,8 +99,10 @@ function showTracks(page = trackSearch.page) {
 async function playFoundTrack(trackId, albumId) {
   if (!live()) return;
   if (player.queue[player.index]?.id === trackId) { if (audio.paused) audio.play(); else audio.pause(); return; }
+  const details = state.details, epoch = player.epoch;
   try {
     await albumDetails(shelfIds(albumId));
+    if (details !== state.details || epoch !== player.epoch || !live()) return;
     const album = playableAlbum(albumId);
     if (!album?.tracks.some(t => String(t.id) === trackId)) throw Error("This track is no longer on that album. Search again.");
     playTracks(album, trackId);

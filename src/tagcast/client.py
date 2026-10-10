@@ -31,6 +31,7 @@ from .library import (
 )
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
+from .updates import UpdateChecker
 
 log = logging.getLogger("tagcast")
 
@@ -292,6 +293,7 @@ class Studio:
         self._pkce = {}
         self._pkce_gen = 0
         self.config = self._read("config.json") or {}
+        self.updates = UpdateChecker(self._read, self._write)
         self.lookup = Lookup(self.source_keys)
         tokens = self._read("tokens.json")
         if tokens and tokens.get("client_id") == self.client_id and tokens.get("token_set"):
@@ -600,6 +602,7 @@ class Studio:
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
         return {"albums": library.album_index(), "artists": library.artist_names(),
+                "favourites_count": library.favourites()["count"],
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": self.combine_sets}
 
@@ -621,6 +624,68 @@ class Studio:
         if library is None:
             library, _ = self._current(self._require_client())
         return library.search_tracks(query)
+
+    def favourites(self, query="", offset="0", limit="50"):
+        query = str(query or "").strip()
+        try:
+            offset, limit = int(offset), int(limit)
+        except (TypeError, ValueError):
+            raise ApiError("Choose a valid favourites page.") from None
+        if len(query) > 200 or offset < 0 or limit not in (50, 100, 200):
+            raise ApiError("Choose a valid favourites page and a search of at most 200 characters.")
+        library, _ = self._current(self._require_client())
+        return library.favourites(query, offset, limit)
+
+    def browse(self, kind, key=None, query="", offset="0", limit="50", sort="az"):
+        query = str(query or "").strip()
+        try:
+            offset, limit = int(offset), int(limit)
+        except (TypeError, ValueError):
+            raise ApiError("Choose a valid browse page.") from None
+        if kind not in ("track-artists", "composers", "genres", "years", "decades") or sort not in ("az", "za", "count") \
+                or len(query) > 200 or offset < 0 or limit not in (24, 50, 100, 200) \
+                or (key is not None and (not isinstance(key, str) or len(key) > 500)):
+            raise ApiError("Choose a valid group, page and a search of at most 200 characters.")
+        library, _ = self._current(self._require_client())
+        return library.browse(kind, key, query, offset, limit, sort)
+
+    def favourite(self, body):
+        """Set one native track rating, comparing the displayed value before writing."""
+        track_id, before, rating = body.get("track_id"), body.get("before"), body.get("rating")
+        if not isinstance(track_id, str) or not track_id.isdigit() or int(track_id) <= 0 \
+                or type(before) is not int or not 0 <= before <= 10 \
+                or type(rating) is not int or rating not in (0, 5):
+            raise ApiError("Choose a track and its current rating; favourites use 5 or 0.")
+        track_id = int(track_id)
+        client = self._require_client()
+        if not self.save_lock.acquire(blocking=False):
+            raise ApiError("Another save is still running.")
+        try:
+            fresh, _ = self._current(client)
+            track = fresh.track_view(track_id)
+            fresh.active_track_album(track_id)
+            if track["rating"] != before:
+                raise ConflictError("This track's rating changed in iBroadcast. Reload the library and try again.")
+            if before == rating:
+                return {"track_id": str(track_id), "rating": rating, "status": "saved"}
+            # Official web player and API: ratetrack, track_id array, 5 = thumbs up, 0 = unset.
+            client._jsonrequest("ratetrack", track_id=[track_id], rating=rating)
+
+            def verify_rating(after):
+                current = after.tracks.get(track_id, {})
+                actual = number(current.get("rating"))
+                try:
+                    after.active_track_album(track_id)
+                    confirmed = actual == rating
+                except LibraryError:
+                    confirmed = False
+                return [{"id": str(track_id), "rating": actual,
+                         "status": "saved" if confirmed else "unverified"}]
+
+            job = self._check_later(client, self.downloads, verify_rating, include_albums=False)
+            return {"track_id": str(track_id), "rating": rating, "status": "sent", "job": job}
+        finally:
+            self.save_lock.release()
 
     def save(self, changes):
         client = self._require_client()
@@ -686,7 +751,7 @@ class Studio:
 
     # -- read-back -----------------------------------------------------------
 
-    def _check_later(self, client, written, check):
+    def _check_later(self, client, written, check, include_albums=True):
         """Download the library in the background and run check(library) -> results.
 
         A full download takes as long as half a minute for a large library, so saves
@@ -703,7 +768,9 @@ class Studio:
         def run():
             try:
                 after, _ = self._current(client, after=written)
-                result = {"state": "done", "results": check(after), "albums": after.album_index()}
+                result = {"state": "done", "results": check(after)}
+                if include_albums:
+                    result["albums"] = after.album_index()
             except (ApiError, LibraryError) as failure:
                 result = {"state": "error",
                           "error": f"Saved, but the library could not be read back: {failure}"}
@@ -743,10 +810,18 @@ class Studio:
     def settings(self):
         return {"sources": self.lookup.describe(),
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
-                "auto_lookup": self.config.get("auto_lookup", True)}
+                "auto_lookup": self.config.get("auto_lookup", True),
+                "auto_updates": self.config.get("auto_updates", True)}
+
+    def check_updates(self, manual=False):
+        with self.lock:
+            enabled = self.config.get("auto_updates", True)
+        return self.updates.check(enabled=enabled, manual=manual)
 
     def save_settings(self, body):
         with self.lock:
+            if "auto_updates" in body and not isinstance(body["auto_updates"], bool):
+                raise ApiError("Choose whether automatic update checks are enabled.")
             for key in KEY_ENV:
                 if key in body:
                     value = str(body[key] or "").strip()
@@ -758,6 +833,8 @@ class Studio:
                         self.config.pop(key, None)
             if "auto_lookup" in body:
                 self.config["auto_lookup"] = bool(body["auto_lookup"])
+            if "auto_updates" in body:
+                self.config["auto_updates"] = body["auto_updates"]
             self._write("config.json", self.config)
         return self.settings()
 

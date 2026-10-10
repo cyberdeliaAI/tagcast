@@ -14,6 +14,7 @@ where the other edit came from.
 import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
+from threading import Lock
 
 ARTWORK_SERVER = "https://artwork.ibroadcast.com"
 FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "audio/mp3": "MP3",
@@ -192,6 +193,11 @@ class Library:
                                else counts.get("playlists"))  # None: unknown (older cache)
         self._stats = None
         self._search = None
+        self._favourites = None
+        self._browse_tracks = None
+        self._browse_albums = {}
+        self._browse_indexes = {}
+        self._browse_lock = Lock()
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
@@ -223,6 +229,19 @@ class Library:
         album = self.albums.get(album_id, {})
         ids = [number(i) for i in album.get("tracks") or []]
         return [i for i in ids if i in self.tracks and not self.tracks[i].get("trashed")]
+
+    def active_track_album(self, track_id):
+        """Resolve the displayed album, including iBroadcast's combined multi-disc view."""
+        track = self.tracks.get(track_id)
+        if track and not track.get("trashed"):
+            original = number(track.get("album_id"))
+            album = self.albums.get(original)
+            if album and not album.get("trashed") and track_id in self.active_track_ids(original):
+                return original
+            for album_id, album in self.albums.items():
+                if not album.get("trashed") and track_id in self.active_track_ids(album_id):
+                    return album_id
+        raise LibraryError("This track is no longer available. Reload the library.")
 
     def album_ids(self):
         return [i for i, a in self.albums.items()
@@ -287,6 +306,7 @@ class Library:
             "track": number(track.get("track")),
             "length": number(track.get("length")),
             "artwork_id": number(track.get("artwork_id")),
+            "rating": number(track.get("rating")),
         }
 
     def albums_view(self):
@@ -385,7 +405,125 @@ class Library:
             "track": number(track.get("track")),
             "year": number(track.get("year")) or number(album.get("year")),
             "length": number(track.get("length")),
+            "rating": number(track.get("rating")),
         }
+
+    def _browse_index(self, kind):
+        """Lazy ID indexes for browsing; shared track pairs stay on the server.
+
+        Use displayed album membership, including the combined-disc view. A compound
+        artist name or genre label stays one record; never guess how to split it.
+        """
+        with self._browse_lock:
+            if kind in self._browse_indexes:
+                return self._browse_indexes[kind]
+            if self._browse_tracks is None:
+                rows, seen = [], set()
+                albums = sorted(self.album_ids(), key=lambda i: (
+                    fold(self.artist_name(self.albums[i].get("artist_id"))),
+                    fold(self.albums[i].get("name")), number(self.albums[i].get("disc")), i))
+                # Match albumShelf/discSet: distinct discs of the same title and
+                # album artist count as one album, including a match on only one disc.
+                sets = {}
+                for album_id in albums:
+                    album = self.albums[album_id]
+                    key = ((text(album.get("name")) or "Untitled album").strip().lower(),
+                           self.artist_name(album.get("artist_id")))
+                    sets.setdefault(key, []).append(album_id)
+                for discs in sets.values():
+                    merged = len({number(self.albums[i].get("disc")) for i in discs}) == len(discs)
+                    for album_id in discs:
+                        self._browse_albums[album_id] = discs[0] if merged else album_id
+                for album_id in albums:
+                    ids = sorted(self.active_track_ids(album_id), key=lambda i: (
+                        number(self.tracks[i].get("track")) or 9999,
+                        fold(self.tracks[i].get("title")), i))
+                    for track_id in ids:
+                        if track_id not in seen:
+                            seen.add(track_id)
+                            rows.append((track_id, album_id))
+                self._browse_tracks = rows
+            groups = {}
+            for pair in self._browse_tracks:
+                track_id, album_id = pair
+                track = self.tracks[track_id]
+                if kind == "track-artists":
+                    keys = [str(number(track.get("artist_id")))]
+                elif kind == "composers":
+                    keys = list(dict.fromkeys(str(e["artist_id"]) for e in self.composer_entries(track)))
+                elif kind == "genres":
+                    keys = stored_genres(track)
+                else:
+                    year = number(track.get("year")) or number(self.albums[album_id].get("year"))
+                    keys = [str(year // 10 * 10)] if kind == "decades" and year > 0 else [] if kind == "decades" else [str(year)]
+                for value in keys:
+                    key = value.casefold() if kind == "genres" else value
+                    if key not in groups:
+                        artist = kind in ("track-artists", "composers")
+                        label = self.artist_name(value) if artist else f"{value}s" if kind == "decades" else "Unknown year" if value == "0" and kind == "years" else value
+                        groups[key] = {"key": key, "label": label, "image": self.artist_image(value) if artist else "", "ids": []}
+                    groups[key]["ids"].append(pair)
+            for group in groups.values():
+                group["albums"] = len({self._browse_albums[a] for _, a in group["ids"]})
+            self._browse_indexes[kind] = groups
+            return groups
+
+    def browse(self, kind, key=None, query="", offset=0, limit=50, sort="az"):
+        """Paginated groups, or album IDs with exact group membership.
+
+        Release years use the track year, with the album year as fallback, as track
+        search does. Missing years get their own group, sorted after known years.
+        """
+        if kind not in ("track-artists", "composers", "genres", "years", "decades"):
+            raise LibraryError("Choose track artists, composers, genres, release years or decades.")
+        groups = self._browse_index(kind)
+        words = fold(query).split()
+        if key is not None:
+            if kind == "genres":
+                key = key.casefold()
+            group = groups.get(key)
+            if group is None:
+                raise LibraryError("This group is no longer available. Open the overview again.")
+            return {"group": {k: v for k, v in group.items() if k != "ids"},
+                    "album_ids": [str(i) for i in dict.fromkeys(a for _, a in group["ids"])]}
+        found = [g for g in groups.values() if all(w in fold(g["label"]) for w in words)]
+        if sort == "count":
+            found.sort(key=lambda g: (-len(g["ids"]), fold(g["label"]), g["key"]))
+        elif kind in ("years", "decades"):
+            found.sort(key=lambda g: (g["key"] == "0", number(g["key"]) * (-1 if sort == "za" else 1)))
+        else:
+            found.sort(key=lambda g: (fold(g["label"]), g["key"]), reverse=sort == "za")
+        offset = min(offset, max(0, (len(found) - 1) // limit * limit))
+        return {"groups": [{"key": g["key"], "label": g["label"], "image": g["image"], "tracks": len(g["ids"]), "albums": g["albums"]}
+                           for g in found[offset:offset + limit]],
+                "total": len(found), "count": len(groups), "offset": offset}
+
+    def favourites(self, query="", offset=0, limit=50):
+        """iBroadcast's thumbs-up tracks (rating >= 5), without loading them all in the browser."""
+        if self._favourites is None:
+            rows, seen = [], set()
+            liked = {i for i, t in self.tracks.items() if not t.get("trashed") and number(t.get("rating")) >= 5}
+            for album_id, album in self.albums.items() if liked else []:
+                if album.get("trashed"):
+                    continue
+                for value in album.get("tracks") or []:
+                    track_id = number(value)
+                    if track_id not in liked or track_id in seen:
+                        continue
+                    seen.add(track_id)
+                    row = self.track_row(track_id, album_id)
+                    haystack = fold(" ".join([row["title"], row["artist"], row["album"],
+                                             self.artist_name(album.get("artist_id")), *row["composers"]]))
+                    order = (fold(row["artist"]), fold(row["album"]), row["disc"],
+                             row["track"] or 9999, fold(row["title"]), track_id)
+                    rows.append((order, haystack, (track_id, album_id)))
+            rows.sort(key=lambda item: item[0])
+            self._favourites = rows
+        words = fold(query).split()
+        found = [row for _, haystack, row in self._favourites if all(w in haystack for w in words)]
+        offset = min(offset, max(0, (len(found) - 1) // limit * limit))
+        return {"tracks": [self.track_row(*ids) for ids in found[offset:offset + limit]], "total": len(found),
+                "count": len(self._favourites), "offset": offset}
 
     def stats(self, top=10):
         """Numbers for the overview, worked out once per library copy."""

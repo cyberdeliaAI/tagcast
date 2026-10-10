@@ -114,6 +114,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.account_settings)
         elif url.path == "/api/settings":
             self._run(self.studio.settings)
+        elif url.path == "/api/updates":
+            self._run(self.studio.check_updates)
         elif url.path == "/api/lookup/album":
             self._run(lambda: self.studio.lookup_album(query.get("source"), query.get("album_id"),
                                                        query.get("artist"), query.get("album")))
@@ -128,6 +130,13 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(lambda: {"albums": self.studio.album_details(ids)})
         elif url.path == "/api/tracks":
             self._run(lambda: self.studio.search_tracks(query.get("q")))
+        elif url.path == "/api/favourites":
+            self._run(lambda: self.studio.favourites(query.get("q"), query.get("offset", "0"),
+                                                   query.get("limit", "50")))
+        elif url.path == "/api/browse":
+            self._run(lambda: self.studio.browse(query.get("kind"), query.get("key"), query.get("q"),
+                                               query.get("offset", "0"), query.get("limit", "50"),
+                                               query.get("sort", "az")))
         elif url.path == "/callback":
             self._callback(parse_qs(url.query))
         elif url.path.startswith("/api/"):
@@ -153,9 +162,11 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/auth/logout": lambda b: (self.studio.logout(), {"ok": True})[1],
             "/api/save": lambda b: self.studio.save(b.get("changes")),
             "/api/settings": self.studio.save_settings,
+            "/api/updates/check": lambda b: self.studio.check_updates(manual=True),
             "/api/artwork": self.studio.change_artwork,
             "/api/artwork/undo": self.studio.undo_artwork,
             "/api/trash": self.studio.trash_tracks,
+            "/api/favourite": self.studio.favourite,
         }
         if path not in routes:
             self._json(404, {"error": "Unknown endpoint."})

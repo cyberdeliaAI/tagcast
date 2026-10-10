@@ -19,18 +19,25 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  if (name !== "browse" && typeof browseView !== "undefined") {
+    clearTimeout(browseTimer); browseView.request += 1; browseView.loading = false;
+  }
   if (name !== "album") { albumView.request += 1; albumView.loading = false; }
   state.screen = name;
   $("#overview-page").hidden = name !== "overview";
   $("#albums-page").hidden = name !== "albums";
   $("#album-page").hidden = name !== "album";
   $("#artists-page").hidden = name !== "artists";
+  $("#favourites-page").hidden = name !== "favourites";
+  $("#show-favourites").classList.toggle("active", name === "favourites");
   $("#tracks-page").hidden = name !== "tracks";
+  $("#browse-page").hidden = name !== "browse";
+  for (const kind of Object.keys(browseKinds)) $("#show-" + kind).classList.toggle("active", name === "browse" && browseView.kind === kind);
   $("#show-overview").classList.toggle("active", name === "overview");
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
   $("#show-artists").classList.toggle("active", name === "artists");
   $("#show-tracks").classList.toggle("active", name === "tracks");
-  $("#breadcrumb").textContent = name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks"
+  $("#breadcrumb").textContent = name === "browse" ? browseKinds[browseView.kind].label : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (name === "overview") loadOverview();
   if (typeof syncHistory === "function") syncHistory();

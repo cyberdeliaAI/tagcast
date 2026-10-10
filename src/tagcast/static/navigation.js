@@ -1,16 +1,40 @@
 "use strict";
 
 // Browser history for the pages: every page gets its own address (#/artists, #/artist/<name>,
-// #/albums, #/album/<id>, #/tracks, #/overview), so the browser's Back and Forward buttons work and
+// #/albums, #/album/<id>, #/tracks, #/favourites, #/overview and the four browse groups), so Back and Forward work and
 // "← Back" returns to the page you came from. Each history entry remembers that page's
 // search, filter, sort and page number. Dialogs get no entry: Back never closes an editor.
 
 const nav = {ready: false, restoring: false, pending: null};
 const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review"];
 
+// The mobile menu is a disclosure, not a page or a dialog. Desktop navigation
+// stays visible through CSS; opening the menu never adds a history entry.
+function setSidebarMenu(open) {
+  $("#sidebar").classList.toggle("menu-open", open);
+  $("#menu-toggle").setAttribute("aria-expanded", String(open));
+  $("#menu-toggle").setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+}
+
+function closeSidebarMenu() {
+  if (!$("#sidebar").classList.contains("menu-open")) return;
+  setSidebarMenu(false);
+  $("#menu-toggle").focus();
+}
+
+$("#menu-toggle").addEventListener("click", () => setSidebarMenu(!$("#sidebar").classList.contains("menu-open")));
+$("#sidebar-menu").addEventListener("click", event => {
+  if (event.target.closest("button")) closeSidebarMenu();
+});
+$("#home").addEventListener("click", closeSidebarMenu);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeSidebarMenu();
+});
+
 function currentRoute() {
+  if (state.screen === "browse") return `${browseView.kind}${browseView.key === null ? "" : `/${encodeURIComponent(browseView.key)}`}`;
   if (state.screen === "album" && albumView.id) return `album/${encodeURIComponent(albumView.id)}`;
-  if (["overview", "artists", "tracks"].includes(state.screen)) return state.screen;
+  if (["overview", "artists", "tracks", "favourites"].includes(state.screen)) return state.screen;
   return state.artist ? `artist/${encodeURIComponent(state.artist)}` : "albums";
 }
 
@@ -18,7 +42,8 @@ function parseRoute(hash) {
   const [kind, ...rest] = String(hash || "").replace(/^#\/?/, "").split("/");
   let value = "";
   try { value = decodeURIComponent(rest.join("/")); } catch { return null; }
-  if (["artists", "albums", "tracks", "overview"].includes(kind)) return {screen: kind};
+  if (Object.hasOwn(browseKinds, kind)) return {screen: "browse", kind, key: rest.length ? value : null};
+  if (["artists", "albums", "tracks", "favourites", "overview"].includes(kind)) return {screen: kind};
   if (kind === "artist" && value) return {screen: "albums", artist: value};
   if (kind === "album" && value) return {screen: "album", album: value};
   return null;
@@ -27,14 +52,16 @@ function parseRoute(hash) {
 function routeLabel(hash) {
   const route = parseRoute(hash);
   if (!route) return "";
+  if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : history.state?.browse?.label || browseKinds[route.kind].label;
   if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || "the album";
-  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", overview: "Overview"}[route.screen];
+  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourites", overview: "Overview"}[route.screen];
 }
 
 function viewState(index, from) {
   return {index, from, search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
-    tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page};
+    tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
+    browse: {query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
 }
 
 // Called after every page change and render: a new page adds a history entry, the same page
@@ -77,7 +104,9 @@ function goBack(fallback) {
 }
 
 function showRoute(route, saved = {}) {
-  if (route.screen === "artists") {
+  if (route.screen === "browse") {
+    showBrowse(route.kind, route.key, saved.browse || {});
+  } else if (route.screen === "artists") {
     if (saved.artistsSearch !== undefined) $("#artists-search").value = saved.artistsSearch;
     if (saved.artistsSort) $("#artists-sort").value = saved.artistsSort;
     if (saved.artistsFilter) $("#artists-filter").value = saved.artistsFilter;
@@ -86,6 +115,9 @@ function showRoute(route, saved = {}) {
   } else if (route.screen === "tracks") {
     if (saved.tracksSearch !== undefined) $("#tracks-search").value = saved.tracksSearch;
     showTracks(saved.tracksPage || 0);
+  } else if (route.screen === "favourites") {
+    if (saved.favouritesSearch !== undefined) $("#favourites-search").value = saved.favouritesSearch;
+    showFavourites(saved.favouritesPage || 0);
   } else if (route.screen === "overview") {
     showScreen("overview");
   } else if (route.screen === "album" && state.albums.some(a => String(a.id) === route.album)) {
@@ -103,6 +135,7 @@ function showRoute(route, saved = {}) {
 }
 
 window.addEventListener("popstate", event => {
+  closeSidebarMenu();
   const route = parseRoute(location.hash);
   if (!route) return;
   if (DIALOGS_WITH_DRAFTS.some(id => $(id).open)) {

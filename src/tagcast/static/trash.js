@@ -3,6 +3,8 @@
 // Moving tracks to iBroadcast's trash from the album page: choose tracks, review them,
 // then send. iBroadcast keeps them in its trash; Tagcast can't take them back out.
 
+const trashIcon = '<svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>';
+
 function albumDiscs() {
   return shelfIds(albumView.id).map(id => state.details.get(id)).filter(Boolean);
 }
@@ -40,7 +42,7 @@ function showTrashReview() {
   $("#trash-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">MOVE TO THE TRASH</div><h2>${whole ? `${escapeHtml(discs[0].name)}: the whole album` : `${noun} of ${escapeHtml(discs[0].name)}`}</h2></div><button class="close" data-close="trash-review" aria-label="Close">×</button></div>
     <div class="warn-box">These tracks leave your library, in Tagcast and in every iBroadcast app. iBroadcast keeps them in its trash; Tagcast can't take them back out.${whole ? " Without tracks, the album disappears too." : ""}</div>
     <section class="diff-group"><h3>${noun}</h3>${rows.map(({disc, track: t}) => `<p class="trash-row">${several ? `Disc ${disc.disc || "?"} · ` : ""}${t.track || "–"}. ${escapeHtml(t.title)} <span class="muted">· ${escapeHtml(t.artist)} · ${trackDuration(t.length)}</span></p>`).join("")}</section>
-    <div class="dialog-footer"><span class="muted" id="trash-status"></span><button class="button" data-close="trash-review">Keep them</button><button class="button primary" id="trash-confirm">Move ${noun} to the trash</button></div>`;
+    <div class="dialog-footer"><span class="muted" id="trash-status"></span><button class="button" data-close="trash-review">Keep them</button><button class="button danger primary" id="trash-confirm">${trashIcon}Move ${noun} to the trash</button></div>`;
   $("#trash-review").showModal();
 }
 
