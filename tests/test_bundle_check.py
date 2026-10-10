@@ -12,7 +12,7 @@ from bundle_check import page_scripts  # noqa: E402
 class BundleScriptTests(unittest.TestCase):
     def test_current_page_and_assets_match_in_load_order(self):
         static = Path(__file__).resolve().parent.parent / "src/tagcast/static"
-        scripts = page_scripts((static / "index.html").read_text(), static)
+        scripts = page_scripts((static / "index.html").read_text(encoding="utf-8"), static)
         self.assertEqual(scripts[-1], "navigation.js")
         self.assertIn("browse.js", scripts)
         self.assertIn("favourites.js", scripts)
