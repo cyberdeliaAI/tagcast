@@ -69,21 +69,21 @@ function renderAlbumView() {
   const id = escapeHtml(album.id), canPlay = live() && album.tracks.length > 0;
   const total = album.tracks.length && album.tracks.every(t => Number(t.length) > 0)
     ? ` · ${trackDuration(album.tracks.reduce((sum, t) => sum + Number(t.length), 0))}` : "";
-  const genres = splitGenres(album.tracks.flatMap(trackGenres));
+  const genres = [...new Map(album.tracks.flatMap(trackGenres).map(g => [g.toLocaleLowerCase(), g])).values()];
   const doubled = new Map(discs.map(d => [d, twice(d)]));
   $("#breadcrumb").textContent = album.name;
   $("#album-page").innerHTML = `${backButton()}
     <div class="album-detail-header">${cover(album)}<div class="album-detail-info"><div class="eyebrow">YOUR ALBUM</div>
       <h1>${escapeHtml(album.name)}</h1><button class="text-action" data-artist="${escapeHtml(album.artist)}">${escapeHtml(album.artist)}</button>
       <p class="muted">${albumYear(discs) || "Year unknown"} · ${album.tracks.length} tracks${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · Disc ${album.disc}` : ""}${total}</p>
-      ${genres.length ? `<p class="muted">${escapeHtml(genres.join(" · "))}</p>` : ""}
+      ${genres.length ? `<p class="muted album-genre-links">${genres.map(g => `<button class="text-action" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join(' <span aria-hidden="true">·</span> ')}</p>` : ""}
       <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ Play album</button>
-        <button class="button" data-edit-album="${escapeHtml(ids.join(","))}">Edit album →</button>${live() ? `<button class="button" data-trash-start ${albumView.trash ? "disabled" : ""}>Move to trash…</button>` : ""}</div>
+        ${queueButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">Edit album →</button>${live() ? `<button class="button danger" data-trash-start ${albumView.trash ? "disabled" : ""}>${trashIcon}Move to trash…</button>` : ""}</div>
       ${live() ? "" : '<p class="muted">Connect iBroadcast to listen. You can edit this local preview.</p>'}</div></div>
     <div class="tracks-heading"><h2>Tracks</h2><span class="muted">${canPlay ? "Play from any track" : "Local preview"}</span></div>
-    ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number">#</th><th>Title / Artist</th><th class="track-time">Time</th></tr></thead><tbody>
-      ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="3"></td></tr>' : ""}<tr class="disc-row"><td colspan="3"><span>Disc ${d.disc || "?"}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">Edit disc ${d.disc || "?"}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}<button class="album-track-play" data-play="${escapeHtml(t.id)}" data-play-album-id="${id}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button><span>${t.track || "–"}</span></td>
-        <td><strong>${escapeHtml(t.title)}${doubled.get(d).has(titleKey(t.title)) ? ' <span class="pill missing">Duplicate</span>' : ""}</strong><small>${escapeHtml(t.artist)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td><td class="track-time">${trackDuration(t.length)}</td></tr>`).join("")).join("")}
+    ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number">#</th><th>Title / Artist</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>
+      ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>Disc ${d.disc || "?"}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">Edit disc ${d.disc || "?"}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}<button class="album-track-play" data-play="${escapeHtml(t.id)}" data-play-album-id="${id}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button><span>${t.track || "–"}</span></td>
+        <td><strong>${escapeHtml(t.title)}${doubled.get(d).has(titleKey(t.title)) ? ' <span class="pill missing">Duplicate</span>' : ""}</strong><small>${escapeHtml(t.artist)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td><td class="track-time">${trackDuration(t.length)}</td><td class="track-heart">${queueButton(album.id, t)}${heartButton(t)}</td></tr>`).join("")).join("")}
     </tbody></table>`;
   markPlaying();
 }

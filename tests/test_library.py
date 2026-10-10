@@ -73,6 +73,144 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual((summary["no_genre"], summary["no_cover"], summary["track_count"]), (1, 1, 2))
         self.assertNotIn("tracks", summary)
 
+    def test_native_favourites_include_top_ratings_only_and_search_and_paginate_on_server(self):
+        data = raw()
+        tracks = data["library"]["tracks"]
+        tracks["map"]["rating"] = 8
+        for item_id, rating in [(100, 5), (101, 3), (102, 10), (103, 5), (104, 1)]:
+            tracks[str(item_id)].append(rating)
+        library = Library(data)
+        found = library.favourites(limit=1)
+        self.assertEqual((found["count"], found["total"], len(found["tracks"])), (2, 2, 1))
+        self.assertEqual(found["tracks"][0]["id"], "100")
+        self.assertEqual(library.favourites(offset=1, limit=1)["tracks"][0]["id"], "102")
+        self.assertEqual(library.favourites(offset=99, limit=1)["offset"], 1)
+        self.assertEqual(library.favourites("ÁRTIST B")["total"], 1)
+        self.assertEqual(library.track_view(101)["rating"], 3)
+        cached = Library(library.to_cache())
+        self.assertEqual(cached.favourites()["tracks"], library.favourites()["tracks"])
+
+    def test_favourite_uses_the_displayed_combined_album_even_with_an_original_disc_id(self):
+        data = raw()
+        data["library"]["tracks"]["map"]["rating"] = 8
+        data["library"]["tracks"]["100"][1] = 99  # original disc absent from the combined view
+        data["library"]["tracks"]["100"].append(5)
+        library = Library(data)
+        self.assertEqual(library.active_track_album(100), 10)
+        self.assertEqual(library.favourites()["tracks"][0]["album_id"], "10")
+
+
+class BrowseTests(unittest.TestCase):
+    def test_track_artists_use_ids_and_exact_names_not_substring_matches(self):
+        data = raw()
+        data["library"]["artists"]["4"] = ["Björk; Guest"]
+        data["library"]["artists"]["5"] = ["Björk"]
+        library = Library(data)
+        groups = library.browse("track-artists", query="bjork", limit=1)
+        self.assertEqual((groups["total"], groups["count"], len(groups["groups"])), (2, 2, 1))
+        self.assertEqual(library.browse("track-artists", key="4")["album_ids"], ["10", "12"])
+        self.assertEqual(library.browse("track-artists", key="5")["album_ids"], ["11"])
+        self.assertNotIn("tracks", library.browse("track-artists", key="4"))
+        cached = Library(library.to_cache())
+        self.assertEqual(cached.browse("track-artists"), library.browse("track-artists"))
+
+    def test_genres_include_additional_labels_keep_combined_labels_and_deduplicate(self):
+        library = GenreTests().library()
+        found = library.browse("genres")
+        self.assertEqual({g["label"]: g["tracks"] for g in found["groups"]}, {"Rock": 1, "Metal": 1, "Pop;Rock": 1})
+        self.assertEqual(library.browse("genres", key="ROCK")["album_ids"], ["10"])
+        self.assertEqual(library.browse("genres", key="pop;rock")["album_ids"], ["10"])
+        self.assertEqual(library.browse("genres", query="pop")["total"], 1)
+
+    def test_composers_use_credit_type_nested_map_and_distinct_ids(self):
+        data = ComposerAndGapTests().library().to_cache()
+        tracks = data["library"]["tracks"]
+        tracks["map"]["artists_additional_map"] = {"artist_id": 2, "phrase": 0, "type": 1}
+        tracks["1"][4] = [[None, "composer", 5], [None, "composer", 5], ["feat.", "artist", 6]]
+        library = Library(data)
+        self.assertEqual(library.browse("composers")["groups"], [{"key": "5", "label": "Bach", "image": "", "tracks": 1, "albums": 1}])
+        self.assertEqual(library.browse("composers", key="5")["album_ids"], ["10"])
+        self.assertEqual(library.browse("composers", query="Guest")["total"], 0)
+
+    def test_years_use_track_year_then_album_year_and_keep_unknown_last(self):
+        data = raw()
+        data["library"]["tracks"]["100"][3] = 2001
+        data["library"]["tracks"]["101"][3] = 0
+        data["library"]["tracks"]["104"][3] = 0
+        data["library"]["albums"]["12"][3] = 0
+        library = Library(data)
+        self.assertEqual([g["key"] for g in library.browse("years", sort="za")["groups"]], ["2001", "1992", "1982", "0"])
+        self.assertEqual([g["key"] for g in library.browse("years")["groups"]], ["1982", "1992", "2001", "0"])
+        self.assertEqual(library.browse("years", key="1982")["album_ids"], ["10"])
+        self.assertEqual(library.browse("years", key="0")["album_ids"], ["12"])
+
+    def test_decades_use_effective_years_keep_centuries_distinct_and_exclude_unknown(self):
+        data = raw()
+        data["library"]["tracks"]["100"][3] = 1929
+        data["library"]["tracks"]["101"][3] = 0  # falls back to 1982
+        data["library"]["tracks"]["102"][3] = 2020
+        data["library"]["tracks"]["104"][3] = 0
+        data["library"]["albums"]["12"][3] = 0
+        library = Library(data)
+        self.assertEqual([g["label"] for g in library.browse("decades")["groups"]],
+                         ["1920s", "1980s", "2020s"])
+        self.assertEqual(library.browse("decades", key="1980")["album_ids"], ["10"])
+        self.assertEqual(library.browse("decades", key="2020")["album_ids"], ["11"])
+        self.assertEqual(library.browse("decades", query="198")["groups"][0]["tracks"], 1)
+        self.assertEqual(Library(library.to_cache()).browse("decades"), library.browse("decades"))
+
+    def test_browse_excludes_unavailable_tracks_and_resolves_combined_discs(self):
+        data = raw()
+        data["library"]["tracks"]["100"][1] = 99
+        data["library"]["tracks"]["105"] = ["Orphan", 10, 6, 2000, "Rock", 4, False, 0]
+        data["library"]["albums"]["11"].append(True)
+        data["library"]["albums"]["map"]["trashed"] = 5
+        # Duplicate membership still counts a track once; use the first displayed album.
+        data["library"]["albums"]["12"][2].append(100)
+        library = Library(data)
+        self.assertEqual(library.browse("track-artists")["groups"], [{"key": "4", "label": "Artist A", "image": "", "tracks": 3, "albums": 2}])
+        self.assertEqual(library.browse("track-artists", key="4")["album_ids"], ["10", "12"])
+        with self.assertRaises(LibraryError):
+            library.browse("composers", key="6")
+        with self.assertRaises(LibraryError):
+            library.browse("invalid")
+        self.assertEqual(library.browse("track-artists", offset=999, limit=1)["offset"], 0)
+
+    def test_album_counts_match_the_shelf_for_every_group_and_single_disc_matches(self):
+        data = raw()
+        data["library"]["albums"]["12"][0] = " ORIGINAL "
+        data["library"]["albums"]["12"][4] = 2
+        data["library"]["albums"]["12"][3] = 1982
+        data["library"]["albums"]["11"][3] = 1982
+        data["library"]["tracks"]["map"]["artists_additional"] = 8
+        for track in data["library"]["tracks"].values():
+            if isinstance(track, list):
+                track[3], track[4] = 0, "Rock"
+                track.append([{"artist_id": 5, "type": "composer"}])
+        library = Library(data)
+        for kind, key in [("genres", "rock"), ("composers", "5"), ("years", "1982"), ("decades", "1980")]:
+            with self.subTest(kind=kind):
+                group = next(g for g in library.browse(kind)["groups"] if g["key"] == key)
+                self.assertEqual((group["albums"], group["tracks"]), (2, 4))
+                self.assertEqual(len(library.browse(kind, key=key)["album_ids"]), 3)
+        artist = library.browse("track-artists", key="4")["group"]
+        self.assertEqual(artist["albums"], 1)
+        self.assertEqual(Library(library.to_cache()).browse("genres"), library.browse("genres"))
+        # A label on only the second disc still opens/counts the whole set once.
+        data["library"]["tracks"]["104"][4] = "Jazz"
+        group = Library(data).browse("genres", key="jazz")
+        self.assertEqual((group["group"]["albums"], group["album_ids"]), (1, ["12"]))
+
+    def test_duplicate_disc_numbers_and_different_album_artists_do_not_merge_counts(self):
+        data = raw()
+        for album in ("10", "11", "12"):
+            data["library"]["albums"][album][0] = "Original"
+        # Artist A's two disc-1 albums are separate; Artist B's disc 2 is separate too.
+        data["library"]["albums"]["11"][4] = 2
+        library = Library(data)
+        self.assertEqual(library.browse("track-artists", key="4")["group"]["albums"], 2)
+        self.assertEqual(library.browse("track-artists", key="5")["group"]["albums"], 1)
+
 
 class GenreTests(unittest.TestCase):
     def library(self):
@@ -187,7 +325,7 @@ class SearchTests(unittest.TestCase):
         kyrie = library.search_tracks("kyrie")["tracks"][0]
         self.assertEqual(kyrie, {"id": "4", "album_id": "11", "title": "Kyrie", "artist": "Choir",
                                  "composers": ["Bach"], "album": "Mass", "disc": 2, "track": 1,
-                                 "year": 1749, "length": 300})
+                                 "year": 1749, "length": 300, "rating": 0})
         self.assertEqual(library.search_tracks("army")["tracks"][0]["year"], 1995)  # album year
         capped = library.search_tracks("o", limit=2)
         self.assertEqual((len(capped["tracks"]), capped["total"]), (2, 4))

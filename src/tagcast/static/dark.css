@@ -48,10 +48,13 @@
 :root[data-theme="dark"] .diff-row del{color:#b69e90}
 :root[data-theme="dark"] .diff-row ins{color:#8ac592}
 :root[data-theme="dark"] .track-inline{background:#2b2d29}
-:root[data-theme="dark"] .mode-badge{border:1px solid #40443d;background:#1b2520;color:#a3b39a}
 :root[data-theme="dark"] .mode-badge:hover{background:#2d2f2a}
 :root[data-theme="dark"] .mode-badge.live{background:#303529;border-color:#48543c;color:#91cbaf}
 :root[data-theme="dark"] .mode-badge.live:before{background:#60ba73}
+:root[data-theme="dark"] .button.danger{color:#ff8d8d;border-color:#c18086}
+:root[data-theme="dark"] .button.danger:hover{background:#322c2d}
+:root[data-theme="dark"] .button.danger.primary{background:#ff8d8d;border-color:#ff8d8d;color:#1b2520}
+:root[data-theme="dark"] .button.danger.primary:hover{background:#ff9a9b;border-color:#ff9a9b}
 :root[data-theme="dark"] .connect-row input{background:#1b2520;border:1px solid #40443d}
 :root[data-theme="dark"] .device-code{background:#1b2520;border:1px dashed #5b6b4b}
 :root[data-theme="dark"] .spinner{border:2px solid #71903e}
@@ -127,11 +130,14 @@
 :root[data-theme="dark"] .album-tracks{background:#1b2520}
 :root[data-theme="dark"] .album-tracks tr.found td{background:#2d2924}
 :root[data-theme="dark"] .album-tracks tr.playing td{background:#2b2e26}
+:root[data-theme="dark"] .now-playing-panel{box-shadow:-8px 0 30px #0a1c2426}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="dark"] .button.primary{background:#3e8a62;border-color:#3e8a62;color:#fff}
 :root[data-theme="dark"] .button.primary:hover{background:#469a6e}
+:root[data-theme="dark"] .button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
+:root[data-theme="dark"] .button.danger.primary:hover{background:#bd3944;border-color:#bd3944}
 :root[data-theme="dark"] .overview{--chart:#52a874;--chart-track:#26372d}
 :root[data-theme="dark"] .error-text{color:#f0a89b}
 :root[data-theme="dark"] dialog::backdrop{background:#030806b3}
@@ -188,10 +194,13 @@
 :root:not([data-theme="light"]) .diff-row del{color:#b69e90}
 :root:not([data-theme="light"]) .diff-row ins{color:#8ac592}
 :root:not([data-theme="light"]) .track-inline{background:#2b2d29}
-:root:not([data-theme="light"]) .mode-badge{border:1px solid #40443d;background:#1b2520;color:#a3b39a}
 :root:not([data-theme="light"]) .mode-badge:hover{background:#2d2f2a}
 :root:not([data-theme="light"]) .mode-badge.live{background:#303529;border-color:#48543c;color:#91cbaf}
 :root:not([data-theme="light"]) .mode-badge.live:before{background:#60ba73}
+:root:not([data-theme="light"]) .button.danger{color:#ff8d8d;border-color:#c18086}
+:root:not([data-theme="light"]) .button.danger:hover{background:#322c2d}
+:root:not([data-theme="light"]) .button.danger.primary{background:#ff8d8d;border-color:#ff8d8d;color:#1b2520}
+:root:not([data-theme="light"]) .button.danger.primary:hover{background:#ff9a9b;border-color:#ff9a9b}
 :root:not([data-theme="light"]) .connect-row input{background:#1b2520;border:1px solid #40443d}
 :root:not([data-theme="light"]) .device-code{background:#1b2520;border:1px dashed #5b6b4b}
 :root:not([data-theme="light"]) .spinner{border:2px solid #71903e}
@@ -267,11 +276,14 @@
 :root:not([data-theme="light"]) .album-tracks{background:#1b2520}
 :root:not([data-theme="light"]) .album-tracks tr.found td{background:#2d2924}
 :root:not([data-theme="light"]) .album-tracks tr.playing td{background:#2b2e26}
+:root:not([data-theme="light"]) .now-playing-panel{box-shadow:-8px 0 30px #0a1c2426}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}
 :root:not([data-theme="light"]) .button.primary{background:#3e8a62;border-color:#3e8a62;color:#fff}
 :root:not([data-theme="light"]) .button.primary:hover{background:#469a6e}
+:root:not([data-theme="light"]) .button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
+:root:not([data-theme="light"]) .button.danger.primary:hover{background:#bd3944;border-color:#bd3944}
 :root:not([data-theme="light"]) .overview{--chart:#52a874;--chart-track:#26372d}
 :root:not([data-theme="light"]) .error-text{color:#f0a89b}
 :root:not([data-theme="light"]) dialog::backdrop{background:#030806b3}

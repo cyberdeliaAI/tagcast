@@ -76,6 +76,8 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  if (typeof resetBrowse === "function") resetBrowse();
+  if (typeof resetFavourites === "function") resetFavourites();
   if (typeof stopPlayer === "function") stopPlayer();
   if (typeof resetAlbumView === "function") resetAlbumView();
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
@@ -126,11 +128,14 @@ const FILTERS = {
 };
 const SORTS = {
   artist: (a, b) => a.artist.localeCompare(b.artist) || a.name.localeCompare(b.name),
+  artist_za: (a, b) => b.artist.localeCompare(a.artist) || a.name.localeCompare(b.name),
   title: (a, b) => a.name.localeCompare(b.name),
+  title_za: (a, b) => b.name.localeCompare(a.name),
   year: (a, b) => (a.year || 9999) - (b.year || 9999) || a.name.localeCompare(b.name),
   newest: (a, b) => b.year - a.year || a.name.localeCompare(b.name),
   no_genre: (a, b) => b.no_genre - a.no_genre || SORTS.artist(a, b),
   fewest: (a, b) => a.track_count - b.track_count || SORTS.artist(a, b),
+  most: (a, b) => b.track_count - a.track_count || SORTS.artist(a, b),
 };
 const initials = name => name.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
 const pageSize = () => state.perPage || (state.view === "list" ? 100 : 24);
@@ -241,13 +246,13 @@ function selectBox(a) {
 }
 
 function gridView(items) {
-  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks${discNote(a) ? ` <span aria-hidden="true">·</span> ${discNote(a)}` : ""}</span>${badge(a)}</div></article>`).join("");
+  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks${discNote(a) ? ` <span aria-hidden="true">·</span> ${discNote(a)}` : ""}</span>${badge(a)}</div>${typeof queueButton === "function" ? queueButton(a.id) : ""}</article>`).join("");
 }
 
 function listView(items) {
   const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
   const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
-  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Add to queue"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof queueButton === "function" ? queueButton(a.id) : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
@@ -282,6 +287,9 @@ function render() {
   if (typeof renderAlbumView === "function") renderAlbumView();
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();
   if (typeof renderTrackSearch === "function") renderTrackSearch();
+  if (typeof renderFavourites === "function") renderFavourites();
+  if (typeof renderBrowse === "function") renderBrowse();
+  if (typeof updateFavouriteControls === "function") updateFavouriteControls();
   if (typeof syncHistory === "function") syncHistory();
 }
 
@@ -532,7 +540,10 @@ function dropTracks(ids) {
 }
 
 function showHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}">Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(shown(v.before))} → ${escapeHtml(shown(v.after))}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
+  $("#history-status").textContent = "";
+  $("#history-clear-review").hidden = true;
+  updateHistoryControls();
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(key)}: ${escapeHtml(shown(v.before))} → ${escapeHtml(shown(v.after))}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
   $("#history").showModal();
 }
 
@@ -579,11 +590,46 @@ $("#clear-selection").addEventListener("click", () => { state.selected.clear(); 
 $("#edit-selection").addEventListener("click", () => openEditor([...state.selected]));
 $("#apply-draft").addEventListener("click", applyDraft);
 $("#show-history").addEventListener("click", showHistory);
-$("#export-button").addEventListener("click", () => {
+function exportHistory() {
   if (!state.history.length) { toast("Make and review an edit before exporting the history."); return; }
   const blob = new Blob([JSON.stringify({format: "tagcast-history", version: 2, exported: new Date().toISOString(), entries: state.history}, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob), link = document.createElement("a");
   link.href = url; link.download = `tagcast-history-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+for (const id of ["#export-button", "#history-export"]) $(id).addEventListener("click", exportHistory);
+
+function updateHistoryControls() {
+  const busy = saving || checking > 0;
+  $("#history-export").disabled = !state.history.length;
+  for (const id of ["#history-clear", "#history-clear-confirm"]) {
+    $(id).disabled = !state.history.length || busy;
+    $(id).title = busy ? "Wait until saves and their checks have finished." : "";
+  }
+}
+
+$("#history-clear").addEventListener("click", () => {
+  if (!state.history.length || saving || checking) return;
+  $("#history-status").textContent = "";
+  $("#history-clear-review").hidden = false;
+  $("#history-clear-cancel").focus();
+});
+$("#history-clear-cancel").addEventListener("click", () => {
+  $("#history-clear-review").hidden = true;
+  $("#history-clear").focus();
+});
+$("#history-clear-confirm").addEventListener("click", () => {
+  if ($("#history-clear-review").hidden || !state.history.length || saving || checking) return;
+  try {
+    // Keep an empty current key so the earlier library-studio history cannot return.
+    localStorage.setItem("tagcast-history", "[]");
+  } catch {
+    $("#history-status").textContent = "History could not be cleared from browser storage. Try again when storage is available.";
+    return;
+  }
+  state.history = [];
+  render(); showHistory();
+  $("#history-content").innerHTML = '<p class="empty">History cleared. Your library is unchanged.</p>';
+  $("#history .close").focus();
 });
 window.addEventListener("beforeunload", event => { if (saving || state.history.some(h => h.status === "preview_only")) { event.preventDefault(); event.returnValue = ""; } });
 useLocal(demoLibrary(), "demo");
@@ -617,16 +663,22 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof updateFavouriteControls === "function") updateFavouriteControls();
+  updateHistoryControls();
   const c = state.connection;
   $("#status-dot").className = `status-dot ${live() && !state.loading ? "live" : state.loading ? "busy" : ""}`;
-  $("#connection-title").textContent = live() ? "Connected to iBroadcast" : c.connected ? "Connected · viewing snapshot" : "Preview workspace";
-  $("#connection-text").innerHTML = live() ? `${escapeHtml(c.account || "Your library")}<br>Reviewed edits are saved online.` : c.connected ? "Reload your library to edit it live." : "No account connected.<br>Edits stay in this browser tab.";
+  $("#connection-title").textContent = live() ? `${c.account || "Connected"} · iBroadcast` : c.connected ? `${c.account || "Connected"} · Snapshot` : "Preview workspace";
+  $("#connection-title").title = c.connected ? `Connected to iBroadcast as ${c.account || "your account"}` : "No iBroadcast account connected";
+  $("#connection-text").hidden = live();
+  $("#connection-text").textContent = live() ? "" : c.connected ? "Reload your library to edit it live." : "No account connected. Edits stay in this browser tab.";
   $("#connect-button").hidden = c.connected;
   $("#reload-button").hidden = !c.connected;
   $("#logout-button").hidden = !c.connected;
   const badge = $("#mode-badge");
   badge.classList.toggle("live", live());
-  badge.textContent = state.loading ? "LOADING LIBRARY…" : checking ? "CHECKING SAVES…" : live() ? `LIVE · ${(c.account || "iBroadcast").toUpperCase()}` : "DEMO · CONNECT ACCOUNT";
+  badge.textContent = state.loading ? "Loading library…" : checking ? "Checking saves…" : live() ? "Live" : "Demo · Connect";
+  badge.title = c.connected ? `Connected as ${c.account || "your iBroadcast account"}. Open connection details.` : "Connect your iBroadcast account.";
+  badge.setAttribute("aria-label", `${badge.textContent}. ${badge.title}`);
   $("#data-notice").textContent = live() ? "Live iBroadcast library. Every save is checked against iBroadcast first and read back afterwards. Your music files are never touched."
     : "Demo library with sample records. Connect your iBroadcast account to edit your own collection.";
   $("#history-note").textContent = live() ? "Saved changes are listed with their read-back status. Export the history if you want a record of this session." : "Export the history before closing this tab. Preview drafts are not saved to iBroadcast.";
@@ -644,11 +696,14 @@ async function boot() {
     return; // opened without the Python server: the demo still works
   }
   updateChrome();
+  checkForUpdates();
   if (state.connection.connected) loadLive();
   else if (typeof restorePendingRoute === "function") restorePendingRoute();
 }
 
 async function loadLive(refresh = false) {
+  if (typeof resetBrowse === "function") resetBrowse();
+  if (typeof resetFavourites === "function") resetFavourites();
   if (typeof resetAlbumView === "function") resetAlbumView();
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear();
   updateChrome(); render();
@@ -656,6 +711,7 @@ async function loadLive(refresh = false) {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
     state.connection.combine_sets = Boolean(data.combine_sets);
+    if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
     const count = `${state.albums.length.toLocaleString("en")} albums`;
     toast(data.source === "download" ? `Downloaded ${count} from iBroadcast.` : `Loaded ${count}. Nothing changed in iBroadcast since the last download.`);
   } catch (error) {
@@ -666,6 +722,7 @@ async function loadLive(refresh = false) {
     state.loading = false;
     if (state.artist && !state.albums.some(a => a.artist === state.artist)) state.artist = null;
     state.page = 0; updateChrome(); render();
+    if (typeof refreshPlayerRatings === "function") refreshPlayerRatings();
     if (typeof restorePendingRoute === "function") restorePendingRoute();
   }
 }

@@ -44,6 +44,8 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["frozen"] = False
         mock_ibroadcast.STATE["tracks"][901]["artwork_id"] = 601
         mock_ibroadcast.STATE["tracks"][901]["trashed"] = False
+        for track in mock_ibroadcast.STATE["tracks"].values():
+            track["rating"] = 0
 
     def assertPrivate(self, path):
         if sys.platform != "win32":  # Windows has no owner-only file mode bits
@@ -71,6 +73,84 @@ class ClientTests(unittest.TestCase):
         studio.set_client_id("test")
         studio._connect(client.oauth.TokenSet(mock_ibroadcast.TOKEN, "refresh-1", 0))
         return studio
+
+    def test_browse_is_read_only_and_validates_group_paging(self):
+        studio = self.local_connection()
+        groups = studio.browse("track-artists")
+        self.assertEqual(groups["count"], 2)
+        self.assertEqual(studio.browse("decades", key="1980")["album_ids"], ["72", "73"])
+        self.assertEqual(studio.browse("track-artists", key="41")["album_ids"], ["72", "73"])
+        self.assertEqual(studio.browse("genres", query="Art")["groups"][0]["label"], "Art Pop;New Wave")
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        for kwargs in ({"kind": "bad"}, {"kind": "genres", "offset": "-1"},
+                       {"kind": "genres", "limit": "999"}, {"kind": "genres", "limit": "bad"},
+                       {"kind": "genres", "query": "x" * 201}, {"kind": "genres", "sort": "bad"}):
+            with self.assertRaises(client.ApiError):
+                studio.browse(**kwargs)
+        studio.logout()
+        with self.assertRaises(client.ApiError):
+            studio.browse("track-artists")
+
+    def test_favourites_write_one_native_rating_and_read_back_even_with_frozen_timestamp(self):
+        studio = self.local_connection()
+        mock_ibroadcast.STATE["tracks"][903]["rating"] = 3
+        studio.load_library()
+        mock_ibroadcast.STATE["frozen"] = True
+        result = studio.favourite({"track_id": "900", "before": 0, "rating": 5})
+        self.assertEqual(result["status"], "sent")
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual(job["results"], [{"id": "900", "rating": 5, "status": "saved"}])
+        self.assertNotIn("albums", job)  # rating read-back does not send all album summaries
+        write = mock_ibroadcast.STATE["writes"][-1]
+        self.assertEqual((write["mode"], write["track_id"], write["rating"]), ("ratetrack", [900], 5))
+        self.assertEqual(mock_ibroadcast.STATE["tracks"][903]["rating"], 3)
+        self.assertEqual([t["id"] for t in studio.favourites()["tracks"]], ["900"])
+        removed = studio.favourite({"track_id": "900", "before": 5, "rating": 0})
+        self.assertEqual(self.wait_job(studio, removed["job"])["results"][0]["status"], "saved")
+        self.assertEqual(studio.favourites()["count"], 0)
+        self.wait_for_cache(studio)
+        restored = client.Studio(self.home)
+        self.assertEqual(restored.album_details([72])[0]["tracks"][0]["rating"], 0)
+
+    def test_favourite_detects_changed_rating_before_writing_and_excludes_trash(self):
+        studio = self.local_connection()
+        studio.load_library()
+        mock_ibroadcast.STATE["tracks"][900]["rating"] = 2
+        mock_ibroadcast.STATE["version"] += 1
+        with self.assertRaises(ConflictError):
+            studio.favourite({"track_id": "900", "before": 0, "rating": 5})
+        for body in [{"track_id": "902", "before": 0, "rating": 5},
+                     {"track_id": "900", "before": 2, "rating": 4},
+                     {"track_id": "900", "before": True, "rating": 5}]:
+            with self.subTest(body=body), self.assertRaises((client.ApiError, client.LibraryError)):
+                studio.favourite(body)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
+    def test_favourite_requires_connection_and_surfaces_refused_write(self):
+        studio = client.Studio(self.home)
+        with self.assertRaises(client.NotConnected):
+            studio.favourites()
+        with self.assertRaises(client.NotConnected):
+            studio.favourite({"track_id": "900", "before": 0, "rating": 5})
+        studio = self.local_connection()
+        mock_ibroadcast.STATE["reject"].add("ratetrack")
+        try:
+            with self.assertRaises(client.ApiError):
+                studio.favourite({"track_id": "900", "before": 0, "rating": 5})
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][900]["rating"], 0)
+            self.assertFalse(studio.jobs)
+        finally:
+            mock_ibroadcast.STATE["reject"].discard("ratetrack")
+
+    def test_favourite_read_back_does_not_claim_success_for_an_unchanged_rating(self):
+        studio = self.local_connection()
+        studio.load_library()
+        with patch.object(studio.client, "_jsonrequest", wraps=studio.client._jsonrequest) as request:
+            original = request._mock_wraps
+            request.side_effect = lambda mode, **body: {"result": True} if mode == "ratetrack" else original(mode, **body)
+            result = studio.favourite({"track_id": "900", "before": 0, "rating": 5})
+            job = self.wait_job(studio, result["job"])
+        self.assertEqual(job["results"], [{"id": "900", "rating": 0, "status": "unverified"}])
 
     def run_paused(self, operation, helper, result, during):
         started, resume = threading.Event(), threading.Event()
@@ -297,6 +377,29 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["mode"], "set_artist_artwork")
         self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
         self.assertEqual(studio.album_details(["74"])[0]["artist_artwork_id"], result["artwork_id"])
+        undo = studio.undo_artwork({"target": "artist", "id": "42", "label": "Pink Floyd",
+                                    "before": {"artwork_id": result["artwork_id"]},
+                                    "previous": result["previous"]})
+        self.assertEqual(self.wait_job(studio, undo["job"])["results"][0]["status"], "saved")
+        self.assertEqual(studio.album_details(["74"])[0]["artist_artwork_id"], current)
+
+    def test_artist_undo_without_a_previous_image_is_rejected_without_a_write(self):
+        studio = self.connect()
+        current = studio.album_details(["72"])[0]["artist_artwork_id"]
+        result = studio.change_artwork({"target": "artist", "id": "41", "label": "Kate Bush",
+                                        "before": {"artwork_id": current},
+                                        "source": {"artwork_id": 77}})
+        self.wait_job(studio, result["job"])
+        writes = len(mock_ibroadcast.STATE["writes"])
+        try:
+            with self.assertRaisesRegex(client.ApiError, "no artist image before"):
+                studio.undo_artwork({"target": "artist", "id": "41", "label": "Kate Bush",
+                                     "before": {"artwork_id": result["artwork_id"]},
+                                     "previous": {"artwork_id": 0}})
+            self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes)
+            self.assertEqual(studio.album_details(["72"])[0]["artist_artwork_id"], 77)
+        finally:
+            mock_ibroadcast.STATE["artist_art"][41] = current
 
     def test_artwork_conflict_and_bad_images_write_nothing(self):
         studio = self.connect()
@@ -339,6 +442,20 @@ class ClientTests(unittest.TestCase):
         self.assertPrivate(Path(self.home, "config.json"))
         studio.save_settings({"discogs_token": ""})
         self.assertNotIn("discogs_token", json.loads(Path(self.home, "config.json").read_text(encoding="utf-8")))
+
+    def test_update_preferences_persist_without_an_account_and_never_remove_source_keys(self):
+        studio = client.Studio(self.home)
+        self.assertTrue(studio.settings()["auto_updates"])
+        studio.save_settings({"discogs_token": "keep-this-key", "auto_updates": False})
+        self.assertFalse(client.Studio(self.home).settings()["auto_updates"])
+        self.assertPrivate(Path(self.home, "config.json"))
+        self.assertEqual(studio.config["discogs_token"], "keep-this-key")
+        with patch.object(studio.updates, "check", return_value={"state": "disabled"}) as check:
+            studio.check_updates()
+            check.assert_called_once_with(enabled=False, manual=False)
+        for bad in ("false", 0, None):
+            with self.assertRaises(client.ApiError):
+                studio.save_settings({"auto_updates": bad})
 
     def test_album_changes_wait_while_combine_sets_is_on_but_tracks_are_saved(self):
         mock_ibroadcast.STATE["combine_sets"] = True

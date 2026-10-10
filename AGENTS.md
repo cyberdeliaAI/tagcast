@@ -2,7 +2,7 @@
 
 ## Scope and communication
 
-- Tagcast is a local metadata editor for iBroadcast; it does not modify local
+- Tagcast is a local metadata editor and player for iBroadcast; it does not modify local
   music files.
 - Communicate with the user in Dutch. Preserve existing English file, variable
   and function names, code comments and documentation.
@@ -26,16 +26,17 @@ The application consists of a Python server and a plain JavaScript frontend.
   `plan_save()`, `write_requests()` and `verify()` handle save planning.
 - `src/tagcast/sources.py`: external source adapters, matching, request pacing
   and a shared response cache.
+- `src/tagcast/updates.py`: public stable-release checks, version comparison and a
+  daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and eleven JavaScript files:
-  `app.js`, `genres.js`, `lookup.js`, `artwork.js`, `player.js`, `album.js`,
-  `trash.js`, `artists.js`, `tracks.js`, `overview.js`, `navigation.js`. `album.js` provides read-only album browsing;
+- `src/tagcast/static/`: HTML, CSS, SVG and fourteen JavaScript files:
+  `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `album.js`,
+  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
-  searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` plays one album
-  independently of the editor. `navigation.js` gives every page a hash address
-  (`#/artists`, `#/artist/<name>`, `#/albums`, `#/album/<id>`, `#/tracks`, `#/overview`) and
+  searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` owns browser-local playback and the queue independently of the editor. `navigation.js` gives every page a hash address
+  (`#/track-artists`, `#/composers`, `#/genres`, `#/years`, `#/decades` and their group keys, `#/artists`, `#/artist/<name>`, `#/albums`, `#/album/<id>`, `#/tracks`, `#/favourites`, `#/overview`) and
   browser history; it loads last.
 - `tests/`: unittest tests that also run through pytest, fixtures and
   `mock_ibroadcast.py`.
@@ -116,11 +117,46 @@ and preserve a valid script order in `index.html`.
   account, `lastmodified` and `combine_sets`. Track search runs on the server's
   library copy (`Library.search_tracks`, at most 1,000 results); the browser never
   loads every track.
+- `browse.js` provides Track artists, Composers, Genres and Release year. Index
+  active displayed album membership on the server, lazily per library copy.
+  Track artist/composer selections use IDs; genres use stored main/additional
+  labels without automatic splitting. Years use track year with album-year
+  fallback and an Unknown year group. Cards open matching albums (one matching
+  track is enough); the API sends album IDs, and the frontend reuses album
+  summaries, merging discs and paginating locally. Preserve exact group membership,
+  browser history, genre links and stale-response guards across library changes.
+  Card album counts match the merged shelf; duplicate disc numbers remain separate.
+- The mobile sidebar is a disclosure menu; its open/closed state adds no history
+  entry. Keep connection and source settings reachable and support Escape.
+- Decades reuses the browse indexes and effective track/album years. Exclude unknown
+  years, use full decade labels (1980s, 2020s), sample merged album summaries locally
+  without duplicates, and preserve the random order on Back. Surprise me again
+  reshuffles without downloading tracks or writing to iBroadcast.
+- The play queue stays in browser memory. Explicit Play replaces it; Add to queue
+  appends a single track or all discs of an album, preserving click order. Store
+  each queued track's album metadata for covers and navigation across albums.
+  Clear queue stops audio and cancels pending additions. Guard lazy loads against
+  library changes and clears. Now playing opens without a browser history entry.
+- Player album artist and album title links open their respective pages. Show a
+  third line only for a different track artist; its ID links to matching albums.
+  Keep track artist in MediaSession metadata.
 - Artwork uses JPEG, PNG, WebP or GIF, up to 15 MB. Preserve checks for local
   addresses and redirects. Album covers are applied to active tracks;
   undo retains previous artwork IDs per track.
 - Playback goes through the local server, supports Range requests and does
   not report plays or scrobbles to iBroadcast.
+- Track favourites use native ratings (`ratetrack`, `track_id` array): 5 to add,
+  0 to remove. Ratings >= 5 appear as favourites; lower nonzero ratings require
+  frontend confirmation before replacement. Compare the displayed rating before
+  writing and read back afterwards. These writes are separate from metadata
+  History/Undo. `/api/favourites` searches and paginates on the server; never load
+  every favourite into the browser. Invalidate pending frontend results when the
+  library/session changes.
+- Update checks use only GitHub's public latest stable release endpoint, without
+  credentials or library data. Cache attempts (including failures) for 24 hours in
+  `updates.json`; manual checks bypass the interval. `auto_updates` is a local
+  setting. Keep failures separate from library loading, validate versions and
+  construct release URLs for this repository. Never install or restart automatically.
 - Closing the desktop launcher stops only its own server. Reusing an existing
   Tagcast instance must not stop it when the launcher closes.
 - iBroadcast write and artwork modes partly follow undocumented endpoints.

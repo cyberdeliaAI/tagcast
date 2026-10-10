@@ -10,6 +10,7 @@ async function loadSettings() {
   try {
     const data = await api("/api/settings");
     lookup.sources = data.sources; lookup.auto = data.auto_lookup; lookup.keysFromEnv = data.keys_from_env || [];
+    applyUpdateSettings(data);
   } catch { /* opened without the Python server: no online sources */ }
 }
 
@@ -113,17 +114,21 @@ function openSettings() {
     }).join("")}
     <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in all sources as soon as you open it</label>
     <p class="muted">Looking up sends the artist and album name to each source. Tagcast waits between requests so it stays within each source's limits.</p>
+    ${updateSettingsPanel()}
     <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`;
   $("#settings").showModal();
 }
 
 async function saveSettings(form, clear) {
-  const body = {auto_lookup: form.elements.auto_lookup.checked};
+  const body = {auto_lookup: form.elements.auto_lookup.checked, auto_updates: form.elements.auto_updates.checked};
   for (const input of form.querySelectorAll("input[type=password]")) if (input.value.trim()) body[input.name] = input.value.trim();
   if (clear) body[clear] = "";
   try {
     const data = await api("/api/settings", body);
     lookup.sources = data.sources; lookup.auto = data.auto_lookup;
+    const wasAutomatic = updateNotice.automatic;
+    applyUpdateSettings(data); renderUpdateNotice();
+    if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
     if (clear) openSettings(); else { $("#settings").close(); toast("Settings saved."); }
   } catch (error) { toast(error.message); }
 }

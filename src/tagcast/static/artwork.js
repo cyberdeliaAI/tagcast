@@ -180,21 +180,35 @@ function showNewArt(t, result) {
   }
 }
 
+function artworkUndoNote(entry) {
+  const a = entry.artwork;
+  if (!a) return "";
+  const previous = a.previous || {};
+  if (a.target === "artist" && !(Number(previous.artwork_id) > 0)) return "No previous artist image was saved to restore.";
+  if (a.target === "album" && !Object.values(previous.tracks || {}).some(id => Number(id) > 0)) return "No previous cover was saved to restore.";
+  return "";
+}
+
 async function undoArtwork(entry) {
   const a = entry.artwork;
+  if (saving) return;
+  if (artworkUndoNote(entry)) return;
   if (!confirm(`Put the previous ${a.target === "album" ? "cover" : "artist image"} of “${a.label}” back?`)) return;
   const before = a.target === "album" ? {tracks: Object.fromEntries(Object.keys(a.previous.tracks).map(id => [id, a.artwork_id]))} : {artwork_id: a.artwork_id};
+  saving = true; updateHistoryControls();
   try {
     const result = await api("/api/artwork/undo", {target: a.target, id: a.id, label: a.label, before, previous: a.previous});
     entry.undone = true; rememberHistory();
     const undo = artworkEntry({target: a.target, id: a.id, label: `${a.label} (undo)`, artist: a.artist}, result, "before", a.after);
     undo.artwork = null;
     state.history.unshift(undo);
+    pendingAlbums = null; // discard the earlier image save's deferred read-back
     showNewArt({target: a.target, id: a.id}, result);
     render(); showHistory();
     toast(result.note ? `The previous cover is back. ${result.note}` : "The previous image is back. Checking the result with iBroadcast…");
     followJob(result.job, undo);
-  } catch (error) { toast(error.message); }
+  } catch (error) { $("#history-status").textContent = error.message; toast(error.message); }
+  finally { saving = false; updateHistoryControls(); }
 }
 
 document.addEventListener("click", event => {

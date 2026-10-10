@@ -1,12 +1,19 @@
 <p align="center"><img src="assets/tagcast-icon.svg" width="96" alt=""></p>
 
 <h1 align="center">Tagcast</h1>
-<p align="center"><b>Tag your iBroadcast library, one album at a time.</b></p>
+<p align="center"><b>Metadata editor &amp; player for iBroadcast.</b></p>
 <p align="center"><a href="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml"><img src="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml/badge.svg" alt="Tests"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2e7d4f" alt="MIT license"></a></p>
 
-Tagcast is a local metadata editor for your [iBroadcast](https://www.ibroadcast.com/) collection: fix titles, artists, years, disc and track numbers and genres, pick covers and artist images from online sources, play what you're tagging, review every change, then save it to iBroadcast.
+Browse and play your [iBroadcast](https://www.ibroadcast.com/) collection, edit metadata, and manage album covers and artist images.
+
+Tagcast is a local metadata editor and player: fix titles, artists, years, disc and track numbers and genres, pick covers and artist images from online sources, review every change, then save it to iBroadcast.
 
 It runs on your computer and listens on `127.0.0.1` only. Your music files are never touched.
+
+> **0.20.0:** browse Track artists, Composers, Genres and Release year, save native
+> iBroadcast favourites, navigate from the player, and use the compact mobile menu.
+> New update notifications point to stable releases. Standalone downloads are
+> available for macOS (Apple Silicon and Intel), Windows and Linux.
 
 > **0.10.1:** desktop downloads now include a macOS **Tagcast.app**, a Windows
 > launcher without a console and a Linux package, each with the existing icon,
@@ -115,6 +122,23 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 
 - **Album artists** as a searchable, paginated grid with photos or initials and
   album counts; Tagcast opens here. Choose a card to browse all albums by that artist.
+- **Track artists, Composers, Genres and Release year** have searchable, paginated
+  overviews with album and track counts (a multi-disc set counts as one album).
+  A card opens the matching albums; open an album to play or edit it.
+  An album matches when at least one active track belongs to the selected group.
+  Multi-disc sets stay together. Track artists and composers use exact iBroadcast
+  IDs; compound artist names are kept as stored. Genres include main and additional
+  labels, without automatically splitting combined labels such as `Pop;Rock`.
+  Release year uses the track year, falling back to the album year; missing years
+  have an **Unknown year** card. Genre names on an album also open their albums.
+- **Update notifications** check GitHub for a newer stable release at startup,
+  at most once a day. A notification opens the release page and downloads; updates
+  are installed manually. **Sources & keys → Tagcast updates** lets you check
+  immediately or disable automatic checks. No account or library data is sent.
+- On mobile, the **navigation menu** opens from the hamburger button, including
+  connection and source settings; choosing an option closes it.
+- The **player** links its album artist and album title to their pages. When the
+  track artist differs, a third line shows it and links to its matching albums.
 - Album artists can be filtered to those **without an image**.
 - Choose **24, 50, 100 or 200 per page**, for albums and for album artists separately
   (Tracks: 50, 100 or 200); Tagcast remembers it in this browser.
@@ -128,6 +152,13 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
   Case and accents don't count, so `bjork` finds Björk. Results are listed album by
   album. ▶ plays a track with the rest of its album after it; the title or album
   opens the album page with that track marked. A search shows at most 1,000 tracks.
+- **Favourites**: use the heart on album tracks, track search results or the player.
+  The Favourites page searches your liked tracks and shows 50, 100 or 200 per page;
+  playback starts that track with the rest of its album. Likes use iBroadcast's
+  track ratings: adding sets **5**, removing clears the rating to **0**. Existing
+  five-star tracks are included; replacing a lower rating requires confirmation.
+  These changes save directly, compare the current rating first and are checked
+  through a fresh library download. They are separate from metadata History/Undo.
 
 - Loads your live iBroadcast library, with album artwork. Built for large libraries (tested with 286,000 tracks); see below.
 - **Overview**: your account and iBroadcast settings, the collection in numbers (size, playing time, formats, uploads per year), what you play most, and **metadata health** (tracks without a genre, albums without a year, artists without an image, tracks without a cover), each opening the matching album filter. Payment details, IP addresses, sessions, messages and keys are never shown or sent to the page.
@@ -142,6 +173,7 @@ The client ID and sign-in tokens are stored in `~/.tagcast/` (files readable by 
 - **Open an album** to see its cover, details, tracks and durations; play the album
   or start from a chosen track. **Edit album** opens the metadata editor.
 - Review before/after values, then **Save to iBroadcast**. History keeps every save in this browser, and a cover or image change can be undone.
+- **Clear history**: export a copy from History, then clear this browser's entries after confirmation. This also removes their Undo information; your library and saved iBroadcast changes stay as they are. Clearing waits for ongoing saves and their read-back checks to finish.
 - Light and dark theme: **Auto** follows your system; the button at the top switches to Light or Dark.
 - Without an account it still runs with demo data, which is never saved online.
 
@@ -198,6 +230,9 @@ iBroadcast can only send the whole library at once (about 92 MB and 20–30 seco
 - Each load first asks iBroadcast when the library last changed (`lastmodified` from the `status` call, the same signal the web player uses). If that matches the copy Tagcast has, the copy is used: from memory (under a second) or from `~/.tagcast/library-cache.json.gz` after a restart (about 2 seconds).
 - The cache holds only library metadata (tracks, albums, artists), no account details. It is readable by you only and deleted when you **Disconnect**. **Download everything again** in the account dialog skips the check.
 - The browser gets a small list of albums (about 5 MB for 18,000 albums). Tracks are fetched when you open an album.
+- The additional browse overviews build lazy indexes on the server. A selected
+  group sends only its album IDs; the browser reuses the existing album summaries
+  for searching, sorting, pagination and multi-disc grouping.
 - A track search runs on the server, in the library it already holds, and sends back only the matches. It asks iBroadcast for nothing. The first search after a download builds a search list: about 2 seconds and 50 MB for 288,000 tracks (measured on a generated library); later searches take about a tenth of a second.
 
 The server keeps the library in memory: count on roughly 750 MB for 286,000 tracks.

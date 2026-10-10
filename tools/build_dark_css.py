@@ -35,6 +35,8 @@ HAND = """
 :root{color-scheme:dark}
 .button.primary{background:#3e8a62;border-color:#3e8a62;color:#fff}
 .button.primary:hover{background:#469a6e}
+.button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
+.button.danger.primary:hover{background:#bd3944;border-color:#bd3944}
 .overview{--chart:#52a874;--chart-track:#26372d}
 .error-text{color:#f0a89b}
 dialog::backdrop{background:#030806b3}

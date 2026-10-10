@@ -12,6 +12,15 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
+def page_scripts(page, static):
+    """Require every page script exactly once and include no unused bundled scripts."""
+    scripts = re.findall(r'<script\s+src="([^"]+\.js)"', page)
+    bundled = {path.name for path in static.glob("*.js")}
+    if not scripts or len(scripts) != len(set(scripts)) or set(scripts) != bundled:
+        raise RuntimeError("The bundled page scripts are incomplete or inconsistent")
+    return scripts
+
+
 def run(args):
     if len(args) != 1:
         return 2
@@ -51,9 +60,7 @@ def run(args):
                 display = re.sub(r"b(\d+)$", r" beta \1", __version__)
                 if f'<span class="pill">{display}</span>' not in page:
                     raise RuntimeError("The bundled page version does not match the executable")
-                scripts = sorted(p.name for p in app.STATIC.glob("*.js"))
-                if len(scripts) != 11:
-                    raise RuntimeError("The bundled page scripts are incomplete")
+                scripts = page_scripts(page, app.STATIC)
                 for name in [*scripts, "style.css", "dark.css", "tagcast-mark.svg", "tagcast-icon.png"]:
                     data, mime = get("/" + name)
                     if not data or (name.endswith(".js") and mime != "text/javascript"):
