@@ -494,10 +494,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(studio.load_library()["source"], "download")
         import gzip
         for _ in range(100):  # the cache is rewritten in the background
-            cached = json.loads(gzip.decompress(Path(self.home, client.CACHE_FILE).read_bytes()))
+            # Windows cannot replace an open file; do not race the background writer.
+            with studio.cache_lock:
+                cached = json.loads(gzip.decompress(Path(self.home, client.CACHE_FILE).read_bytes()))
             if cached.get("combine_sets") is True:
                 break
             time.sleep(0.05)
+        else:
+            self.fail("cache was not rewritten after switching combine_sets")
         self.assertEqual(client.Studio(self.home).load_library()["source"], "cache")
         mock_ibroadcast.STATE["combine_sets"] = False
         self.assertEqual(client.Studio(self.home).load_library()["source"], "download")
