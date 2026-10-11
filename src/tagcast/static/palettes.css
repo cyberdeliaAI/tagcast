@@ -1,0 +1,152 @@
+/* Named colour roles. Forest uses the original style.css / dark.css fallbacks.
+   Keep light/dark preference independent of the colour palette. */
+
+:root[data-palette="ocean"]{
+  --palette-sidebar:#172d38;
+  --palette-accent:#9bdce7;
+  --palette-shell-ink:#e8f3f7;
+  --palette-shell-muted:#b2c8d3;
+  --palette-shell-active:#294958;
+  --palette-shell-line:#435e6b;
+  --palette-ink:#213746;
+  --palette-muted:#536b7a;
+  --palette-paper:#f5f8fa;
+  --palette-line:#d7e3e9;
+  --palette-link:#246276;
+  --palette-surface:#ffffff;
+  --palette-soft:#f0f5f8;
+  --palette-tint:#e5f0f4;
+  --palette-focus:#559bac;
+  --palette-primary:#246276;
+  --palette-primary-hover:#1e5366;
+  --palette-chart:#35869a;
+}
+:root[data-palette="ocean"][data-theme="dark"]{
+  --palette-ink:#e0eef3;
+  --palette-muted:#afc4cf;
+  --palette-paper:#101f28;
+  --palette-line:#344956;
+  --palette-link:#90d9e6;
+  --palette-surface:#1a2d38;
+  --palette-soft:#162731;
+  --palette-tint:#233f4c;
+  --palette-focus:#67b8cb;
+  --palette-primary:#286b7b;
+  --palette-primary-hover:#307e90;
+  --palette-chart:#65bfd0;
+}
+
+:root[data-palette="warm"]{
+  --palette-sidebar:#33281f;
+  --palette-accent:#efc99e;
+  --palette-shell-ink:#f7eee3;
+  --palette-shell-muted:#d0bfae;
+  --palette-shell-active:#574233;
+  --palette-shell-line:#735b48;
+  --palette-ink:#3b2c23;
+  --palette-muted:#76614f;
+  --palette-paper:#faf7f2;
+  --palette-line:#e6dcd0;
+  --palette-link:#805334;
+  --palette-surface:#fffefa;
+  --palette-soft:#f7f1e8;
+  --palette-tint:#f0e4d6;
+  --palette-focus:#b18459;
+  --palette-primary:#805334;
+  --palette-primary-hover:#6b442b;
+  --palette-chart:#a4774d;
+}
+:root[data-palette="warm"][data-theme="dark"]{
+  --palette-ink:#f2e8dc;
+  --palette-muted:#c7b6a5;
+  --palette-paper:#211a15;
+  --palette-line:#564336;
+  --palette-link:#e6bf96;
+  --palette-surface:#30251d;
+  --palette-soft:#2a211b;
+  --palette-tint:#483425;
+  --palette-focus:#d2a16e;
+  --palette-primary:#865632;
+  --palette-primary-hover:#98643d;
+  --palette-chart:#c69565;
+}
+
+:root[data-palette="ibroadcast"]{
+  --palette-sidebar:#162234;
+  --palette-accent:#a0dafa;
+  --palette-shell-ink:#ecedf1;
+  --palette-shell-muted:#b7bec9;
+  --palette-shell-active:#184e8e;
+  --palette-shell-line:#30445f;
+  --palette-ink:#1c3048;
+  --palette-muted:#53677f;
+  --palette-paper:#f4f7fb;
+  --palette-line:#d5dfeb;
+  --palette-link:#1c559b;
+  --palette-surface:#ffffff;
+  --palette-soft:#edf3fa;
+  --palette-tint:#e3edf9;
+  --palette-focus:#518ec5;
+  --palette-primary:#1c559b;
+  --palette-primary-hover:#174681;
+  --palette-chart:#347fc0;
+}
+:root[data-palette="ibroadcast"][data-theme="dark"]{
+  --palette-ink:#eceef2;
+  --palette-muted:#b1bdcd;
+  --palette-paper:#0d1828;
+  --palette-line:#2d405b;
+  --palette-link:#9bd9f8;
+  --palette-surface:#1e2d43;
+  --palette-soft:#162234;
+  --palette-tint:#213d60;
+  --palette-focus:#5c99d6;
+  --palette-primary:#1c559b;
+  --palette-primary-hover:#2465b5;
+  --palette-chart:#69afe8;
+}
+
+@media(prefers-color-scheme:dark){
+:root[data-palette="ocean"]:not([data-theme="light"]){
+  --palette-ink:#e0eef3;
+  --palette-muted:#afc4cf;
+  --palette-paper:#101f28;
+  --palette-line:#344956;
+  --palette-link:#90d9e6;
+  --palette-surface:#1a2d38;
+  --palette-soft:#162731;
+  --palette-tint:#233f4c;
+  --palette-focus:#67b8cb;
+  --palette-primary:#286b7b;
+  --palette-primary-hover:#307e90;
+  --palette-chart:#65bfd0;
+}
+:root[data-palette="warm"]:not([data-theme="light"]){
+  --palette-ink:#f2e8dc;
+  --palette-muted:#c7b6a5;
+  --palette-paper:#211a15;
+  --palette-line:#564336;
+  --palette-link:#e6bf96;
+  --palette-surface:#30251d;
+  --palette-soft:#2a211b;
+  --palette-tint:#483425;
+  --palette-focus:#d2a16e;
+  --palette-primary:#865632;
+  --palette-primary-hover:#98643d;
+  --palette-chart:#c69565;
+}
+:root[data-palette="ibroadcast"]:not([data-theme="light"]){
+  --palette-ink:#eceef2;
+  --palette-muted:#b1bdcd;
+  --palette-paper:#0d1828;
+  --palette-line:#2d405b;
+  --palette-link:#9bd9f8;
+  --palette-surface:#1e2d43;
+  --palette-soft:#162234;
+  --palette-tint:#213d60;
+  --palette-focus:#5c99d6;
+  --palette-primary:#1c559b;
+  --palette-primary-hover:#2465b5;
+  --palette-chart:#69afe8;
+}
+}

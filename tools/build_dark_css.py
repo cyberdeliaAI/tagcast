@@ -33,15 +33,15 @@ CURVE = [(0.0, 0.98), (0.30, 0.92), (0.45, 0.80), (0.58, 0.74), (0.75, 0.62),
 HAND = """
 /* set by hand */
 :root{color-scheme:dark}
-.button.primary{background:#3e8a62;border-color:#3e8a62;color:#fff}
-.button.primary:hover{background:#469a6e}
+.button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:#fff}
+.button.primary:hover{background:var(--palette-primary-hover,#469a6e)}
 .button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
 .button.danger.primary:hover{background:#bd3944;border-color:#bd3944}
-.overview{--chart:#52a874;--chart-track:#26372d}
+.overview{--chart:var(--palette-chart,#52a874);--chart-track:var(--palette-tint,#26372d)}
 .error-text{color:#f0a89b}
 dialog::backdrop{background:#030806b3}
 .field .genre-input input{border:0;background:none}
-.art-compare img,.art-empty{background:#1f2a24}
+.art-compare img,.art-empty{background:var(--palette-soft,#1f2a24)}
 """
 
 

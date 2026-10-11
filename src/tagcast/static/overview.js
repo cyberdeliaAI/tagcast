@@ -74,7 +74,7 @@ function renderOverview({account: a, stats: s}) {
   const plan = a.premium ? `Premium${a.subscription?.frequency ? ` · ${a.subscription.frequency}` : ""}` : "Free account";
   $("#overview-page").innerHTML = intro(`${escapeHtml(a.username || "Your account")} <span aria-hidden="true">·</span> ${escapeHtml(plan)} <span aria-hidden="true">·</span> library changed ${escapeHtml(a.lastmodified || "—")} (UTC)`)
     + `<div class="kpi-row">${[
-      statTile("Tracks", fmt(s.tracks)), statTile("Albums", fmt(s.albums)), statTile("Album artists", fmt(s.album_artists), `${fmt(s.track_artists)} track artists`),
+      statTile("Albums", fmt(s.albums), `${fmt(s.tracks)} ${s.tracks === 1 ? "track" : "tracks"}`), statTile("Album artists", fmt(s.album_artists), `${fmt(s.track_artists)} track artists`),
       statTile("Playlists", s.playlists == null ? "—" : fmt(s.playlists), s.playlists == null ? "after the next download" : ""),
       statTile("Plays", fmt(a.plays), "counted by iBroadcast"), statTile("Collection size", bytes(s.size)), statTile("Playing time", duration(s.length)),
     ].join("")}</div>
@@ -91,7 +91,7 @@ function healthCard(s) {
     ["artist_image", "Album artists with an image", ["album artist", "album artists"], "without an image", "artist_image"],
     ["cover", "Tracks with a cover", ["track", "tracks"], "without a cover", "cover"],
   ];
-  return `<section class="card"><h2>Metadata health</h2><p class="muted">What's still missing. Open a row to work through it album by album.</p>${rows.map(([key, label, noun, missing, filter]) => {
+  return `<section class="card"><h2>Metadata health</h2><button class="button small" data-cleanup-open>Clean up metadata…</button><p class="muted">What's still missing. Open a row to work through it album by album.</p>${rows.map(([key, label, noun, missing, filter]) => {
     const h = s.health[key] || {missing: 0, total: 0}, done = h.total ? (h.total - h.missing) / h.total : 1, pct = (done * 100).toFixed(done < 1 && done > 0.995 ? 2 : 1);
     return `<div class="health-row"><div class="health-head"><span>${label}</span><strong>${pct}%</strong></div>
       <div class="meter" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${done * 100}%"></span></div>

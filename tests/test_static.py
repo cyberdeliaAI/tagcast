@@ -30,6 +30,43 @@ class StaticScriptTests(unittest.TestCase):
         self.assertEqual((STATIC / "dark.css").read_text(encoding="utf-8"), build((STATIC / "style.css").read_text(encoding="utf-8")),
                          "Run python3 tools/build_dark_css.py")
 
+    def test_palette_text_and_controls_have_readable_contrast_in_both_appearances(self):
+        css = (STATIC / "palettes.css").read_text(encoding="utf-8")
+        page = (STATIC / "index.html").read_text(encoding="utf-8")
+        self.assertLess(page.index('href="dark.css"'), page.index('href="palettes.css"'))
+
+        def luminance(colour):
+            rgb = [int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            channels = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4
+                        for v in rgb]
+            return sum(v * weight for v, weight in zip(channels, (.2126, .7152, .0722)))
+
+        def contrast(a, b):
+            low, high = sorted((luminance(a), luminance(b)))
+            return (high + .05) / (low + .05)
+
+        for palette in ("ocean", "warm", "ibroadcast"):
+            selector = f':root[data-palette="{palette}"]'
+            light = re.search(re.escape(selector) + r"\{([^}]+)\}", css).group(1)
+            dark = re.search(re.escape(selector + '[data-theme="dark"]')
+                             + r"\{([^}]+)\}", css).group(1)
+            auto = re.search(re.escape(selector + ':not([data-theme="light"])')
+                             + r"\{([^}]+)\}", css).group(1)
+            self.assertEqual(dark, auto, "Auto dark and explicit dark must use the same palette")
+            values = dict(re.findall(r"--palette-([\w-]+):(#[\da-f]{6})", light))
+            for appearance, overrides in (("light", ""), ("dark", dark)):
+                values.update(re.findall(r"--palette-([\w-]+):(#[\da-f]{6})", overrides))
+                for foreground in ("ink", "muted", "link"):
+                    for background in ("paper", "surface", "soft", "tint"):
+                        with self.subTest(palette=palette, appearance=appearance,
+                                          foreground=foreground, background=background):
+                            self.assertGreaterEqual(contrast(values[foreground], values[background]), 4.5)
+                for foreground, background in (("shell-ink", "sidebar"),
+                                               ("shell-muted", "sidebar"),
+                                               ("shell-ink", "shell-active")):
+                    self.assertGreaterEqual(contrast(values[foreground], values[background]), 4.5)
+                self.assertGreaterEqual(contrast("#ffffff", values["primary"]), 4.5)
+
 
 if __name__ == "__main__":
     unittest.main()

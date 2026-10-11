@@ -19,6 +19,7 @@ import requests
 from ibroadcast import oauth
 
 from . import __version__, artwork, auth
+from .cleanup import Cleanup
 from .library import (
     ConflictError,
     Library,
@@ -295,6 +296,7 @@ class Studio:
         self.config = self._read("config.json") or {}
         self.updates = UpdateChecker(self._read, self._write)
         self.lookup = Lookup(self.source_keys)
+        self.cleanup = Cleanup(self)
         tokens = self._read("tokens.json")
         if tokens and tokens.get("client_id") == self.client_id and tokens.get("token_set"):
             try:

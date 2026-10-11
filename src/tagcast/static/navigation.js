@@ -6,7 +6,7 @@
 // search, filter, sort and page number. Dialogs get no entry: Back never closes an editor.
 
 const nav = {ready: false, restoring: false, pending: null};
-const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review"];
+const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup"];
 
 // The mobile menu is a disclosure, not a page or a dialog. Desktop navigation
 // stays visible through CSS; opening the menu never adds a history entry.
@@ -28,7 +28,7 @@ $("#sidebar-menu").addEventListener("click", event => {
 });
 $("#home").addEventListener("click", closeSidebarMenu);
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape") closeSidebarMenu();
+  if (!event.defaultPrevented && event.key === "Escape") closeSidebarMenu();
 });
 
 function currentRoute() {

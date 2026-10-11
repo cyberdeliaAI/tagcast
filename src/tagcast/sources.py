@@ -286,7 +286,7 @@ class Deezer(Source):
 
 
 class ITunes(Source):
-    name, label = "itunes", "Apple Music"
+    name, label = "itunes", "Apple Music / iTunes"
 
     def album(self, artist, album):
         data = self.http.json("https://itunes.apple.com/search",

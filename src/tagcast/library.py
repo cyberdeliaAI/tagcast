@@ -198,6 +198,8 @@ class Library:
         self._browse_albums = {}
         self._browse_indexes = {}
         self._browse_lock = Lock()
+        self._upload_dates = {}
+        self._genre_labels = None
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
@@ -250,6 +252,16 @@ class Library:
     def extra_artists(self, track):
         return additional_artists(track, self.tracks.nested.get("artists_additional_map"))
 
+    def performer_entries(self, track):
+        return [e for e in self.extra_artists(track) if e.get("type") in (None, "", "artist", "band")]
+
+    def performer_ids(self, track):
+        return list(dict.fromkeys([number(track.get("artist_id")),
+                                   *(e["artist_id"] for e in self.performer_entries(track))]))
+
+    def performer_view(self, track):
+        return [{"id": str(i), "name": self.artist_name(i)} for i in self.performer_ids(track) if i]
+
     def composer_entries(self, track):
         return [e for e in self.extra_artists(track) if e.get("type") == "composer"]
 
@@ -298,6 +310,7 @@ class Library:
             "title": text(track.get("title")) or "Untitled track",
             "artist": self.artist_name(track.get("artist_id")),
             "artist_id": number(track.get("artist_id")),
+            "performers": self.performer_view(track),
             "year": number(track.get("year")),
             "genre": text(track.get("genre")),
             "genres": stored_genres(track),
@@ -305,6 +318,8 @@ class Library:
             "composer_ids": [e["artist_id"] for e in self.composer_entries(track)],
             "track": number(track.get("track")),
             "length": number(track.get("length")),
+            "uploaded_on": text(track.get("uploaded_on")).strip()[:10],
+            "format": FORMATS.get(text(track.get("type")).strip().lower(), ""),
             "artwork_id": number(track.get("artwork_id")),
             "rating": number(track.get("rating")),
         }
@@ -316,10 +331,11 @@ class Library:
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
         genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
-        titles = []
+        duplicate_keys, upload_dates = [], set()
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
+            upload_dates.add(text(track.get("uploaded_on")).strip()[:10])
             stored = stored_genres(track)
             if stored:
                 genres.update(g.strip() for genre in stored for g in genre.split(";") if g.strip())
@@ -329,8 +345,10 @@ class Library:
             no_cover += not number(track.get("artwork_id"))
             no_composer += not self.composer_entries(track)
             numbers.add(number(track.get("track")))
-            titles.append(title_key(track.get("title")))
-        titles = [t for t in titles if t]
+            position, title = number(track.get("track")), title_key(track.get("title"))
+            if position > 0 and title:
+                duplicate_keys.append((position, title))
+        self._upload_dates[album_id] = tuple(sorted(upload_dates))
         return {
             "id": str(album_id),
             "name": text(album.get("name")) or "Untitled album",
@@ -343,6 +361,7 @@ class Library:
             "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
                                         .get("artwork_id")),
             "track_count": len(track_ids),
+            "upload_dates": list(self._upload_dates[album_id]),
             "genres": sorted(genres),
             "no_genre": no_genre,
             "no_cover": no_cover,
@@ -350,12 +369,36 @@ class Library:
             "no_composer": no_composer,
             # numbers missing below the highest one, e.g. 1, 2, 5 -> 2: maybe incomplete
             "track_gaps": (max(numbers) - len(numbers - {0})) if numbers - {0} else 0,
-            # tracks whose title appears twice in this album, e.g. one file uploaded twice
-            "duplicates": len(titles) - len(set(titles)),
+            # Same numbered position and title on this disc; audio is not compared.
+            "duplicates": len(duplicate_keys) - len(set(duplicate_keys)),
         }
 
     def album_index(self):
         return [self.album_summary(i) for i in self.album_ids()]
+
+    def album_set_key(self, album_id):
+        """A conservative display grouping; dates and year are not release identifiers."""
+        album = self.albums[album_id]
+        if album_id not in self._upload_dates:
+            self._upload_dates[album_id] = tuple(sorted({
+                text(self.tracks[i].get("uploaded_on")).strip()[:10]
+                for i in self.active_track_ids(album_id)}))
+        return ((text(album.get("name")) or "Untitled album").strip().lower(),
+                self.artist_name(album.get("artist_id")), number(album.get("year")),
+                self._upload_dates[album_id])
+
+    def genre_labels(self):
+        """Exact stored labels for manual review, without loading tracks into the browser."""
+        self._browse_index("genres")
+        if self._genre_labels is None:
+            labels = {}
+            for track_id, album_id in self._browse_tracks:
+                for label in stored_genres(self.tracks[track_id]):
+                    item = labels.setdefault(label, {"label": label, "tracks": 0, "albums": set()})
+                    item["tracks"] += 1
+                    item["albums"].add(self._browse_albums[album_id])
+            self._genre_labels = [{**item, "albums": len(item["albums"])} for item in labels.values()]
+        return self._genre_labels
 
     def search_tracks(self, query, limit=MAX_TRACK_RESULTS):
         """Active tracks whose title, artist, album or composers hold every word of the query,
@@ -385,7 +428,7 @@ class Library:
                 track = self.tracks[track_id]
                 track_title = fold(track.get("title"))
                 words = " ".join([track_title, name(number(track.get("artist_id"))), title, album_artist,
-                                  *(name(e["artist_id"]) for e in self.composer_entries(track))])
+                                  *(name(e["artist_id"]) for e in [*self.performer_entries(track), *self.composer_entries(track)])])
                 rows.append((order + (number(track.get("track")) or 9999, track_title, track_id),
                              words, track_id, album_id))
         rows.sort(key=lambda row: row[0])
@@ -399,12 +442,14 @@ class Library:
             "album_id": str(album_id),
             "title": text(track.get("title")) or "Untitled track",
             "artist": self.artist_name(track.get("artist_id")),
+            "performers": self.performer_view(track),
             "composers": [self.artist_name(e["artist_id"]) for e in self.composer_entries(track)],
             "album": text(album.get("name")) or "Untitled album",
             "disc": number(album.get("disc")),
             "track": number(track.get("track")),
             "year": number(track.get("year")) or number(album.get("year")),
             "length": number(track.get("length")),
+            "format": FORMATS.get(text(track.get("type")).strip().lower(), ""),
             "rating": number(track.get("rating")),
         }
 
@@ -422,13 +467,10 @@ class Library:
                 albums = sorted(self.album_ids(), key=lambda i: (
                     fold(self.artist_name(self.albums[i].get("artist_id"))),
                     fold(self.albums[i].get("name")), number(self.albums[i].get("disc")), i))
-                # Match albumShelf/discSet: distinct discs of the same title and
-                # album artist count as one album, including a match on only one disc.
+                # Match albumShelf/discSet, including year and upload-date sets.
                 sets = {}
                 for album_id in albums:
-                    album = self.albums[album_id]
-                    key = ((text(album.get("name")) or "Untitled album").strip().lower(),
-                           self.artist_name(album.get("artist_id")))
+                    key = self.album_set_key(album_id)
                     sets.setdefault(key, []).append(album_id)
                 for discs in sets.values():
                     merged = len({number(self.albums[i].get("disc")) for i in discs}) == len(discs)
@@ -448,7 +490,7 @@ class Library:
                 track_id, album_id = pair
                 track = self.tracks[track_id]
                 if kind == "track-artists":
-                    keys = [str(number(track.get("artist_id")))]
+                    keys = [str(i) for i in self.performer_ids(track)]
                 elif kind == "composers":
                     keys = list(dict.fromkeys(str(e["artist_id"]) for e in self.composer_entries(track)))
                 elif kind == "genres":
@@ -573,7 +615,7 @@ class Library:
 
         return {
             "tracks": len(tracks), "albums": len(album_ids), "album_artists": len(album_artists),
-            "track_artists": len({number(t.get("artist_id")) for t in tracks.values()}),
+            "track_artists": len({i for t in tracks.values() for i in self.performer_ids(t)} - {0}),
             "playlists": self.playlist_count, "size": size, "length": length,
             "plays": plays, "rated": rated,
             "formats": sorted(({"name": k, "tracks": v[0], "size": v[1]} for k, v in formats.items()),

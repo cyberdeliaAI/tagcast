@@ -68,6 +68,52 @@ class DecodeTests(unittest.TestCase):
 
 
 class SummaryTests(unittest.TestCase):
+    def test_file_formats_reuse_stored_types_in_details_search_favourites_and_cache(self):
+        for mime, expected in [("audio/flac", "FLAC"), ("audio/x-flac", "FLAC"),
+                               (" Audio/MPEG ", "MP3"), ("audio/mp3", "MP3"),
+                               ("audio/mp4", "AAC/ALAC"), ("audio/wav", "WAV"),
+                               ("audio/unrecognized", ""), ("", "")]:
+            with self.subTest(mime=mime):
+                value = raw()
+                rows = value["library"]["tracks"]
+                rows["map"]["type"], rows["map"]["rating"] = 8, 9
+                rows["100"].extend([mime, 5])
+                library = Library(value)
+                self.assertEqual(library.album_view(10)["tracks"][0]["format"], expected)
+                self.assertEqual(library.search_tracks("Song One")["tracks"][0]["format"], expected)
+                self.assertEqual(library.favourites()["tracks"][0]["format"], expected)
+                self.assertEqual(Library(library.to_cache()).track_view(100)["format"], expected)
+                self.assertNotIn("type", library.track_view(100))
+
+    def test_disc_grouping_requires_year_and_active_upload_date_set(self):
+        for year, dates, expected in [
+            (1982, ["2026-09-25 12:10:00", "2026-10-02 09:00:00"], 1),
+            (1983, ["2026-09-25", "2026-10-02"], 2),
+            (0, ["2026-09-25", "2026-10-02"], 2),
+            (1982, ["2026-09-26", "2026-10-02"], 2),
+            (1982, ["", ""], 2),
+        ]:
+            with self.subTest(year=year, dates=dates):
+                value = raw()
+                rows = value["library"]["albums"]
+                rows["12"][0], rows["12"][3], rows["12"][4] = " ORIGINAL ", year, 2
+                rows["12"][2].append(105)
+                tracks = value["library"]["tracks"]
+                tracks["map"]["uploaded_on"] = 8
+                tracks["100"].append("2026-10-02 10:00:00")
+                tracks["101"].append("2026-09-25 11:00:00")
+                tracks["103"].append("1999-01-01")  # trashed dates never participate
+                tracks["104"].append(dates[0])
+                tracks["105"] = ["Final", 12, 4, year, "Rock", 2, False, 0, dates[1]]
+                library = Library(value)
+                self.assertEqual(library.album_summary(10)["upload_dates"],
+                                 ["2026-09-25", "2026-10-02"])
+                self.assertEqual(library.track_view(100)["uploaded_on"], "2026-10-02")
+                self.assertEqual(library.browse("track-artists", key="4")["group"]["albums"], expected)
+                cached = Library(library.to_cache())
+                self.assertEqual(cached.album_set_key(10), library.album_set_key(10))
+                self.assertEqual(cached.browse("track-artists"), library.browse("track-artists"))
+
     def test_album_summary_counts_tracks_without_genre_or_cover(self):
         summary = lib().album_summary(10)  # Song One: no genre, no cover; Song Two: both
         self.assertEqual((summary["no_genre"], summary["no_cover"], summary["track_count"]), (1, 1, 2))
@@ -272,15 +318,22 @@ class ComposerAndGapTests(unittest.TestCase):
         summary = library.album_summary(10)
         self.assertEqual((summary["no_composer"], summary["track_gaps"]), (2, 2))  # 3 and 4 missing
 
-    def test_duplicate_titles_in_an_album_are_counted(self):
+    def test_duplicate_tracks_require_the_same_number_and_title(self):
         self.assertEqual(self.library().album_summary(10)["duplicates"], 0)
         library = Library({"library": {
             "artists": {"map": {"name": 0}, "6": ["Guest"]},
-            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2}, "10": ["X", 6, [1, 2, 3, 4]]},
-            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2},
-                       "1": ["Angel", 10, 6], "2": ["  angel ", 10, 6],  # case and spacing don't count
-                       "3": ["", 10, 6], "4": ["", 10, 6]}}})  # empty titles are not duplicates
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2},
+                       "10": ["X", 6, list(range(1, 11))], "11": ["X", 6, [11]]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "track": 3},
+                       "1": ["Angel", 10, 6, 1], "2": ["  angel ", 10, 6, "1"],
+                       "3": ["", 10, 6, 2], "4": ["", 10, 6, 2],
+                       "5": ["Angel", 10, 6, 17],  # reprise, not an extra copy
+                       "6": ["Other song", 10, 6, 1],  # same number, different title
+                       "7": ["Unknown", 10, 6, 0], "8": ["Unknown", 10, 6, 0],
+                       "9": ["Missing", 10, 6], "10": ["Missing", 10, 6],
+                       "11": ["Angel", 11, 6, 1]}}})
         self.assertEqual(library.album_summary(10)["duplicates"], 1)
+        self.assertEqual(library.album_summary(11)["duplicates"], 0)
 
     def test_composers_keep_other_extra_artists(self):
         plan = plan_save(self.library(), [change("track", 1, 10, composers=(["Bach"], ["Bach", "Guest"]))])
@@ -324,8 +377,9 @@ class SearchTests(unittest.TestCase):
         library = self.library()
         kyrie = library.search_tracks("kyrie")["tracks"][0]
         self.assertEqual(kyrie, {"id": "4", "album_id": "11", "title": "Kyrie", "artist": "Choir",
+                                 "performers": [{"id": "6", "name": "Choir"}],
                                  "composers": ["Bach"], "album": "Mass", "disc": 2, "track": 1,
-                                 "year": 1749, "length": 300, "rating": 0})
+                                 "year": 1749, "length": 300, "format": "", "rating": 0})
         self.assertEqual(library.search_tracks("army")["tracks"][0]["year"], 1995)  # album year
         capped = library.search_tracks("o", limit=2)
         self.assertEqual((len(capped["tracks"]), capped["total"]), (2, 4))

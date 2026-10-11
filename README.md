@@ -8,11 +8,11 @@ Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collect
 
 Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
 
-**New in [0.20.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.20.0):** Now playing with a large cover, a play queue for tracks and albums, random discoveries by decade, Track artists / Composers / Genres / Release year overviews, native iBroadcast favourites, update notifications and a compact sidebar with a mobile menu. Standalone downloads include everything needed to run Tagcast.
+**New in [0.30.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.30.0):** Reviewed batch cleanup for genres, track artists and composers; exact genre renaming, splitting and removal; full random album playback; fullscreen Now playing; four colour palettes; FLAC/MP3 format labels; and an optional automatic browser launch. Standalone downloads include all these features and everything needed to run Tagcast.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
 
-![Tagcast 0.20.0: the Album artists page with artist photos, album counts and the expanded navigation in the dark theme](docs/screenshots/album-artists-dark.png)
+![Tagcast: Blues albums in the iBroadcast inspired palette, Play random album and the compact player](docs/screenshots/random-album-ibroadcast.png)
 
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
@@ -20,20 +20,22 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.20.0** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.30.0** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.20.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.20.0/tagcast-0.20.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.20.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.20.0/tagcast-0.20.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.20.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.20.0/tagcast-0.20.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.20.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.20.0/tagcast-0.20.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.20.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.30.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.30.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.30.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.30.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.30.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
 On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
 
 A small launcher window opens Tagcast in your default browser at <http://127.0.0.1:8912>. If the browser does not open, use **Open Tagcast in browser** in the launcher. **Keep the launcher open while using Tagcast.** Choose **Stop Tagcast and close** or close the launcher to stop the server it started. Closing just the browser tab does not stop Tagcast. If the launcher reused a server that was already running, closing it leaves that server running.
 
 The downloads are not Developer ID signed/notarized on macOS or Authenticode signed on Windows. If your operating system blocks opening one, use **System Settings → Privacy & Security → Open Anyway** on macOS, or **More info → Run anyway** on Windows.
+
+The launcher has an **Open browser automatically** checkbox, enabled by default. Untick it when using an app wrapper such as Unite Pro; the server still starts and **Open Tagcast in browser** remains available. The choice is remembered in `~/.tagcast/launcher.json` (or `TAGCAST_HOME`) and also applies when reusing an existing server. It does not change the CLI’s explicit `--open` option.
 
 Each archive has a separate `.sha256` checksum file under Assets. See the [standalone guide](docs/native-builds.md) for checksum verification, the separate CLI and platform requirements. GitHub's **Source code** archives are for the source installation below.
 
@@ -142,16 +144,18 @@ Tagcast starts on **Album artists**. Choose an artist to see their albums, or us
 |---|---|
 | **Album artists** | Search artists, see their photos and album counts, or filter those without an image. Open an artist's albums and select several of their albums to edit together. |
 | **Track artists / Composers** | Find albums featuring a performer or composer, with album and track counts. Stored iBroadcast artist IDs determine membership. |
-| **Genres** | Browse main and additional genres. Click a genre on an album to open the same group. Combined labels such as `Pop;Rock` stay as stored until you choose to split them in the editor. |
+| **Genres** | Browse main and additional genres. Click a genre on an album to open the same group. Combined labels such as `Pop;Rock` stay as stored until you choose to split them in the editor or reviewed cleanup. |
 | **Release year** | Browse albums by track year, falling back to album year. Tracks without either appear under **Unknown year**. |
 | **Decades** | Choose a period such as **1980s** for a random selection of albums. **Surprise me again** gives you another selection; use the page-size control to choose how many to show. |
 | **Tracks** | Search every track by title, artist, album or composer. Case and accents do not matter: `bjork` finds Björk. Searches return at most 1,000 results. Open a result's album or play from that track. |
 
 Track artist, composer, genre and year cards open **matching albums**, rather than a separate track list. One matching active track is enough to include an album. Multi-disc sets stay together and count as one album in these cards. Decades use the same year fallback and omit tracks with unknown years.
 
-Album filters help you find missing years, genres, covers or composers; combined genres; artists without an image; albums with only 1–2 tracks; gaps in track numbering; duplicate titles; and named editions. **Next album** lets you work through a filtered collection.
+Album filters help you find missing years, genres, covers or composers; combined genres; artists without an image; albums with only 1–2 tracks; gaps in track numbering; duplicate track positions and titles; and named editions. **Next album** lets you work through a filtered collection.
 
-Browser **Back** and **Forward** restore the page you came from, including its search, filters and page. Back also preserves a decade's random selection. **Auto**, **Light** and **Dark** themes are available; Auto follows your system. On a narrow screen, the hamburger menu keeps navigation, connection controls and source settings accessible.
+Browser **Back** and **Forward** restore the page you came from, including its search, filters and page. Back also preserves a decade's random selection. Collection and artist totals emphasize albums, with track counts below, using existing summaries. On a narrow screen, the hamburger menu keeps navigation, connection controls and source settings accessible.
+
+The **Theme** button opens one menu with **Appearance** (Auto, Light or Dark) and **Colour**: **Forest** (the original green), **Ocean**, **Warm** and **iBroadcast inspired**. Colour and light/dark appearance are independent and remembered in this browser. The palette also applies to the sidebar, player and fullscreen Now playing. Switching colours keeps playback running and makes no library requests.
 
 ### Listen, Now playing and the play queue
 
@@ -160,12 +164,14 @@ Open an album and choose **Play album**, or use ▶ beside a track to start ther
 | Control | What happens |
 |---|---|
 | **Play album / ▶ on a track** | Starts that album, from the chosen track, and replaces the existing queue. Clicking the already-current track toggles pause/play. |
-| **+ Add to queue** on an album | Appends the entire album, including every disc of a set, without interrupting the current track. |
+| **+** on an album card / **Add to queue** on its page | Appends the entire album, including every disc of a set, without interrupting the current track. |
 | **+** beside a track | Appends just that track. An empty queue starts playing when you add to it. |
 | **Player cover / queue button** | Opens **Now playing** with a large cover, the current track and the full play queue. Click a queue entry to jump to it. |
 | **Clear queue & stop** | Stops playback and removes the entire queue, including the current track. |
 
 Use the player's previous/next buttons, seek bar and volume controls while browsing. Its album artist and album title link to their pages. A third line appears when the track artist differs; that name opens albums featuring that track artist.
+
+Track rows show the file format (such as FLAC or MP3) below the duration when iBroadcast provides a recognized format. The same label appears in Tracks search and Favourites; it requires no extra requests and does not indicate the playback stream’s bitrate or resolution.
 
 The queue lives in the current browser page and resets when you reload it. It is not synced with iBroadcast's queue or saved as a playlist. Audio goes through Tagcast's local server, keeping the access token out of the page; supported audio formats depend on your browser. **Tagcast does not report play counts or Last.fm scrobbles.**
 
@@ -191,9 +197,51 @@ For covers and artist images, choose an online suggestion, existing iBroadcast a
 
 **Artwork Undo restores a previous image when one exists.** If an artist had no image before, Undo cannot remove the new image and explains that no previous image is available. Metadata edits, favourites and trash moves do not have automatic Undo. See [how saving stays safe](#how-saving-stays-safe) and [multi-disc sets](#combine-multi-disc-album-sets) below.
 
+### Fullscreen Now playing
+
+The fullscreen icon in the player opens a focused view of the current album cover,
+track title, album artist and album. A different track artist appears underneath.
+The same player controls remain available, so playback and the queue continue
+without restarting. Press **Escape** or use the close button to return to your
+library. Where native browser fullscreen is unavailable, the view fills the browser
+window. No extra album or track details are downloaded for this view.
+
+### Random album playback
+
+**Play random album** is available on Albums, an album artist’s collection, and
+the album lists within Genres, Release year, Decades, Track artists and Composers.
+
+The button respects the current artist, search and filters and chooses from all
+matching albums across every page. Within a decade it uses the whole matching
+decade, not just the displayed random sample. It plays the complete album in track
+and disc order and replaces the queue. Disc sets have one chance each. When there
+is another choice, the currently playing album is skipped. No play counts or
+metadata are written to iBroadcast.
+
+### Batch metadata cleanup
+
+Open **Overview → Metadata health → Clean up metadata…**, or use the shortcut
+in the Combined genres album filter. Prepare a
+library-wide preview for combined genres, track artists or composers. The separate
+**Review genre labels** category lets you choose one exact stored label and enter
+its replacements, one per line, without guessing slash or comma separators.
+**Remove this label from matching tracks** explicitly removes only that label,
+preserving other genres or clearing the genre when it was the only one. Exclude
+albums, then approve and start. Changes are saved to iBroadcast in checked batches,
+with progress, stop/resume and a downloadable before/after report. Additional track
+artists are included in browsing, search and player links. Album cards use a compact
+queue `+` in their aligned information row.
+
+Semicolon cleanup splits only `;`; slashes, commas and ampersands are kept. Each
+batch contains at most **200 tracks from 20 displayed albums** and is read back
+before the next batch. Conflicts, request errors or unconfirmed writes stop the
+job. Resume is explicit and rechecks current values. Preparing a preview does not
+save anything. See the [cleanup instructions](docs/metadata-cleanup.md) for the
+complete steps, exact genre replacement and recovery.
+
 ### Move tracks to trash
 
-On an album page, choose **Move to trash…**, tick the tracks, review them and confirm. **Select extra copies** helps select repeated track titles; **Select all** selects the whole album. Duplicate detection compares titles, ignoring case and spacing; it does not compare the audio files.
+On an album page, choose **Move to trash…**, tick the tracks, review them and confirm. **Select extra copies** selects every matching copy after the first on each disc; **Select all** selects the whole album. Duplicate detection requires both the same positive track number and the same title, ignoring case and spacing. The same title at track 1 and track 17, or on separate discs, is not a duplicate. Missing track numbers are not matched. Audio files and recording quality are not compared: check which copy you want to keep before confirming.
 
 Tagcast checks that the tracks are still active on that album, moves them to **iBroadcast's trash**, and reads the library back. It never deletes tracks permanently. Restore trashed tracks through iBroadcast; Tagcast cannot take them out of the trash. An album disappears from Tagcast when it has no active tracks left.
 
@@ -215,7 +263,57 @@ If you start the new copy while the old server is still running, the launcher op
 
 ## Screenshots
 
-All workspace screenshots here show **Tagcast 0.20.0**. The Album artists and Now playing views are shown above; expand the sections below for the other views.
+The new screenshots show the features released in **0.30.0**, captured during
+development while the version badge still read 0.20.0. Earlier 0.20.0 views below
+also illustrate browsing and editing.
+
+<details open>
+<summary><b>New in 0.30.0: batch cleanup, formats and fullscreen playback</b></summary>
+
+**Batch cleanup:** review before/after values, exclude albums and approve the job.
+Genres, track artists and composers keep each track’s own values. Progress shows
+confirmed and outstanding tracks; batches are checked against iBroadcast.
+
+![Track artist cleanup preview with album selection and before/after names](docs/screenshots/cleanup-artists-preview.png)
+
+![Genre cleanup running in bounded batches with confirmed and pending track counts](docs/screenshots/cleanup-genres-running.png)
+
+Use **Review genre labels** to rename one exact label, replace it with several
+labels (one per line), or explicitly remove it. Slashes are not guessed as
+separators: a label such as `Films/Games` can remain intact.
+
+**File formats and Ocean colours:** known formats appear below each track’s time.
+
+![Ocean palette album page with FLAC beneath the track durations](docs/screenshots/album-formats-ocean.png)
+
+**Fullscreen Now playing:** a large cover and the existing player, without
+restarting playback. Escape returns to the collection.
+
+![Fullscreen Now playing in the Ocean palette with cover and audio controls](docs/screenshots/fullscreen-ocean.png)
+
+</details>
+
+<details>
+<summary><b>iBroadcast inspired colours, random albums, favourites and disc sets</b></summary>
+
+**Play random album:** play a complete album from a genre, artist, composer,
+year or decade, or from your filtered collection, across all pages.
+
+![Blues albums in the iBroadcast inspired palette with Play random album and the compact player](docs/screenshots/random-album-ibroadcast.png)
+
+![Albums featuring Burt Bacharach with composer browsing and Play random album](docs/screenshots/composer-albums-ibroadcast.png)
+
+**Favourites:** use iBroadcast track ratings and browse or queue liked tracks.
+
+![Favourites with search, queue and heart controls in the iBroadcast inspired palette](docs/screenshots/favourites-ibroadcast.png)
+
+**Multi-disc sets:** one album page with disc sections and format labels. Grouping
+also compares album year and upload dates; separate disc records are retained
+for reviewed edits.
+
+![Live In Bratislava shown as a multi-disc album with individual disc editing and FLAC labels](docs/screenshots/multi-disc-ibroadcast.png)
+
+</details>
 
 <details>
 <summary><b>Albums, an artist's collection and album details</b></summary>
@@ -271,7 +369,7 @@ The editor keeps album and track metadata alongside source suggestions. A sugges
 
 ## Online sources and keys
 
-MusicBrainz (with Cover Art Archive), Deezer, Apple Music (iTunes Search) and TheAudioDB work without a key. For the others, open **Sources & keys** in the sidebar:
+MusicBrainz (with Cover Art Archive), Deezer, Apple Music / iTunes (iTunes Search) and TheAudioDB work without a key. Apple covers appear directly among the cover suggestions. For the others, open **Sources & keys** in the sidebar:
 
 | Source | What it adds | Key |
 |---|---|---|
@@ -289,9 +387,11 @@ Matching ignores case, accents, "The", and edition text such as "(2011 Remaster)
 
 **Keep this iBroadcast setting off.** Tagcast groups the discs itself while retaining the separate album records needed to save changes. You can change the setting on [media.ibroadcast.com](https://media.ibroadcast.com/), then reload your library in Tagcast.
 
-- **Setting off:** discs with the same title and album artist and different disc numbers appear as one album in Tagcast. One card represents the set, with a CD icon per disc; its album page lists all discs, and Play/Add to queue includes them all. Duplicate disc numbers remain separate, as do different titles such as `Album (CD1)` and `Album (CD2)`.
+- **Setting off:** discs with the same title, album artist, album year and set of upload dates, and different disc numbers appear as one album in Tagcast. One card represents the set, with a CD icon per disc; its album page lists all discs, and Play/Add to queue includes them all. Duplicate disc numbers remain separate, as do different titles such as `Album (CD1)` and `Album (CD2)`.
 - **Editing a set:** title, album artist, year, genres or composers apply across its discs. The review lists changes per disc because iBroadcast receives separate writes. Change a disc number individually with **Edit disc 2**, for example. A shared cover is uploaded once and applied disc by disc, with a History entry and available artwork Undo per disc. Each disc waits for the previous read-back.
 - **Setting on:** iBroadcast combines disc records in the library it sends and refuses album changes. Tagcast warns in the review, can still save supported track changes, and marks album changes **Not sent · setting**. Turn the setting off, reload, and use **Review the rest again** in the results or History.
+
+The upload-date comparison uses active tracks and calendar dates, ignoring time of day. Unknown years or dates only group with the same unknown values. Different years or dates keep albums separate; these are clues, not release identifiers. This display grouping never splits tracks already inside an iBroadcast album into separate uploads or releases.
 
 The library cache follows this setting, so changing it triggers a fresh download. **Overview uses iBroadcast's album totals**, counting separate discs when the setting is off; the sidebar and browsing cards count Tagcast's grouped albums. These totals can therefore differ.
 

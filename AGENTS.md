@@ -26,12 +26,14 @@ The application consists of a Python server and a plain JavaScript frontend.
   `plan_save()`, `write_requests()` and `verify()` handle save planning.
 - `src/tagcast/sources.py`: external source adapters, matching, request pacing
   and a shared response cache.
+- `src/tagcast/cleanup.py`: reviewed semicolon cleanup and exact genre-label replacement drafts, account-scoped local
+  reports, bounded track-only batches and explicit stop/resume with fresh checks.
 - `src/tagcast/updates.py`: public stable-release checks, version comparison and a
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and fourteen JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and fifteen JavaScript files:
   `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `album.js`,
-  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `navigation.js`. `album.js` provides album browsing;
+  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -68,6 +70,13 @@ and preserve a valid script order in `index.html`.
   unless the user approves that architecture change.
 - Do not edit `dark.css` by hand. Regenerate it after changes to
   `style.css`.
+- `palettes.css` defines Ocean, Warm and iBroadcast inspired through named colour
+  roles. Forest uses the original fallback colours. Keep palette selection
+  (`tagcast-palette`) independent of Light/Dark/Auto (`tagcast-theme`), local to
+  the browser, and restore before painting. The Theme disclosure contains both choices; opening it changes
+  neither preference. Preserve outside-click and Escape dismissal and focus return.
+  Preserve semantic warning/error colours
+  and the same audio element when changing appearance.
 - Keep package, `__version__`, page badge and lockfile versions consistent;
   `python3 tools/release_info.py` checks them. Native build dependencies are
   separate in `requirements-build.txt`; runtime dependencies stay unchanged.
@@ -90,7 +99,12 @@ and preserve a valid script order in `index.html`.
 - Tracks go to iBroadcast's trash (`trash`) only from the album page, after the
   trash review; the server first checks that every track is still active on its
   album. Never delete permanently.
-- A metadata save remains limited to one album or one album artist.
+- Duplicate candidates require the same positive track number and normalized title
+  within one disc. Repeated titles at different positions or on different discs
+  are not duplicates; missing numbers are not matched. Summary counts, badges and
+  Select extra copies use the same rule. Selection keeps the first candidate and
+  still requires review; metadata cannot establish audio identity or quality.
+- A normal editor metadata save remains limited to one album or one album artist.
   Only changed, supported fields are sent.
 - Compare `before` values with the current library view before writes.
   Verify accepted writes afterwards through a fresh library download.
@@ -103,12 +117,26 @@ and preserve a valid script order in `index.html`.
   Individual track edits take precedence over album-wide edits.
 - Genres: the first label goes to `genre`, the rest to `genres_additional`.
   Split existing combined labels only on request.
+- Cleanup is a dedicated reviewed exception to normal save scope: semicolon
+  splitting for genres, track artists and composer credits, plus explicitly reviewed
+  exact genre-label replacements/removals across the active library. Never infer
+  slash/comma boundaries or remove ambiguous text automatically. Empty replacements
+  require explicit removal mode; preserve other labels and promote the next label
+  to main, or clear both genre fields if no labels remain.
+  Preserve per-track values, credit roles/phrases and primary IDs when unchanged.
+  Never split album artists or infer separators other than semicolons. Persist the
+  account-scoped draft/report in cleanup.json; never send it to another account.
+  Limit batches to 200 tracks / 20 displayed albums, check before writes and read
+  back after every batch. Stop on conflicts, request errors or unconfirmed writes.
+  Resume explicitly and recheck outstanding writes; never retry create_artist blindly.
+  Keep normal editor scope validation intact. Additional performer IDs participate
+  in browse, search and links independently of composers and other credit roles.
 - Composers use `artists_additional` with type `composer`; preserve other
   credits. An artist marked `trashed` can still be a valid album artist.
 - With `Combine Multi-Disc Album Sets` enabled, album changes are blocked;
   track changes can proceed. The cache must match this setting.
 - With that setting off, the album lists and the album page show the discs of a
-  set (same title and album artist, different disc numbers) as one album
+  set (same title, album artist, album year and active-track upload-date set, different disc numbers) as one album
   (`albumShelf`, `mergeDiscs`); every write still goes to the disc's own album.
   Never offer one disc number for two discs of the same set. A set's cover is
   saved disc by disc (`/api/artwork` per disc, reusing the first upload's
@@ -117,6 +145,9 @@ and preserve a valid script order in `index.html`.
   account, `lastmodified` and `combine_sets`. Track search runs on the server's
   library copy (`Library.search_tracks`, at most 1,000 results); the browser never
   loads every track.
+- Collection, album artist and browse group totals emphasize albums, with track
+  counts shown smaller underneath. Reuse existing summary and group counts;
+  never download track details or add requests just to display these totals.
 - `browse.js` provides Track artists, Composers, Genres and Release year. Index
   active displayed album membership on the server, lazily per library copy.
   Track artist/composer selections use IDs; genres use stored main/additional
@@ -137,12 +168,23 @@ and preserve a valid script order in `index.html`.
   each queued track's album metadata for covers and navigation across albums.
   Clear queue stops audio and cancels pending additions. Guard lazy loads against
   library changes and clears. Now playing opens without a browser history entry.
+- Fullscreen Now playing reuses the existing audio element and queued metadata.
+  Opening or closing never restarts audio or adds a history entry. Request native
+  fullscreen only on a click; fall back to a window-filling view when unavailable.
+  Escape, stopping and library replacement close it; restore focus and inert state.
+- Play random album uses all filtered merged albums, before paging or the decade
+  display sample. Load only the chosen set, play from its first track and replace
+  the queue. Avoid the current album when alternatives exist. Clear, explicit Play
+  and library changes cancel pending random playback; previews cannot play.
 - Player album artist and album title links open their respective pages. Show a
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.
 - Artwork uses JPEG, PNG, WebP or GIF, up to 15 MB. Preserve checks for local
   addresses and redirects. Album covers are applied to active tracks;
   undo retains previous artwork IDs per track.
+- Track format labels reuse the stored MIME type in album details, search and
+  favourites. Omit unknown formats; never download audio or infer bitrate/resolution
+  just to show a label.
 - Playback goes through the local server, supports Range requests and does
   not report plays or scrobbles to iBroadcast.
 - Track favourites use native ratings (`ratetrack`, `track_id` array): 5 to add,
@@ -157,6 +199,9 @@ and preserve a valid script order in `index.html`.
   `updates.json`; manual checks bypass the interval. `auto_updates` is a local
   setting. Keep failures separate from library loading, validate versions and
   construct release URLs for this repository. Never install or restart automatically.
+- The desktop launcher remembers automatic browser opening in `launcher.json`,
+  separately from server settings. Default to enabled; the manual browser button
+  stays available. CLI `--open` remains explicit.
 - Closing the desktop launcher stops only its own server. Reusing an existing
   Tagcast instance must not stop it when the launcher closes.
 - iBroadcast write and artwork modes partly follow undocumented endpoints.

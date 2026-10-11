@@ -61,11 +61,13 @@ def run(args):
                 if f'<span class="pill">{display}</span>' not in page:
                     raise RuntimeError("The bundled page version does not match the executable")
                 scripts = page_scripts(page, app.STATIC)
-                for name in [*scripts, "style.css", "dark.css", "tagcast-mark.svg", "tagcast-icon.png"]:
+                for name in [*scripts, "style.css", "dark.css", "palettes.css",
+                             "tagcast-mark.svg", "tagcast-icon.png"]:
                     data, mime = get("/" + name)
                     if not data or (name.endswith(".js") and mime != "text/javascript"):
                         raise RuntimeError(f"The bundled static file is not served correctly: {name}")
                 for path, headers, expected in [("/api/tracks?q=test", {}, 401),
+                                                 ("/api/cleanup/labels", {}, 401),
                                                  ("/api/status", {"Sec-Fetch-Site": "cross-site"}, 403),
                                                  ("/api/status", {"Host": "example.test"}, 403)]:
                     try:

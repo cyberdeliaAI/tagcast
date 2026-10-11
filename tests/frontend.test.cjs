@@ -76,13 +76,19 @@ function page({hash = "", storage = {}, server = true} = {}) {
       if (!server) throw Error("No local server");
       return {ok: true, json: async () => ({connected: false, configured: false})};
     }});
-  const scripts = [...readFileSync(path.join(staticDir, "index.html"), "utf8").matchAll(/<script src="([^"]+)"/g)];
+  const pageHTML = readFileSync(path.join(staticDir, "index.html"), "utf8");
+  for (const [, source] of pageHTML.matchAll(/<script>([\s\S]*?)<\/script>/g)) vm.runInContext(source, context);
+  const scripts = [...pageHTML.matchAll(/<script src="([^"]+)"/g)];
   for (const [, file] of scripts) vm.runInContext(readFileSync(path.join(staticDir, file), "utf8"), context, {filename: file});
   return {run: source => vm.runInContext(source, context), nodes, requests, downloads, history, location,
     setFetch(handler) { respond = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
     flushTimers(delay) {
       for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
+    },
+    async emitDocument(type, event = {}) {
+      const dispatched = {target: {closest: () => null}, ...event};
+      await Promise.all((documentEvents.get(type) || []).map(handler => handler(dispatched)));
     },
     async click(matches) {
       const event = {target: {closest: selector => matches[selector] || null}};
@@ -747,7 +753,7 @@ test("an address of an album opens that album once the library is there", async 
 // "Combine Multi-Disc Album Sets" is off: one album per disc, with the same title.
 function setPage() {
   const p = page();
-  p.run(`const discs = [1, 2, 3].map(n => ({id: 70 + n, artist: "Pink Floyd", name: "The Wall", year: n === 3 ? 0 : 1979,
+  p.run(`const discs = [1, 2, 3].map(n => ({id: 70 + n, artist: "Pink Floyd", name: "The Wall", year: 0,
       disc: n, color: colors[0], tracks: [1, 2].map(t => ({id: (70 + n) * 100 + t, title: "Part " + n + "." + t,
       artist: "Pink Floyd", year: 1979, genre: "Rock", track: t, length: 60}))}));
     useLocal([...demoLibrary(), ...discs], "demo"); render()`);
@@ -837,7 +843,7 @@ test("a set is edited as one album and saved per disc", async () => {
   const html = p.nodes.get("#editor-content").innerHTML;
   assert.match(html, /ONE ALBUM \/ ALL 3 DISCS/);
   assert.doesNotMatch(html, /name="disc"/, "One disc number for every disc would break the set");
-  assert.match(html, /name="year"[^>]*placeholder="Mixed: the discs differ"/);
+  assert.match(html, /name="year"[^>]*value=""/);
   assert.match(html, /Disc 2<\/td>/);
   p.nodes.get("#metadata-form").elements = {namedItem: name => name === "year" ? {type: "number", value: "1980", disabled: false} : null};
   p.run('editing.dirty.add("year"); buildReview()');
@@ -944,17 +950,25 @@ test("you choose how many albums and album artists a page shows, and Tagcast rem
   assert.equal(again.run("artistBrowse.pageSize"), 200);
 });
 
-test("Duplicate tracks finds albums with a title twice, and the album page marks them", async () => {
+test("Duplicate tracks requires matching track numbers and titles per disc", async () => {
   const p = page();
-  p.run(`const album = state.details.get("5"); album.tracks.push({...album.tracks[2], id: 599, title: " TEARDROP "});
+  p.run(`const album = state.details.get("5"); album.tracks.push(
+      {...album.tracks[2], id: 599, title: " TEARDROP "},
+      {...album.tracks[2], id: 598, track: 17},
+      {...album.tracks[2], id: 597, title: "Different song"},
+      {id: 596, title: "Unknown", track: 0}, {id: 595, title: "Unknown"});
     state.albums = [...state.details.values()].map(summarize); render()`);
   p.nodes.get("#filter").value = "duplicates";
   assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), ["5"]);
   await p.run('openAlbum("5")');
   assert.equal((p.nodes.get("#album-page").innerHTML.match(/>Duplicate</g) || []).length, 2, "Both copies are marked");
+  assert.deepEqual(p.json('extraCopies([state.details.get("5")])'), ["599"], "Reprises and missing numbers are not selected");
   const sets = setPage();
-  sets.run(`state.details.get("72").tracks[1].title = "Part 2.1"; state.albums = [...state.details.values()].map(summarize)`);
+  sets.run(`state.details.get("72").tracks.push({...state.details.get("72").tracks[0], id: 7299});
+    state.details.get("73").tracks[0].title = "Part 2.1";
+    state.albums = [...state.details.values()].map(summarize)`);
   assert.equal(sets.json('albumShelf().find(a => a.id === "71")').duplicates, 1, "A set adds up its discs");
+  assert.deepEqual(sets.json('extraCopies([state.details.get("72"), state.details.get("73")])'), ["7299"], "Separate discs stay separate");
 });
 
 test("Album artists can show only the artists without an image", async () => {
@@ -1205,19 +1219,27 @@ test("browse counts include albums for all four groups and count a disc set once
     tracks: [{id: "2010", title: "One", artist: "Singer", artist_id: 9, year: 2000, genres: ["Rock"], composers: ["Writer"], composer_ids: [55], track: 1}]},
     {id: "202", name: "Set", artist: "Duo", disc: 2, year: 2000,
     tracks: [{id: "2020", title: "Two", artist: "Singer", artist_id: 9, year: 2000, genres: ["Rock", "Jazz"], composers: ["Writer"], composer_ids: [55], track: 1}]}], "demo")`);
+  // Totals use the compact summaries even when no track details are available.
+  const requests = p.requests.length;
+  p.run('const countDetails = state.details; state.details = new Map(); state.artist = "Duo"; state.screen = "albums"; state.mode = "live"; render()');
+  assert.equal(p.nodes.get("#total-albums").textContent, "1");
+  assert.equal(p.nodes.get("#total-tracks").textContent, "2 tracks");
+  assert.match(p.nodes.get("#artist-panel").innerHTML, /<strong>1<\/strong><span>album<\/span><small>2 tracks<\/small>/);
+  assert.equal(p.requests.length, requests, "Headers never download track details to count them");
+  p.run('state.details = countDetails; state.artist = null; state.mode = "demo"');
   for (const [kind, key] of [["genres", "rock"], ["track-artists", "9"], ["composers", "55"], ["years", "2000"]]) {
     p.run(`showBrowse(${JSON.stringify(kind)})`); await settle();
     assert.equal(p.run(`browseView.rows.find(g => g.key === ${JSON.stringify(key)}).albums`), 1);
-    assert.match(p.nodes.get("#browse-list").innerHTML, /1 album · 2 tracks/);
+    assert.match(p.nodes.get("#browse-list").innerHTML, /class="artist-card-count">1 album<\/span><small class="artist-card-tracks">2 tracks<\/small>/);
   }
   p.run('showBrowse("genres")'); await settle();
-  assert.match(p.nodes.get("#browse-list").innerHTML, /1 album · 1 track/);
+  assert.match(p.nodes.get("#browse-list").innerHTML, /class="artist-card-count">1 album<\/span><small class="artist-card-tracks">1 track<\/small>/);
   p.run('state.albums = state.albums.map(a => ({...a, disc: 1})); resetBrowse(); showBrowse("genres")'); await settle();
-  assert.match(p.nodes.get("#browse-list").innerHTML, /2 albums · 2 tracks/, "Duplicate disc numbers stay separate");
+  assert.match(p.nodes.get("#browse-list").innerHTML, /class="artist-card-count">2 albums<\/span><small class="artist-card-tracks">2 tracks<\/small>/, "Duplicate disc numbers stay separate");
   const live = livePage(); await settle();
   live.setFetch(() => ({ok: true, json: async () => ({groups: [{key: "x", label: "Rock", tracks: 5000, albums: 1234}], total: 1, offset: 0})}));
   live.run('showBrowse("genres")'); await settle();
-  assert.match(live.nodes.get("#browse-list").innerHTML, /1,234 albums · 5,000 tracks/);
+  assert.match(live.nodes.get("#browse-list").innerHTML, /class="artist-card-count">1,234 albums<\/span><small class="artist-card-tracks">5,000 tracks<\/small>/);
 });
 
 test("sidebar account status is compact, safe and preserves preview and snapshot explanations", async () => {
@@ -1430,4 +1452,393 @@ test("decades sample unique merged albums, Surprise reshuffles locally and Back 
   assert.equal(p.requests.length, calls);
   assert.equal(p.location.hash, "#/decades/1980");
   assert.equal(p.nodes.get("#browse-sort").hidden, true);
+});
+
+test("album grid and browse cards keep the compact queue action inside their metadata footer", async () => {
+  const p = livePage(); await settle();
+  const grid = p.run("gridView(albumShelf().slice(0, 1))");
+  assert.match(grid, /class="card-meta"[\s\S]*class="queue-add queue-compact"[\s\S]*<\/div><\/article>/);
+  assert.doesNotMatch(grid, /\+ Add to queue/);
+  assert.match(p.run("browseAlbumCard(albumShelf()[0])"), /queue-compact/);
+  assert.match(p.run("queueButton(state.albums[0].id)"), /\+ Add to queue/); // album detail keeps the full action
+});
+
+test("additional performers appear as individual links and are searchable and browsable in preview", async () => {
+  const p = livePage(); await settle();
+  p.run('const a = state.details.get(state.albums[0].id); a.tracks[0].performers = [{id:"41", name:a.artist}, {id:"99", name:"Guest & Friend"}]; playTracks(a);');
+  assert.match(p.nodes.get("#player-extra-artists").innerHTML, /data-performer-id="99"/);
+  assert.match(p.nodes.get("#player-extra-artists").innerHTML, /Guest &amp; Friend/);
+  p.run('state.mode = "demo"; showBrowse("track-artists", "99")');
+  assert.equal(p.run("browseView.albumIds.size"), 1);
+  assert.equal(p.run('localTracks("guest").total'), 1);
+});
+
+test("cleanup previews require explicit approval, preserve exclusions and reject stale responses", async () => {
+  const p = livePage(); await settle();
+  const preview = {id: "draft", state: "preview", category: "genres", tracks: 8, albums: 2, counts: {pending:8}, excluded:[], batch_tracks:200, batch_albums:20,
+    selection:[{id:"1",tracks:3},{id:"2",tracks:5}], groups:[{id:"1",album:"A < B",artist:"Artist",tracks:3,examples:[{title:"Track",before:["Pop;Rock"],after:["Pop","Rock"]}]}]};
+  p.setFetch(async (url) => ({ok:true,json:async () => preview}));
+  await p.run("openCleanup()");
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /A &lt; B/);
+  p.run('cleanupView.excluded.add("1"); updateCleanupSelection()');
+  assert.match(p.nodes.get("#cleanup-selected").textContent, /1 albums · 5 tracks/);
+  const before = p.requests.length;
+  await p.run('cleanupAction("start")');
+  assert.equal(p.requests.length, before);
+  p.run('$("#cleanup-approved").checked = true; updateCleanupSelection()');
+  assert.equal(p.nodes.get("#cleanup-start").disabled, false);
+  await p.run('cleanupAction("start")');
+  const start = p.requests.find(r => r.url === "/api/cleanup/start");
+  assert.deepEqual(JSON.parse(start.options.body), {id:"draft",excluded:["1"]});
+  let finish;
+  p.setFetch(() => new Promise(resolve => {finish = resolve;}));
+  const pending = p.run("fetchCleanup()");
+  p.run('state.details = new Map(); state.mode = "demo"');
+  finish({ok:true,json:async () => ({...preview,id:"stale"})});
+  await pending;
+  assert.equal(p.run("cleanupView.data.id"), "draft");
+});
+
+test("random album respects library filters across pages, plays full disc sets and avoids the current album", async () => {
+  const p = livePage(); await settle();
+  p.run(`useLocal([
+    ...Array.from({length: 30}, (_, i) => ({id: String(i+1), name: "Album " + String(i).padStart(2,"0"), artist: "A", year:1985, disc:1, tracks:[{id:String(i+100),title:"Song",artist:"A",track:1,genres:["Rock"]}]})),
+    {id:"31",name:"Z Set",artist:"A",year:1985,disc:1,tracks:[{id:"310",title:"First",artist:"A",track:1,genres:["Rock"]},{id:"311",title:"Second",artist:"A",track:2,genres:["Rock"]}]},
+    {id:"32",name:"Z Set",artist:"A",year:1985,disc:2,tracks:[{id:"320",title:"Third",artist:"A",track:1,genres:["Rock"]}]},
+    {id:"33",name:"Excluded",artist:"B",year:1985,disc:1,tracks:[{id:"330",title:"Jazz",artist:"B",track:1,genres:["Jazz"]}]}
+  ], "demo"); state.mode="live"; state.artist="A"; state.page=0; Math.random=()=>0.999; render()`);
+  const route = p.location.hash, history = p.history.length;
+  await p.nodes.get("#albums-random").emit("click");
+  assert.equal(p.run('player.album.id'), "31", "Selection includes albums beyond the first page; disc set has one chance");
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ["310","311","320"]);
+  assert.equal(p.run('player.index'), 0);
+  assert.equal(p.location.hash, route);
+  assert.equal(p.history.length, history);
+  await p.nodes.get("#albums-random").emit("click");
+  assert.equal(p.run('player.album.id'), "30", "The current set is excluded when alternatives exist");
+  p.nodes.get("#search").value = "Z Set"; p.run("render()");
+  await p.nodes.get("#albums-random").emit("click");
+  assert.equal(p.run('player.album.id'), "31");
+  p.nodes.get("#search").value = "no match"; p.run("render()");
+  assert.equal(p.nodes.get("#albums-random").disabled, true);
+  const queue = p.json('player.queue');
+  await p.nodes.get("#albums-random").emit("click");
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.requests.filter(r=>r.options?.method === "POST").length,0);
+});
+
+test("random album uses exact genre, year and decade membership and search, beyond the decade sample", async () => {
+  const p = page(); await settle();
+  p.run(`useLocal(Array.from({length: 60}, (_, i) => ({id:String(i+1),name:"Album "+String(i).padStart(2,"0"),artist:"A",year:i<30?1985:1995,disc:1,tracks:[{id:String(i+100),title:"Song",artist:"A",track:1,genres:[i%2?"Jazz":"Rock"]}]})),"demo")`);
+  for (const [kind,key,expected] of [["genres","rock","59"],["years","1985","30"],["decades","1980","29"]]) {
+    p.run(`state.mode="demo"; showBrowse("${kind}","${key}"); state.mode="live"; Math.random=()=>0.999; updateRandomControls()`);
+    const ids = p.json('browseView.randomIds'), history = p.history.length, route = p.location.hash;
+    const requests = p.requests.length;
+    await p.nodes.get("#browse-random").emit("click");
+    assert.equal(p.run('player.album.id'), expected, kind);
+    assert.deepEqual(p.json('browseView.randomIds'), ids, "Playback keeps the displayed random sample");
+    assert.equal(p.location.hash, route);
+    assert.equal(p.history.length, history);
+    assert.equal(p.requests.length, requests, "Cached albums need no library download");
+    assert.equal(p.nodes.get("#browse-random").hidden, false);
+  }
+  p.run('browseView.query="Album 00"; renderBrowse()');
+  await p.nodes.get("#browse-random").emit("click");
+  assert.equal(p.run('player.album.id'), "1");
+  p.run('browseView.query="missing"; renderBrowse()');
+  assert.equal(p.nodes.get("#browse-random").disabled, true);
+  p.run('browseView.key=null; updateRandomControls()');
+  assert.equal(p.nodes.get("#browse-random").hidden, true);
+  p.run('state.mode="demo"; render()');
+  assert.equal(p.nodes.get("#albums-random").disabled, true);
+});
+
+test("random playback lazily loads only its selected album, cancels late loads and preserves playback on failure", async () => {
+  const p = livePage(); await settle();
+  const album = p.json('state.details.get("2")');
+  p.run('playTracks(state.details.get("1")); state.details.delete("2")');
+  const original = p.nodes.get("#audio").src;
+  let finish;
+  p.setFetch((url) => {
+    assert.equal(url,"/api/albums?ids=2");
+    return new Promise(resolve=>{finish=resolve;});
+  });
+  let pending = p.run('playRandomAlbum(state.albums.filter(a=>a.id==="2"))'); await settle();
+  assert.equal(p.nodes.get("#albums-random").disabled,true);
+  assert.equal(p.nodes.get("#audio").src,original);
+  await p.nodes.get("#queue-clear").emit("click");
+  finish({ok:true,json:async()=>({albums:[album]})}); await pending;
+  assert.equal(p.run('player.queue.length'),0);
+  assert.equal(p.run('player.randomLoading'),false);
+  p.run('state.details.delete("2")');
+  pending = p.run('playRandomAlbum(state.albums.filter(a=>a.id==="2"))'); await settle();
+  await p.click({"[data-play]":{dataset:{play:"100",playAlbumId:"1"}}});
+  finish({ok:true,json:async()=>({albums:[album]})}); await pending;
+  assert.equal(p.run('String(player.album.id)'),"1");
+  p.run('state.details.delete("2")');
+  pending = p.run('playRandomAlbum(state.albums.filter(a=>a.id==="2"))'); await settle();
+  p.run('state.details=new Map()');
+  finish({ok:true,json:async()=>({albums:[album]})}); await pending;
+  assert.equal(p.run('String(player.album.id)'),"1", "A library switch cancels the pending selection");
+  p.setFetch(async()=>{throw Error("Offline");});
+  await p.run('playRandomAlbum(state.albums.filter(a=>a.id==="2"))');
+  assert.equal(p.run('String(player.album.id)'),"1");
+  assert.match(p.nodes.get("#toast").textContent,/Offline/);
+  assert.equal(p.run('player.randomLoading'),false);
+  assert.equal(p.nodes.get("#albums-random").disabled,false);
+});
+
+test("fullscreen Now playing reuses audio and queue, updates metadata safely and restores the library without requests", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); $("main").inert = false; $(".sidebar").inert = true; audio.currentTime = 43; player.queue[0].title = "<img onerror=bad>"');
+  const src = p.nodes.get("#audio").src, queue = p.json('player.queue'), history = p.history.length, requests = p.requests.length;
+  await p.nodes.get("#player-fullscreen").emit("click");
+  assert.equal(p.run('visualPlayer.open'), true);
+  assert.equal(p.nodes.get("#visual-player").hidden, false);
+  assert.equal(p.nodes.get("#visual-player-title").textContent, "<img onerror=bad>");
+  assert.equal(p.nodes.get("#visual-player-title").innerHTML, "");
+  assert.equal(p.nodes.get("main").inert, true);
+  assert.equal(p.run('audio.currentTime'), 43);
+  assert.equal(p.nodes.get("#audio").src, src);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.requests.length, requests, "The view never fetches album or track details");
+  p.run('audio.pause()');
+  assert.equal(p.run('visualPlayer.open'), true);
+  p.run('step(1)');
+  assert.equal(p.nodes.get("#visual-player-title").textContent, p.run('player.queue[1].title'));
+  const nextSrc = p.nodes.get("#audio").src;
+  await p.keydown("Escape"); await settle();
+  assert.equal(p.run('visualPlayer.open'), false);
+  assert.equal(p.nodes.get("#audio").src, nextSrc);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.equal(p.nodes.get("main").inert, false);
+  assert.equal(p.nodes.get(".sidebar").inert, true, "Existing inert state is restored");
+  assert.equal(p.run('document.activeElement === $("#player-fullscreen")'), true);
+  assert.equal(p.history.length, history);
+  await p.nodes.get("#player-fullscreen").emit("click");
+  await p.nodes.get("#player-close").emit("click");
+  assert.equal(p.run('visualPlayer.open'), false);
+  assert.equal(p.run('player.queue.length'), 0);
+  assert.equal(p.run('document.activeElement === $("#home")'), true);
+  const preview = page(); await settle();
+  await preview.nodes.get("#player-fullscreen").emit("click");
+  assert.equal(preview.run('visualPlayer.open'), false);
+});
+
+test("native fullscreen handles browser Escape, rejection and a late request after closing", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); $("#player-stage").requestFullscreen = () => {document.fullscreenElement = $("#player-stage"); return Promise.resolve()}; document.exitFullscreen = () => {document.fullscreenElement = null; return Promise.resolve()}');
+  await p.nodes.get("#player-fullscreen").emit("click");
+  await p.emitDocument("fullscreenchange");
+  assert.equal(p.run('visualPlayer.native'), true);
+  p.run('document.fullscreenElement = null');
+  await p.emitDocument("fullscreenchange");
+  assert.equal(p.run('visualPlayer.open'), false);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  p.run('$("#player-stage").requestFullscreen = () => Promise.reject(Error("Not permitted"))');
+  await p.nodes.get("#player-fullscreen").emit("click"); await settle();
+  assert.equal(p.run('visualPlayer.open'), true);
+  assert.match(p.nodes.get("#visual-player-status").textContent, /in this window/);
+  await p.nodes.get("#visual-player-close").emit("click");
+  p.run('let finishFullscreen; $("#player-stage").requestFullscreen = () => new Promise(resolve => {finishFullscreen = () => {document.fullscreenElement = $("#player-stage"); resolve()}})');
+  await p.nodes.get("#player-fullscreen").emit("click");
+  p.run('stopPlayer(); finishFullscreen()'); await settle();
+  assert.equal(p.run('visualPlayer.open'), false);
+  assert.equal(p.run('document.fullscreenElement'), null, "A late native request cannot reopen a stopped player");
+});
+
+test("fullscreen keyboard focus stays on its controls and failed artwork falls back without retrying", async () => {
+  const p = livePage(); await settle();
+  p.run('const visualAlbum = state.details.get("1"); visualAlbum.artwork = "https://example.test/cover-300"; playTracks(visualAlbum); openVisualPlayer(); $("#player-stage").querySelectorAll = () => [$("#visual-player-close"), audio, $("#player-close")]; for (const node of $("#player-stage").querySelectorAll()) node.getClientRects = () => [1]');
+  let prevented = false;
+  await p.emitDocument("keydown", {key: "Tab", shiftKey: true, preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  assert.equal(p.run('document.activeElement === $("#player-close")'), true);
+  await p.emitDocument("keydown", {key: "Tab", shiftKey: false, preventDefault() {}});
+  assert.equal(p.run('document.activeElement === $("#visual-player-close")'), true);
+  await p.nodes.get("#visual-player-art").emit("error");
+  p.run('markPlaying()');
+  assert.equal(p.nodes.get("#visual-player-art").hidden, true, "Playback events do not retry a failed cover");
+  assert.equal(p.nodes.get("#visual-player-placeholder").textContent, "PF");
+  p.run('setNowPlaying(false); useLocal(demoLibrary(), "demo")');
+  assert.equal(p.run('visualPlayer.open'), false, "A replacement library closes the fullscreen view");
+});
+
+test("colour palettes persist independently of appearance without requests or playback changes", async () => {
+  const storage = {"tagcast-palette": "ibroadcast", "tagcast-theme": "dark"};
+  const p = page({storage});
+  await settle();
+  assert.equal(p.run('document.documentElement.dataset.palette'), "ibroadcast");
+  assert.equal(p.run('document.documentElement.dataset.theme'), "dark");
+  assert.equal(p.nodes.get("#palette-ibroadcast").checked, true);
+  p.run(`player.queue = [{id:"900",title:"Playing",artist:"Artist"}]; player.index=0;
+    $("#audio").src="/api/stream/900"; $("#audio").currentTime=27; $("#audio").paused=false;`);
+  const requests = p.requests.length, history = p.history.length, queue = p.json("player.queue");
+  for (const palette of ["ocean", "warm", "ibroadcast", "forest"]) {
+    await p.nodes.get("#theme-menu").emit("change", {target: {value: palette, dataset: {paletteChoice: ""}}});
+    assert.equal(p.run('document.documentElement.dataset.palette'), palette === "forest" ? undefined : palette);
+    assert.equal(storage["tagcast-palette"], palette);
+    assert.equal(p.run('document.documentElement.dataset.theme'), "dark");
+    assert.equal(p.run('$("#audio").currentTime'), 27);
+    assert.equal(p.run('$("#audio").paused'), false);
+    assert.equal(p.run('$("#audio").src'), "/api/stream/900");
+    assert.deepEqual(p.json("player.queue"), queue);
+  }
+  p.run('setColourPalette("warm")');
+  await p.nodes.get("#theme-menu").emit("change", {target: {value: "auto", dataset: {appearanceChoice: ""}}});
+  assert.equal(p.run('document.documentElement.dataset.theme'), undefined, "Auto follows the OS through CSS");
+  assert.equal(p.run('document.documentElement.dataset.palette'), "warm");
+  assert.equal(storage["tagcast-theme"], "auto");
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.history.length, history);
+  const reloaded = page({storage});
+  assert.equal(reloaded.nodes.get("#palette-forest").checked, true);
+  assert.equal(reloaded.run('document.documentElement.dataset.theme'), undefined);
+});
+
+test("appearance restores before scripts load and invalid or unavailable storage stays usable", async () => {
+  const source = readFileSync(path.join(staticDir, "index.html"), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
+  for (const palette of ["ocean", "warm", "ibroadcast"]) {
+    const document = {documentElement: {dataset: {}}};
+    vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
+    assert.deepEqual(document.documentElement.dataset, {theme:"light",palette});
+    const p = page({storage:{"tagcast-palette":palette}});
+    assert.equal(p.nodes.get("#palette-" + palette).checked, true);
+  }
+  const p = page({storage:{"tagcast-palette":"bad\" injected", "tagcast-theme":"bad"}});
+  assert.equal(p.run('document.documentElement.dataset.palette'), undefined);
+  assert.equal(p.run('document.documentElement.dataset.theme'), undefined);
+  const document = {documentElement: {dataset: {}}};
+  vm.runInNewContext(source, {document, localStorage: {getItem() {throw Error("Blocked");}}});
+  assert.deepEqual(document.documentElement.dataset, {});
+  p.run('localStorage.setItem = () => {throw Error("Blocked")};');
+  await p.nodes.get("#theme-menu").emit("change", {target: {value: "ocean", dataset: {paletteChoice: ""}}});
+  assert.equal(p.run('document.documentElement.dataset.palette'), "ocean");
+  await p.nodes.get("#theme-menu").emit("change", {target: {value: "invalid", dataset: {paletteChoice: ""}}});
+  assert.equal(p.nodes.get("#palette-forest").checked, true);
+  assert.equal(p.run('document.documentElement.dataset.palette'), undefined);
+});
+
+
+test("the unified theme disclosure opens without changing choices, supports Escape and closes outside", async () => {
+  const p = page({storage:{"tagcast-theme":"dark", "tagcast-palette":"ocean"}});
+  await settle();
+  const history = p.history.length, requests = p.requests.length;
+  await p.nodes.get("#theme-button").emit("click");
+  assert.equal(p.nodes.get("#theme-menu").hidden, false);
+  assert.equal(p.nodes.get("#theme-button").getAttribute("aria-expanded"), "true");
+  assert.equal(p.run('document.activeElement === $("#appearance-dark")'), true);
+  assert.equal(p.run('document.documentElement.dataset.theme'), "dark");
+  await p.nodes.get("#theme-menu").emit("change", {target: {value: "light", dataset: {appearanceChoice: ""}}});
+  assert.equal(p.run('document.documentElement.dataset.palette'), "ocean");
+  assert.equal(p.nodes.get("#appearance-light").checked, true);
+  await p.emitDocument("keydown", {key:"Escape", preventDefault() {this.defaultPrevented = true;}});
+  assert.equal(p.nodes.get("#theme-menu").hidden, true);
+  assert.equal(p.run('document.activeElement === $("#theme-button")'), true);
+  await p.nodes.get("#theme-button").emit("click");
+  await p.click({});
+  assert.equal(p.nodes.get("#theme-menu").hidden, true);
+  assert.equal(p.nodes.get("#theme-button").getAttribute("aria-expanded"), "false");
+  assert.equal(p.history.length, history);
+  assert.equal(p.requests.length, requests);
+});
+
+test("disc sets require matching album years and active upload date sets after detail summarization", async () => {
+  const p = livePage(); await settle();
+  const before = p.requests.length;
+  p.run(`useLocal([1,2,3,4].map(n => ({id:String(n),name:"One album",artist:"A",year:n===3?2001:2000,disc:n,
+    tracks:[{id:String(n*10),title:"Song",track:1,genres:["Rock"],uploaded_on:n===4?"2026-10-03 09:00:00":"2026-10-02 " + (n===1?"09:00:00":"21:00:00")}]})), "demo")`);
+  assert.deepEqual(p.json('albumShelf().map(a=>a.id)'), ["1", "3", "4"]);
+  assert.deepEqual(p.json('discSet(state.albums[0]).map(a=>a.id)'), ["1", "2"]);
+  assert.equal(p.run('discSet(state.albums[2])'), null);
+  assert.equal(p.requests.length, before, "Grouping uses summaries without additional requests");
+  await p.run('openEditor(["1"])');
+  p.run('editing.trackPatches["10"]={genres:["New genre"]}; buildReview(); applyDraft()');
+  assert.deepEqual(p.json('discSet(state.albums[0]).map(a=>a.id)'), ["1", "2"], "Resummarizing preserves upload dates");
+});
+
+test("manual genre review keeps slash text whole and requires a new preview after edits", async () => {
+  const p = livePage(); await settle();
+  const label = "Rock/Pop/R <test>";
+  const inventory = {labels:[{label,tracks:3,albums:1}],total:1,offset:0,limit:50};
+  const preview = {id:"rule",state:"preview",category:"genre-labels",tracks:3,albums:1,counts:{pending:3},excluded:[],batch_tracks:200,batch_albums:20,
+    mapping:{label,replacements:["Rock","Pop","R"]},selection:[{id:"1",tracks:3}],groups:[{id:"1",album:"A",artist:"B",tracks:3,examples:[{title:"Song",before:[label,"Films/Games"],after:["Rock","Pop","R","Films/Games"]}]}]};
+  p.setFetch(async url => ({ok:true,json:async()=>url.startsWith("/api/cleanup/labels") ? inventory : url.endsWith("/preview") ? preview : {state:"empty"}}));
+  await p.run("openCleanup()");
+  await p.nodes.get("#cleanup").emit("change", {target:{id:"cleanup-category",value:"genre-labels"}});
+  await settle();
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /Rock\/Pop\/R &lt;test&gt;/);
+  await p.nodes.get("#cleanup").emit("change", {target:{id:"cleanup-label-choice",value:label}});
+  assert.equal(p.run("cleanupView.ruleText"), label, "There is no automatic slash splitting or R removal");
+  await p.nodes.get("#cleanup").emit("input", {target:{id:"cleanup-label-replacements",value:"Rock\nPop\nR"}});
+  await p.run('cleanupAction("preview")');
+  assert.deepEqual(JSON.parse(p.requests.find(r=>r.url.endsWith("/preview")).options.body), {category:"genre-labels",label,replacements:["Rock","Pop","R"]});
+  const html = p.nodes.get("#cleanup-content").innerHTML;
+  assert.match(html, /Films\/Games/);
+  assert.doesNotMatch(html, /id="cleanup-label-replacements"[^>]*disabled/, "Fields remain editable after the preview");
+  p.run('$("#cleanup-approved").checked=true; updateCleanupSelection()');
+  assert.equal(p.nodes.get("#cleanup-start").disabled, false);
+  await p.nodes.get("#cleanup").emit("input", {target:{id:"cleanup-label-replacements",value:"Rock\nPop"}});
+  assert.equal(p.nodes.get("#cleanup-start").disabled, true);
+  const count = p.requests.length;
+  await p.run('cleanupAction("start")');
+  assert.equal(p.requests.length,count,"An edited rule cannot execute the previous preview");
+});
+
+test("genre label search pages on the server and rejects stale results after library replacement", async () => {
+  const p = livePage(); await settle();
+  p.run('cleanupView.category="genre-labels"; cleanupView.labelQuery="Films/Games"; cleanupView.labelOffset=50');
+  let finish;
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending = p.run('fetchGenreLabels()');
+  assert.equal(p.requests.at(-1).url,"/api/cleanup/labels?q=Films%2FGames&offset=50&limit=50");
+  p.run('resetCleanup(); state.details=new Map()');
+  finish({ok:true,json:async()=>({labels:[{label:"stale",albums:1,tracks:1}],total:51,offset:50,limit:50})});
+  await pending;
+  assert.equal(p.run('cleanupView.labels'),null);
+});
+
+test("removing an exact genre needs explicit mode and reviewed preview, with empty genres shown clearly", async () => {
+  const p = livePage(); await settle();
+  const preview = {id:"remove",state:"preview",category:"genre-labels",tracks:1,albums:1,counts:{pending:1},excluded:[],batch_tracks:200,batch_albums:20,
+    mapping:{label:"P",replacements:[],remove:true},selection:[{id:"1",tracks:1}],groups:[{id:"1",album:"A",artist:"B",tracks:1,examples:[{title:"Song",before:["P"],after:[]}]}]};
+  p.setFetch(async () => ({ok:true,json:async()=>preview}));
+  p.run('cleanupView.category="genre-labels"; cleanupView.ruleLabel="P"; cleanupView.ruleText=""');
+  const count = p.requests.length;
+  await p.run('cleanupAction("preview")');
+  assert.equal(p.requests.length,count,"Empty replacement text alone does not remove genres");
+  await p.nodes.get("#cleanup").emit("change",{target:{id:"cleanup-label-remove",checked:true}});
+  assert.match(p.nodes.get("#cleanup-content").innerHTML,/id="cleanup-label-replacements"[^>]*disabled/);
+  await p.run('cleanupAction("preview")');
+  assert.deepEqual(JSON.parse(p.requests.at(-1).options.body),{category:"genre-labels",label:"P",replacements:[],remove:true});
+  assert.match(p.nodes.get("#cleanup-content").innerHTML,/Reviewed rule:[\s\S]*Remove this label/);
+  assert.match(p.nodes.get("#cleanup-content").innerHTML,/No genres/);
+  assert.equal(p.nodes.get("#cleanup-start").disabled,true);
+  p.run('$("#cleanup-approved").checked=true; updateCleanupSelection()');
+  assert.equal(p.nodes.get("#cleanup-start").disabled,false);
+  await p.nodes.get("#cleanup").emit("change",{target:{id:"cleanup-label-remove",checked:false}});
+  assert.equal(p.nodes.get("#cleanup-start").disabled,true,"Changing removal mode invalidates approval");
+  p.run('resetCleanup()');
+  await p.run('fetchCleanup()');
+  assert.equal(p.run('cleanupView.removeLabel'),true,"Persisted removal reports restore removal mode");
+  await p.nodes.get("#cleanup").emit("change",{target:{id:"cleanup-label-choice",value:"Rock"}});
+  assert.equal(p.run('cleanupView.removeLabel'),false,"Another label starts without removal selected");
+});
+
+test("track format labels use existing metadata in album rows and search, hide unknowns and escape text", async () => {
+  const p = page(); await settle();
+  p.run('state.details.get("1").tracks[0].format="FLAC"; state.details.get("1").tracks[1].format="MP3"');
+  const count = p.requests.length;
+  await p.run('openAlbum("1")');
+  const html = p.nodes.get("#album-page").innerHTML;
+  assert.match(html, /class="track-time">[^<]*<small class="track-format" title="File format">FLAC<\/small>/);
+  assert.match(html, /class="track-format" title="File format">MP3/);
+  assert.equal((html.match(/class="track-format"/g)||[]).length,2,"Missing format data stays blank");
+  assert.equal(p.requests.length,count,"Format labels do not fetch more data");
+  const result = p.json('localTracks("welcome").tracks[0]');
+  assert.equal(result.format,"MP3");
+  assert.match(p.run('foundTrackRow(localTracks("welcome").tracks[0])'),/class="track-format" title="File format">MP3/);
+  assert.equal(p.run('trackFormatLabel({})'),"");
+  assert.equal(p.run('trackFormatLabel({format:"<bad>"})'),'<small class="track-format" title="File format">&lt;bad&gt;</small>');
 });

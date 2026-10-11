@@ -63,15 +63,17 @@ class StartTests(unittest.TestCase):
         studio.favourites.return_value = {"tracks": [], "total": 0, "count": 0, "offset": 0}
         studio.favourite.return_value = {"status": "saved", "rating": 5}
         studio.check_updates.return_value = {"state": "current", "current": "0.10.1"}
+        studio.cleanup.labels.return_value = {"labels": [], "total": 0}
+        studio.cleanup.prepare.return_value = {"state": "preview"}
         handler = type("TestHandler", (app.Handler,), {"studio": studio, "port": 0})
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         handler.port = server.server_port
         threading.Thread(target=server.serve_forever, daemon=True).start()
 
-        def request(method, path, headers=None):
+        def request(method, path, headers=None, body=None):
             connection = HTTPConnection("127.0.0.1", server.server_port, timeout=3)
             try:
-                connection.request(method, path, body='{"track_id":"1","before":0,"rating":5}' if method == "POST" else None,
+                connection.request(method, path, body=(body or '{"track_id":"1","before":0,"rating":5}') if method == "POST" else None,
                                    headers=headers or {})
                 response = connection.getresponse()
                 response.read()
@@ -96,6 +98,16 @@ class StartTests(unittest.TestCase):
             studio.browse.assert_not_called()
             self.assertEqual(request("GET", "/api/browse?kind=genres&key=rock&offset=24&limit=24&sort=za"), 200)
             studio.browse.assert_called_once_with("genres", "rock", None, "24", "24", "za")
+            self.assertEqual(request("GET", "/api/cleanup/labels", {"Sec-Fetch-Site": "cross-site"}), 403)
+            self.assertEqual(request("GET", "/api/cleanup/labels", {"Host": "elsewhere.test"}), 403)
+            studio.cleanup.labels.assert_not_called()
+            self.assertEqual(request("GET", "/api/cleanup/labels?q=Films%2FGames&offset=50&limit=50"), 200)
+            studio.cleanup.labels.assert_called_once_with("Films/Games", "50", "50")
+            removal = '{"category":"genre-labels","label":"P","replacements":[],"remove":true}'
+            self.assertEqual(request("POST", "/api/cleanup/preview", body=removal), 403)
+            studio.cleanup.prepare.assert_not_called()
+            self.assertEqual(request("POST", "/api/cleanup/preview", {"X-Tagcast": "1"}, removal), 200)
+            studio.cleanup.prepare.assert_called_once_with("genre-labels", "P", [], True)
             studio.favourite.assert_not_called()
             studio.favourites.assert_not_called()
             self.assertEqual(request("GET", "/api/favourites?q=test&offset=50&limit=100"), 200)
@@ -105,6 +117,46 @@ class StartTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+
+class ResponseTests(unittest.TestCase):
+    def handler(self, write):
+        handler = app.Handler.__new__(app.Handler)
+        handler.request_version = "HTTP/1.1"
+        handler.command = "GET"
+        handler.close_connection = False
+        handler.log_request = mock.Mock()
+        handler.wfile = mock.Mock()
+        handler.wfile.write.side_effect = write
+        handler.send_response = mock.Mock(wraps=handler.send_response)
+        return handler
+
+    def test_disconnected_json_responses_are_not_retried_or_reported_as_request_failures(self):
+        for disconnect in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            for write_number in (1, 2):  # headers or body
+                for error, status in ((None, 200), (app.ConflictError("Changed"), 409),
+                                      (app.NotConnected("Sign in"), 401),
+                                      (app.ApiError("Rejected"), 400),
+                                      (RuntimeError("Unexpected failure"), 500)):
+                    with self.subTest(disconnect=disconnect, write=write_number, status=status):
+                        handler = self.handler([None] * (write_number - 1) + [disconnect()])
+                        action = mock.Mock(return_value={"ok": True}, side_effect=error)
+                        with mock.patch.object(app.logging, "exception") as log:
+                            handler._run(action)
+                        action.assert_called_once_with()
+                        handler.send_response.assert_called_once_with(status)
+                        self.assertEqual(handler.wfile.write.call_count, write_number)
+                        self.assertTrue(handler.close_connection)
+                        self.assertEqual(log.call_count, int(status == 500))
+
+    def test_a_connection_error_in_the_action_still_reports_an_application_failure(self):
+        handler = self.handler(None)
+        action = mock.Mock(side_effect=BrokenPipeError("Upstream disconnected"))
+        with mock.patch.object(app.logging, "exception") as log:
+            handler._run(action)
+        log.assert_called_once_with("Request failed")
+        handler.send_response.assert_called_once_with(500)
+        self.assertFalse(handler.close_connection)
 
 
 if __name__ == "__main__":

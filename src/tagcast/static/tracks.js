@@ -18,10 +18,10 @@ function localTracks(query) {
     || foldText(a.name).localeCompare(foldText(b.name)) || (a.disc || 0) - (b.disc || 0));
   for (const album of albums) {
     for (const t of [...album.tracks].sort((a, b) => (a.track || 9999) - (b.track || 9999))) {
-      const text = foldText([t.title, t.artist, album.name, album.artist, ...(t.composers || [])].join(" "));
+      const text = foldText([t.title, t.artist, ...(t.performers || []).map(p => p.name), album.name, album.artist, ...(t.composers || [])].join(" "));
       if (words.every(word => text.includes(word))) found.push({id: String(t.id), album_id: String(album.id), title: t.title,
-        artist: t.artist, composers: t.composers || [], album: album.name, disc: album.disc, track: t.track,
-        year: t.year || album.year, length: t.length || 0, rating: t.rating || 0});
+        artist: t.artist, performers: t.performers || [], composers: t.composers || [], album: album.name, disc: album.disc, track: t.track,
+        year: t.year || album.year, length: t.length || 0, format: t.format || "", rating: t.rating || 0});
     }
   }
   return {tracks: found, total: found.length};
@@ -59,9 +59,9 @@ function foundTrackRow(t) {
   const id = escapeHtml(t.id), album = escapeHtml(t.album_id), canPlay = live();
   const where = [shelfIds(t.album_id).length > 1 || t.disc > 1 ? `Disc ${t.disc || "?"}` : "", t.track ? `Track ${t.track}` : ""].filter(Boolean).join(" · ");
   return `<tr data-row="${id}"><td class="track-number"><button class="album-track-play" data-track-play="${id}" data-track-album="${album}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button></td>
-    <td><button class="track-open" data-track-open="${id}" data-track-album="${album}"><strong>${escapeHtml(t.title)}</strong></button><small>${escapeHtml(t.artist)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td>
+    <td><button class="track-open" data-track-open="${id}" data-track-album="${album}"><strong>${escapeHtml(t.title)}</strong></button><small>${performerLinks(t)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td>
     <td><button class="track-open" data-track-open="${id}" data-track-album="${album}">${escapeHtml(t.album)}</button>${where ? `<small>${where}</small>` : ""}</td>
-    <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}</td><td class="track-heart">${queueButton(t.album_id, t)}${heartButton(t)}</td></tr>`;
+    <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(t.album_id, t)}${heartButton(t)}</td></tr>`;
 }
 
 function renderTrackSearch() {

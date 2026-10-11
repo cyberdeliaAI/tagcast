@@ -16,13 +16,13 @@ function trashBar(discs) {
 
 const trashCheck = t => `<input type="checkbox" class="trash-check" data-trash-track="${escapeHtml(t.id)}" aria-label="Select ${escapeHtml(t.title)} for the trash" ${albumView.trash.has(String(t.id)) ? "checked" : ""}>`;
 
-// Every copy of a title after the first one on its disc.
+// Every matching numbered title after the first one on its disc; review before sending.
 function extraCopies(discs) {
   const ids = [];
   for (const d of discs) {
     const seen = new Set();
     for (const t of d.tracks) {
-      const key = titleKey(t.title);
+      const key = duplicateTrackKey(t);
       if (key && seen.has(key)) ids.push(String(t.id)); else seen.add(key);
     }
   }

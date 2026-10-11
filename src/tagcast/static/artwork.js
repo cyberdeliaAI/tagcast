@@ -39,7 +39,8 @@ function openArtwork(target, preselect) {
   const isAlbum = target.target === "album";
   $("#artwork-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${isAlbum ? "ALBUM COVER" : "ARTIST IMAGE"}</div><h2>${escapeHtml(target.label)}</h2></div><button class="close" data-close="artwork" aria-label="Close">×</button></div>
     <div class="art-compare"><figure><figcaption>Now</figcaption>${target.current ? `<img src="${escapeHtml(target.current)}" alt="Current image" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;art-empty&quot;>No image</div>'">` : '<div class="art-empty">No image</div>'}</figure><span class="art-arrow" aria-hidden="true">→</span><figure><figcaption>New</figcaption><div id="art-new"><div class="art-empty">Choose an image below</div></div><small id="art-size"></small></figure></div>
-    <h3 class="art-heading">Suggestions</h3><div id="art-suggestions" class="art-grid"><p class="muted"><span class="spinner"></span>Searching…</p></div>
+    <h3 class="art-heading">Suggestions</h3>
+    <div id="art-suggestions" class="art-grid"><p class="muted"><span class="spinner"></span>Searching…</p></div>
     <h3 class="art-heading">Already in iBroadcast</h3><div id="art-related" class="art-grid"><p class="muted"><span class="spinner"></span>Loading…</p></div>
     <h3 class="art-heading">Your own image</h3>
     <div class="art-own"><label class="art-drop" id="art-drop"><input type="file" id="art-file" accept="image/jpeg,image/png,image/webp,image/gif"> Drop an image here, paste it, or <u>choose a file</u></label>
