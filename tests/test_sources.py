@@ -107,6 +107,20 @@ class SourceTests(unittest.TestCase):
         lk = lookup([("itunes", {"results": [{"collectionName": "Greatest Hits", "artistName": "Other"}]})])
         self.assertEqual(lk.album("itunes", "Kate Bush", "The Dreaming"), [])
 
+    def test_itunes_album_covers_are_available_without_a_key(self):
+        lk = lookup([("itunes.apple.com/search", {"results": [{
+            "collectionName": "The Dreaming", "artistName": "Kate Bush",
+            "releaseDate": "1982-09-13T00:00:00Z", "primaryGenreName": "Pop",
+            "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/cover/100x100bb.jpg",
+            "collectionViewUrl": "https://music.apple.com/album/123",
+        }]})])
+        [hit] = lk.album("itunes", "Kate Bush", "The Dreaming (Deluxe)")
+        self.assertEqual(hit["cover"], "https://is1-ssl.mzstatic.com/image/thumb/cover/1200x1200bb.jpg")
+        self.assertEqual(hit["thumb"], "https://is1-ssl.mzstatic.com/image/thumb/cover/300x300bb.jpg")
+        self.assertEqual((hit["source"], hit["year"], hit["score"]), ("itunes", 1982, 1.0))
+        self.assertEqual(lk.http.calls[0][1]["term"], "Kate Bush The Dreaming")
+        self.assertEqual(lk.http.calls[0][2], {})
+
 
 if __name__ == "__main__":
     unittest.main()

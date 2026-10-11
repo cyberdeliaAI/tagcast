@@ -1,19 +1,31 @@
 """Small desktop launcher; the Tagcast interface remains in the browser."""
 
 import argparse
+import json
 import logging
 import os
 import sys
+import tempfile
 import threading
 import webbrowser
 
 from . import __version__, app
 
 
+def automatic_browser(path):
+    """Launcher preferences are separate from server settings and credentials."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        enabled = data.get("open_browser") if isinstance(data, dict) else None
+        return enabled if isinstance(enabled, bool) else True
+    except (OSError, ValueError):
+        return True
+
+
 class Desktop:
     """Own only the server started here; never stop an existing instance."""
 
-    def __init__(self, root, port=8912, open_browser=True):
+    def __init__(self, root, port=8912, open_browser=None):
         import tkinter as tk
         from tkinter import ttk
 
@@ -21,6 +33,8 @@ class Desktop:
         self.server = self.worker = None
         self.url = f"http://127.0.0.1:{port}"
         self.ready = False
+        self.preferences_path = app.Studio.default_home() / "launcher.json"
+        self.auto_open = tk.BooleanVar(master=root, value=automatic_browser(self.preferences_path))
         root.title(f"Tagcast {__version__}")
         root.resizable(False, False)
         frame = ttk.Frame(root, padding=24)
@@ -34,6 +48,10 @@ class Desktop:
         ttk.Label(frame, textvariable=self.address).pack(anchor="w", pady=(8, 16))
         self.open_button = ttk.Button(frame, text="Open Tagcast in browser", command=self.open)
         self.open_button.pack(fill="x")
+        self.auto_open_button = ttk.Checkbutton(frame, text="Open browser automatically",
+                                                variable=self.auto_open,
+                                                command=self.save_browser_preference)
+        self.auto_open_button.pack(anchor="w", pady=(8, 0))
         self.close_button = ttk.Button(frame, text="Stop Tagcast and close", command=self.close)
         self.close_button.pack(fill="x", pady=(8, 0))
         icon = app.STATIC / "tagcast-icon.png"
@@ -63,8 +81,34 @@ class Desktop:
             self.worker.start()
             self.ready = True
             self.status.set("Tagcast runs locally. Keep this window open while using it in your browser.")
-        if self.ready and open_browser:
+        if self.ready and (self.auto_open.get() if open_browser is None else open_browser):
             self.open()
+
+    def save_browser_preference(self):
+        """Remember the next launch without changing the running server's config."""
+        temporary = None
+        warning = " Could not remember the browser setting. Try again; your next start may open it."
+        try:
+            self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                             dir=self.preferences_path.parent,
+                                             prefix="launcher-", suffix=".tmp", delete=False) as handle:
+                temporary = handle.name
+                json.dump({"open_browser": self.auto_open.get()}, handle)
+            os.replace(temporary, self.preferences_path)
+        except OSError:
+            logging.exception("Could not save the launcher browser setting")
+            self.status.set(self.status.get().removesuffix(warning) + warning)
+        else:
+            self.status.set(self.status.get().removesuffix(warning))
+        finally:
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    logging.warning("Could not remove temporary launcher preferences")
 
     def open(self):
         if self.ready:

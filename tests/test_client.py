@@ -1,5 +1,6 @@
 """Client tests against the in-process fake iBroadcast in mock_ibroadcast.py."""
 
+import copy
 import importlib
 import json
 import os
@@ -73,6 +74,67 @@ class ClientTests(unittest.TestCase):
         studio.set_client_id("test")
         studio._connect(client.oauth.TokenSet(mock_ibroadcast.TOKEN, "refresh-1", 0))
         return studio
+
+    def test_cleanup_uses_checked_native_genres_and_credits_over_http(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            # Earlier save tests change this shared server's genre; use an exact
+            # removal fixture so this flow does not depend on test order.
+            mock_ibroadcast.STATE["tracks"][904]["genre"] = "Rock"
+            mock_ibroadcast.STATE["tracks"][904]["genres_additional"] = []
+            mock_ibroadcast.STATE["version"] += 1
+            studio = self.local_connection()
+            preview = studio.cleanup.prepare("genres")
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+            studio.cleanup.start(preview["id"], [])
+            for _ in range(300):
+                if not studio.cleanup.running:
+                    break
+                time.sleep(.01)
+            self.assertFalse(studio.cleanup.running)
+            self.assertEqual(studio.cleanup.view()["state"], "done")
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][903]["genres_additional"], ["New Wave"])
+            self.assertPrivate(Path(self.home, "cleanup.json"))
+            preview = studio.cleanup.prepare("genre-labels", "New Wave", ["Synth Pop", "Films/Games"])
+            writes = len(mock_ibroadcast.STATE["writes"])
+            self.assertEqual(preview["tracks"], 1)
+            studio.cleanup.start(preview["id"], [])
+            for _ in range(300):
+                if not studio.cleanup.running:
+                    break
+                time.sleep(.01)
+            self.assertFalse(studio.cleanup.running)
+            self.assertEqual(studio.cleanup.view()["counts"], {"confirmed": 1})
+            self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes + 1)
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][903]["genre"], "Art Pop")
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][903]["genres_additional"], ["Synth Pop", "Films/Games"])
+            preview = studio.cleanup.prepare("genre-labels", "Rock", [], remove=True)
+            studio.cleanup.start(preview["id"], [])
+            for _ in range(300):
+                if not studio.cleanup.running:
+                    break
+                time.sleep(.01)
+            self.assertFalse(studio.cleanup.running)
+            self.assertEqual(studio.cleanup.view()["counts"], {"confirmed": 1})
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][904]["genre"], "")
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][904]["genres_additional"], [])
+            mock_ibroadcast.STATE["artists"][99] = "SBB;10cc"
+            mock_ibroadcast.STATE["tracks"][900]["artist_id"] = 99
+            mock_ibroadcast.STATE["version"] += 1
+            preview = studio.cleanup.prepare("track-artists")
+            studio.cleanup.start(preview["id"], [])
+            for _ in range(300):
+                if not studio.cleanup.running:
+                    break
+                time.sleep(.01)
+            self.assertFalse(studio.cleanup.running)
+            self.assertEqual(studio.cleanup.view()["counts"], {"confirmed": 1})
+            library, _ = studio._library()
+            self.assertEqual([p["name"] for p in library.track_view(900)["performers"]], ["SBB", "10cc"])
+            self.wait_for_cache(studio)
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
 
     def test_browse_is_read_only_and_validates_group_paging(self):
         studio = self.local_connection()

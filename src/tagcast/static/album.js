@@ -11,6 +11,11 @@ function trackDuration(seconds) {
     : `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
 }
 
+// The library's file format, not a claim about the stream's bitrate or resolution.
+function trackFormatLabel(track) {
+  return track.format ? `<small class="track-format" title="File format">${escapeHtml(track.format)}</small>` : "";
+}
+
 function resetAlbumView() {
   albumView.id = null; albumView.request += 1; albumView.loading = false; albumView.trash = null;
   if (state.screen === "album") showScreen("albums");
@@ -22,10 +27,10 @@ function albumYear(discs) {
   return years.includes(0) ? 0 : Math.min(...years);
 }
 
-// Titles that appear more than once on one disc.
+// Matching numbered positions and titles that appear more than once on one disc.
 function twice(album) {
   const seen = new Set(), doubled = new Set();
-  for (const key of album.tracks.map(t => titleKey(t.title)).filter(Boolean)) (seen.has(key) ? doubled : seen).add(key);
+  for (const key of album.tracks.map(duplicateTrackKey).filter(Boolean)) (seen.has(key) ? doubled : seen).add(key);
   return doubled;
 }
 
@@ -83,7 +88,7 @@ function renderAlbumView() {
     <div class="tracks-heading"><h2>Tracks</h2><span class="muted">${canPlay ? "Play from any track" : "Local preview"}</span></div>
     ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number">#</th><th>Title / Artist</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>
       ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>Disc ${d.disc || "?"}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">Edit disc ${d.disc || "?"}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}<button class="album-track-play" data-play="${escapeHtml(t.id)}" data-play-album-id="${id}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button><span>${t.track || "–"}</span></td>
-        <td><strong>${escapeHtml(t.title)}${doubled.get(d).has(titleKey(t.title)) ? ' <span class="pill missing">Duplicate</span>' : ""}</strong><small>${escapeHtml(t.artist)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td><td class="track-time">${trackDuration(t.length)}</td><td class="track-heart">${queueButton(album.id, t)}${heartButton(t)}</td></tr>`).join("")).join("")}
+        <td><strong>${escapeHtml(t.title)}${doubled.get(d).has(duplicateTrackKey(t)) ? ' <span class="pill missing">Duplicate</span>' : ""}</strong><small>${performerLinks(t)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(album.id, t)}${heartButton(t)}</td></tr>`).join("")).join("")}
     </tbody></table>`;
   markPlaying();
 }

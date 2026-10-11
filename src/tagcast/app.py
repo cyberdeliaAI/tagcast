@@ -44,12 +44,17 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _json(self, status, payload):
         body = json.dumps(payload).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # The browser closed the request; another response cannot reach it either.
+            self.close_connection = True
+            logging.debug("Browser disconnected before receiving the JSON response")
 
     def _body(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -133,6 +138,13 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/favourites":
             self._run(lambda: self.studio.favourites(query.get("q"), query.get("offset", "0"),
                                                    query.get("limit", "50")))
+        elif url.path == "/api/cleanup":
+            self._run(lambda: self.studio.cleanup.view(query.get("offset", "0"), query.get("limit", "25")))
+        elif url.path == "/api/cleanup/report":
+            self._run(lambda: self.studio.cleanup.view(report=True))
+        elif url.path == "/api/cleanup/labels":
+            self._run(lambda: self.studio.cleanup.labels(query.get("q"), query.get("offset", "0"),
+                                                         query.get("limit", "50")))
         elif url.path == "/api/browse":
             self._run(lambda: self.studio.browse(query.get("kind"), query.get("key"), query.get("q"),
                                                query.get("offset", "0"), query.get("limit", "50"),
@@ -161,6 +173,10 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/auth/browser": lambda b: {"url": self.studio.browser_url(self._redirect_uri())},
             "/api/auth/logout": lambda b: (self.studio.logout(), {"ok": True})[1],
             "/api/save": lambda b: self.studio.save(b.get("changes")),
+            "/api/cleanup/preview": lambda b: self.studio.cleanup.prepare(
+                b.get("category"), b.get("label"), b.get("replacements"), b.get("remove", False)),
+            "/api/cleanup/start": lambda b: self.studio.cleanup.start(b.get("id"), b.get("excluded")),
+            "/api/cleanup/stop": lambda b: self.studio.cleanup.cancel(b.get("id")),
             "/api/settings": self.studio.save_settings,
             "/api/updates/check": lambda b: self.studio.check_updates(manual=True),
             "/api/artwork": self.studio.change_artwork,

@@ -1,6 +1,6 @@
 # Standalone downloads and builds
 
-Tagcast 0.20.0 packages a desktop launcher and a CLI with PyInstaller. Python,
+Tagcast 0.30.0 packages a desktop launcher and a CLI with PyInstaller. Python,
 Tcl/Tk, iBroadcast dependencies and all browser assets are included. The main
 interface remains in your browser; no Python installation is required for a download.
 
@@ -8,13 +8,15 @@ interface remains in your browser; no Python installation is required for a down
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-0.20.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-0.20.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-0.20.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-0.20.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| macOS, Apple Silicon | `tagcast-0.30.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-0.30.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-0.30.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-0.30.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
 
 Keep Windows/Linux executables and `_internal` together; keep the macOS app's
-Contents intact. The launcher opens your browser and stays open. **Stop Tagcast
+Contents intact. The launcher opens your browser by default and stays open. Untick **Open browser
+automatically** to use a wrapper such as Unite Pro; the manual browser button
+remains available and this choice is remembered separately in `launcher.json`. **Stop Tagcast
 and close**, the window's close button, or Quit on macOS stops its local server.
 Closing a browser tab does not stop the server. If a server was already running,
 the launcher opens that instance and leaves it running when its own window closes.

@@ -7,10 +7,22 @@ import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.request import urlopen
 
 from tagcast import app, desktop
+
+
+class Value:
+    def __init__(self, master=None, value=None):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = value
 
 
 class DesktopTests(unittest.TestCase):
@@ -29,9 +41,9 @@ class DesktopTests(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
         tk = types.ModuleType("tkinter")
-        tk.StringVar = MagicMock()
+        tk.StringVar = tk.BooleanVar = Value
         tk.ttk = types.ModuleType("tkinter.ttk")
-        for name in ("Frame", "Label", "Button"):
+        for name in ("Frame", "Label", "Button", "Checkbutton"):
             setattr(tk.ttk, name, MagicMock())
         modules = patch.dict(sys.modules, {"tkinter": tk, "tkinter.ttk": tk.ttk})
         modules.start()
@@ -40,6 +52,83 @@ class DesktopTests(unittest.TestCase):
     def status(self, port):
         with urlopen(f"http://127.0.0.1:{port}/api/status", timeout=2) as response:
             return json.load(response)
+
+    def test_browser_defaults_on_and_remembers_toggles_without_touching_server_config(self):
+        config = Path(self.home.name) / "config.json"
+        config.write_text('{"auto_lookup": false, "custom": "keep"}', encoding="utf-8")
+        before = config.read_bytes()
+        with patch.object(desktop.webbrowser, "open") as browser:
+            launcher = desktop.Desktop(MagicMock(), port=0)
+            try:
+                self.assertTrue(launcher.auto_open.get())
+                browser.assert_called_once_with(launcher.url)
+                browser.reset_mock()
+                launcher.auto_open.set(False)
+                launcher.save_browser_preference()
+                browser.assert_not_called()
+                self.assertEqual(json.loads(launcher.preferences_path.read_text()), {"open_browser": False})
+                self.assertEqual(config.read_bytes(), before)
+                second = desktop.Desktop(MagicMock(), port=launcher.port)
+                try:
+                    self.assertFalse(second.auto_open.get())
+                    self.assertIsNone(second.server)
+                    browser.assert_not_called()
+                    second.open()
+                    browser.assert_called_once_with(launcher.url)
+                    browser.reset_mock()
+                    second.auto_open.set(True)
+                    second.save_browser_preference()
+                    browser.assert_not_called()
+                finally:
+                    second.close()
+                third = desktop.Desktop(MagicMock(), port=launcher.port)
+                try:
+                    browser.assert_called_once_with(launcher.url)
+                    self.assertTrue(third.auto_open.get())
+                finally:
+                    third.close()
+            finally:
+                launcher.close()
+
+    def test_disabled_browser_setting_also_applies_to_a_new_server(self):
+        preferences = Path(self.home.name) / "launcher.json"
+        preferences.write_text('{"open_browser": false}', encoding="utf-8")
+        with patch.object(desktop.webbrowser, "open") as browser:
+            launcher = desktop.Desktop(MagicMock(), port=0)
+            try:
+                self.assertTrue(launcher.ready)
+                self.assertFalse(self.status(launcher.port)["connected"])
+                browser.assert_not_called()
+                launcher.open()
+                browser.assert_called_once_with(launcher.url)
+            finally:
+                launcher.close()
+
+    def test_invalid_or_missing_preferences_default_to_opening(self):
+        preferences = Path(self.home.name) / "launcher.json"
+        self.assertTrue(desktop.automatic_browser(preferences))
+        for content in ('{', 'null', '[]', '{}', '{"open_browser": "false"}', '{"open_browser": 0}'):
+            with self.subTest(content=content):
+                preferences.write_text(content, encoding="utf-8")
+                self.assertTrue(desktop.automatic_browser(preferences))
+
+    def test_save_failure_keeps_preferences_and_server_and_reports_the_problem(self):
+        launcher = desktop.Desktop(MagicMock(), port=0, open_browser=False)
+        try:
+            launcher.save_browser_preference()
+            before = launcher.preferences_path.read_bytes()
+            launcher.auto_open.set(False)
+            with patch.object(desktop.os, "replace", side_effect=OSError("disk unavailable")), self.assertLogs(level="ERROR"):
+                launcher.save_browser_preference()
+            self.assertEqual(launcher.preferences_path.read_bytes(), before)
+            self.assertIn("Could not remember", launcher.status.get())
+            self.assertEqual(list(Path(self.home.name).glob("launcher-*.tmp")), [])
+            self.assertFalse(self.status(launcher.port)["connected"])
+            launcher.save_browser_preference()
+            self.assertNotIn("Could not remember", launcher.status.get())
+            self.assertFalse(desktop.automatic_browser(launcher.preferences_path))
+        finally:
+            launcher.close()
 
     def test_closing_stops_the_owned_server(self):
         root = MagicMock()

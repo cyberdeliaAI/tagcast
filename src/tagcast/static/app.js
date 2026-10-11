@@ -61,21 +61,28 @@ function demoLibrary() {
 const trackGenres = t => t.genres ?? (t.genre?.trim() ? [t.genre.trim()] : []);
 // A track title for comparing: case and spacing don't count (as on the server).
 const titleKey = title => String(title || "").toLocaleLowerCase().split(/\s+/).filter(Boolean).join(" ");
+// A repeated title elsewhere in a track list is not an extra copy. Compare per disc.
+function duplicateTrackKey(track) {
+  const position = Number(track.track), title = titleKey(track.title);
+  return Number.isInteger(position) && position > 0 && title ? JSON.stringify([position, title]) : "";
+}
 
 function summarize(album) {
   const genres = splitGenres(album.tracks.flatMap(trackGenres)).sort();
   return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc,
     artist_id: album.artist_id || 0, artist_image: album.artist_image || "", artist_artwork_id: album.artist_artwork_id || 0,
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
+    upload_dates: [...new Set(album.tracks.map(t => String(t.uploaded_on || "").trim().slice(0, 10)))].sort(),
     no_genre: album.tracks.filter(t => !trackGenres(t).length).length,
     combined_genres: album.tracks.filter(t => hasCombined(trackGenres(t))).length,
     no_composer: album.tracks.filter(t => !(t.composers || []).length).length,
     track_gaps: (numbers => numbers.size ? Math.max(...numbers) - numbers.size : 0)(new Set(album.tracks.map(t => t.track).filter(Boolean))),
-    duplicates: (titles => titles.length - new Set(titles).size)(album.tracks.map(t => titleKey(t.title)).filter(Boolean)),
+    duplicates: (keys => keys.length - new Set(keys).size)(album.tracks.map(duplicateTrackKey).filter(Boolean)),
     no_cover: album.tracks.filter(t => !(t.artwork_id ?? album.artwork)).length};
 }
 
 function useLocal(albums, mode) {
+  if (typeof resetCleanup === "function") resetCleanup(true);
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
   if (typeof stopPlayer === "function") stopPlayer();
@@ -123,7 +130,7 @@ const FILTERS = {
   composer: ["Missing composer", a => a.no_composer > 0],  // search "classical" to narrow it down
   small: ["1–2 tracks", a => a.track_count <= 2],
   incomplete: ["Possibly incomplete", a => a.track_gaps > 0],
-  duplicates: ["Duplicate tracks", a => a.duplicates > 0],  // the same title twice in one album  // e.g. tracks 1, 2 and 5  // any track without a cover, like the overview counts
+  duplicates: ["Duplicate tracks", a => a.duplicates > 0],  // same track number and title on one disc
   edition: ["Named editions", a => EDITION.test(a.name)],
 };
 const SORTS = {
@@ -140,21 +147,23 @@ const SORTS = {
 const initials = name => name.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
 const pageSize = () => state.perPage || (state.view === "list" ? 100 : 24);
 
-// Discs of one set (same title and album artist) are separate albums in iBroadcast
+// Discs of one set (matching title, artist, year and upload dates) are separate albums in iBroadcast
 // while "Combine Multi-Disc Album Sets" is off.
 let discCache = {albums: null, sets: new Map()};
+const discSetKey = a => JSON.stringify([a.name.trim().toLocaleLowerCase(), a.artist,
+  Number(a.year) || 0, a.upload_dates || [""]]);
 function discSet(album) {
   if (discCache.albums !== state.albums) {
     const sets = new Map();
     for (const a of state.albums) {
-      const key = `${a.name.trim().toLocaleLowerCase()}|${a.artist}`;
+      const key = discSetKey(a);
       if (!sets.has(key)) sets.set(key, []);
       sets.get(key).push(a);
     }
     for (const set of sets.values()) set.sort((a, b) => (a.disc || 0) - (b.disc || 0));
     discCache = {albums: state.albums, sets};
   }
-  const set = discCache.sets.get(`${album.name.trim().toLocaleLowerCase()}|${album.artist}`) || [];
+  const set = discCache.sets.get(discSetKey(album)) || [];
   return set.length > 1 && new Set(set.map(a => a.disc)).size === set.length ? set : null;
 }
 const discLabel = album => { const set = discSet(album); return set ? `Disc ${album.disc || "?"} of ${set.length}` : ""; };
@@ -246,19 +255,22 @@ function selectBox(a) {
 }
 
 function gridView(items) {
-  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks${discNote(a) ? ` <span aria-hidden="true">·</span> ${discNote(a)}` : ""}</span>${badge(a)}</div>${typeof queueButton === "function" ? queueButton(a.id) : ""}</article>`).join("");
+  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button><div class="card-meta"><span>${a.year || "Year unknown"} <span aria-hidden="true">·</span> ${a.track_count} tracks${discNote(a) ? ` <span aria-hidden="true">·</span> ${discNote(a)}` : ""}</span>${badge(a)}${typeof queueButton === "function" ? queueButton(a.id, null, true) : ""}</div></article>`).join("");
 }
 
 function listView(items) {
   const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
   const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
-  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Add to queue"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof queueButton === "function" ? queueButton(a.id) : ""}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Add to queue"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof queueButton === "function" ? queueButton(a.id, null, true) : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
+  $("#cleanup-filter").hidden = !live() || $("#filter").value !== "combined";
   $("#browse-artist-count").textContent = artistGroups().length.toLocaleString("en");
-  $("#album-count").textContent = albumShelf().length.toLocaleString("en");
-  $("#total-tracks").textContent = $("#track-count").textContent = state.albums.reduce((sum, a) => sum + a.track_count, 0).toLocaleString("en");
+  $("#total-albums").textContent = $("#album-count").textContent = albumShelf().length.toLocaleString("en");
+  const trackCount = state.albums.reduce((sum, a) => sum + a.track_count, 0);
+  $("#track-count").textContent = trackCount.toLocaleString("en");
+  $("#total-tracks").textContent = `${trackCount.toLocaleString("en")} ${trackCount === 1 ? "track" : "tracks"}`;
   $("#history-count").textContent = state.history.length;
   if (!state.screen || state.screen === "albums") $("#breadcrumb").textContent = state.artist || "Albums";
   $("#page-title").textContent = state.artist || "Your albums.";
@@ -289,20 +301,21 @@ function render() {
   if (typeof renderTrackSearch === "function") renderTrackSearch();
   if (typeof renderFavourites === "function") renderFavourites();
   if (typeof renderBrowse === "function") renderBrowse();
+  if (typeof updateRandomControls === "function") updateRandomControls();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
   if (typeof syncHistory === "function") syncHistory();
 }
 
 // On an artist's page the artist image takes the place of the library total.
 function renderArtistPanel() {
-  const panel = $("#artist-panel"), albums = state.artist ? state.albums.filter(a => a.artist === state.artist) : [];
+  const panel = $("#artist-panel"), albums = state.artist ? albumShelf().filter(a => a.artist === state.artist) : [];
   $("#library-total").hidden = Boolean(state.artist);
   panel.hidden = !state.artist;
   if (!state.artist) return;
   const image = albums.find(a => a.artist_image)?.artist_image || "";
   const canChange = live() && albums.some(a => a.artist_id) && state.artist !== "Various Artists";
   const tracks = albums.reduce((sum, a) => sum + a.track_count, 0);
-  panel.innerHTML = `<div class="artist-photo">${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<span>${escapeHtml(initials(state.artist))}</span></div><div class="artist-meta"><strong>${tracks.toLocaleString("en")}</strong><span>${tracks === 1 ? "track" : "tracks"} on these albums</span>${canChange ? `<button class="text-action" id="change-artist-page-image">${image ? "Change image" : "Add an image"}</button>` : ""}</div>`;
+  panel.innerHTML = `<div class="artist-photo">${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<span>${escapeHtml(initials(state.artist))}</span></div><div class="artist-meta"><strong>${albums.length.toLocaleString("en")}</strong><span>${albums.length === 1 ? "album" : "albums"}</span><small>${tracks.toLocaleString("en")} ${tracks === 1 ? "track" : "tracks"}</small>${canChange ? `<button class="text-action" id="change-artist-page-image">${image ? "Change image" : "Add an image"}</button>` : ""}</div>`;
 }
 
 // The album after this one in the current list, for working through a filter.
@@ -702,6 +715,7 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  if (typeof resetCleanup === "function") resetCleanup();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
   if (typeof resetAlbumView === "function") resetAlbumView();
@@ -996,17 +1010,55 @@ document.addEventListener("click", event => {
   openEditor(set.map(a => String(a.id)));
 });
 
-// Theme: Auto (follows the system), Light or Dark; dark.css does the rest.
+// Appearance and colour palette are independent, local-only preferences.
 function showTheme() {
   const theme = document.documentElement.dataset.theme || "auto";
-  const label = {auto: "◐ Auto", light: "☀ Light", dark: "☾ Dark"}[theme];
-  $("#theme-button").textContent = label;
-  $("#theme-button").title = theme === "auto" ? "Light or dark: follows your system. Click to change." : `${label.slice(2)} theme. Click to change.`;
+  const palette = document.documentElement.dataset.palette || "forest";
+  const label = {auto: "Auto", light: "Light", dark: "Dark"}[theme];
+  const colour = {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
+  $("#theme-button").textContent = `${{auto: "◐", light: "☀", dark: "☾"}[theme]} Theme ▾`;
+  $("#theme-button").title = `${colour} · ${label}. Choose colour and appearance.`;
+  for (const value of ["auto", "light", "dark"]) $("#appearance-" + value).checked = theme === value;
+  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = palette === value;
 }
-$("#theme-button").addEventListener("click", () => {
-  const next = {auto: "light", light: "dark", dark: "auto"}[document.documentElement.dataset.theme || "auto"];
-  if (next === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("tagcast-theme", next); } catch { /* private window */ }
-  showTheme();
+
+function setThemeMenu(open, restoreFocus = false) {
+  $("#theme-menu").hidden = !open;
+  $("#theme-button").setAttribute("aria-expanded", String(open));
+  if (open) $("#appearance-" + (document.documentElement.dataset.theme || "auto")).focus();
+  else if (restoreFocus) $("#theme-button").focus();
+}
+$("#theme-button").addEventListener("click", () => setThemeMenu($("#theme-menu").hidden));
+$("#theme-menu").addEventListener("change", event => {
+  if (event.target.dataset.appearanceChoice !== undefined) {
+    const value = event.target.value;
+    if (!["auto", "light", "dark"].includes(value)) return;
+    if (value === "auto") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = value;
+    try { localStorage.setItem("tagcast-theme", value); } catch { /* private window */ }
+    showTheme();
+  } else if (event.target.dataset.paletteChoice !== undefined) {
+    const palette = setColourPalette(event.target.value);
+    try { localStorage.setItem("tagcast-palette", palette); } catch { /* private window */ }
+  }
 });
-showTheme();
+document.addEventListener("click", event => {
+  if (!event.target.closest(".appearance-controls")) setThemeMenu(false);
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !$("#theme-menu").hidden) {
+    event.preventDefault();
+    setThemeMenu(false, true);
+  }
+});
+
+function setColourPalette(value) {
+  const palette = ["ocean", "warm", "ibroadcast"].includes(value) ? value : "forest";
+  if (palette === "forest") delete document.documentElement.dataset.palette;
+  else document.documentElement.dataset.palette = palette;
+  showTheme();
+  return palette;
+}
+try { setColourPalette(localStorage.getItem("tagcast-palette")); }
+catch { setColourPalette("forest"); }
+setThemeMenu(false);

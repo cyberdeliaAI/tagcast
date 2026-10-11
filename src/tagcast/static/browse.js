@@ -27,7 +27,7 @@ function localBrowse() {
     || foldText(a.name).localeCompare(foldText(b.name)) || (a.disc || 0) - (b.disc || 0));
   for (const a of albums) for (const t of [...a.tracks].sort((a, b) => (a.track || 9999) - (b.track || 9999))) {
     let entries;
-    if (kind === "track-artists") entries = [[String(t.artist_id ?? `name:${t.artist}`), t.artist]];
+    if (kind === "track-artists") entries = t.performers?.length ? t.performers.map(p => [String(p.id), p.name]) : [[String(t.artist_id ?? `name:${t.artist}`), t.artist]];
     else if (kind === "composers") entries = (t.composers || []).map((name, i) => [String(t.composer_ids?.[i] ?? `name:${name}`), name]);
     else if (kind === "genres") entries = trackGenres(t).map(name => [name.toLocaleLowerCase(), name]);
     else if (kind === "decades") {
@@ -99,16 +99,17 @@ async function loadBrowse() {
 
 function browseCard(g) {
   const people = ["track-artists", "composers"].includes(browseView.kind);
-  const albums = g.albums == null ? "" : `${g.albums.toLocaleString("en")} ${g.albums === 1 ? "album" : "albums"} · `;
+  const albums = g.albums == null ? "" : `${g.albums.toLocaleString("en")} ${g.albums === 1 ? "album" : "albums"}`;
+  const tracks = `${g.tracks.toLocaleString("en")} ${g.tracks === 1 ? "track" : "tracks"}`;
   const image = g.image ? `<img src="${escapeHtml(g.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
   return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="Open albums for ${escapeHtml(g.label)}">
     ${people ? `<span class="artist-card-photo">${image}<span>${escapeHtml(initials(g.label))}</span></span>` : ""}
-    <strong>${escapeHtml(g.label)}</strong><span class="artist-card-count">${albums}${g.tracks.toLocaleString("en")} ${g.tracks === 1 ? "track" : "tracks"}</span></button>`;
+    <strong>${escapeHtml(g.label)}</strong><span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
 }
 
 function browseAlbumCard(a) {
   return `<article class="album-card"><button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button>
-    <div class="card-meta"><span>${a.year || "Year unknown"} · ${a.track_count} ${a.track_count === 1 ? "track" : "tracks"}${discNote(a) ? ` · ${discNote(a)}` : ""}</span>${badge(a)}</div>${queueButton(a.id)}</article>`;
+    <div class="card-meta"><span>${a.year || "Year unknown"} · ${a.track_count} ${a.track_count === 1 ? "track" : "tracks"}${discNote(a) ? ` · ${discNote(a)}` : ""}</span>${badge(a)}${queueButton(a.id, null, true)}</div></article>`;
 }
 
 function shuffledAlbumIds(albums) {
@@ -118,6 +119,15 @@ function shuffledAlbumIds(albums) {
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
   return ids;
+}
+
+// All matching albums, before pagination or the decade's random display sample.
+function browseAlbums() {
+  if (browseView.key === null || !browseView.loaded || browseView.loading || browseView.error
+    || browseView.details !== state.details || state.loading) return [];
+  const words = foldText(browseView.query).split(" ").filter(Boolean);
+  return albumShelf().filter(a => itemIds(a).some(id => browseView.albumIds.has(id))
+    && words.every(w => foldText([a.name, a.artist, ...a.genres].join(" ")).includes(w)));
 }
 
 function renderBrowse() {
@@ -146,9 +156,7 @@ function renderBrowse() {
   sort.value = browseView.sort;
   let rows = browseView.rows;
   if (detail && browseView.loaded && !state.loading && !browseView.loading) {
-    const words = foldText(browseView.query).split(" ").filter(Boolean);
-    const albums = albumShelf().filter(a => itemIds(a).some(id => browseView.albumIds.has(id))
-      && words.every(w => foldText([a.name, a.artist, ...a.genres].join(" ")).includes(w)));
+    const albums = browseAlbums();
     if (surprise) {
       if (!browseView.randomIds.length) browseView.randomIds = shuffledAlbumIds(albumShelf().filter(a => itemIds(a).some(id => browseView.albumIds.has(id))));
       const order = new Map(browseView.randomIds.map((id, index) => [id, index]));
@@ -170,6 +178,7 @@ function renderBrowse() {
   const max = Math.max(0, Math.ceil(browseView.total / browseView.pageSize) - 1);
   $("#browse-pagination").innerHTML = !surprise && !state.loading && !browseView.loading && max > 0 ? `<button class="button small" data-browse-page="-1" ${browseView.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${browseView.page + 1} of ${(max + 1).toLocaleString("en")}</span><button class="button small" data-browse-page="1" ${browseView.page === max ? "disabled" : ""}>Next →</button>` : "";
   updateFavouriteControls();
+  updateRandomControls();
   if (typeof syncHistory === "function") syncHistory();
 }
 
