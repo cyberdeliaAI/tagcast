@@ -241,9 +241,63 @@ complete steps, exact genre replacement and recovery.
 
 ### Move tracks to trash
 
-On an album page, choose **Move to trash…**, tick the tracks, review them and confirm. **Select extra copies** selects every matching copy after the first on each disc; **Select all** selects the whole album. Duplicate detection requires both the same positive track number and the same title, ignoring case and spacing. The same title at track 1 and track 17, or on separate discs, is not a duplicate. Missing track numbers are not matched. Audio files and recording quality are not compared: check which copy you want to keep before confirming.
+To find candidate albums, open **Albums** and choose the **Duplicate tracks**
+filter. Open an album to inspect its tracks.
 
-Tagcast checks that the tracks are still active on that album, moves them to **iBroadcast's trash**, and reads the library back. It never deletes tracks permanently. Restore trashed tracks through iBroadcast; Tagcast cannot take them out of the trash. An album disappears from Tagcast when it has no active tracks left.
+Remove unwanted duplicate copies from an album in three reviewed steps:
+
+1. **Open the album and choose Move to trash…** Tracks marked **Duplicate** are
+   candidates with the same positive track number and title on the same disc.
+   Checkboxes appear beside the tracks; nothing is sent yet.
+2. **Select the copies you want to remove.** Tick them individually, or use
+   **Select extra copies** to select each matching copy after the first on its
+   disc. The first copy stays unselected. Check the selection and change it if
+   you prefer to keep another copy; listen and compare the displayed duration
+   and file format where available. **Select all** selects the entire album,
+   including tracks without duplicates. The bar shows the selected track count.
+3. **Choose Review → and confirm the list.** Check the titles and count, then
+   choose **Move N tracks to the trash** (for example, **Move 14 tracks to the
+   trash** in the screenshot). Use **Cancel** while selecting or **Keep them**
+   in the review to leave the tracks unchanged.
+
+Tagcast first checks that the selected tracks are still active on their albums,
+then moves them to **iBroadcast's trash** and reads the result back. Wait for the
+checking to finish; **History** shows the result. These tracks leave the active
+library in Tagcast and other iBroadcast apps. They are never permanently deleted
+by Tagcast, and your local music files are unchanged. Restore them through
+**iBroadcast's trash**; Tagcast cannot restore them. An album disappears from
+Tagcast when it has no active tracks left.
+
+Duplicate detection ignores case and spacing in titles. A repeated title at
+track 1 and track 17, or on separate discs, is not a duplicate. Missing track
+numbers are not matched. Audio files and recording quality are not compared,
+and **Select extra copies** does not choose the best-quality recording.
+
+<details>
+<summary><b>Step-by-step screenshots: remove duplicate tracks</b></summary>
+
+**1. Open the album and choose Move to trash…**
+
+The arrow points to the album's trash button. Matching track numbers and titles
+are marked **Duplicate**.
+
+![Album with Duplicate badges on repeated track numbers and titles; an arrow points to Move to trash](docs/screenshots/duplicate-tracks-open.png)
+
+**2. Select the unwanted copies, then choose Review →.**
+
+Checked tracks are the ones that will move to the trash. In this example,
+14 of 45 tracks are selected; the first copy of each shown pair is unselected.
+
+![Trash selection with 14 of 45 tracks selected, arrows pointing to the extra copies and Review, and a Select extra copies button](docs/screenshots/duplicate-tracks-select.png)
+
+**3. Review the list, then confirm Move 14 tracks to the trash.**
+
+This final button sends the change to iBroadcast. **Keep them** closes the review
+without moving the tracks.
+
+![Trash review listing 14 selected tracks, the iBroadcast trash notice and an arrow pointing to the final confirmation button](docs/screenshots/duplicate-tracks-review.png)
+
+</details>
 
 ### Overview and History
 
@@ -263,9 +317,10 @@ If you start the new copy while the old server is still running, the launcher op
 
 ## Screenshots
 
-The new screenshots show the features released in **0.30.0**, captured during
-development while the version badge still read 0.20.0. Earlier 0.20.0 views below
-also illustrate browsing and editing.
+Some screenshots of the features released in **0.30.0** were captured during
+development and still show a 0.20.0 badge. The [duplicate-removal walkthrough](#move-tracks-to-trash)
+shows the released 0.30.0 interface. Earlier 0.20.0 views below also illustrate
+browsing and editing.
 
 <details open>
 <summary><b>New in 0.30.0: batch cleanup, formats and fullscreen playback</b></summary>
