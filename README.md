@@ -39,6 +39,25 @@ The launcher has an **Open browser automatically** checkbox, enabled by default.
 
 Each archive has a separate `.sha256` checksum file under Assets. See the [standalone guide](docs/native-builds.md) for checksum verification, the separate CLI and platform requirements. GitHub's **Source code** archives are for the source installation below.
 
+### Homebrew on macOS
+
+Install the same standalone app through the [Cyberdelia Homebrew tap](https://github.com/cyberdeliaAI/homebrew-apps):
+
+```sh
+brew install --cask cyberdeliaAI/apps/tagcast
+```
+
+Homebrew selects the Apple Silicon or Intel download, verifies its checksum and
+installs the app in Applications, with `tagcast-cli` available in your terminal.
+The first launch follows the same macOS security checks as the direct download.
+If you installed Tagcast manually, stop it and move the existing
+`/Applications/Tagcast.app` aside first; your separate settings stay in place.
+
+For updates, stop Tagcast, run `brew update`, then
+`brew upgrade --cask cyberdeliaAI/apps/tagcast`. New releases become available
+after this tap's version and checksums are updated. See the
+[tap guide](https://github.com/cyberdeliaAI/homebrew-apps#readme) for removal and maintenance.
+
 <details>
 <summary><b>Run from source with Python or uv</b></summary>
 
