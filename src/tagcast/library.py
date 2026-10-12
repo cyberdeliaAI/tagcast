@@ -11,6 +11,7 @@ view built from a freshly downloaded library, so a conflict is detected no matte
 where the other edit came from.
 """
 
+import re
 import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
@@ -18,6 +19,7 @@ from threading import Lock
 
 ARTWORK_SERVER = "https://artwork.ibroadcast.com"
 FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "audio/mp3": "MP3",
+           "audio/mpeg3": "MP3",
            "audio/mp4": "AAC/ALAC", "audio/x-m4a": "AAC/ALAC", "audio/m4a": "AAC/ALAC", "audio/aac": "AAC",
            "audio/ogg": "Ogg", "audio/x-ms-wma": "WMA", "audio/wav": "WAV", "audio/x-wav": "WAV",
            "audio/aiff": "AIFF", "audio/x-aiff": "AIFF", "audio/x-ape": "APE", "audio/ape": "APE"}
@@ -32,6 +34,7 @@ REQUIRED_TEXT = {"name", "title", "artist"}
 MAX_CHANGES = 2000
 MAX_IDS_PER_REQUEST = 500
 MAX_TRACK_RESULTS = 1000
+TITLE_QUOTES = str.maketrans("", "", "'\"‘’‚‛“”„‟«»‹›")
 
 
 class LibraryError(ValueError):
@@ -128,8 +131,8 @@ def additional_artists(track, mapping=None):
 
 
 def title_key(value):
-    """A track title for comparing: case and spacing don't count."""
-    return " ".join(text(value).casefold().split())
+    """Compare titles without case, spacing or quotation marks; retain version text."""
+    return " ".join(text(value).translate(TITLE_QUOTES).casefold().split())
 
 
 def fold(value):
@@ -188,9 +191,35 @@ class Library:
         # Album Sets" is on, so a copy is only valid for the setting it was downloaded with.
         self.combine_sets = response.get("combine_sets")
         playlists = raw.get("playlists") if isinstance(raw.get("playlists"), dict) else None
+        self.playlists_loaded = playlists is not None
+        try:
+            self.playlists = decode_table(playlists or {})
+        except LibraryError:
+            self.playlists = decode_table({})
+            self.playlists_loaded = False
         counts = response.get("counts") if isinstance(response.get("counts"), dict) else {}
         self.playlist_count = (sum(1 for k in playlists if str(k).isdigit()) if playlists is not None
                                else counts.get("playlists"))  # None: unknown (older cache)
+        # Identify the native playlist by type, never by its translated/editable name.
+        # Older Tagcast caches kept only the playlist count; read it on demand once.
+        self.recent_loaded = playlists is not None or "recently_played" in response
+        recent = response.get("recently_played")
+        self.recent_track_ids = list(dict.fromkeys(number(i) for i in recent if number(i) > 0)) \
+            if isinstance(recent, list) else None
+        if playlists is not None:
+            self.recent_track_ids = None
+            try:
+                decoded_playlists = decode_table(playlists)
+            except LibraryError:
+                decoded_playlists = {}  # an unavailable optional list must not block the library
+            for playlist in decoded_playlists.values():
+                if playlist.get("type") == "recently-played":
+                    tracks = playlist.get("tracks")
+                    if isinstance(tracks, list):
+                        self.recent_track_ids = list(dict.fromkeys(
+                            number(i) for i in tracks if number(i) > 0))
+                    break
+        self._recent_rows = None
         self._stats = None
         self._search = None
         self._favourites = None
@@ -203,7 +232,7 @@ class Library:
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
-        return {
+        cached = {
             "library": {"tracks": self.tracks.raw(), "albums": self.albums.raw(),
                         "artists": self.artists.raw(), "expires": self.expires},
             "settings": {"artwork_server": self.artwork_server},
@@ -211,6 +240,13 @@ class Library:
             "counts": {"playlists": self.playlist_count},
             "combine_sets": self.combine_sets,
         }
+        if self.recent_loaded:
+            cached["recently_played"] = self.recent_track_ids
+        if self.playlists_loaded:
+            fields = ("name", "tracks", "type", "system_created", "description", "artwork_id", "sort")
+            cached["library"]["playlists"] = {str(i): {k: row.get(k) for k in fields}
+                                              for i, row in self.playlists.items()}
+        return cached
 
     # -- reading -------------------------------------------------------------
 
@@ -292,6 +328,7 @@ class Library:
             "artist_id": number(album.get("artist_id")),
             "year": number(album.get("year")),
             "disc": number(album.get("disc")),
+            "rating": number(album.get("rating")),
             "artwork": self.art_url(artwork),
             "artwork_id": artwork,
             "artist_image": self.artist_image(album.get("artist_id")),
@@ -355,6 +392,7 @@ class Library:
             "artist": self.artist_name(album.get("artist_id")),
             "year": number(album.get("year")),
             "disc": number(album.get("disc")),
+            "rating": number(album.get("rating")),
             "artwork": self.art_url(self.album_artwork(track_ids)),
             "artist_id": number(album.get("artist_id")),
             "artist_image": self.artist_image(album.get("artist_id")),
@@ -567,6 +605,27 @@ class Library:
         return {"tracks": [self.track_row(*ids) for ids in found[offset:offset + limit]], "total": len(found),
                 "count": len(self._favourites), "offset": offset}
 
+    def recently_played(self, query="", offset=0, limit=50):
+        """The native playlist in server order, without inventing play timestamps."""
+        if self._recent_rows is None:
+            rows = []
+            for track_id in self.recent_track_ids or []:
+                try:
+                    album_id = self.active_track_album(track_id)
+                except LibraryError:
+                    continue
+                row = self.track_row(track_id, album_id)
+                haystack = fold(" ".join([row["title"], row["artist"], row["album"],
+                                         *(p["name"] for p in row["performers"]), *row["composers"]]))
+                rows.append((track_id, album_id, haystack))
+            self._recent_rows = rows
+        words = fold(query).split()
+        found = [(t, a) for t, a, haystack in self._recent_rows if all(w in haystack for w in words)]
+        offset = min(offset, max(0, (len(found) - 1) // limit * limit))
+        return {"available": self.recent_track_ids is not None,
+                "tracks": [self.track_row(*ids) for ids in found[offset:offset + limit]],
+                "total": len(found), "count": len(self._recent_rows), "offset": offset}
+
     def stats(self, top=10):
         """Numbers for the overview, worked out once per library copy."""
         if self._stats is None:
@@ -679,11 +738,18 @@ class Library:
         return next((i for i, t in self.tracks.items()
                      if number(t.get("artist_id")) == artist_id and not t.get("trashed")), 0)
 
-    def stream_info(self, track_id):
+    def stream_info(self, track_id, quality=None):
         track = self.tracks.get(track_id)
         if not track or track.get("trashed") or not text(track.get("file")).startswith("/"):
             raise LibraryError("This track can't be played. Reload the library.")
-        return text(track.get("file")), text(track.get("type"))
+        path = text(track.get("file"))
+        if quality is not None:
+            if quality not in ("96", "128", "192", "256", "320", "orig"):
+                raise LibraryError("Choose a supported streaming quality.")
+            if not re.match(r"^/(?:96|128|192|256|320|orig)/", path):
+                raise LibraryError("This streaming path does not support selecting quality.")
+            path = re.sub(r"^/[^/]+/", f"/{quality}/", path, count=1)
+        return path, text(track.get("type"))
 
     def current(self, kind, item_id):
         return self.album_view(item_id) if kind == "album" else self.track_view(item_id)

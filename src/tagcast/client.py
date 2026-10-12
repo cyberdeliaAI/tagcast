@@ -7,11 +7,14 @@ for OAuth (device code and PKCE authorization code flows) and token handling.
 import gzip
 import json
 import logging
+import math
 import os
+import re
 import secrets
 import shutil
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import ibroadcast
@@ -20,6 +23,7 @@ from ibroadcast import oauth
 
 from . import __version__, artwork, auth
 from .cleanup import Cleanup
+from .collections import Collections
 from .library import (
     ConflictError,
     Library,
@@ -30,6 +34,7 @@ from .library import (
     verify,
     write_requests,
 )
+from .queue_sync import QUEUE_SCOPES, QueueSync
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
 from .updates import UpdateChecker
@@ -45,7 +50,7 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
 MAX_TRASH = 500  # tracks per trash request
-NO_RETRY = {"create_artist"}  # not safe to repeat: a lost answer would create a second artist
+NO_RETRY = {"create_artist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token"}  # Never repeat an ambiguous collection mutation or one-use token request.
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
            "fanart_api_key": "FANART_API_KEY"}
@@ -137,8 +142,8 @@ class StudioClient(ibroadcast.iBroadcast):
 
     def _post(self, url, args, retry=True):
         """POST JSON. Network errors, HTTP 429 and 5xx are retried (writes here set values,
-        so sending one twice does no harm), except for modes in NO_RETRY."""
-        retry = retry and args.get("mode") not in NO_RETRY
+        so sending one twice does no harm), except for modes in NO_RETRY or play history."""
+        retry = retry and args.get("mode") not in NO_RETRY and "history" not in args
         for attempt, delay in enumerate((0, *RETRY_DELAYS) if retry else (0,)):
             time.sleep(delay)
             last = attempt == (len(RETRY_DELAYS) if retry else 0)
@@ -279,9 +284,15 @@ class Studio:
         self.home = Path(home) if home else self.default_home()
         self.lock = threading.RLock()
         self.save_lock = threading.Lock()
+        self.play_lock = threading.Lock()
+        self.play_events = {}
+        self.playback_session = ""
         self.client = None
         self.library = None
         self.library_user = None
+        self.premium = False
+        self.collections = Collections(self)
+        self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
         self.downloads = 0  # library downloads started so far; numbers each one
         self.library_started = 0  # the number of the download the copy in memory came from
@@ -359,6 +370,10 @@ class Studio:
     def client_id(self):
         return os.environ.get("IBROADCAST_CLIENT_ID") or self.config.get("client_id") or ""
 
+    @property
+    def scopes(self):
+        return SCOPES + (QUEUE_SCOPES if self.config.get("queue_sync") is True else [])
+
     def set_client_id(self, client_id):
         client_id = str(client_id or "").strip()
         if not client_id or len(client_id) > 200 or any(c.isspace() for c in client_id):
@@ -378,6 +393,7 @@ class Studio:
                                             "token_set": token_set.to_dict()})
 
     def _connect(self, token_set, save=True):
+        self.queue_sync.disconnect()
         client = StudioClient(access_token=token_set.access_token,
                               refresh_token=token_set.refresh_token,
                               client_id=self.client_id,
@@ -385,12 +401,15 @@ class Studio:
         client.token_set = token_set
         with self.lock:
             self.client, self.library, self.account = client, None, None
+            self.playback_session = secrets.token_hex(16)
             if save:
                 self._save_tokens(token_set, client)
 
     def _disconnect(self):
+        self.queue_sync.disconnect()
         with self.lock:
             self.client = self.library = self.account = self.device = None
+            self.playback_session = ""
             self._device_gen += 1
             self._pkce.clear()
             self._pkce_gen += 1
@@ -410,9 +429,11 @@ class Studio:
             "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
             "connected": bool(client),
             "combine_sets": self.combine_sets,
+            "premium": self.premium,
             "account": self.account or "",
             "device": device,
-            "scopes": SCOPES,
+            "scopes": self.scopes,
+            "playback_session": self.playback_session if client else "",
         }
 
     def _account_name(self, client):
@@ -424,6 +445,7 @@ class Studio:
         except ApiError:
             return ""
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
+        self.premium = user.get("premium") in (True, 1, "1")
         return str(user.get("username") or user.get("email") or "")
 
     def start_device(self):
@@ -433,7 +455,7 @@ class Studio:
             self._device_gen += 1
             gen, client_id = self._device_gen, self.client_id
         try:
-            code = auth.device_code_request(client_id, SCOPES)
+            code = auth.device_code_request(client_id, self.scopes)
         except (oauth.OAuthError, requests.RequestException, ValueError) as error:
             raise ApiError(f"iBroadcast did not start the sign-in: {error}") from None
         if "device_code" not in code or "user_code" not in code:
@@ -483,7 +505,7 @@ class Studio:
             self._pkce = {state: (verifier, redirect_uri, time.time(), self._pkce_gen)}
         return oauth.build_authorize_url(self.client_id, state,
                                          oauth.generate_code_challenge(verifier),
-                                         SCOPES, redirect_uri)
+                                         self.scopes, redirect_uri)
 
     def finish_browser(self, code, state):
         with self.lock:
@@ -537,6 +559,7 @@ class Studio:
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
         status = data.get("status") if isinstance(data.get("status"), dict) else {}
         prefs = user.get("preferences") if isinstance(user.get("preferences"), dict) else {}
+        self.premium = user.get("premium") in (True, 1, "1")
         self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
         return text(status.get("lastmodified")), text(user.get("id") or user.get("user_id"))
 
@@ -604,7 +627,7 @@ class Studio:
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
         return {"albums": library.album_index(), "artists": library.artist_names(),
-                "favourites_count": library.favourites()["count"],
+                "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": self.combine_sets}
 
@@ -638,6 +661,28 @@ class Studio:
         library, _ = self._current(self._require_client())
         return library.favourites(query, offset, limit)
 
+    def recently_played(self, query="", offset="0", limit="50", refresh=False):
+        query = str(query or "").strip()
+        try:
+            offset, limit = int(offset), int(limit)
+        except (TypeError, ValueError):
+            raise ApiError("Choose a valid recently played page.") from None
+        if len(query) > 200 or offset < 0 or limit not in (50, 100, 200):
+            raise ApiError("Choose a valid page and a search of at most 200 characters.")
+        with self.lock:
+            if self.config.get("record_plays") is not True:
+                return {"enabled": False, "available": False, "tracks": [], "total": 0}
+        client = self._require_client()
+        library, _ = self._current(client, refresh=refresh)
+        if not library.recent_loaded:
+            library, _ = self._current(client, refresh=True)
+        with self.lock:
+            if client is not self.client:
+                raise NotConnected("You disconnected from iBroadcast.")
+            if self.config.get("record_plays") is not True:
+                return {"enabled": False, "available": False, "tracks": [], "total": 0}
+        return {"enabled": True, **library.recently_played(query, offset, limit)}
+
     def browse(self, kind, key=None, query="", offset="0", limit="50", sort="az"):
         query = str(query or "").strip()
         try:
@@ -650,6 +695,69 @@ class Studio:
             raise ApiError("Choose a valid group, page and a search of at most 200 characters.")
         library, _ = self._current(self._require_client())
         return library.browse(kind, key, query, offset, limit, sort)
+
+    def record_play(self, body):
+        """Send one opted-in play, using cached membership and no ambiguous retries.
+
+        The documented history API adds counts, unlike metadata setters. Keep each
+        event's outcome for this connection so repeated local requests cannot add it
+        again. A new connection gets a different playback session; old pages cannot
+        send their events to another account. No whole-library read-back per play.
+        """
+        track_id, event_id = body.get("track_id"), body.get("event_id")
+        session, stamp, listened = body.get("session"), body.get("played_at"), body.get("listened")
+        if not isinstance(track_id, str) or not track_id.isdigit() or int(track_id) <= 0 \
+                or not isinstance(event_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,100}", event_id) \
+                or not isinstance(session, str) or not isinstance(stamp, str) \
+                or type(listened) not in (int, float) or not math.isfinite(listened) \
+                or not 10 < listened <= 86400:
+            raise ApiError("Choose a track, playback event and more than ten seconds of listening.")
+        try:
+            played_at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            if played_at.utcoffset() is None:
+                raise ValueError
+            played_at = played_at.astimezone(timezone.utc)
+        except (ValueError, OverflowError):
+            raise ApiError("Choose a valid playback timestamp with a timezone.") from None
+        now = time.time()
+        if not now - 86400 <= played_at.timestamp() <= now + 60:
+            raise ApiError("This playback event is too old or is in the future.")
+        with self.play_lock:
+            with self.lock:
+                if self.config.get("record_plays") is not True:
+                    return {"status": "disabled"}
+                client = self._require_client()
+                if session != self.playback_session:
+                    raise NotConnected("The playback connection changed. Reload Tagcast.")
+                bridge = self.queue_sync
+                if body.get("browser") == bridge.owner and bridge.owner \
+                        and bridge.binding == session and (bridge.target != bridge.own_session
+                        or bridge.state.get("role") != "player"):
+                    return {"status": "controller"}
+                fingerprint = (track_id, played_at.isoformat())
+                key = (session, event_id)
+                if previous := self.play_events.get(key):
+                    if previous["fingerprint"] != fingerprint:
+                        raise ApiError("This playback event was already used for another play.")
+                    return {"status": previous["status"]}
+                # Keep all eligible event IDs; never evict a recent ID and risk counting it twice.
+                self.play_events = {k: v for k, v in self.play_events.items() if v["created"] >= now - 86400}
+                if len(self.play_events) >= 10000:
+                    raise ApiError("Too many playback events. Recording is temporarily unavailable.")
+                library, _ = self._library()
+                library.active_track_album(int(track_id))
+                event = {"fingerprint": fingerprint, "created": now, "status": "unconfirmed"}
+                self.play_events[key] = event  # remember the attempt before sending anything
+            history = [{"day": played_at.strftime("%Y-%m-%d"), "plays": {track_id: 1},
+                        "detail": {track_id: [{"event": "play", "ts": played_at.strftime("%Y-%m-%d %H:%M:%S")}]}}]
+            try:
+                result = client._jsonrequest("status", history=history)
+                if result.get("result") is not True:
+                    raise ApiError("iBroadcast did not acknowledge the play.")
+            except ApiError:
+                raise ApiError("The play could not be confirmed and will not be retried automatically.") from None
+            event["status"] = "sent"
+            return {"status": "sent"}
 
     def favourite(self, body):
         """Set one native track rating, comparing the displayed value before writing."""
@@ -813,7 +921,11 @@ class Studio:
         return {"sources": self.lookup.describe(),
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
                 "auto_lookup": self.config.get("auto_lookup", True),
-                "auto_updates": self.config.get("auto_updates", True)}
+                "auto_updates": self.config.get("auto_updates", True),
+                "record_plays": self.config.get("record_plays") is True,
+                "stream_quality": self.config.get("stream_quality", "128"),
+                "queue_sync": self.config.get("queue_sync") is True,
+                "premium": self.premium}
 
     def check_updates(self, manual=False):
         with self.lock:
@@ -824,6 +936,16 @@ class Studio:
         with self.lock:
             if "auto_updates" in body and not isinstance(body["auto_updates"], bool):
                 raise ApiError("Choose whether automatic update checks are enabled.")
+            if "record_plays" in body and not isinstance(body["record_plays"], bool):
+                raise ApiError("Choose whether playback is recorded in iBroadcast.")
+            if "stream_quality" in body:
+                if body["stream_quality"] not in ("96", "128", "192", "256", "320", "orig"):
+                    raise ApiError("Choose a supported streaming quality.")
+                self.config["stream_quality"] = body["stream_quality"]
+            if "queue_sync" in body:
+                if type(body["queue_sync"]) is not bool:
+                    raise ApiError("Choose whether queue synchronisation is enabled.")
+                self.config["queue_sync"] = body["queue_sync"]
             for key in KEY_ENV:
                 if key in body:
                     value = str(body[key] or "").strip()
@@ -837,7 +959,11 @@ class Studio:
                 self.config["auto_lookup"] = bool(body["auto_lookup"])
             if "auto_updates" in body:
                 self.config["auto_updates"] = body["auto_updates"]
+            if "record_plays" in body:
+                self.config["record_plays"] = body["record_plays"]
             self._write("config.json", self.config)
+        if not self.config.get("queue_sync"):
+            self.queue_sync.disconnect()
         return self.settings()
 
     def _library(self):
@@ -1024,11 +1150,18 @@ class Studio:
 
     # -- playback -------------------------------------------------------------
 
-    def stream(self, track_id, range_header=None):
+    def stream(self, track_id, range_header=None, quality=None):
         """Open a track's audio from iBroadcast. Returns (response, mime); close the response."""
         client = self._require_client()
         library, user_id = self._library()
-        path, mime = library.stream_info(number(track_id))
+        quality = quality or self.config.get("stream_quality", "128")
+        if quality not in ("96", "128", "192", "256", "320", "orig"):
+            raise ApiError("Choose a supported streaming quality.")
+        if quality != "128" and not self.premium:
+            raise ApiError("This streaming quality requires iBroadcast Premium.")
+        path, mime = library.stream_info(number(track_id), quality)
+        if quality != "orig":
+            mime = "audio/mpeg"
         response = client.open_stream(path, number(track_id), user_id, library.expires, range_header)
         if response.status_code in (401, 403):
             response.close()

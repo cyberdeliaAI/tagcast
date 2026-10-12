@@ -3,13 +3,17 @@
 // Online sources: year, genre and cover suggestions side by side, like a tag editor's
 // "tag sources". A suggestion only fills the form; saving still goes through the review.
 
-const lookup = {sources: [], auto: true, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
+const lookup = {sources: [], auto: true, recordPlays: false, streamQuality: "128", queueSync: false, settingsRevision: 0, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
 const sourceLabel = name => lookup.sources.find(s => s.name === name)?.label || name;
 
 async function loadSettings() {
+  const revision = lookup.settingsRevision;
   try {
     const data = await api("/api/settings");
+    if (revision !== lookup.settingsRevision) return;
     lookup.sources = data.sources; lookup.auto = data.auto_lookup; lookup.keysFromEnv = data.keys_from_env || [];
+    lookup.recordPlays = data.record_plays === true;
+    if (typeof applyPlaybackSettings === "function") applyPlaybackSettings(data);
     applyUpdateSettings(data);
   } catch { /* opened without the Python server: no online sources */ }
 }
@@ -29,7 +33,7 @@ function lookupPanel(album) {
     <p class="muted lookup-hint">Click a year or genre to put it in the form; Shift-click a genre to add it to the others. Nothing is saved until you review.</p>
     <div id="lookup-results"></div>
     <p class="lookup-links">Websites: ${websiteLinks(album.artist, album.name)}</p>
-    <p class="lookup-links"><button class="text-action" data-open-settings>Sources &amp; keys ⚙</button></p></aside>`;
+    <p class="lookup-links"><button class="text-action" data-open-settings>Settings ⚙</button></p></aside>`;
 }
 
 function startLookups(album) {
@@ -106,26 +110,47 @@ function coverChoices() {
 
 function openSettings() {
   const keyed = lookup.sources.filter(s => s.key);
-  $("#settings-content").innerHTML = !lookup.sources.length ? '<p class="muted">Settings need the Tagcast server.</p>' : `
+  $("#settings-content").innerHTML = `<section class="interface-settings"><h3>Interface</h3>
+    <p class="muted">The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
+    <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button></section>`
+    + (!lookup.sources.length ? '<p class="muted">Playback and source settings need the Tagcast server.</p>' : `
+    <form id="settings-form"><section class="playback-settings"><h3>Playback</h3>
+    <label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
+    <p class="muted">Applies to the next track. File format (FLAC/MP3) is separate from streaming quality. Free accounts use 128 kbps. All other choices, including 96 kbps and Original, require Premium. Unsupported Original audio falls back to MP3 128 kbps.</p>
+    <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}> Record played tracks in iBroadcast</label>
+    <p class="muted">Off by default. When enabled, Tagcast sends a track ID and timestamp after more than ten seconds of actual playback. Pausing and seeking do not count. Earlier plays and skips are not sent.</p>
+    <p class="muted">Enabling also shows Recently played, using iBroadcast’s recent tracks playlist. Plays are separate from Change history. An uncertain request is not retried automatically.${playReporting.error ? ` <span class="error-text">${escapeHtml(playReporting.error)}</span>` : ""}</p></section>
+    <section class="playback-settings"><h3>Devices &amp; queue synchronisation</h3>
+    <label class="checkline"><input type="checkbox" name="queue_sync" ${lookup.queueSync ? "checked" : ""}> Enable queue synchronisation and remote control</label>
+    <p class="muted">Off by default. Uses iBroadcast’s queue server. After enabling, reconnect iBroadcast once to approve queue read/write permissions, then open Devices. Only the player records plays; remote controllers do not play audio.</p>
+    <button type="button" class="button small" data-queue-reconnect>Reconnect iBroadcast</button></section>
+    <section class="source-settings"><h3>Online sources &amp; keys</h3>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
-    <form id="settings-form">${keyed.map(s => {
+    ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
       return `<div class="setting-row"><div><strong>${escapeHtml(s.label)}</strong> <span class="status ${s.enabled ? "saved" : "not_sent"}">${s.enabled ? "Ready" : "Needs a key"}</span><small>${escapeHtml(s.key_help)}</small></div>${env ? '<span class="muted">Set by an environment variable</span>' : `<input type="password" name="${s.key}" autocomplete="off" spellcheck="false" placeholder="${s.enabled ? "Saved · type to replace" : "Paste your key"}" aria-label="${escapeHtml(s.label)} key">${s.enabled ? `<button type="button" class="text-action" data-clear-key="${s.key}">Remove</button>` : ""}`}</div>`;
     }).join("")}
     <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in all sources as soon as you open it</label>
     <p class="muted">Looking up sends the artist and album name to each source. Tagcast waits between requests so it stays within each source's limits.</p>
+    </section>
     ${updateSettingsPanel()}
-    <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`;
+    <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`);
   $("#settings").showModal();
 }
 
 async function saveSettings(form, clear) {
   const body = {auto_lookup: form.elements.auto_lookup.checked, auto_updates: form.elements.auto_updates.checked};
+  if (form.elements.stream_quality) body.stream_quality = form.elements.stream_quality.value;
+  if (form.elements.queue_sync) body.queue_sync = form.elements.queue_sync.checked;
+  if (form.elements.record_plays) body.record_plays = form.elements.record_plays.checked;
   for (const input of form.querySelectorAll("input[type=password]")) if (input.value.trim()) body[input.name] = input.value.trim();
   if (clear) body[clear] = "";
   try {
     const data = await api("/api/settings", body);
+    lookup.settingsRevision += 1;
     lookup.sources = data.sources; lookup.auto = data.auto_lookup;
+    lookup.recordPlays = data.record_plays === true;
+    applyPlaybackSettings(data);
     const wasAutomatic = updateNotice.automatic;
     applyUpdateSettings(data); renderUpdateNotice();
     if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
@@ -134,6 +159,7 @@ async function saveSettings(form, clear) {
 }
 
 document.addEventListener("click", event => {
+  if (event.target.closest("[data-show-notice]")) { setLibraryNotice(true); openSettings(); return; }
   const year = event.target.closest("[data-use-year]");
   if (year) { setFormField("year", year.dataset.useYear); return; }
   const genre = event.target.closest("[data-use-genre]"), all = event.target.closest("[data-use-genres]");

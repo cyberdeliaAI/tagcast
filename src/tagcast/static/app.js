@@ -5,6 +5,18 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&"
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
 const state = {albums: [], details: new Map(), artistNames: [], artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
+
+function setLibraryNotice(visible) {
+  libraryNotice.visible = visible;
+  document.documentElement.dataset.libraryNotice = visible ? "shown" : "hidden";
+  $("#library-notice").hidden = !visible;
+  try { localStorage.setItem("tagcast-library-notice", visible ? "shown" : "hidden"); } catch { /* private window */ }
+}
+
+$("#notice-dismiss").addEventListener("click", () => {
+  setLibraryNotice(false); $("#mode-badge").focus();
+});
 const live = () => state.mode === "live";
 let devicePoll = null;
 let saving = false;
@@ -59,8 +71,8 @@ function demoLibrary() {
 }
 
 const trackGenres = t => t.genres ?? (t.genre?.trim() ? [t.genre.trim()] : []);
-// A track title for comparing: case and spacing don't count (as on the server).
-const titleKey = title => String(title || "").toLocaleLowerCase().split(/\s+/).filter(Boolean).join(" ");
+// Match the server: ignore case, spacing and quotation marks; retain version text.
+const titleKey = title => String(title || "").replace(/['"‘’‚‛“”„‟«»‹›]/g, "").toLocaleLowerCase().split(/\s+/).filter(Boolean).join(" ");
 // A repeated title elsewhere in a track list is not an extra copy. Compare per disc.
 function duplicateTrackKey(track) {
   const position = Number(track.track), title = titleKey(track.title);
@@ -69,7 +81,7 @@ function duplicateTrackKey(track) {
 
 function summarize(album) {
   const genres = splitGenres(album.tracks.flatMap(trackGenres)).sort();
-  return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc,
+  return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc, rating: album.rating || 0,
     artist_id: album.artist_id || 0, artist_image: album.artist_image || "", artist_artwork_id: album.artist_artwork_id || 0,
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
     upload_dates: [...new Set(album.tracks.map(t => String(t.uploaded_on || "").trim().slice(0, 10)))].sort(),
@@ -85,6 +97,7 @@ function useLocal(albums, mode) {
   if (typeof resetCleanup === "function") resetCleanup(true);
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
+  if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof stopPlayer === "function") stopPlayer();
   if (typeof resetAlbumView === "function") resetAlbumView();
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
@@ -113,10 +126,14 @@ function toast(text) {
   toastTimer = setTimeout(() => { $("#toast").hidden = true; }, Math.max(6000, text.length * 70));
 }
 
+function coverPreviewAttrs(album) {
+  return album.artwork ? `data-cover-preview data-cover-src="${escapeHtml(album.artwork)}" data-cover-name="${escapeHtml(album.name)}" data-cover-artist="${escapeHtml(album.artist)}" title="Double-click to enlarge the cover"` : "";
+}
+
 function cover(album, small = false) {
   const initials = album.artist.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.remove('has-art');this.remove()">` : "";
-  return `<div class="cover ${art ? "has-art" : ""}" style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
+  return `<div class="cover ${art ? "has-art" : ""}" ${small ? "" : coverPreviewAttrs(album)} style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
 }
 
 const EDITION = /remaster|deluxe|anniversary|re-record|live|edition|expanded/i;
@@ -187,7 +204,7 @@ function albumShelf() {
 // A set's numbers add up; its year is missing when one of the discs has none.
 function mergeDiscs(set) {
   const sum = key => set.reduce((n, a) => n + (a[key] || 0), 0), years = set.map(a => a.year || 0);
-  return {...set[0], discs: set, year: years.includes(0) ? 0 : Math.min(...years),
+  return {...set[0], rating: Math.min(...set.map(a => a.rating || 0)), ratingMixed: new Set(set.map(a => a.rating || 0)).size > 1, discs: set, year: years.includes(0) ? 0 : Math.min(...years),
     artwork: set.find(a => a.artwork)?.artwork || "", genres: [...new Set(set.flatMap(a => a.genres))].sort(),
     track_count: sum("track_count"), no_genre: sum("no_genre"), combined_genres: sum("combined_genres"),
     no_composer: sum("no_composer"), track_gaps: sum("track_gaps"), no_cover: sum("no_cover"), duplicates: sum("duplicates")};
@@ -206,7 +223,7 @@ const joinDiscs = albums => albums.length === 1 ? albums[0]
 
 function thumb(album) {
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-  return `<span class="thumb" style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
+  return `<span class="thumb" ${coverPreviewAttrs(album)} style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
 }
 
 function avatar(name, image) {
@@ -300,6 +317,8 @@ function render() {
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();
   if (typeof renderTrackSearch === "function") renderTrackSearch();
   if (typeof renderFavourites === "function") renderFavourites();
+  if (typeof renderRecentlyPlayed === "function") renderRecentlyPlayed();
+  if (typeof renderCollections === "function" && collectionsView.details !== state.details) renderCollections();
   if (typeof renderBrowse === "function") renderBrowse();
   if (typeof updateRandomControls === "function") updateRandomControls();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
@@ -566,7 +585,9 @@ document.addEventListener("click", event => {
   const artist = event.target.closest("[data-artist]");
   if (artist) { setArtist(artist.dataset.artist); return; }
   const album = event.target.closest("[data-album]");
-  if (album) { openAlbum(album.dataset.album); return; }
+  if (album) {
+    coverClick(event, () => openAlbum(album.dataset.album), coverPreviewFor(event.target)); return;
+  }
   const track = event.target.closest("[data-track]");
   if (track) { editTrack(track.dataset.track); return; }
   const page = event.target.closest("[data-page]");
@@ -604,7 +625,7 @@ $("#edit-selection").addEventListener("click", () => openEditor([...state.select
 $("#apply-draft").addEventListener("click", applyDraft);
 $("#show-history").addEventListener("click", showHistory);
 function exportHistory() {
-  if (!state.history.length) { toast("Make and review an edit before exporting the history."); return; }
+  if (!state.history.length) { toast("Make and review an edit before exporting the change history."); return; }
   const blob = new Blob([JSON.stringify({format: "tagcast-history", version: 2, exported: new Date().toISOString(), entries: state.history}, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob), link = document.createElement("a");
   link.href = url; link.download = `tagcast-history-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -636,12 +657,12 @@ $("#history-clear-confirm").addEventListener("click", () => {
     // Keep an empty current key so the earlier library-studio history cannot return.
     localStorage.setItem("tagcast-history", "[]");
   } catch {
-    $("#history-status").textContent = "History could not be cleared from browser storage. Try again when storage is available.";
+    $("#history-status").textContent = "Change history could not be cleared from browser storage. Try again when storage is available.";
     return;
   }
   state.history = [];
   render(); showHistory();
-  $("#history-content").innerHTML = '<p class="empty">History cleared. Your library is unchanged.</p>';
+  $("#history-content").innerHTML = '<p class="empty">Change history cleared. Your library is unchanged.</p>';
   $("#history .close").focus();
 });
 window.addEventListener("beforeunload", event => { if (saving || state.history.some(h => h.status === "preview_only")) { event.preventDefault(); event.returnValue = ""; } });
@@ -676,6 +697,7 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof updateRecentlyPlayedControls === "function") updateRecentlyPlayedControls();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
   updateHistoryControls();
   const c = state.connection;
@@ -692,9 +714,10 @@ function updateChrome() {
   badge.textContent = state.loading ? "Loading library…" : checking ? "Checking saves…" : live() ? "Live" : "Demo · Connect";
   badge.title = c.connected ? `Connected as ${c.account || "your iBroadcast account"}. Open connection details.` : "Connect your iBroadcast account.";
   badge.setAttribute("aria-label", `${badge.textContent}. ${badge.title}`);
-  $("#data-notice").textContent = live() ? "Live iBroadcast library. Every save is checked against iBroadcast first and read back afterwards. Your music files are never touched."
+  $("#data-notice").textContent = live() ? "Live iBroadcast library. Metadata saves are checked against iBroadcast first and read back afterwards. Your music files are never touched."
     : "Demo library with sample records. Connect your iBroadcast account to edit your own collection.";
-  $("#history-note").textContent = live() ? "Saved changes are listed with their read-back status. Export the history if you want a record of this session." : "Export the history before closing this tab. Preview drafts are not saved to iBroadcast.";
+  $("#library-notice").hidden = !libraryNotice.visible;
+  $("#history-note").textContent = live() ? "Saved changes are listed with their read-back status. Export the changes if you want a record of this session." : "Export the changes before closing this tab. Preview drafts are not saved to iBroadcast.";
 }
 
 async function boot() {
@@ -718,6 +741,7 @@ async function loadLive(refresh = false) {
   if (typeof resetCleanup === "function") resetCleanup();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
+  if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear();
   updateChrome(); render();
@@ -725,6 +749,7 @@ async function loadLive(refresh = false) {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
     state.connection.combine_sets = Boolean(data.combine_sets);
+    if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
     if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
     const count = `${state.albums.length.toLocaleString("en")} albums`;
     toast(data.source === "download" ? `Downloaded ${count} from iBroadcast.` : `Loaded ${count}. Nothing changed in iBroadcast since the last download.`);

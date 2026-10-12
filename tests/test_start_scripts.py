@@ -13,8 +13,8 @@ ROOT = Path(__file__).parent.parent
 @unittest.skipIf(os.name == "nt", "POSIX launcher; Windows startup is checked in CI")
 class StartScriptTests(unittest.TestCase):
     def test_fallback_rebuilds_a_broken_interpreter_but_reuses_a_working_one(self):
-        for broken in (False, True):
-            with self.subTest(broken=broken), tempfile.TemporaryDirectory() as directory:
+        for broken, missing in ((False, False), (True, False), (False, True)):
+            with self.subTest(broken=broken, missing=missing), tempfile.TemporaryDirectory() as directory:
                 home = Path(directory)
                 shutil.copy(ROOT / "start-tagcast.sh", home)
                 binary = home / "bin"
@@ -24,7 +24,10 @@ class StartScriptTests(unittest.TestCase):
                 log = home / "calls"
                 python = binary / "python3"
                 python.write_text("""#!/bin/sh
-if [ "$1" = "-c" ]; then exit 0; fi
+if [ "$1" = "-c" ]; then
+  if [ "$START_TEST_MISSING" = "1" ] && [ "$2" = "import websocket" ]; then exit 1; fi
+  exit 0
+fi
 printf '%s\\n' "$*" >> "$START_TEST_LOG"
 if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
   cat > .venv/bin/python <<'SH'
@@ -44,6 +47,7 @@ fi
                 else:
                     (venv / "python").symlink_to(python)
                 env = {**os.environ, "TAGCAST_NO_UV": "1", "START_TEST_LOG": str(log),
+                       "START_TEST_MISSING": "1" if missing else "0",
                        "PATH": str(binary) + os.pathsep + os.environ.get("PATH", "")}
                 result = subprocess.run(["sh", str(home / "start-tagcast.sh"), "--help"],
                                         env=env, text=True, capture_output=True, timeout=10)
@@ -53,5 +57,8 @@ fi
                 if broken:
                     self.assertIn("-m venv --clear .venv", calls)
                     self.assertIn("-m pip install --quiet -e .", calls)
+                elif missing:
+                    self.assertIn("-m pip install --quiet -e .", calls)
+                    self.assertNotIn("--clear", calls)
                 else:
                     self.assertEqual(calls, "")

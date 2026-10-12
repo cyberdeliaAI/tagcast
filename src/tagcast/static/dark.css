@@ -96,6 +96,7 @@
 :root[data-theme="dark"] .art-tile:hover{border-color:var(--palette-line,#4f5846)}
 :root[data-theme="dark"] .art-drop{border:1px dashed var(--palette-line,#5f6c54);background:var(--palette-soft,#18211c)}
 :root[data-theme="dark"] .art-drop.over{background:var(--palette-tint,#2b2e26)}
+:root[data-theme="dark"] .notice-dismiss:hover{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .setting-row input{border:1px solid var(--palette-line,#40443d)}
 :root[data-theme="dark"] .history-art span{color:var(--palette-muted,#809173)}
 :root[data-theme="dark"] .overview{--chart:var(--palette-chart,#79c694);--chart-track:var(--palette-tint,#323934)}
@@ -133,10 +134,13 @@
 :root[data-theme="dark"] .now-playing-panel{box-shadow:-8px 0 30px #0a1c2426}
 :root[data-theme="dark"] .queue-add.queue-compact{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .queue-add.queue-compact:hover{background:var(--palette-tint,#2d2f2a)}
+:root[data-theme="dark"] .queue-action-menu{background:var(--palette-surface,#1b2520);box-shadow:0 8px 25px #0002}
+:root[data-theme="dark"] .queue-action-menu button:hover,:root[data-theme="dark"] .queue-action-menu button:focus-visible{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] .cleanup-category select{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .genre-label-review textarea{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .theme-menu{background:var(--palette-surface,#1b2520);box-shadow:0 10px 30px #0003}
 :root[data-theme="dark"] .theme-menu label:hover,:root[data-theme="dark"] .theme-menu label:focus-within{background:var(--palette-tint,#2c2d28)}
+:root[data-theme="dark"] .collection-search,:root[data-theme="dark"] #playlist-form input:not([type=checkbox]),:root[data-theme="dark"] #playlist-form textarea,:root[data-theme="dark"] #playlist-form select,:root[data-theme="dark"] #remote-controls input:not([type=range]),:root[data-theme="dark"] #remote-controls select,:root[data-theme="dark"] .playback-settings select{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -248,6 +252,7 @@
 :root:not([data-theme="light"]) .art-tile:hover{border-color:var(--palette-line,#4f5846)}
 :root:not([data-theme="light"]) .art-drop{border:1px dashed var(--palette-line,#5f6c54);background:var(--palette-soft,#18211c)}
 :root:not([data-theme="light"]) .art-drop.over{background:var(--palette-tint,#2b2e26)}
+:root:not([data-theme="light"]) .notice-dismiss:hover{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .setting-row input{border:1px solid var(--palette-line,#40443d)}
 :root:not([data-theme="light"]) .history-art span{color:var(--palette-muted,#809173)}
 :root:not([data-theme="light"]) .overview{--chart:var(--palette-chart,#79c694);--chart-track:var(--palette-tint,#323934)}
@@ -285,10 +290,13 @@
 :root:not([data-theme="light"]) .now-playing-panel{box-shadow:-8px 0 30px #0a1c2426}
 :root:not([data-theme="light"]) .queue-add.queue-compact{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .queue-add.queue-compact:hover{background:var(--palette-tint,#2d2f2a)}
+:root:not([data-theme="light"]) .queue-action-menu{background:var(--palette-surface,#1b2520);box-shadow:0 8px 25px #0002}
+:root:not([data-theme="light"]) .queue-action-menu button:hover,:root:not([data-theme="light"]) .queue-action-menu button:focus-visible{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) .cleanup-category select{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .genre-label-review textarea{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .theme-menu{background:var(--palette-surface,#1b2520);box-shadow:0 10px 30px #0003}
 :root:not([data-theme="light"]) .theme-menu label:hover,:root:not([data-theme="light"]) .theme-menu label:focus-within{background:var(--palette-tint,#2c2d28)}
+:root:not([data-theme="light"]) .collection-search,:root:not([data-theme="light"]) #playlist-form input:not([type=checkbox]),:root:not([data-theme="light"]) #playlist-form textarea,:root:not([data-theme="light"]) #playlist-form select,:root:not([data-theme="light"]) #remote-controls input:not([type=range]),:root:not([data-theme="light"]) #remote-controls select,:root:not([data-theme="light"]) .playback-settings select{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

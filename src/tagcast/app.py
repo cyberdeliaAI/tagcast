@@ -106,7 +106,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(403, {"error": "Forbidden."})
             return
         if url.path.startswith("/api/stream/"):
-            self._stream(url.path.rsplit("/", 1)[1])
+            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"))
             return
         if url.path == "/api/status":
             self._run(self.studio.status)
@@ -135,9 +135,16 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(lambda: {"albums": self.studio.album_details(ids)})
         elif url.path == "/api/tracks":
             self._run(lambda: self.studio.search_tracks(query.get("q")))
+        elif url.path == "/api/queue-sync":
+            self._run(self.studio.queue_sync.view)
+        elif url.path == "/api/playlists":
+            self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0")))
         elif url.path == "/api/favourites":
             self._run(lambda: self.studio.favourites(query.get("q"), query.get("offset", "0"),
                                                    query.get("limit", "50")))
+        elif url.path == "/api/recently-played":
+            self._run(lambda: self.studio.recently_played(query.get("q"), query.get("offset", "0"),
+                                                        query.get("limit", "50"), query.get("refresh") == "1"))
         elif url.path == "/api/cleanup":
             self._run(lambda: self.studio.cleanup.view(query.get("offset", "0"), query.get("limit", "25")))
         elif url.path == "/api/cleanup/report":
@@ -183,16 +190,21 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/artwork/undo": self.studio.undo_artwork,
             "/api/trash": self.studio.trash_tracks,
             "/api/favourite": self.studio.favourite,
+            "/api/play": self.studio.record_play,
+            "/api/album-rating": self.studio.collections.rate_album,
+            "/api/playlist": self.studio.collections.save_playlist,
+            "/api/queue-tracks": self.studio.collections.queue_tracks,
+            "/api/queue-sync": self.studio.queue_sync.action,
         }
         if path not in routes:
             self._json(404, {"error": "Unknown endpoint."})
             return
         self._run(lambda: routes[path](self._body()))
 
-    def _stream(self, track_id):
+    def _stream(self, track_id, quality=None):
         """Pass a track's audio through, so the access token never reaches the page."""
         try:
-            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"))
+            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"), quality)
         except NotConnected as error:
             self._json(401, {"error": str(error)})
             return
@@ -247,6 +259,13 @@ class Server(ThreadingHTTPServer):
     # On Windows, SO_REUSEADDR lets a second program listen on a port that is in use,
     # so a second Tagcast would start next to the first instead of noticing it.
     allow_reuse_address = sys.platform != "win32"
+
+    def server_close(self):
+        handler = self.RequestHandlerClass
+        studio = getattr(getattr(handler, "func", handler), "studio", None)
+        if studio:
+            studio.queue_sync.disconnect()
+        super().server_close()
 
 
 def _already_running(port):

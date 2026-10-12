@@ -82,7 +82,7 @@ function loadSuggestions(target) {
     waiting -= 1;
     if (indexes.length || !waiting) show();
   }, "artwork").length;
-  if (!waiting) box.innerHTML = '<p class="muted">No online sources are available. Add keys in Sources &amp; keys.</p>';
+  if (!waiting) box.innerHTML = '<p class="muted">No online sources are available. Add keys in Settings.</p>';
 }
 
 async function loadRelated(target) {

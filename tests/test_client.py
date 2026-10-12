@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -39,6 +40,8 @@ class ClientTests(unittest.TestCase):
         mock_ibroadcast.STATE["polls"] = 0
         mock_ibroadcast.STATE["downloads"] = 0
         mock_ibroadcast.STATE["writes"].clear()
+        mock_ibroadcast.STATE["play_requests"].clear()
+        mock_ibroadcast.STATE["recent_tracks"].clear()
         mock_ibroadcast.STATE["uploads"].clear()
         mock_ibroadcast.STATE["combine_sets"] = False
         mock_ibroadcast.STATE["busy"] = 0
@@ -518,6 +521,155 @@ class ClientTests(unittest.TestCase):
         for bad in ("false", 0, None):
             with self.assertRaises(client.ApiError):
                 studio.save_settings({"auto_updates": bad})
+
+    def play_event(self, studio, **patch):
+        return {"track_id": "903", "event_id": "play-event-1234567890",
+                "session": studio.playback_session,
+                "played_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "listened": 10.5, **patch}
+
+    def test_recently_played_is_disabled_without_network_and_reads_the_native_list_on_demand(self):
+        studio = client.Studio(self.home)
+        with patch.object(studio, "_current", side_effect=AssertionError("No network when disabled")):
+            self.assertFalse(studio.recently_played()["enabled"])
+        studio = self.connect()
+        studio.save_settings({"record_plays": True})
+        mock_ibroadcast.STATE["recent_tracks"] = [904, 900, 902]
+        found = studio.recently_played()
+        self.assertEqual([t["id"] for t in found["tracks"]], ["904", "900"])
+        downloads = mock_ibroadcast.STATE["downloads"]
+        self.assertEqual(studio.recently_played("wish")["total"], 1)
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
+        studio.record_play(self.play_event(studio))
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads, "Reporting does not reload the library")
+        self.assertEqual(studio.recently_played()["tracks"][0]["id"], "903")
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        for args in [("", "-1", "50"), ("", "0", "500"), ("x" * 201, "0", "50")]:
+            with self.assertRaises(client.ApiError):
+                studio.recently_played(*args)
+
+    def test_recently_played_upgrades_old_cache_once_and_can_refresh_frozen_remote_state(self):
+        studio = self.connect()
+        studio.save_settings({"record_plays": True})
+        studio.load_library()
+        old = studio.library.to_cache()
+        old.pop("recently_played")
+        old["library"].pop("playlists", None)
+        studio.library = client.Library(old)
+        mock_ibroadcast.STATE["recent_tracks"] = [904]
+        downloads = mock_ibroadcast.STATE["downloads"]
+        self.assertEqual(studio.recently_played()["tracks"][0]["id"], "904")
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+        mock_ibroadcast.STATE["recent_tracks"] = [900]
+        self.assertEqual(studio.recently_played()["tracks"][0]["id"], "904")
+        self.assertEqual(studio.recently_played(refresh=True)["tracks"][0]["id"], "900")
+        studio.save_settings({"record_plays": False})
+        with patch.object(studio, "_current", side_effect=AssertionError("No fetch")):
+            self.assertEqual(studio.recently_played()["tracks"], [])
+
+    def test_recently_played_discards_a_result_after_disconnect_or_preference_change(self):
+        studio = self.connect()
+        studio.save_settings({"record_plays": True})
+        library = client.Library(mock_ibroadcast.library())
+        def disconnect(*args, **kwargs):
+            studio._disconnect()
+            return library, "download"
+        with patch.object(studio, "_current", side_effect=disconnect):
+            with self.assertRaises(client.NotConnected):
+                studio.recently_played()
+        studio = self.connect()
+        studio.save_settings({"record_plays": True})
+        def disable(*args, **kwargs):
+            studio.config["record_plays"] = False
+            return library, "download"
+        with patch.object(studio, "_current", side_effect=disable):
+            self.assertEqual(studio.recently_played()["tracks"], [])
+
+    def test_play_recording_is_off_by_default_and_preference_persists(self):
+        studio = client.Studio(self.home)
+        self.assertFalse(studio.settings()["record_plays"])
+        with patch.object(client.requests, "post") as post:
+            self.assertEqual(studio.record_play(self.play_event(studio)), {"status": "disabled"})
+            post.assert_not_called()
+        studio.save_settings({"discogs_token": "keep-key", "record_plays": True})
+        self.assertTrue(client.Studio(self.home).settings()["record_plays"])
+        self.assertEqual(studio.config["discogs_token"], "keep-key")
+        self.assertPrivate(Path(self.home, "config.json"))
+        for bad in ("true", 1, None):
+            with self.assertRaises(client.ApiError):
+                studio.save_settings({"record_plays": bad})
+
+    def test_play_events_send_documented_history_once_without_library_downloads(self):
+        studio = self.connect()
+        studio.load_library()
+        studio.save_settings({"record_plays": True})
+        body = self.play_event(studio)
+        downloads = mock_ibroadcast.STATE["downloads"]
+        self.assertEqual(studio.record_play(body), {"status": "sent"})
+        self.assertEqual(studio.record_play(body), {"status": "sent"})
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        self.assertEqual(len(mock_ibroadcast.STATE["play_requests"]), 1)
+        self.assertEqual(mock_ibroadcast.STATE["play_requests"][0]["history"], [{
+            "day": body["played_at"][:10], "plays": {"903": 1},
+            "detail": {"903": [{"event": "play", "ts": body["played_at"][:19].replace("T", " ")}]}}])
+        with self.assertRaises(client.ApiError):
+            studio.record_play({**body, "track_id": "904"})
+        studio.save_settings({"record_plays": False})
+        self.assertEqual(studio.record_play({**body, "event_id": "another-play-12345678"}), {"status": "disabled"})
+        self.assertEqual(len(mock_ibroadcast.STATE["play_requests"]), 1)
+
+    def test_play_rejects_short_invalid_trashed_or_stale_session_events(self):
+        from tagcast.library import LibraryError
+        studio = self.connect()
+        studio.load_library()
+        studio.save_settings({"record_plays": True})
+        for patch_values in ({"listened": 10}, {"listened": True}, {"listened": float("nan")},
+                             {"listened": float("inf")}, {"played_at": "invalid"},
+                             {"played_at": "2026-01-01T00:00:00"}, {"played_at": "2000-01-01T00:00:00Z"},
+                             {"played_at": "2999-01-01T00:00:00Z"}, {"event_id": "short"},
+                             {"session": "old-session"}):
+            with self.subTest(values=patch_values), self.assertRaises(client.ApiError):
+                studio.record_play(self.play_event(studio, **patch_values))
+        with self.assertRaises(LibraryError):
+            studio.record_play(self.play_event(studio, track_id="902"))
+        old_event = self.play_event(studio)
+        studio._connect(studio.client.token_set)
+        with self.assertRaises(client.NotConnected):
+            studio.record_play(old_event)
+        self.assertEqual(mock_ibroadcast.STATE["play_requests"], [])
+
+    def test_play_count_requests_are_not_retried_after_503_or_network_timeout(self):
+        studio = self.connect()
+        studio.load_library()
+        studio.save_settings({"record_plays": True})
+        body = self.play_event(studio)
+        mock_ibroadcast.STATE["busy"] = 1
+        with patch.object(client.time, "sleep") as sleep, self.assertRaises(client.ApiError):
+            studio.record_play(body)
+        self.assertEqual(len(mock_ibroadcast.STATE["play_requests"]), 1)
+        self.assertEqual(sleep.call_args_list, [unittest.mock.call(0)])
+        self.assertEqual(studio.record_play(body), {"status": "unconfirmed"})
+        another = self.play_event(studio, event_id="timeout-play-12345678")
+        with patch.object(client.requests, "post", side_effect=client.requests.Timeout) as post:
+            with self.assertRaises(client.ApiError):
+                studio.record_play(another)
+            self.assertEqual(studio.record_play(another), {"status": "unconfirmed"})
+            self.assertEqual(post.call_count, 1)
+
+    def test_concurrent_repeated_play_requests_do_not_double_count(self):
+        studio = self.connect()
+        studio.load_library()
+        studio.save_settings({"record_plays": True})
+        body = self.play_event(studio)
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(studio.record_play(body))) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=3)
+        self.assertEqual(results, [{"status": "sent"}, {"status": "sent"}])
+        self.assertEqual(len(mock_ibroadcast.STATE["play_requests"]), 1)
 
     def test_album_changes_wait_while_combine_sets_is_on_but_tracks_are_saved(self):
         mock_ibroadcast.STATE["combine_sets"] = True

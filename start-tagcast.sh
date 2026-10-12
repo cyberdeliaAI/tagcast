@@ -24,4 +24,11 @@ if [ ! -x .venv/bin/tagcast ] || ! .venv/bin/python -c 'import sys; sys.exit(sys
     || { echo "Installing Tagcast failed. See the messages above."; exit 1; }
 fi
 
+# An existing source environment may predate the optional WebSocket dependency.
+if ! .venv/bin/python -c 'import websocket' >/dev/null 2>&1; then
+  echo "Updating Tagcast dependencies in $(pwd)/.venv …"
+  .venv/bin/python -m pip install --quiet -e . \
+    || { echo "Updating Tagcast failed. See the messages above."; exit 1; }
+fi
+
 exec .venv/bin/tagcast --open "$@"

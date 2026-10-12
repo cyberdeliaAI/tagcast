@@ -62,6 +62,14 @@ class StartTests(unittest.TestCase):
         studio.browse.return_value = {"groups": [], "total": 0, "count": 0, "offset": 0}
         studio.favourites.return_value = {"tracks": [], "total": 0, "count": 0, "offset": 0}
         studio.favourite.return_value = {"status": "saved", "rating": 5}
+        studio.collections.playlists.return_value = {"playlists": []}
+        studio.collections.save_playlist.return_value = {"job": "check"}
+        studio.collections.rate_album.return_value = {"job": "check"}
+        studio.collections.queue_tracks.return_value = {"tracks": []}
+        studio.queue_sync.view.return_value = {"status": "disconnected"}
+        studio.queue_sync.action.return_value = {"status": "disconnected"}
+        studio.record_play.return_value = {"status": "sent"}
+        studio.recently_played.return_value = {"enabled": True, "available": True, "tracks": []}
         studio.check_updates.return_value = {"state": "current", "current": "0.10.1"}
         studio.cleanup.labels.return_value = {"labels": [], "total": 0}
         studio.cleanup.prepare.return_value = {"state": "preview"}
@@ -82,6 +90,24 @@ class StartTests(unittest.TestCase):
                 connection.close()
 
         try:
+            for path, action in [("/api/playlist", studio.collections.save_playlist),
+                                 ("/api/album-rating", studio.collections.rate_album),
+                                 ("/api/queue-tracks", studio.collections.queue_tracks),
+                                 ("/api/queue-sync", studio.queue_sync.action)]:
+                self.assertEqual(request("POST", path), 403)
+                self.assertEqual(request("POST", path, {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)
+                action.assert_not_called()
+                self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
+                action.assert_called_once()
+            for path in ("/api/playlists", "/api/queue-sync"):
+                self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
+                self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
+                self.assertEqual(request("GET", path), 200)
+            self.assertEqual(request("POST", "/api/play"), 403)
+            self.assertEqual(request("POST", "/api/play", {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)
+            studio.record_play.assert_not_called()
+            self.assertEqual(request("POST", "/api/play", {"X-Tagcast": "1"}), 200)
+            studio.record_play.assert_called_once()
             self.assertEqual(request("GET", "/api/updates", {"Sec-Fetch-Site": "cross-site"}), 403)
             self.assertEqual(request("GET", "/api/updates", {"Host": "elsewhere.test"}), 403)
             self.assertEqual(request("POST", "/api/updates/check"), 403)
@@ -93,6 +119,11 @@ class StartTests(unittest.TestCase):
             self.assertEqual(request("POST", "/api/favourite"), 403)
             self.assertEqual(request("POST", "/api/favourite", {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)
             self.assertEqual(request("GET", "/api/favourites", {"Sec-Fetch-Site": "cross-site"}), 403)
+            self.assertEqual(request("GET", "/api/recently-played", {"Sec-Fetch-Site": "cross-site"}), 403)
+            self.assertEqual(request("GET", "/api/recently-played", {"Host": "elsewhere.test"}), 403)
+            studio.recently_played.assert_not_called()
+            self.assertEqual(request("GET", "/api/recently-played?q=wish&offset=50&limit=100&refresh=1"), 200)
+            studio.recently_played.assert_called_once_with("wish", "50", "100", True)
             self.assertEqual(request("GET", "/api/browse", {"Sec-Fetch-Site": "cross-site"}), 403)
             self.assertEqual(request("GET", "/api/browse", {"Host": "elsewhere.test"}), 403)
             studio.browse.assert_not_called()

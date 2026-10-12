@@ -2,6 +2,93 @@
 
 // Read-only album details use the same lazy library cache as the metadata editor.
 const albumView = {id: null, request: 0, loading: false, trash: null, found: ""};  // trash: track IDs chosen for the trash; found: a track opened from Tracks
+const coverLightbox = {open: false, focus: null, timer: null, fallback: "", fallbackTried: false};
+
+function cancelCoverClick() {
+  clearTimeout(coverLightbox.timer); coverLightbox.timer = null;
+}
+
+function coverPreviewFor(target) {
+  const playerCover = target.closest("#player-cover-button, .visual-player-cover");
+  if (playerCover) {
+    const album = player.queue[player.index]?.album;
+    return album?.artwork ? {album, focus: playerCover} : null;
+  }
+  const node = target.closest("[data-cover-preview]");
+  return node?.dataset.coverSrc ? {album: {artwork: node.dataset.coverSrc,
+    name: node.dataset.coverName, artist: node.dataset.coverArtist}, focus: node.closest("button") || node} : null;
+}
+
+function coverClick(event, action, preview) {
+  cancelCoverClick();
+  // Keyboard activation and title clicks keep their immediate navigation.
+  if (!preview || !event.detail) { action(); return; }
+  if (event.detail > 1) return; // the following dblclick opens the cover instead
+  const details = state.details, screen = state.screen;
+  coverLightbox.timer = setTimeout(() => {
+    coverLightbox.timer = null;
+    if (details === state.details && screen === state.screen && !state.loading) action();
+  }, 400);
+}
+
+function finishCoverLightbox() {
+  if (!coverLightbox.open) return;
+  coverLightbox.open = false;
+  document.body.classList.remove("cover-lightbox-open");
+  $("#cover-lightbox-image").removeAttribute("src");
+  const focus = coverLightbox.focus;
+  coverLightbox.focus = null; coverLightbox.fallback = "";
+  (focus && focus.isConnected !== false ? focus : $("#home")).focus();
+}
+
+function closeCoverLightbox() {
+  cancelCoverClick();
+  if (!coverLightbox.open) return;
+  $("#cover-lightbox").close(); finishCoverLightbox();
+}
+
+function openCoverLightbox(preview) {
+  cancelCoverClick();
+  if (!preview?.album.artwork || state.loading || coverLightbox.open || document.querySelector("dialog[open]")) return;
+  const album = preview.album, image = $("#cover-lightbox-image");
+  coverLightbox.open = true; coverLightbox.focus = preview.focus || document.activeElement;
+  document.body.classList.add("cover-lightbox-open");
+  coverLightbox.fallback = album.artwork; coverLightbox.fallbackTried = false;
+  $("#cover-lightbox-title").textContent = album.name || "Album cover";
+  $("#cover-lightbox-artist").textContent = album.artist || "";
+  $("#cover-lightbox-status").textContent = "Loading cover…";
+  image.alt = `Cover of ${album.name || "this album"}`; image.hidden = false;
+  // The iBroadcast web player uses -1000 for large artwork. Other image URLs stay intact.
+  image.src = album.artwork.replace(/(\/artwork\/\d+)-(?:150|300)(?=$|[?#])/, "$1-1000");
+  $("#cover-lightbox").showModal(); $("#cover-lightbox-close").focus();
+}
+
+$("#cover-lightbox-close").addEventListener("click", closeCoverLightbox);
+$("#cover-lightbox").addEventListener("close", finishCoverLightbox);
+$("#cover-lightbox").addEventListener("cancel", event => { event.preventDefault(); closeCoverLightbox(); });
+$("#cover-lightbox").addEventListener("click", event => {
+  if (event.target !== $("#cover-lightbox")) return;
+  const rect = $("#cover-lightbox").getBoundingClientRect();
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeCoverLightbox();
+});
+$("#cover-lightbox-image").addEventListener("load", () => {
+  if (coverLightbox.open) $("#cover-lightbox-status").textContent = "";
+});
+$("#cover-lightbox-image").addEventListener("error", () => {
+  if (!coverLightbox.open) return;
+  const image = $("#cover-lightbox-image");
+  if (!coverLightbox.fallbackTried && image.getAttribute("src") !== coverLightbox.fallback) {
+    coverLightbox.fallbackTried = true; image.src = coverLightbox.fallback; return;
+  }
+  image.hidden = true; $("#cover-lightbox-status").textContent = "This cover could not be loaded.";
+});
+document.addEventListener("dblclick", event => {
+  const preview = coverPreviewFor(event.target);
+  if (preview) { event.preventDefault(); openCoverLightbox(preview); }
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && coverLightbox.open) { event.preventDefault(); closeCoverLightbox(); }
+});
 
 function trackDuration(seconds) {
   const value = Math.floor(Number(seconds));
@@ -17,6 +104,7 @@ function trackFormatLabel(track) {
 }
 
 function resetAlbumView() {
+  closeCoverLightbox();
   albumView.id = null; albumView.request += 1; albumView.loading = false; albumView.trash = null;
   if (state.screen === "album") showScreen("albums");
 }
@@ -78,12 +166,13 @@ function renderAlbumView() {
   const doubled = new Map(discs.map(d => [d, twice(d)]));
   $("#breadcrumb").textContent = album.name;
   $("#album-page").innerHTML = `${backButton()}
-    <div class="album-detail-header">${cover(album)}<div class="album-detail-info"><div class="eyebrow">YOUR ALBUM</div>
+    <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="Enlarge cover of ${escapeHtml(album.name)}" ${album.artwork ? "" : "disabled"}>${cover(album)}</button><div class="album-detail-info"><div class="eyebrow">YOUR ALBUM</div>
       <h1>${escapeHtml(album.name)}</h1><button class="text-action" data-artist="${escapeHtml(album.artist)}">${escapeHtml(album.artist)}</button>
       <p class="muted">${albumYear(discs) || "Year unknown"} · ${album.tracks.length} tracks${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · Disc ${album.disc}` : ""}${total}</p>
       ${genres.length ? `<p class="muted album-genre-links">${genres.map(g => `<button class="text-action" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join(' <span aria-hidden="true">·</span> ')}</p>` : ""}
+      ${albumRatingControls(discs)}
       <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ Play album</button>
-        ${queueButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">Edit album →</button>${live() ? `<button class="button danger" data-trash-start ${albumView.trash ? "disabled" : ""}>${trashIcon}Move to trash…</button>` : ""}</div>
+        ${queueButton(album.id)}${playlistAlbumButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">Edit album →</button>${live() ? `<button class="button danger" data-trash-start ${albumView.trash ? "disabled" : ""}>${trashIcon}Move to trash…</button>` : ""}</div>
       ${live() ? "" : '<p class="muted">Connect iBroadcast to listen. You can edit this local preview.</p>'}</div></div>
     <div class="tracks-heading"><h2>Tracks</h2><span class="muted">${canPlay ? "Play from any track" : "Local preview"}</span></div>
     ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number">#</th><th>Title / Artist</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>
@@ -94,6 +183,7 @@ function renderAlbumView() {
 }
 
 document.addEventListener("click", event => {
+  if (!event.detail && event.target.closest("[data-cover-view], .visual-player-cover")) openCoverLightbox(coverPreviewFor(event.target));
   if (event.target.closest("[data-album-back]")) { goBack("albums"); return; }
   const edit = event.target.closest("[data-edit-album]");
   if (edit) openEditor(edit.dataset.editAlbum.split(","));
