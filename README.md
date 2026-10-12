@@ -13,7 +13,7 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
 
-![Tagcast: Blues albums in the iBroadcast inspired palette, Play random album and the compact player](docs/screenshots/random-album-ibroadcast.png)
+![Tagcast 0.40.0: Earth & Fire album details with ratings, playlists, Recently played and separate file/stream quality](docs/screenshots/album-player-0.40.0.png)
 
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
