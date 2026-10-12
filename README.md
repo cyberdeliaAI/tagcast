@@ -346,8 +346,8 @@ The button respects the current artist, search and filters and chooses from all
 matching albums across every page. Within a decade it uses the whole matching
 decade, not just the displayed random sample. It plays the complete album in track
 and disc order and replaces the queue. Disc sets have one chance each. When there
-is another choice, the currently playing album is skipped. No play counts or
-metadata are written to iBroadcast.
+is another choice, the currently playing album is skipped. Plays follow your
+optional play-reporting setting; starting a random album does not change metadata.
 
 ### Batch metadata cleanup
 
