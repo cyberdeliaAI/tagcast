@@ -31,10 +31,13 @@ function page({hash = "", storage = {}, server = true} = {}) {
   let nextTimer = 1;
   let respond = null;
   let respondUpdates = null;
+  let playbackClock = 0;
   function element() {
     const classes = new Set();
     const events = new Map(), attributes = new Map();
     return {value: "", checked: false, disabled: false, dataset: {}, options: [], innerHTML: "", textContent: "",
+      isConnected: true, style: {}, clientWidth: 1265, clientHeight: 710,
+      getBoundingClientRect() { return {left: 1000, right: 1042, top: 300, bottom: 336, width: 220, height: 130}; },
       paused: true,
       classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
         toggle: (c, on) => on ? classes.add(c) : classes.delete(c)},
@@ -53,13 +56,14 @@ function page({hash = "", storage = {}, server = true} = {}) {
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
   document.querySelector("#sort").value = "artist";
   const window = {addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
   const context = vm.createContext({document, window, location, history, navigator: {}, console, confirm: () => true,
+    performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
@@ -81,6 +85,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
   const scripts = [...pageHTML.matchAll(/<script src="([^"]+)"/g)];
   for (const [, file] of scripts) vm.runInContext(readFileSync(path.join(staticDir, file), "utf8"), context, {filename: file});
   return {run: source => vm.runInContext(source, context), nodes, requests, downloads, history, location,
+    setPlaybackClock(value) { playbackClock = value; },
     setFetch(handler) { respond = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
     flushTimers(delay) {
@@ -249,10 +254,13 @@ test("favourites are native ratings, require confirmation for existing lower rat
   await settle();
   assert.equal(p.run("favTrack.rating"), 3, "An accepted write is not yet confirmed");
   assert.equal(p.nodes.get("#player-favourite").disabled, true);
+  assert.equal(p.nodes.get("#player-favourite").getAttribute("aria-pressed"), "true", "The requested heart is visible while checking");
+  assert.equal(p.nodes.get("#player-favourite").getAttribute("aria-busy"), "true");
   p.flushTimers(2000); await write;
   assert.equal(p.run("favTrack.rating"), 5);
   assert.equal(p.run("player.queue[0].rating"), 5);
   assert.equal(p.nodes.get("#player-favourite").getAttribute("aria-pressed"), "true");
+  assert.equal(p.nodes.get("#player-favourite").getAttribute("aria-busy"), "false");
   assert.equal(p.nodes.get("#favourites-count").textContent, "1");
   assert.equal(p.run("saving"), false);
   assert.equal(p.run("favourites.busy"), false);
@@ -394,18 +402,18 @@ test("browsing a different album preserves playback and plays the viewed album, 
   p.run('state.mode = "live"');
   await p.run('openAlbum("1")');
   await p.click({"[data-play]": {dataset: {play: "101", playAlbumId: "1"}}});
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/101");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/101?quality=128");
   await p.run('openAlbum("3")');
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/101");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/101?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
   await p.click({"[data-play-album]": {dataset: {playAlbumId: "3"}}});
   assert.equal(p.run("player.album.name"), "Hounds of Love");
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/300");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/300?quality=128");
   p.nodes.get("#editor").close();
   await p.click({"[data-album-back]": {}});
   assert.equal(p.run("state.screen"), "album");
   assert.equal(p.run("albumView.id"), "1", "Back returns to the album viewed before");
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/300");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/300?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
 });
 
@@ -420,7 +428,7 @@ test("album playback supports pause, resume and automatic next track without loo
   await p.click(target);
   assert.equal(p.nodes.get("#audio").paused, false);
   await p.nodes.get("#audio").emit("ended");
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/102");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/102?quality=128");
   p.run("player.index = player.queue.length - 1; playCurrent()");
   const last = p.nodes.get("#audio").src;
   await p.nodes.get("#audio").emit("ended");
@@ -446,7 +454,7 @@ test("player artist and album navigation preserve playback and browser history",
   assert.equal(p.run("albumView.found"), "101");
   p.history.back();
   assert.equal(p.location.hash, "#/artist/Pink%20Floyd");
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/101");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/101?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
   assert.equal(p.run("player.index"), 1);
   assert.ok(p.requests.every(r => !r.options?.body));
@@ -468,7 +476,7 @@ test("the player separates album artist from compound track artists and each lin
   await p.nodes.get("#player-track-artist").emit("click"); await settle();
   assert.equal(p.location.hash, "#/track-artists/99");
   assert.match(p.nodes.get("#browse-list").innerHTML, /data-album="1"/);
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
   assert.ok(p.requests.every(r => !r.options?.body));
 });
@@ -531,7 +539,7 @@ test("playback remains available in the single-album editor and is blocked in pr
   assert.equal(p.nodes.get("#audio").src, undefined);
   p.run('state.mode = "live"');
   await p.click(target);
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   p.run('useLocal(demoLibrary(), "demo")');
   assert.equal(p.nodes.get("#audio").src, undefined);
   assert.equal(p.run("player.queue.length"), 0);
@@ -559,7 +567,7 @@ test("a save refreshes visible album details without restarting playback", async
   p.run('playTracks(state.details.get("1"), "100")');
   p.run('applyLocally([{kind: "album", albumId: "1", fields: {name: {after: "Updated name"}}}]); render()');
   assert.match(p.nodes.get("#album-page").innerHTML, /Updated name/);
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
   assert.equal(p.run("player.album.name"), "Wish You Were Here", "Playback retains its independent snapshot");
 });
@@ -627,7 +635,7 @@ test("an artist card opens all of that artist's albums and keeps music playing",
   assert.equal(p.nodes.get("#search").value, "");
   assert.equal(p.run("filteredAlbums().length"), 2);
   assert.equal(p.nodes.get("#show-artists").classList.contains("active"), false);
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
   assert.ok(p.requests.every(r => !r.options?.body));
 });
@@ -808,7 +816,7 @@ test("the discs of a set are one album in the lists, with their numbers added up
   await p.nodes.get("#all-albums").emit("click");
   const card = p.nodes.get("#albums").innerHTML.match(/<article[^]*?<\/article>/g).find(html => html.includes('data-album="71"'));
   assert.match(card, /6 tracks <span aria-hidden="true">·<\/span> <span class="disc-icons" role="img" aria-label="3 discs"/);
-  assert.equal(card.match(/<svg/g).length, 3, "One CD icon per disc");
+  assert.equal(card.match(/<span class="disc-icons"[^]*?<\/span>/)[0].match(/<svg/g).length, 3, "One CD icon per disc");
   assert.match(p.run("discIcons(9)"), /<small>9<\/small>/);
   assert.equal(p.run("discIcons(9)").match(/<svg/g).length, 6);
   assert.equal(p.json("artistGroups()").find(([name]) => name === "Pink Floyd")[1].count, 3);
@@ -832,7 +840,7 @@ test("the album page of a set lists every disc and plays them as one album", asy
   assert.equal(p.run("player.queue.length"), 6);
   p.run("player.index = 1; playCurrent()");
   await p.nodes.get("#audio").emit("ended");
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/7201", "Playback continues on the next disc");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/7201?quality=128", "Playback continues on the next disc");
 });
 
 test("a set is edited as one album and saved per disc", async () => {
@@ -971,6 +979,33 @@ test("Duplicate tracks requires matching track numbers and titles per disc", asy
   assert.deepEqual(sets.json('extraCopies([state.details.get("72"), state.details.get("73")])'), ["7299"], "Separate discs stay separate");
 });
 
+test("Quote variants agree across duplicate filters, badges and extra-copy selection", async () => {
+  const p = page();
+  const plain = "Red Shoes (from the Dumplin' Original Motion Picture Soundtrack)";
+  const quoted = 'Red Shoes (from the "Dumplin\'" Original Motion Picture Soundtrack)';
+  const curly = "Red Shoes (from the “Dumplin’” Original Motion Picture Soundtrack)";
+  p.run(`useLocal([{id: 91, name: "Dumplin'", artist: "Dolly Parton", disc: 1, year: 2018,
+    tracks: [
+      {id: 941, title: ${JSON.stringify(plain)}, track: 4},
+      {id: 942, title: ${JSON.stringify(quoted)}, track: 4},
+      {id: 943, title: ${JSON.stringify(curly)}, track: 4},
+      {id: 944, title: ${JSON.stringify(plain)}, track: 17},
+      {id: 945, title: ${JSON.stringify(plain + " (Live)")}, track: 4}
+    ]}], "demo"); render()`);
+  p.nodes.get("#filter").value = "duplicates";
+  assert.deepEqual(p.json("filteredAlbums().map(a => a.id)"), ["91"]);
+  assert.equal(p.run('state.albums[0].duplicates'), 2);
+  await p.run('openAlbum("91")');
+  assert.equal((p.nodes.get("#album-page").innerHTML.match(/>Duplicate</g) || []).length, 3);
+  assert.deepEqual(p.json('extraCopies([state.details.get("91")])'), ["942", "943"]);
+  assert.deepEqual(p.json('state.details.get("91").tracks.slice(0, 3).map(t => t.title)'), [plain, quoted, curly]);
+  for (const [first, second] of [["Song (Live)", "Song"], ["Song (Radio Edit)", "Song"],
+    ["Song (Parts I–V)", "Song (Parts VI–IX)"], ["Rock & Roll", "Rock Roll"]]) {
+    assert.notEqual(p.run(`titleKey(${JSON.stringify(first)})`), p.run(`titleKey(${JSON.stringify(second)})`));
+  }
+  assert.equal(p.run('duplicateTrackKey({track: 4, title: "\\\"\\\""})'), "", "Quote-only titles are not matched");
+});
+
 test("Album artists can show only the artists without an image", async () => {
   const p = livePage();
   p.run("showArtistBrowse()");
@@ -1082,7 +1117,7 @@ test("a connected library is searched by the server, and a found track plays its
   assert.equal((p.nodes.get("#tracks-list").innerHTML.match(/<tr data-row=/g) || []).length, 100);
   assert.equal(storage["tagcast-tracks-per-page"], "100");
   await p.click({"[data-track-play]": {dataset: {trackPlay: "101", trackAlbum: "1"}}});
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/101");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/101?quality=128");
   assert.equal(p.run("player.album.name"), "Wish You Were Here");
   assert.equal(p.run("player.queue.length"), 5, "The rest of the album follows");
   await p.click({"[data-track-play]": {dataset: {trackPlay: "101", trackAlbum: "1"}}});
@@ -1308,7 +1343,7 @@ test("update notifications use the running server's version, open only on reques
 
 test("update failures and an older server do not claim success or disturb playback", async () => {
   const p = page(); await settle();
-  p.run('$("#audio").src = "/api/stream/1"; $("#audio").paused = false');
+  p.run('$("#audio").src = "/api/stream/1?quality=128"; $("#audio").paused = false');
   p.setUpdateFetch(() => ({ok: false, status: 404, json: async () => ({error: "Unknown endpoint"})}));
   await p.run("checkForUpdates(true)");
   assert.match(p.run("updateStatusText()"), /Restart Tagcast/);
@@ -1317,7 +1352,7 @@ test("update failures and an older server do not claim success or disturb playba
   await p.run("checkForUpdates(true)");
   assert.match(p.run("updateStatusText()"), /Could not check/);
   assert.doesNotMatch(p.run("updateStatusText()"), /up to date/);
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/1");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/1?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
   const filePreview = page({server: false}); await settle();
   assert.ok(filePreview.requests.every(r => r.url !== "/api/updates"), "Opening HTML without the server does not check GitHub");
@@ -1375,6 +1410,155 @@ test("queue appends albums and single tracks without interrupting audio, and cha
   assert.equal(p.requests.filter(r => r.options?.method === "POST").length, 0);
 });
 
+test("Settings opt into play recording, keep source options, and do not restart audio", async () => {
+  const p = livePage(); await settle();
+  p.run('lookup.sources = [{name:"musicbrainz",label:"MusicBrainz",enabled:true}]; state.connection.playback_session="session-123"; playTracks(state.details.get("1")); openSettings()');
+  const source = p.nodes.get("#audio").src;
+  assert.match(p.nodes.get("#settings-content").innerHTML, /name="record_plays" > Record played tracks/);
+  const bodies = [];
+  p.setFetch((url, options) => {
+    assert.equal(url, "/api/settings"); bodies.push(JSON.parse(options.body));
+    return {ok:true,json:async()=>({sources:[{name:"musicbrainz",label:"MusicBrainz",enabled:true}],auto_lookup:true,auto_updates:true,record_plays:true})};
+  });
+  await p.run('saveSettings({elements:{auto_lookup:{checked:true},auto_updates:{checked:true},record_plays:{checked:true}},querySelectorAll:()=>[]})');
+  assert.deepEqual(bodies, [{auto_lookup:true,auto_updates:true,record_plays:true}]);
+  assert.equal(p.run("playReporting.enabled"), true);
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  p.run("openSettings()");
+  assert.match(p.nodes.get("#settings-content").innerHTML, /name="record_plays" checked/);
+});
+
+test("play recording counts actual listening across pauses and seeks, once per play", async () => {
+  const p = livePage(); await settle();
+  const sent = [];
+  p.setFetch((url, options) => {
+    assert.equal(url, "/api/play"); sent.push(JSON.parse(options.body));
+    return {ok:true,json:async()=>({status:"sent"})};
+  });
+  p.run('state.connection.playback_session="session-123"; audio.currentTime=0; playTracks(state.details.get("1"))');
+  p.setPlaybackClock(20000); p.run('audio.currentTime=20'); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(sent.length, 0, "Default remains off even after twenty seconds");
+  p.run('applyPlaybackSettings({record_plays:true})');
+  await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(25000); p.run('audio.currentTime=25'); await p.nodes.get("#audio").emit("pause");
+  p.setPlaybackClock(75000); await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(76000); p.run('audio.currentTime=140; audio.seeking=true'); await p.nodes.get("#audio").emit("seeking");
+  await p.nodes.get("#audio").emit("timeupdate");
+  p.run('audio.seeking=false'); await p.nodes.get("#audio").emit("seeked");
+  p.setPlaybackClock(81000); p.run('audio.currentTime=145'); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(sent.length, 0, "Exactly ten seconds, pauses and seek jumps are not plays");
+  p.setPlaybackClock(81500); p.run('audio.currentTime=145.5'); await p.nodes.get("#audio").emit("timeupdate");
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].listened, 10.5);
+  assert.equal(sent[0].session, "session-123");
+  assert.equal(sent[0].track_id, "100");
+  assert.ok(sent[0].event_id.length >= 16);
+  p.setPlaybackClock(83000); p.run('audio.currentTime=147'); await p.nodes.get("#audio").emit("timeupdate");
+  await p.nodes.get("#audio").emit("pause"); await p.nodes.get("#audio").emit("playing");
+  assert.equal(sent.length, 1, "Pause/resume and more progress do not repeat a play");
+  p.run('step(1); audio.currentTime=0'); await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(94500); p.run('audio.currentTime=11.5'); await p.nodes.get("#audio").emit("timeupdate");
+  await settle();
+  assert.equal(sent.length, 2);
+  assert.notEqual(sent[0].event_id, sent[1].event_id);
+  assert.equal(sent[1].track_id, "101");
+});
+
+test("stalls, session/library changes and disabling prevent unwanted play reports", async () => {
+  const p = livePage(); await settle();
+  p.run('state.connection.playback_session="session-123"; applyPlaybackSettings({record_plays:true}); audio.currentTime=0; playTracks(state.details.get("1"))');
+  await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(20000); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(p.run("playReporting.watch.listened"), 0, "A stalled position adds no listening time");
+  p.run('state.connection.playback_session="new-session"; audio.currentTime=21');
+  p.setPlaybackClock(41000); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(p.run("playReporting.watch"), null);
+  p.run('playTracks(state.details.get("1")); audio.currentTime=0'); await p.nodes.get("#audio").emit("playing");
+  p.run('state.details = new Map(state.details); audio.currentTime=21');
+  p.setPlaybackClock(62000); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(p.run("playReporting.watch"), null);
+  p.run('playTracks(state.details.get("1")); applyPlaybackSettings({record_plays:false}); audio.currentTime=100');
+  await p.nodes.get("#audio").emit("timeupdate");
+  p.run('stopPlayer()');
+  assert.ok(!p.requests.some(r => r.url === "/api/play"));
+});
+
+test("a failed play report is never repeated and playback continues", async () => {
+  const p = livePage(); await settle();
+  p.setFetch(() => { throw Error("Lost reply"); });
+  p.run('state.connection.playback_session="session-123"; applyPlaybackSettings({record_plays:true}); audio.currentTime=0; playTracks(state.details.get("1"))');
+  const source = p.nodes.get("#audio").src;
+  await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(11000); p.run('audio.currentTime=11'); await p.nodes.get("#audio").emit("timeupdate");
+  await settle();
+  p.setPlaybackClock(22000); p.run('audio.currentTime=22'); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(p.requests.filter(r => r.url === "/api/play").length, 1);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.match(p.run("playReporting.error"), /Lost reply/);
+});
+
+test("playback rate uses listening time and replaying a completed track counts a new play", async () => {
+  const p = livePage(); await settle();
+  const sent = [];
+  p.setFetch((url, options) => { sent.push(JSON.parse(options.body)); return {ok:true,json:async()=>({status:"sent"})}; });
+  p.run('state.connection.playback_session="session-123"; applyPlaybackSettings({record_plays:true}); audio.currentTime=0; audio.playbackRate=2; playTracks(state.details.get("1"), "104")');
+  await p.nodes.get("#audio").emit("playing");
+  const source = p.nodes.get("#audio").src;
+  p.setPlaybackClock(5000); p.run('audio.currentTime=10'); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(sent.length, 0, "Ten media seconds at twice the speed are only five listening seconds");
+  p.setPlaybackClock(11000); p.run('audio.currentTime=22'); await p.nodes.get("#audio").emit("timeupdate");
+  p.setPlaybackClock(15000); p.run('audio.currentTime=30'); await p.nodes.get("#audio").emit("ended");
+  p.run('audio.currentTime=0'); await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(26000); p.run('audio.currentTime=22'); await p.nodes.get("#audio").emit("timeupdate");
+  await settle();
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].track_id, sent[1].track_id);
+  assert.notEqual(sent[0].event_id, sent[1].event_id);
+  assert.equal(p.nodes.get("#audio").src, source);
+});
+
+test("a late initial settings response cannot undo a newly saved playback preference", async () => {
+  const p = livePage(); await settle();
+  p.run('lookup.sources=[{name:"musicbrainz",label:"MusicBrainz",enabled:true}]');
+  let finish;
+  p.setFetch((url, options) => options?.body
+    ? {ok:true,json:async()=>({sources:[{name:"musicbrainz",label:"MusicBrainz",enabled:true}],auto_lookup:true,auto_updates:true,record_plays:true})}
+    : new Promise(resolve=>{finish=resolve;}));
+  const pending = p.run("loadSettings()");
+  await p.run('saveSettings({elements:{auto_lookup:{checked:true},auto_updates:{checked:true},record_plays:{checked:true}},querySelectorAll:()=>[]})');
+  finish({ok:true,json:async()=>({sources:[],record_plays:false})});
+  await pending;
+  assert.equal(p.run("lookup.recordPlays"), true);
+  assert.equal(p.run("playReporting.enabled"), true);
+});
+
+test("the library info banner can be hidden, remembered and restored without requests or stopping audio", async () => {
+  const storage = {}, p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); updateChrome()');
+  const source = p.nodes.get("#audio").src, requests = p.requests.length;
+  await p.nodes.get("#notice-dismiss").emit("click");
+  assert.equal(p.nodes.get("#library-notice").hidden, true);
+  p.run('updateChrome(); openSettings()');
+  assert.equal(p.nodes.get("#library-notice").hidden, true);
+  assert.match(p.nodes.get("#settings-content").innerHTML, /Show library information banner/);
+  await p.click({"[data-show-notice]": {}});
+  assert.equal(p.nodes.get("#library-notice").hidden, false);
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.equal(p.requests.length, requests);
+  const saved = page({storage}); await settle();
+  await saved.nodes.get("#notice-dismiss").emit("click");
+  const reopened = page({storage}); await settle(); reopened.run("updateChrome()");
+  assert.equal(reopened.nodes.get("#library-notice").hidden, true);
+  assert.equal(reopened.run("libraryNotice.visible"), false);
+  const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
+  assert.match(html, />Settings ⚙</);
+  assert.match(html, /<h2>Settings<\/h2>/);
+});
+
 test("Now playing escapes metadata and has no route, queue jumping works, and Clear queue stops everything", async () => {
   const p = livePage(); await settle();
   p.run('$("#now-playing-panel").hidden = true');
@@ -1422,13 +1606,13 @@ test("queue additions retain click order and clearing during a fetch cancels lat
 test("queue continues an ended album when music is appended, preserves pause and keeps multi-disc order", async () => {
   const p = livePage(); await settle();
   await p.run('addToQueue("1", "100")');
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/100");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   p.nodes.get("#audio").pause();
   await p.run('addToQueue("2", "200")');
   assert.equal(p.nodes.get("#audio").paused, true);
   p.nodes.get("#audio").ended = true;
   await p.run('addToQueue("2", "201")');
-  assert.equal(p.nodes.get("#audio").src, "/api/stream/200");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/200?quality=128");
   p.nodes.get("#audio").ended = false;
   p.run(`stopPlayer(); const discs = [{id: "31", name: "Set", artist: "A", disc: 1, tracks: [{id: "310", title: "First", artist: "A", track: 1}]}, {id: "32", name: "Set", artist: "A", disc: 2, tracks: [{id: "320", title: "Second", artist: "A", track: 1}]}]; useLocal(discs, "demo"); state.mode = "live"; state.connection.connected = true`);
   await p.run('addToQueue("32")');
@@ -1457,10 +1641,71 @@ test("decades sample unique merged albums, Surprise reshuffles locally and Back 
 test("album grid and browse cards keep the compact queue action inside their metadata footer", async () => {
   const p = livePage(); await settle();
   const grid = p.run("gridView(albumShelf().slice(0, 1))");
-  assert.match(grid, /class="card-meta"[\s\S]*class="queue-add queue-compact"[\s\S]*<\/div><\/article>/);
+  assert.match(grid, /class="card-meta"[\s\S]*class="queue-add queue-compact queue-menu-trigger"[\s\S]*<\/div><\/article>/);
   assert.doesNotMatch(grid, /\+ Add to queue/);
   assert.match(p.run("browseAlbumCard(albumShelf()[0])"), /queue-compact/);
-  assert.match(p.run("queueButton(state.albums[0].id)"), /\+ Add to queue/); // album detail keeps the full action
+  assert.match(p.run("queueButton(state.albums[0].id)"), /\+ Queue/); // album detail keeps the full action
+});
+
+test("queue dropdown waits for a choice, appends or plays next, and keeps focus and playback on dismissal", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"), "100")');
+  const original = p.json('player.queue.map(t => t.id)'), audio = p.nodes.get('#audio'), source = audio.src;
+  p.run('$("#test-queue-trigger").dataset = {queueAlbum: "2", queueTrack: String(state.details.get("2").tracks[0].id)}');
+  const trigger = p.nodes.get('#test-queue-trigger');
+  await p.click({'[data-queue-album]': trigger});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden, false);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), original);
+  assert.equal(p.run('document.activeElement === $("#queue-action-append")'), true);
+  await p.nodes.get('#queue-action-menu').emit('keydown', {key: 'ArrowDown', preventDefault() {}});
+  assert.equal(p.run('document.activeElement === $("#queue-action-next")'), true);
+  await p.nodes.get('#queue-action-menu').emit('keydown', {key: 'End', preventDefault() {}});
+  assert.equal(p.run('document.activeElement === $("#queue-action-playlist")'), true);
+  await p.nodes.get('#queue-action-menu').emit('keydown', {key: 'ArrowDown', preventDefault() {}});
+  assert.equal(p.run('document.activeElement === $("#queue-action-append")'), true);
+  await p.nodes.get('#queue-action-menu').emit('keydown', {key: 'Escape', preventDefault() {}});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden, true);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(p.run('document.activeElement === $("#test-queue-trigger")'), true);
+  assert.equal(audio.src, source);
+  assert.equal(audio.paused, false);
+  await p.click({'[data-queue-album]': trigger});
+  await p.nodes.get('#queue-action-append').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), [...original, trigger.dataset.queueTrack]);
+  await p.click({'[data-queue-album]': trigger});
+  await p.nodes.get('#queue-action-next').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), [original[0], trigger.dataset.queueTrack, ...original.slice(1), trigger.dataset.queueTrack]);
+  assert.equal(p.run('player.queue[1].upNext'), true);
+  assert.equal(audio.src, source);
+  assert.equal(p.nodes.get('#queue-action-menu').hidden, true);
+  await p.click({'[data-queue-album]': trigger});
+  await p.click({});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden, true);
+  assert.ok(p.requests.every(r => !r.options?.body), 'Queue choices never write library metadata');
+});
+
+test("album queue menus keep album order and ignore choices from detached controls or a replaced library", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"), "100"); $("#test-album-trigger").dataset = {queueAlbum: "2"}');
+  const original = p.json('player.queue.map(t => t.id)'), trigger = p.nodes.get('#test-album-trigger');
+  await p.click({'[data-queue-album]': trigger});
+  trigger.isConnected = false;
+  await p.nodes.get('#queue-action-next').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), original);
+  trigger.isConnected = true;
+  await p.click({'[data-queue-album]': trigger});
+  p.run('state.details = new Map(state.details)');
+  await p.nodes.get('#queue-action-next').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), original);
+  await p.click({'[data-queue-album]': trigger});
+  await p.nodes.get('#queue-action-next').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), [original[0], ...p.json('queueTracks(state.details.get("2")).map(t => t.id)'), ...original.slice(1)]);
+  await p.click({'[data-queue-album]': trigger});
+  p.run('showScreen("tracks")');
+  assert.equal(p.nodes.get('#queue-action-menu').hidden, true);
+  await p.nodes.get('#queue-action-append').emit('click');
+  assert.equal(p.run('player.queue.length'), original.length + p.run('state.details.get("2").tracks.length'));
 });
 
 test("additional performers appear as individual links and are searchable and browsable in preview", async () => {
@@ -1673,7 +1918,7 @@ test("colour palettes persist independently of appearance without requests or pl
   assert.equal(p.run('document.documentElement.dataset.theme'), "dark");
   assert.equal(p.nodes.get("#palette-ibroadcast").checked, true);
   p.run(`player.queue = [{id:"900",title:"Playing",artist:"Artist"}]; player.index=0;
-    $("#audio").src="/api/stream/900"; $("#audio").currentTime=27; $("#audio").paused=false;`);
+    $("#audio").src="/api/stream/900?quality=128"; $("#audio").currentTime=27; $("#audio").paused=false;`);
   const requests = p.requests.length, history = p.history.length, queue = p.json("player.queue");
   for (const palette of ["ocean", "warm", "ibroadcast", "forest"]) {
     await p.nodes.get("#theme-menu").emit("change", {target: {value: palette, dataset: {paletteChoice: ""}}});
@@ -1682,7 +1927,7 @@ test("colour palettes persist independently of appearance without requests or pl
     assert.equal(p.run('document.documentElement.dataset.theme'), "dark");
     assert.equal(p.run('$("#audio").currentTime'), 27);
     assert.equal(p.run('$("#audio").paused'), false);
-    assert.equal(p.run('$("#audio").src'), "/api/stream/900");
+    assert.equal(p.run('$("#audio").src'), "/api/stream/900?quality=128");
     assert.deepEqual(p.json("player.queue"), queue);
   }
   p.run('setColourPalette("warm")');
@@ -1841,4 +2086,356 @@ test("track format labels use existing metadata in album rows and search, hide u
   assert.match(p.run('foundTrackRow(localTracks("welcome").tracks[0])'),/class="track-format" title="File format">MP3/);
   assert.equal(p.run('trackFormatLabel({})'),"");
   assert.equal(p.run('trackFormatLabel({format:"<bad>"})'),'<small class="track-format" title="File format">&lt;bad&gt;</small>');
+});
+
+test("Recently played is opt-in, uses server order and paging, and preserves playback on Back and refresh", async () => {
+  const p = livePage(); await settle();
+  p.run('updateChrome()');
+  assert.equal(p.nodes.get("#show-recently-played").hidden, true);
+  await p.run('showRecentlyPlayed()');
+  assert.match(p.nodes.get("#recently-played-list").innerHTML, /Enable Record played tracks/);
+  assert.ok(p.requests.every(r => !r.url.startsWith("/api/recently-played")));
+  p.setFetch(async url => {
+    assert.match(url, /^\/api\/recently-played\?/);
+    return {ok: true, json: async () => ({enabled: true, available: true, total: 120,
+      offset: Number(new URL(url, "http://test").searchParams.get("offset")),
+      tracks: [{id: "100", album_id: "1", title: "Recent <song>", artist: "Artist", album: "Album", track: 1, rating: 0},
+        {id: "101", album_id: "1", title: "Older song", artist: "Artist", album: "Album", track: 2, rating: 0}]})};
+  });
+  p.run('state.connection.playback_session = "recent-session"; applyPlaybackSettings({record_plays: true})'); await settle();
+  assert.equal(p.nodes.get("#show-recently-played").hidden, false);
+  const html = p.nodes.get("#recently-played-list").innerHTML;
+  assert.ok(html.indexOf("Recent &lt;song&gt;") < html.indexOf("Older song"));
+  assert.match(html, /data-track-play="100"/);
+  p.run('$("#recently-played-search").value = "wish"; showRecentlyPlayed(1)'); await settle();
+  assert.equal(p.location.hash, "#/recently-played");
+  assert.match(p.requests.at(-1).url, /q=wish&offset=50&limit=50/);
+  assert.match(p.nodes.get("#recently-played-pagination").innerHTML, /Page 2 of 3/);
+  p.run('playTracks(state.details.get("1"), "100")');
+  await p.run('openFoundTrack("100", "1")');
+  p.history.back(); await settle();
+  assert.equal(p.location.hash, "#/recently-played");
+  assert.equal(p.nodes.get("#recently-played-search").value, "wish");
+  assert.equal(p.run("recentlyPlayed.page"), 1);
+  const audioSource = p.nodes.get("#audio").src;
+  await p.nodes.get("#recently-played-refresh").emit("click");
+  assert.match(p.requests.at(-1).url, /&refresh=1$/);
+  assert.equal(p.nodes.get("#audio").src, audioSource);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  p.run('applyPlaybackSettings({record_plays: false})');
+  assert.equal(p.nodes.get("#show-recently-played").hidden, true);
+  assert.equal(p.run("recentlyPlayed.rows.length"), 0);
+  assert.equal(p.location.hash, "#/artists");
+  assert.equal(p.nodes.get("#audio").src, audioSource);
+  assert.equal(p.nodes.get("#audio").paused, false);
+});
+
+test("Recently played distinguishes missing, empty and failed remote lists, and suppresses stale sessions", async () => {
+  const p = livePage(); await settle();
+  p.run('state.connection.playback_session = "recent-session"; applyPlaybackSettings({record_plays: true})');
+  p.setFetch(async () => ({ok: true, json: async () => ({enabled: true, available: false, tracks: [], total: 0})}));
+  await p.run('showRecentlyPlayed()');
+  await settle();
+  assert.match(p.nodes.get("#recently-played-list").innerHTML, /did not provide/);
+  p.setFetch(async () => ({ok: true, json: async () => ({enabled: true, available: true, tracks: [], total: 0})}));
+  await p.run('loadRecentlyPlayed()');
+  assert.match(p.nodes.get("#recently-played-list").innerHTML, /No recently played tracks/);
+  p.setFetch(async () => ({ok: false, status: 500, json: async () => ({error: "Remote unavailable"})}));
+  await p.run('loadRecentlyPlayed()');
+  assert.match(p.nodes.get("#recently-played-list").innerHTML, /Remote unavailable/);
+  let finish;
+  p.setFetch(() => new Promise(resolve => { finish = resolve; }));
+  const loading = p.run('loadRecentlyPlayed()');
+  p.run('state.connection.playback_session = "new-session"');
+  finish({ok: true, json: async () => ({enabled: true, available: true, tracks: [{id: "999", title: "Wrong account"}], total: 1})});
+  // A session change resets and rechecks the current page; disable before another fetch.
+  p.run('applyPlaybackSettings({record_plays: false})');
+  await loading;
+  assert.equal(p.run("recentlyPlayed.rows.length"), 0);
+  assert.doesNotMatch(p.nodes.get("#recently-played-list").innerHTML, /Wrong account/);
+  const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
+  assert.match(html, /id="show-history"[^\n]*Change history/);
+  assert.match(html, />Export changes ↓</);
+});
+
+test("cover clicks preserve title and keyboard navigation while a double-click opens a modal without requests or history", async () => {
+  const p = page(); await settle();
+  p.run('state.albums[0].artwork = "https://art.example/artwork/77-300"; render()');
+  assert.match(p.nodes.get("#albums").innerHTML, /data-cover-preview data-cover-src="https:\/\/art.example\/artwork\/77-300"/);
+  const requests = p.requests.length, entries = p.history.length, route = p.location.hash;
+  let actionCount = 0;
+  p.run('coverTestActions = 0');
+  p.run('coverClick({detail: 1}, () => coverTestActions++, {album: {artwork: "cover"}})');
+  assert.equal(p.run('coverTestActions'), 0);
+  p.flushTimers(400);
+  assert.equal(p.run('coverTestActions'), 1);
+  p.run('coverClick({detail: 0}, () => coverTestActions++, {album: {artwork: "cover"}})');
+  assert.equal(p.run('coverTestActions'), 2, 'Keyboard activates immediately');
+  p.run('coverClick({detail: 1}, () => coverTestActions++, null)');
+  assert.equal(p.run('coverTestActions'), 3, 'Titles and placeholders activate immediately');
+  p.run('coverClick({detail: 1}, () => coverTestActions++, {album: {artwork: "cover"}}); coverClick({detail: 2}, () => coverTestActions++, {album: {artwork: "cover"}})');
+  const origin = p.nodes.get("#home");
+  const coverNode = {dataset: {coverSrc: "https://art.example/artwork/77-300", coverName: "Cover <title>", coverArtist: "Artist & friends"}, closest: () => origin};
+  await p.emitDocument('dblclick', {preventDefault() { actionCount++; },
+    target: {closest: selector => selector === '[data-cover-preview]' ? coverNode : null}});
+  p.flushTimers(400);
+  assert.equal(p.run('coverTestActions'), 3, 'The double-click cancels the pending single action');
+  assert.equal(actionCount, 1);
+  assert.equal(p.run('coverLightbox.open'), true);
+  assert.equal(p.nodes.get('#cover-lightbox').open, true);
+  assert.equal(p.nodes.get('#cover-lightbox-title').textContent, 'Cover <title>');
+  assert.equal(p.nodes.get('#cover-lightbox-image').src, 'https://art.example/artwork/77-1000');
+  assert.equal(p.run('document.activeElement === $("#cover-lightbox-close")'), true);
+  assert.equal(p.requests.length, requests, 'No library download or write');
+  assert.equal(p.history.length, entries);
+  assert.equal(p.location.hash, route);
+  await p.nodes.get('#cover-lightbox-image').emit('load');
+  assert.equal(p.nodes.get('#cover-lightbox-status').textContent, '');
+  await p.nodes.get('#cover-lightbox-close').emit('click');
+  assert.equal(p.run('coverLightbox.open'), false);
+  assert.equal(p.run('document.activeElement === $("#home")'), true);
+  assert.equal(p.nodes.get('#cover-lightbox-image').src, undefined);
+});
+
+test("player and fullscreen cover previews leave audio intact and Escape closes only the lightbox", async () => {
+  const p = livePage(); await settle();
+  p.run('const coverAlbum = state.details.get("1"); coverAlbum.artwork = "https://art.example/artwork/9-300"; playTracks(coverAlbum, "100"); setNowPlaying(false)');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), route = p.location.hash;
+  await p.nodes.get('#player-cover-button').emit('click', {detail: 1});
+  await p.nodes.get('#player-cover-button').emit('click', {detail: 2});
+  const origin = p.nodes.get('#player-cover-button');
+  await p.emitDocument('dblclick', {preventDefault() {}, target: {closest: selector => selector === '#player-cover-button, .visual-player-cover' ? origin : null}});
+  p.flushTimers(400);
+  assert.equal(p.run('coverLightbox.open'), true);
+  assert.equal(p.nodes.get('#now-playing-panel').hidden, true, 'Double-click does not toggle the queue');
+  await p.emitDocument('keydown', {key: 'Escape', preventDefault() { this.defaultPrevented = true; }});
+  assert.equal(p.run('coverLightbox.open'), false);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  p.run('openVisualPlayer(); openCoverLightbox({album: player.queue[player.index].album, focus: $("#visual-player-close")})');
+  assert.equal(p.run('visualPlayer.open && coverLightbox.open'), true);
+  await p.emitDocument('keydown', {key: 'Escape', preventDefault() { this.defaultPrevented = true; }});
+  assert.equal(p.run('visualPlayer.open'), true);
+  assert.equal(p.run('coverLightbox.open'), false);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.location.hash, route);
+  p.run('openCoverLightbox({album: player.queue[player.index].album}); closeVisualPlayer()');
+  assert.equal(p.run('coverLightbox.open'), false);
+});
+
+test("cover previews handle missing images, try the existing cover once and close on library replacement", async () => {
+  const p = page(); await settle();
+  p.run('openCoverLightbox({album: {name: "No image", artwork: ""}})');
+  assert.equal(p.run('coverLightbox.open'), false);
+  p.run('openCoverLightbox({album: {name: "Album", artwork: "https://art.example/artwork/9-300"}})');
+  await p.nodes.get('#cover-lightbox-image').emit('error');
+  assert.equal(p.nodes.get('#cover-lightbox-image').src, 'https://art.example/artwork/9-300');
+  await p.nodes.get('#cover-lightbox-image').emit('error');
+  assert.equal(p.nodes.get('#cover-lightbox-image').hidden, true);
+  assert.match(p.nodes.get('#cover-lightbox-status').textContent, /could not be loaded/);
+  p.run('useLocal(demoLibrary(), "demo")');
+  assert.equal(p.run('coverLightbox.open'), false);
+  assert.equal(p.nodes.get('#cover-lightbox-image').src, undefined);
+  p.run('openCoverLightbox({album: {name: "External cover", artwork: "https://provider.example/image-300.jpg"}})');
+  assert.equal(p.nodes.get('#cover-lightbox-image').src, 'https://provider.example/image-300.jpg');
+  await p.nodes.get('#cover-lightbox-image').emit('error');
+  assert.equal(p.nodes.get('#cover-lightbox-image').hidden, true);
+  const dialog = p.nodes.get('#cover-lightbox');
+  dialog.getBoundingClientRect = () => ({left: 100, right: 500, top: 100, bottom: 500});
+  await dialog.emit('click', {target: dialog, clientX: 50, clientY: 50});
+  assert.equal(p.run('coverLightbox.open'), false);
+});
+
+test("Play next keeps whole albums in FIFO order, consumes Up next and preserves the base queue", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"), "100"); appendToQueue(state.details.get("2"), null, true); appendToQueue(state.details.get("3"), null, true)');
+  const ordered = p.json('player.queue.map(t => t.id)');
+  const first = p.json('queueTracks(state.details.get("1")).map(t => t.id)');
+  const next = p.json('[...queueTracks(state.details.get("2")), ...queueTracks(state.details.get("3"))].map(t => t.id)');
+  assert.deepEqual(ordered, [first[0], ...next, ...first.slice(1)]);
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), first.map(Number));
+  assert.deepEqual(p.json('encodedLocalQueue().play_next'), next.map(Number));
+  p.run('step(1)');
+  assert.equal(p.run('encodedLocalQueue().data.play_from'), 'play_next');
+  assert.equal(p.run('encodedLocalQueue().data.play_index'), 1);
+  p.run('step(1)');
+  assert.equal(p.run('player.queue.some(t => t.id === ' + JSON.stringify(next[0]) + ' && t.upNext)'), false);
+  p.run('stopPlayer(); playTracks(state.details.get("1"), "100"); player.repeat = "queue"; player.index = player.queue.length - 1');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), 0);
+  p.run('player.repeat = "track"; player.index = 1');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), 1);
+  p.run('player.repeat = "none"; player.index = player.queue.length - 1');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), first.length - 1);
+});
+
+test("Quality changes apply on the next song, label file and stream separately, and Original falls back once", async () => {
+  const p = livePage(); await settle();
+  p.run('state.connection.premium = true; state.details.get("1").tracks[0].format = "FLAC"; lookup.streamQuality = "320"; playTracks(state.details.get("1"), "100")');
+  const audio = p.nodes.get('#audio');
+  assert.match(audio.src, /quality=320/);
+  assert.equal(p.nodes.get('#player-quality').textContent, 'File: FLAC · Stream: MP3 320 kbps');
+  p.run('applyPlaybackSettings({record_plays: false, stream_quality: "orig"})');
+  assert.match(audio.src, /quality=320/, 'Settings do not interrupt playback');
+  p.run('playCurrent()');
+  assert.match(audio.src, /quality=orig/);
+  await audio.emit('error');
+  assert.match(audio.src, /quality=128/);
+  assert.match(p.nodes.get('#player-quality').textContent, /fallback/);
+  await audio.emit('error');
+  assert.equal(p.run('player.fallback'), true);
+  p.run('state.connection.premium = false; lookup.streamQuality = "320"; playCurrent()');
+  assert.match(audio.src, /quality=128/);
+});
+
+test("A queue controller cannot start audio, advance on ended or record a play", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"), "100"); audio.pause(); state.connection.playback_session = "controller-test-session"; queueSync.active = true; queueSync.allowed = true; queueSync.view = {owner: queueSync.browser, own: true, state: {role: "controller"}}; applyPlaybackSettings({record_plays: true}); beginPlaybackWatch()');
+  const ids = p.json('player.queue.map(t => t.id)'), index = p.run('player.index');
+  p.run('playTracks(state.details.get("2"), "200")');
+  assert.equal(p.nodes.get('#audio').paused, true);
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ids);
+  assert.equal(p.run('playReporting.watch'), null);
+  await p.nodes.get('#audio').play();
+  assert.equal(p.nodes.get('#audio').paused, true, 'Native audio controls cannot start a controller');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), index);
+  assert.ok(p.requests.every(r => r.url !== '/api/play'));
+});
+
+test("Playlist review keeps order, escapes labels and sends nothing before the save button", async () => {
+  const p = livePage(); await settle();
+  p.setFetch(url => ({ok: true, json: async () => url.startsWith('/api/playlists') ? {playlists: []} : {}}));
+  await p.run('openPlaylistSave(queueTracks(state.details.get("1")))');
+  await p.run(`reviewPlaylist({elements: {destination: {value: "new"}, name: {value: "<New playlist>"}, description: {value: ""}}, querySelectorAll: () => playlistDraft.tracks.map(t => ({value: t.id, checked: true}))})`);
+  assert.equal(p.run('playlistDraft.body.action'), 'create');
+  assert.deepEqual(p.json('playlistDraft.body.tracks'), p.json('queueTracks(state.details.get("1")).map(t => Number(t.id))'));
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML, /&lt;New playlist&gt;/);
+  assert.ok(p.requests.every(r => r.url !== '/api/playlist'));
+  p.setFetch(() => { throw Error('Network interrupted'); });
+  await p.run('savePlaylistDraft()');
+  assert.equal(p.run('playlistDraft.body'), null, 'An ambiguous creation is never retried');
+  await p.run('savePlaylistDraft()');
+  assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 1);
+});
+
+test("album ratings show the requested stars immediately, then confirm and repaint without refresh", async () => {
+  const p = livePage(); await settle();
+  await p.run('openAlbum("1")');
+  p.run('playTracks(state.details.get("1"), "100")');
+  const source = p.nodes.get('#audio').src, route = p.location.hash;
+  let accept, verify;
+  p.setFetch(url => new Promise(resolve => { if (url === '/api/album-rating') accept = resolve; else { assert.equal(url, '/api/jobs/rating'); verify = resolve; } }));
+  const savingRating = p.run('rateAlbum(["1"], 4, false)');
+  assert.match(p.nodes.get('#album-page').innerHTML, /Saving rating/);
+  assert.equal((p.run('albumRatingControls([state.details.get("1")])').match(/★/g) || []).length, 4);
+  assert.equal(p.run('state.details.get("1").rating || 0'), 0, 'Pending display is not a confirmed cached rating');
+  accept({ok: true, json: async () => ({job: 'rating'})}); await settle();
+  assert.match(p.nodes.get('#album-page').innerHTML, /checking iBroadcast/);
+  verify({ok: true, json: async () => ({state: 'done', results: [{id: 1, rating: 4, status: 'saved'}]})});
+  await savingRating;
+  assert.equal(p.run('state.details.get("1").rating'), 4);
+  assert.equal(p.run('state.albums.find(a => a.id === "1").rating'), 4);
+  assert.match(p.nodes.get('#album-page').innerHTML, /saved and confirmed/);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.location.hash, route);
+});
+
+test("refused or stale album ratings do not leave a successful-looking cached rating", async () => {
+  const p = livePage(); await settle(); await p.run('openAlbum("1")');
+  p.setFetch(() => { throw Error('Rating refused'); });
+  await p.run('rateAlbum(["1"], 5, false)');
+  assert.equal(p.run('state.details.get("1").rating || 0'), 0);
+  assert.equal(p.run('collectionsView.rating.pending'), false);
+  assert.match(p.nodes.get('#album-page').innerHTML, /Rating refused/);
+  let verify;
+  p.setFetch(url => url === '/api/album-rating' ? {ok: true, json: async () => ({job: 'old'})}
+    : new Promise(resolve => { verify = resolve; }));
+  const rating = p.run('rateAlbum(["1"], 5, false)'); await settle();
+  p.run('state.details = new Map([...state.details].map(([id, a]) => [id, structuredClone(a)]))');
+  verify({ok: true, json: async () => ({state: 'done', results: [{id: '1', rating: 5, status: 'saved'}]})});
+  await rating;
+  assert.equal(p.run('state.details.get("1").rating || 0'), 0);
+  assert.equal(p.run('collectionsView.busy'), false);
+});
+
+test("Add to playlist in the track dropdown loads and appends only the chosen track after review", async () => {
+  const p = livePage(); await settle(); p.run('playTracks(state.details.get("1"), "100")');
+  const row = p.json('queueTracks(state.details.get("2"))[0]'), queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  const destination = {id: '81', name: 'Singles', tracks: [100], before: [100], total: 1};
+  p.setFetch((url, options) => {
+    if (url === '/api/queue-tracks') { assert.deepEqual(JSON.parse(options.body).tracks, [Number(row.id)]); return {ok: true, json: async () => ({tracks: [row]})}; }
+    if (url.startsWith('/api/playlists?id=')) return {ok: true, json: async () => destination};
+    if (url === '/api/playlists') return {ok: true, json: async () => ({playlists: [destination]})};
+    if (url === '/api/playlist') return {ok: true, json: async () => ({job: 'append'})};
+    assert.equal(url, '/api/jobs/append'); return {ok: true, json: async () => ({state: 'done', results: [{id: '81', status: 'saved'}]})};
+  });
+  p.run(`$("#test-playlist-trigger").dataset = {queueAlbum: "2", queueTrack: ${JSON.stringify(row.id)}}`);
+  await p.click({'[data-queue-album]': p.nodes.get('#test-playlist-trigger')});
+  assert.equal(p.nodes.get('#queue-action-playlist').hidden, false);
+  await p.nodes.get('#queue-action-playlist').emit('click');
+  assert.equal(p.nodes.get('#playlist-dialog').open, true);
+  assert.deepEqual(p.json('playlistDraft.tracks.map(t => t.id)'), [row.id]);
+  await p.run(`reviewPlaylist({elements: {destination: {value: "81"}, name: {value: ""}, description: {value: ""}}, querySelectorAll: () => playlistDraft.tracks.map(t => ({value: t.id, checked: true}))})`);
+  assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 0);
+  await p.run('savePlaylistDraft()');
+  const body = JSON.parse(p.requests.find(r => r.url === '/api/playlist').options.body);
+  assert.equal(body.action, 'append'); assert.deepEqual(body.tracks, [Number(row.id)]);
+  assert.deepEqual(body.before, [100]);
+  assert.deepEqual(p.json('player.queue'), queue); assert.equal(p.nodes.get('#audio').src, source);
+});
+
+test("playlist deletion is reviewed, cancellation sends nothing, and deletion leaves playback intact", async () => {
+  const p = livePage(); await settle(); p.run('playTracks(state.details.get("1"), "100")');
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  p.setFetch(url => ({ok: true, json: async () => url.startsWith('/api/playlists?id=') ? {id: '81', name: '<Old list>', before: [100], tracks: [100], total: 1}
+    : url === '/api/playlist' ? {job: 'delete'} : {state: 'done', results: [{id: '81', status: 'saved'}]}}));
+  await p.run('openPlaylistDelete("81")');
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML, /&lt;Old list&gt;/);
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML, /tracks stay in your music library/);
+  assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 0);
+  p.nodes.get('#playlist-dialog').close(); await p.run('savePlaylistDraft()');
+  assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 0);
+  await p.run('openPlaylistDelete("81");'); await p.run('savePlaylistDraft()');
+  const body = JSON.parse(p.requests.find(r => r.url === '/api/playlist').options.body);
+  assert.equal(body.action, 'delete'); assert.equal(body.confirm_delete, true);
+  assert.equal(body.playlist, '81'); assert.deepEqual(body.before, [100]);
+  assert.equal(p.nodes.get('#playlist-dialog').open, false);
+  assert.deepEqual(p.json('player.queue'), queue); assert.equal(p.nodes.get('#audio').src, source);
+});
+
+test("Restoring a native queue stays paused and inserts Up next after the current base track", async () => {
+  const p = livePage(); await settle();
+  const rows = p.json('[...state.details.values()].flatMap(a => queueTracks(a))');
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/queue-tracks');
+    const ids = JSON.parse(options.body).tracks;
+    return {ok: true, json: async () => ({tracks: ids.map(id => rows.find(t => t.id === String(id)))})};
+  });
+  p.run(`state.connection.playback_session = "test-session"; queueSync.active = true; queueSync.allowed = false;
+    queueSync.view = {owner:queueSync.browser, own:true, state:{role:"player", tracks:[100,101,102], play_next:[200], current_song:100,
+    pause:true, start_position:7, start_time:Date.now()/1000, volume:0.5, data:{play_index:0,play_from:"tracks",repeat_mode:"queue"}}}`);
+  await p.run('restoreQueue(queueSync.view)');
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ['100', '200', '101', '102']);
+  assert.equal(p.run('player.index'), 0);
+  assert.equal(p.nodes.get('#audio').paused, true, 'Restoration does not briefly play audio');
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime, 7);
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), [100, 101, 102]);
+  assert.deepEqual(p.json('encodedLocalQueue().play_next'), [200]);
+  assert.equal(p.run('player.repeat'), 'queue');
+});
+
+test("Finishing Up next at the end consumes it, retains the base queue and appending starts at the first new track", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"), state.details.get("1").tracks.at(-1).id); appendToQueue(state.details.get("2"), null, true); while (player.index < player.queue.length - 1) step(1); player.repeat = "none"');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.queue.some(t => t.upNext)'), false);
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), p.json('state.details.get("1").tracks.map(t => Number(t.id))'));
+  assert.equal(p.run('encodedLocalQueue().current_song'), 0);
+  p.run('appendToQueue(state.details.get("3"))');
+  assert.equal(p.run('player.queue[player.index].id'), p.run('String(state.details.get("3").tracks[0].id)'));
 });

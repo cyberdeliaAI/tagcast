@@ -1,6 +1,6 @@
 # Clean up metadata
 
-Available in Tagcast 0.30.0, including standalone downloads.
+Available since Tagcast 0.30.0, including standalone downloads.
 
 Open **Overview → Metadata health → Clean up metadata…**. The Albums page also
 shows **Split combined genres…** when the **Combined genres** filter is selected.

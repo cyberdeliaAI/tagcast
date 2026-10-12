@@ -1,11 +1,11 @@
 [project]
 name = "tagcast"
-version = "0.30.0"
+version = "0.40.0"
 description = "Browse and play your iBroadcast collection, edit metadata, and manage album covers and artist images."
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
-dependencies = ["ibroadcast>=2.0.1,<3"]
+dependencies = ["ibroadcast>=2.0.1,<3", "websocket-client>=1.9,<2"]
 
 [project.scripts]
 tagcast = "tagcast.app:main"

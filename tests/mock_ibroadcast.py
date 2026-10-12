@@ -29,6 +29,10 @@ STATE = {
         904: {"title": "Wish You Were Here", "album_id": 74, "artist_id": 42, "year": 1975, "genre": "Rock", "track": 4, "trashed": False, "artwork_id": 0},
     },
     "writes": [],
+    "play_requests": [],
+    "recent_tracks": [],
+    "playlists": {},
+    "premium": False,
     "polls": 0,
     "downloads": 0,  # full library downloads
     "version": 1,  # bumped on every write, reported as lastmodified
@@ -60,9 +64,9 @@ def library():
         tracks[str(i)] = [t["title"], t["album_id"], t["artist_id"], t["year"], t["genre"],
                           t["track"], t["trashed"], t["artwork_id"], t.get("additional", []), f"/128/abc/{i}", "audio/mpeg",
                           t.get("genres_additional", []), t.get("rating", 0)]
-    albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5}}
+    albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6}}
     for i, a in STATE["albums"].items():
-        albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"]]
+        albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0)]
     artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3}}
     for i, name in STATE["artists"].items():
         artists[str(i)] = [name, [], i in STATE["album_only_artists"], STATE["artist_art"].get(i, 0)]
@@ -70,7 +74,10 @@ def library():
             "status": {"lastmodified": lastmodified()},
             "lastfm": {"sessionkey": "secret-lastfm-session"},
             "library": {"albums": albums, "tracks": tracks, "artists": artists, "expires": 1999999999,
-                        "playlists": {"map": {}}, "tags": {}}}
+                        "playlists": {"map": {"name": 0, "type": 1, "tracks": 2, "system_created": 3, "description": 4},
+                                      "777": ["Recently Played", "recently-played", STATE["recent_tracks"][:], True, ""],
+                                      **{str(i): [p["name"], None, p["tracks"], False, p.get("description", "")] for i, p in STATE["playlists"].items()}},
+                        "tags": {}}}
 
 
 def lastmodified():
@@ -165,6 +172,20 @@ class H(BaseHTTPRequestHandler):
             if url.path == "/library":
                 STATE["downloads"] += 1
                 return self.send(200, library())
+            if "history" in body:
+                STATE["play_requests"].append(body)
+                if STATE["busy"]:
+                    STATE["busy"] -= 1
+                    return self.send(503, {"message": "busy"})
+                for day in body["history"]:
+                    for track_id, count in day["plays"].items():
+                        track = STATE["tracks"][int(track_id)]
+                        track["plays"] = track.get("plays", 0) + count
+                        if count > 0:
+                            track_id = int(track_id)
+                            STATE["recent_tracks"] = [track_id, *[i for i in STATE["recent_tracks"] if i != track_id]]
+                if not STATE["frozen"]:
+                    STATE["version"] += 1
             if mode == "status":
                 return self.send(200, {"result": True, "status": {"lastmodified": lastmodified(), "plays": 42,
                                                                   "available": 5, "achievement_status": {"1": {}}},
@@ -172,12 +193,13 @@ class H(BaseHTTPRequestHandler):
                                        "dropbox": {"linked": False}, "googledrive": {"linked": False},
                                        "user": {"username": "wilfred", "id": "7", "token": "x",
                                                 "email_address": "wilfred@example.com", "verified": True,
-                                                "verified_on": "2021-11-28 19:00:00", "premium": False,
+                                                "verified_on": "2021-11-28 19:00:00", "premium": STATE["premium"],
+                                                "session": {"session_uuid": "tagcast-session", "sessions": [{"session_uuid": "remote-session", "device_name": "Living room", "joinable": True}]},
                                                 "preferences": {"combine_sets": "1" if STATE["combine_sets"] else "0"}}})
             if mode == "update_album" and STATE["combine_sets"]:
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode in ("update_album", "update_track", "create_artist", "set_artwork",
-                        "set_artist_artwork", "trash", "ratetrack"):
+                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "createplaylist", "appendplaylist", "updateplaylist", "deleteplaylist"):
                 if STATE["busy"]:
                     STATE["busy"] -= 1
                     return self.send(503, {"message": "busy"})
@@ -191,6 +213,26 @@ class H(BaseHTTPRequestHandler):
             if mode == "trash":
                 for track_id in body["tracks"]:
                     STATE["tracks"][track_id]["trashed"] = True
+                return self.send(200, {"result": True})
+            if mode == "playqueue_token":
+                return self.send(200, {"result": True, "token": "one-use-secret"})
+            if mode == "ratealbum":
+                assert type(body["album_id"]) is int
+                STATE["albums"][body["album_id"]]["rating"] = body["rating"]
+                return self.send(200, {"result": True})
+            if mode == "createplaylist":
+                i = max([800, *STATE["playlists"]]) + 1
+                STATE["playlists"][i] = {"name": body["name"], "description": body["description"], "tracks": body["tracks"][:]}
+                return self.send(200, {"result": True, "playlist_id": i})
+            if mode == "deleteplaylist":
+                STATE["playlists"].pop(int(body["playlist"]), None)
+                return self.send(200, {"result": True})
+            if mode in ("appendplaylist", "updateplaylist"):
+                p = STATE["playlists"][int(body["playlist"])]
+                p["tracks"] = list(dict.fromkeys([*p["tracks"], *body["tracks"]])) if mode == "appendplaylist" else body["tracks"][:]
+                for field in ("name", "description"):
+                    if field in body:
+                        p[field] = body[field]
                 return self.send(200, {"result": True})
             if mode == "ratetrack":
                 for track_id in body["track_id"]:

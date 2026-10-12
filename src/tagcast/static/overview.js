@@ -19,16 +19,23 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  if (typeof closeQueueActions === "function") closeQueueActions();
+  if (typeof closeCoverLightbox === "function") closeCoverLightbox();
   if (name !== "browse" && typeof browseView !== "undefined") {
     clearTimeout(browseTimer); browseView.request += 1; browseView.loading = false;
   }
   if (name !== "album") { albumView.request += 1; albumView.loading = false; }
   state.screen = name;
+  $("#collections-page").hidden = !["playlists", "album-favourites"].includes(name);
+  $("#show-playlists").classList.toggle("active", name === "playlists");
+  $("#show-album-favourites").classList.toggle("active", name === "album-favourites");
   $("#overview-page").hidden = name !== "overview";
   $("#albums-page").hidden = name !== "albums";
   $("#album-page").hidden = name !== "album";
   $("#artists-page").hidden = name !== "artists";
   $("#favourites-page").hidden = name !== "favourites";
+  $("#recently-played-page").hidden = name !== "recently-played";
+  $("#show-recently-played").classList.toggle("active", name === "recently-played");
   $("#show-favourites").classList.toggle("active", name === "favourites");
   $("#tracks-page").hidden = name !== "tracks";
   $("#browse-page").hidden = name !== "browse";
@@ -37,8 +44,9 @@ function showScreen(name) {
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
   $("#show-artists").classList.toggle("active", name === "artists");
   $("#show-tracks").classList.toggle("active", name === "tracks");
-  $("#breadcrumb").textContent = name === "browse" ? browseKinds[browseView.kind].label : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites"
+  $("#breadcrumb").textContent = name === "browse" ? browseKinds[browseView.kind].label : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
+  if (["playlists", "album-favourites"].includes(name) && typeof renderCollections === "function") renderCollections();
   if (name === "overview") loadOverview();
   if (typeof syncHistory === "function") syncHistory();
 }

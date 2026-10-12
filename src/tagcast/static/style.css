@@ -140,6 +140,14 @@ body.busy,body.busy *{cursor:progress!important}
 .art-drop input{display:none}
 
 /* ---- settings ------------------------------------------------------------- */
+html[data-library-notice="hidden"] #library-notice{display:none}
+#library-notice{align-items:center}
+#data-notice{flex:1;min-width:0}
+.notice-dismiss{border:0;background:transparent;color:inherit;flex-shrink:0;font-size:20px;line-height:1;padding:2px 5px;min-width:28px;min-height:28px;border-radius:4px}
+.notice-dismiss:hover{background:var(--palette-surface,#fff)}
+.playback-settings,.source-settings{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.interface-settings h3,.playback-settings h3,.source-settings h3{margin:0 0 14px}
+.interface-settings{margin-top:16px}
 .settings-dialog{width:min(640px,94vw)}
 .setting-row{display:grid;grid-template-columns:1fr minmax(180px,240px) auto;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
 .setting-row strong{font-size:13px}
@@ -303,7 +311,7 @@ img.brand-mark{width:42px;height:42px;background:none;border-radius:10px;padding
 /* ---- album browsing and playback --------------------------------------- */
 .album-detail{padding:30px 0}
 .album-detail-header{display:flex;align-items:center;gap:30px;margin:26px 0 34px}
-.album-detail-header>.cover{width:220px;flex-shrink:0}
+.album-detail-header>.album-cover-preview{width:220px;flex-shrink:0}
 .album-detail-info{min-width:0}
 .album-detail-info h1{font-size:34px;overflow-wrap:anywhere}
 .album-detail-info>.text-action{font-size:16px}
@@ -339,7 +347,7 @@ img.brand-mark{width:42px;height:42px;background:none;border-radius:10px;padding
 .album-tracks tr.found td{background:#fbf3e6}.album-tracks tr.found td:first-child{box-shadow:inset 3px 0 0 var(--orange)}
 .album-tracks tr.playing td{background:var(--palette-tint,#eef4e2)}
 .album-tracks tr.playing .album-track-play{color:var(--orange)}
-@media(max-width:760px){.album-detail-header{align-items:flex-start;gap:18px}.album-detail-header>.cover{width:110px}.album-detail-header .cover-caption{display:none}.album-detail-info h1{font-size:24px;letter-spacing:-.7px}.album-tracks td,.album-tracks th{padding:12px 9px}.album-tracks .track-number{width:65px}.album-tracks .track-time{width:60px}.topbar{height:auto;min-height:70px;padding:14px 0;flex-direction:column;align-items:flex-start;gap:12px}.top-actions{gap:8px;flex-wrap:wrap;justify-content:flex-start}.topbar>div:first-child{min-width:0;overflow-wrap:anywhere}}
+@media(max-width:760px){.album-detail-header{align-items:flex-start;gap:18px}.album-detail-header>.album-cover-preview{width:110px}.album-detail-header .cover-caption{display:none}.album-detail-info h1{font-size:24px;letter-spacing:-.7px}.album-tracks td,.album-tracks th{padding:12px 9px}.album-tracks .track-number{width:65px}.album-tracks .track-time{width:60px}.topbar{height:auto;min-height:70px;padding:14px 0;flex-direction:column;align-items:flex-start;gap:12px}.top-actions{gap:8px;flex-wrap:wrap;justify-content:flex-start}.topbar>div:first-child{min-width:0;overflow-wrap:anywhere}}
 .page-back{margin-top:30px}.page-back+.page-intro{padding-top:26px}
 
 /* Release notifications share the existing controls; checking never blocks the library. */
@@ -388,6 +396,18 @@ body.has-player .now-playing-panel{bottom:76px}
 .queue-add.queue-compact{display:inline-grid;place-items:center;flex:none;width:36px;min-height:36px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--palette-surface,#fff);color:var(--green);font-size:23px}
 .queue-add.queue-compact:hover{background:var(--palette-tint,#edf2e7)}
 .queue-add.queue-compact:disabled{opacity:.4}
+.queue-menu-trigger,.queue-add.queue-menu-trigger:not(.button){display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.queue-add.queue-menu-trigger:not(.button){width:42px}
+.queue-menu-trigger svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.queue-action-menu{position:fixed;z-index:90;width:220px;max-width:calc(100vw - 16px);padding:5px;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 25px #0002}
+.queue-action-menu button{display:block;width:100%;padding:11px 12px;border:0;border-radius:5px;background:none;color:inherit;text-align:left;font:inherit;font-size:13px}
+.queue-action-menu button:hover,.queue-action-menu button:focus-visible{background:var(--palette-tint,#edf2e7)}
+.queue-action-menu strong,.queue-action-menu small{display:block}
+.queue-action-menu small{font-size:11px;color:var(--muted);margin-top:4px}
+.favourite-button.is-pending{position:relative;opacity:.65}
+.favourite-button.is-pending:after{content:"";position:absolute;inset:1px;border:1px dashed currentColor;border-radius:50%}
+.album-rating{flex-wrap:wrap}
+.album-rating-status{flex-basis:100%;font-size:11px}
 .performer-link{font-size:inherit}
 #player-extra-artists{display:flex;gap:3px;min-width:0;overflow:hidden}
 .cleanup-dialog{width:min(1000px,94vw)}
@@ -408,12 +428,13 @@ body.has-player .now-playing-panel{bottom:76px}
 .cleanup-rule-summary{font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 .album-tracks .track-heart{width:80px;white-space:nowrap}
 @media(min-width:1200px){body.now-playing-open main{margin-right:360px}body.now-playing-open .album-grid,body.now-playing-open .artists-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:760px){.player{display:grid;grid-template-columns:42px minmax(0,1fr) repeat(6,30px);gap:6px;padding:8px 12px}.player-text{width:auto;font-size:11px}.player-meta{font-size:10px}.player audio{grid-row:2;grid-column:1/-1;width:100%;min-width:0}.player-button{padding:5px 0}.player-queue{font-size:11px}.player-queue span{display:none}body.has-player .now-playing-panel{bottom:110px}body.has-player main{padding-bottom:130px}.album-tracks .track-heart{width:60px;padding-right:4px}.queue-add:not(.button):not(.queue-compact){width:25px}.now-playing-header{padding:14px 20px}}
+@media(max-width:760px){.player{display:grid;grid-template-columns:42px minmax(0,1fr) repeat(6,30px);gap:6px;padding:8px 12px}.player-text{width:auto;font-size:11px}.player-meta{font-size:10px}.player audio{grid-row:2;grid-column:1/-1;width:100%;min-width:0}.player-button{padding:5px 0}.player-queue{font-size:11px}.player-queue span{display:none}body.has-player .now-playing-panel{bottom:110px}body.has-player main{padding-bottom:130px}.album-tracks .track-heart{width:60px;padding-right:4px}.queue-add:not(.button):not(.queue-compact):not(.queue-menu-trigger){width:25px}.now-playing-header{padding:14px 20px}}
 .now-playing-cover>.cover{width:100%;height:100%;border-radius:0}
 
 .sidebar-settings{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
-.sidebar-version{flex:none}
-.sidebar-version .pill{background:#ffffff08;border:1px solid var(--palette-shell-line,#526857);color:var(--palette-shell-muted,#a5b6a8);padding:3px 7px;font-size:10px}
+.brand-title{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.brand-version{flex:none;letter-spacing:0;line-height:1}
+.brand-version .pill{background:none;border:0;color:var(--palette-shell-muted,#a5b6a8);padding:0;font-size:10px;font-weight:400}
 
 /* Playback actions stay apart from search and sort, with room on narrow screens. */
 .results-line.album-actions{align-items:center;flex-wrap:wrap}
@@ -458,3 +479,35 @@ body.visual-player-open{overflow:hidden}
 .topbar>div:first-child{min-width:0;overflow-wrap:anywhere}
 .top-actions{flex-wrap:wrap;justify-content:flex-end;gap:10px}
 @media(max-width:760px){.topbar{align-items:flex-start;flex-direction:column;padding:16px 0;gap:12px}.top-actions{justify-content:flex-start;width:100%}.theme-menu{left:0;right:auto}.top-actions .button{padding:9px 10px}}
+
+/* Cover previews use a modal image view without touching the audio or library. */
+.album-cover-preview{padding:0;border:0;background:none;color:inherit;border-radius:7px}
+.album-cover-preview .cover{width:100%}
+.album-cover-preview:not(:disabled),[data-cover-preview],.visual-player-cover{cursor:zoom-in}
+.player-stage .visual-player-cover{padding:0;border:0;color:inherit}
+.cover-lightbox{width:min(94vw,1060px);max-width:94vw;max-height:94vh;max-height:94dvh;padding:20px}
+.cover-lightbox[open]{display:flex;flex-direction:column;gap:14px}
+.cover-lightbox .dialog-heading{margin:0;align-items:flex-start;gap:18px}
+.cover-lightbox h2{font-size:20px;margin:0;overflow-wrap:anywhere}
+.cover-lightbox #cover-lightbox-artist{margin:5px 0 0}
+.cover-lightbox-picture{min-height:180px;min-width:0;text-align:center}
+.cover-lightbox-picture img{display:block;margin:auto;width:auto;height:auto;max-width:100%;max-height:calc(90vh - 140px);max-height:calc(90dvh - 140px);object-fit:contain;border-radius:4px}
+.cover-lightbox-picture img[hidden]{display:none}
+.cover-lightbox #cover-lightbox-help{margin:0;text-align:center;font-size:11px}
+.cover-lightbox::backdrop{background:#000c;backdrop-filter:blur(6px)}
+.cover-lightbox-open{overflow:hidden}
+
+/* Official vendor logo is displayed without recolouring or changing its proportions. */
+.ibroadcast-branding{flex:none;width:104px}
+.ibroadcast-branding a{display:block}
+.ibroadcast-branding img{display:block;width:100%;height:auto}
+
+/* Native collections and opt-in playback controls reuse palette roles. */
+.album-rating{display:flex;align-items:center;gap:8px;margin:14px 0}.album-rating button{font-size:24px}.album-rating button:last-of-type{font-size:13px}
+.player-quality{display:block;font-size:10px;color:var(--palette-muted,#7b8578);margin-top:3px}
+.playlist-cards,.device-list{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.playlist-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:180px}.collection-search{min-width:240px;max-width:100%}
+#playlist-dialog,#devices-dialog{width:min(760px,calc(100vw - 32px));max-height:90vh;overflow:auto}
+#playlist-dialog-content form>label,#remote-controls>label{display:flex;flex-direction:column;gap:8px;margin:16px 0}.playlist-review-tracks{max-height:42vh;overflow:auto;margin:18px 0}.playlist-review-tracks .checkline{margin-bottom:10px}
+#player-repeat{min-width:36px;font-size:13px}.now-playing-footer{gap:8px;flex-wrap:wrap}
+.collection-search,#playlist-form input:not([type=checkbox]),#playlist-form textarea,#playlist-form select,#remote-controls input:not([type=range]),#remote-controls select,.playback-settings select{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
+.collection-search{width:min(560px,100%)}#playlist-form textarea{min-height:80px;resize:vertical}.playback-settings>label:has(select){display:flex;gap:12px;align-items:center;flex-wrap:wrap}

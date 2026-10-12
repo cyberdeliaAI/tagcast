@@ -146,6 +146,53 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(library.favourites()["tracks"][0]["album_id"], "10")
 
 
+class RecentlyPlayedTests(unittest.TestCase):
+    def test_native_type_order_search_pagination_and_cache_without_private_playlist_data(self):
+        data = raw()
+        data["library"]["playlists"] = {
+            "map": {"type": 0, "name": 1, "tracks": 2, "public_id": 3},
+            "7": [None, "Recently Played", [102], "private-key"],
+            "8": ["recently-played", "Translated title", [104, 101, 999, 103, 100, 101], "private-key"],
+        }
+        library = Library(data)
+        self.assertEqual(library.recent_track_ids, [104, 101, 999, 103, 100])
+        found = library.recently_played(limit=2)
+        self.assertTrue(found["available"])
+        self.assertEqual(found["total"], 3)
+        self.assertEqual([t["id"] for t in found["tracks"]], ["104", "101"])
+        self.assertEqual(library.recently_played(offset=99, limit=2)["tracks"][0]["id"], "100")
+        self.assertEqual([t["id"] for t in library.recently_played("song")["tracks"]], ["101", "100"])
+        cached = library.to_cache()
+        self.assertIn("playlists", cached["library"])
+        self.assertNotIn("private-key", str(cached))
+        self.assertEqual(Library(cached).recently_played(), library.recently_played())
+        self.assertNotIn("played_at", found["tracks"][0])
+
+    def test_missing_playlist_is_distinct_from_empty_and_old_cache(self):
+        data = raw()
+        self.assertFalse(Library(data).recent_loaded)
+        data["library"]["playlists"] = {"map": {"type": 0, "tracks": 1}}
+        library = Library(data)
+        self.assertTrue(library.recent_loaded)
+        self.assertFalse(library.recently_played()["available"])
+        self.assertTrue(Library(library.to_cache()).recent_loaded)
+        data["library"]["playlists"]["8"] = ["recently-played", []]
+        self.assertTrue(Library(data).recently_played()["available"])
+        self.assertEqual(Library(data).recently_played()["tracks"], [])
+        data["library"]["playlists"]["8"][1] = "100"
+        self.assertFalse(Library(data).recently_played()["available"])
+        data["library"]["playlists"] = {"map": {}, "8": []}
+        library = Library(data)
+        self.assertEqual(library.playlist_count, 1)
+        self.assertFalse(library.recently_played()["available"])
+
+    def test_combined_disc_ids_resolve_to_the_displayed_album(self):
+        data = raw()
+        data["library"]["tracks"]["100"][1] = 99
+        data["recently_played"] = [100]
+        self.assertEqual(Library(data).recently_played()["tracks"][0]["album_id"], "10")
+
+
 class BrowseTests(unittest.TestCase):
     def test_track_artists_use_ids_and_exact_names_not_substring_matches(self):
         data = raw()
@@ -334,6 +381,31 @@ class ComposerAndGapTests(unittest.TestCase):
                        "11": ["Angel", 11, 6, 1]}}})
         self.assertEqual(library.album_summary(10)["duplicates"], 1)
         self.assertEqual(library.album_summary(11)["duplicates"], 0)
+
+    def test_duplicate_tracks_ignore_quotes_but_keep_version_text(self):
+        pairs = [
+            ('Red Shoes (from the "Dumplin\'" Original Motion Picture Soundtrack)',
+             "Red Shoes (from the Dumplin' Original Motion Picture Soundtrack)", 1),
+            ("Holdin’ On To You", "Holdin' On To You", 1),
+            ("“Angel”", "angel", 1),
+            ("Song (Live)", "Song", 0),
+            ("Song (Radio Edit)", "Song", 0),
+            ("Song (Parts I–V)", "Song (Parts VI–IX)", 0),
+            ("Rock & Roll", "Rock Roll", 0),
+            ("'''", '"""', 0),
+        ]
+        for first, second, expected in pairs:
+            with self.subTest(first=first, second=second):
+                data = {"library": {
+                    "artists": {"map": {"name": 0}, "6": ["Dolly Parton"]},
+                    "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2},
+                               "10": ["Dumplin'", 6, [1, 2]]},
+                    "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "track": 3},
+                               "1": [first, 10, 6, 4], "2": [second, 10, 6, 4]}}}
+                library = Library(data)
+                self.assertEqual(library.album_summary(10)["duplicates"], expected)
+                self.assertEqual([library.track_view(i)["title"] for i in (1, 2)],
+                                 [first, second])  # Comparing never changes stored titles.
 
     def test_composers_keep_other_extra_artists(self):
         plan = plan_save(self.library(), [change("track", 1, 10, composers=(["Bach"], ["Bach", "Guest"]))])

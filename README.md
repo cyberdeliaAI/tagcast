@@ -2,13 +2,14 @@
 
 <h1 align="center">Tagcast</h1>
 <p align="center"><b>Metadata editor &amp; player for iBroadcast.</b></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="src/tagcast/static/ibroadcast-dark-compact-powered.svg"><img src="src/tagcast/static/ibroadcast-light-compact-powered.svg" width="220" alt="Powered by iBroadcast"></picture><br><small>Independent app by Cyberdelia</small></p>
 <p align="center"><a href="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml"><img src="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml/badge.svg" alt="Tests"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2e7d4f" alt="MIT license"></a></p>
 
 Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collection. Fix metadata, find album covers and artist images, review your changes, then save them to iBroadcast.
 
 Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
 
-**New in [0.30.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.30.0):** Reviewed batch cleanup for genres, track artists and composers; exact genre renaming, splitting and removal; full random album playback; fullscreen Now playing; four colour palettes; FLAC/MP3 format labels; and an optional automatic browser launch. Standalone downloads include all these features and everything needed to run Tagcast.
+**New in [0.40.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.40.0):** Streaming quality controls; album ratings and favourites; native playlists, including adding one track and saving the queue; Play next and repeat; optional play reporting and Recently played; optional queue synchronisation and remote control; and a cover lightbox. All features are included in the standalone downloads for macOS, Windows and Linux.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
 
@@ -20,14 +21,14 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.30.0** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.40.0** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.30.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.30.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.30.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.30.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.30.0/tagcast-0.30.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.30.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.40.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.40.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.40.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.40.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.40.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
 On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
 
@@ -120,7 +121,8 @@ Tagcast signs in through an app you register in your own iBroadcast account. You
 4. Next to **Your Apps**, click **+**. Give the app a name, such as *Tagcast*, and a short description, then save it.
 5. Open your new app and copy its **client ID**. The client secret is not needed.
 
-An app you made yourself works for your own account without requesting a review.
+Use the client ID registered in your own account. If you distribute an iBroadcast
+app registration for other users, follow iBroadcast's [App Review requirements](https://help.ibroadcast.com/en/developer/branding#app-review).
 
 <details>
 <summary>Where to find Apps, Developers and Your Apps</summary>
@@ -183,30 +185,140 @@ Open an album and choose **Play album**, or use ▶ beside a track to start ther
 | Control | What happens |
 |---|---|
 | **Play album / ▶ on a track** | Starts that album, from the chosen track, and replaces the existing queue. Clicking the already-current track toggles pause/play. |
-| **+** on an album card / **Add to queue** on its page | Appends the entire album, including every disc of a set, without interrupting the current track. |
-| **+** beside a track | Appends just that track. An empty queue starts playing when you add to it. |
+| **+ ▾** on an album card / **+ Queue ▾** on its page | Opens a menu for the entire album, including every disc of a set. Opening the menu does not change playback. |
+| **+ ▾** beside a track | Opens the same menu for just that track. Use the arrow keys to choose, Escape to close, or click outside. |
+| **Add to queue** in the menu | Appends the chosen track or album without interrupting the current track. An empty queue starts playing when you add to it. |
 | **Player cover / queue button** | Opens **Now playing** with a large cover, the current track and the full play queue. Click a queue entry to jump to it. |
+| **Play next** in the menu | Adds a track or a full album to Up next in click order, preserving disc/track order. Up next is consumed before returning to the original queue. |
+| **Add to playlist…** in a track's **+ ▾** menu | Reviews adding only that track to a private new playlist or an existing playlist. Available in album tracks, Tracks, Favourites, Recently played and playlist tracks. |
+| **↻ Repeat** | Cycles Off → Queue → Track. Queue repeat preserves album order; Track repeat applies when a track ends naturally. |
+| **Save as playlist…** | Prepares a review of the queue before creating a private native playlist or appending to an existing playlist. |
 | **Clear queue & stop** | Stops playback and removes the entire queue, including the current track. |
 
 Use the player's previous/next buttons, seek bar and volume controls while browsing. Its album artist and album title link to their pages. A third line appears when the track artist differs; that name opens albums featuring that track artist.
 
 Track rows show the file format (such as FLAC or MP3) below the duration when iBroadcast provides a recognized format. The same label appears in Tracks search and Favourites; it requires no extra requests and does not indicate the playback stream’s bitrate or resolution.
 
-The queue lives in the current browser page and resets when you reload it. It is not synced with iBroadcast's queue or saved as a playlist. Audio goes through Tagcast's local server, keeping the access token out of the page; supported audio formats depend on your browser. **Tagcast does not report play counts or Last.fm scrobbles.**
+By default, the queue lives in the current browser page and resets when you reload it. Save it as a playlist to keep its contents, or explicitly connect the optional queue synchronisation described below. Audio goes through Tagcast's local server, keeping the access token out of the page; supported audio formats depend on your browser. **Play reporting is off by default.** Enable **Settings → Playback → Record played tracks in iBroadcast** to send a track ID and UTC timestamp after more than ten seconds of actual listening. Pauses, buffering and seeking do not count toward the threshold. Each playback sends at most one play; replaying the track starts another. Enabling midway starts counting from that moment; earlier plays and skips are not sent. An uncertain request is not automatically retried, so a network failure can leave a play unrecorded. Playback continues, and the error is available in Settings. Tagcast itself does not send Last.fm scrobbles.
 
 ![Now playing in Tagcast 0.20.0: a large album cover, the play queue and Clear queue & stop alongside the light-theme album browser](docs/screenshots/now-playing-light.png)
+
+### Streaming quality, album ratings and playlists
+
+**Settings → Playback → Streaming quality** chooses MP3 96/128/192/256/320 kbps
+or **Original**. The preference applies to the next track. [Free accounts use 128 kbps](https://help.ibroadcast.com/playing-music); all other choices, including 96 kbps and Original, require Premium; a free account uses 128 kbps for a selected
+Premium option. The player displays **File: FLAC · Stream: MP3 128 kbps**, for
+example: the uploaded file format and this playback request are different things.
+If Original cannot play in the browser, Tagcast tries MP3 128 kbps once and labels
+the fallback. It does not infer bit depth, sample rate or audio identity.
+
+The album page has native **0–5 star ratings** and an **album favourite** heart
+(rating 5). **Album favourites** lists the rated albums using existing summaries.
+A merged set is rated disc by disc and appears as a favourite when every disc is
+rated 5. Mixed ratings are shown explicitly. Each write checks the current rating
+and reads it back; ratings stay separate from metadata Change history. The requested
+stars appear immediately with **Saving rating…**, followed by **Checking iBroadcast…**
+and a confirmation or error. The cached rating changes only after read-back, and
+the page updates automatically. Large libraries can still take time to verify.
+Track hearts also show the requested choice while saving/checking.
+
+**Playlists** lists your editable iBroadcast playlists. Open one to play from its
+first track or any selected position, rename it or uncheck tracks in an edit.
+**Add to playlist…** on an album includes all of its discs in order. **Save as
+playlist…** in Now playing saves the entire queue; **Add this track to playlist…**
+adds only the currently playing track. A track's **+ ▾ → Add to playlist…** does the
+same for a selected track without loading its entire album. Choose a private new playlist
+or find an existing playlist by name; **Add current queue…** on a playlist page
+appends directly to that playlist after review. Repeated track IDs are retained
+once in their first position, as iBroadcast's append operation does. System
+playlists and folders cannot be edited. Nothing is sent until **Save to
+iBroadcast**, and a stale preview is rejected before writing. A failed/uncertain
+creation or append is never retried automatically; inspect Playlists first.
+
+Open a playlist and choose **Delete playlist…** to review its name and track count.
+Confirm **Delete playlist** to remove that playlist from iBroadcast. Its music stays
+in your library and the current play queue keeps running. System playlists and
+folders are protected; a changed name or track list requires a new review. Deletion
+is read back, cannot be undone in Tagcast and is never retried automatically.
+
+### Optional queue synchronisation and remote control
+
+1. Enable **Settings → Devices & queue synchronisation → Enable queue
+   synchronisation and remote control**, then save.
+2. Use **Reconnect iBroadcast** and approve `user.queue:read` and
+   `user.queue:write`. Ordinary sign-in keeps the existing library/account scopes
+   when this option is disabled.
+3. Open **Devices** and choose **Connect this app's queue**. Restore the saved
+   queue and explicitly play here, or replace it with your current local queue.
+4. Choose **Control [device]** to join an available device's queue. Previous/Next,
+   Play/Pause, position, volume and repeat control that device. The controller
+   pauses its local audio, records no plays and never advances a finished track.
+5. **Disconnect queue** stops the bridge without stopping the remote device.
+   Disabling the option closes the connection. Only one browser tab owns a bridge;
+   another tab can explicitly disconnect it before taking over.
+
+The server obtains a fresh one-use WebSocket token and keeps it and OAuth tokens
+out of the frontend. It restores native `tracks`/`play_next`, retains the base
+queue for Previous and repeat, and waits five seconds between reconnect attempts.
+Library-change notifications offer a manual reload so an edit is not interrupted.
+These flows are covered by mock API/WebSocket tests and browser interaction checks;
+compatibility with a particular real iBroadcast device still requires its live
+session and the additional OAuth consent. Queue synchronisation is independent
+of optional play reporting and is off by default.
+
+### Settings and the library information banner
+
+**Settings** in the sidebar contains playback recording, online sources and keys,
+automatic lookups and Tagcast update checks. Use the **×** at the right of the
+library information banner to hide it. This preference is remembered in the
+current browser. Restore it through **Settings → Interface → Show library information
+banner**. Hiding this banner does not hide save errors or review warnings, and
+changing these preferences does not restart the player.
+
+### Enlarging album covers
+
+Double-click an album cover in the album grid or list, on the album page, or in
+the player to open a lightbox. Covers in genre, year and decade selections work
+the same way. Close with **Escape**, the **×**, or a click outside the image view.
+
+A single mouse click on a small cover waits briefly for a second click, then
+keeps its usual action: open the album or Now playing. Album titles and keyboard
+activation keep their immediate action. On the album page and fullscreen Now
+playing, focus the cover and press Enter to enlarge it.
+
+The viewer contains the full image without cropping. Larger iBroadcast artwork
+loads only when you open it; if unavailable, Tagcast falls back to the existing
+cover. Playback, the queue and browser history stay unchanged.
+
+### Recently played
+
+Enable **Settings → Playback → Record played tracks in iBroadcast** to show
+**Recently played** in the sidebar. This page reads iBroadcast's native recent
+tracks playlist, including plays reported by your other devices. Disabling play
+recording hides the page; Tagcast does not maintain a separate local listening list.
+
+Tracks stay in iBroadcast's order, most recent first, with each track appearing
+once. The playlist does not provide play timestamps or a complete event history.
+Search and pagination run on the server; play a track, open its album, or add it
+to the queue using the usual controls.
+
+Opening the page checks for an updated library. **Refresh from iBroadcast** fetches
+it again, including when iBroadcast's change timestamp has not advanced. A large
+library can take longer to refresh; playback never downloads the library just to
+update this page. Older caches are upgraded once on first use. If iBroadcast does
+not supply this playlist, the page explains that it is unavailable.
 
 ### Favourites
 
 Click the **heart** on an album track, a track search result or the player to add or remove a favourite. **Favourites** gives you a searchable, paginated list of your liked tracks; you can play them or add them to the queue.
 
-Favourites use **iBroadcast's native track ratings**: adding sets the rating to **5**, and removing clears it to **0**. Tracks rated 5 or higher are already included. Replacing a lower nonzero rating asks for confirmation first. These changes save directly, check the displayed rating against iBroadcast and read the result back. They are separate from metadata History and Undo.
+Favourites use **iBroadcast's native track ratings**: adding sets the rating to **5**, and removing clears it to **0**. Tracks rated 5 or higher are already included. Replacing a lower nonzero rating asks for confirmation first. These changes save directly, check the displayed rating against iBroadcast and read the result back. They are separate from metadata Change history and Undo.
 
 ### Edit metadata and artwork
 
 1. Open an album and choose **Edit album**. Edit its title, album artist, release year or disc number, and genres or composers for its tracks. Individual tracks can also have their own title, artist, year, track number, genres and composers.
 2. Use the online suggestions beside the form if helpful. Click a year or genre to fill the form, Shift-click a genre to add it, or choose **Use all** for the suggested genres. Suggestions do not save anything by themselves.
-3. **Review** the before/after values, then choose **Save to iBroadcast**. Tagcast checks the existing values first and downloads the library again to confirm accepted writes. History shows the progress and result.
+3. **Review** the before/after values, then choose **Save to iBroadcast**. Tagcast checks the existing values first and downloads the library again to confirm accepted writes. Change history shows the progress and result.
 
 To edit several albums, open **one album artist**, tick their album cards and edit the selection. Only the fields you enable are changed. Album year changes leave track years alone unless you tick **Also apply the release year to tracks**; individual track edits take precedence over album-wide edits.
 
@@ -281,14 +393,18 @@ Remove unwanted duplicate copies from an album in three reviewed steps:
 
 Tagcast first checks that the selected tracks are still active on their albums,
 then moves them to **iBroadcast's trash** and reads the result back. Wait for the
-checking to finish; **History** shows the result. These tracks leave the active
+checking to finish; **Change history** shows the result. These tracks leave the active
 library in Tagcast and other iBroadcast apps. They are never permanently deleted
 by Tagcast, and your local music files are unchanged. Restore them through
 **iBroadcast's trash**; Tagcast cannot restore them. An album disappears from
 Tagcast when it has no active tracks left.
 
-Duplicate detection ignores case and spacing in titles. A repeated title at
-track 1 and track 17, or on separate discs, is not a duplicate. Missing track
+Duplicate detection ignores case, spacing and quotation marks in titles. For
+example, `Red Shoes (from the "Dumplin'" Original Motion Picture Soundtrack)` and
+`Red Shoes (from the Dumplin' Original Motion Picture Soundtrack)` match at the
+same track number on the same disc. Straight and curly apostrophes also match.
+Version text such as `(Live)` or `(Radio Edit)` remains part of the comparison.
+A repeated title at track 1 and track 17, or on separate discs, is not a duplicate. Missing track
 numbers are not matched. Audio files and recording quality are not compared,
 and **Select extra copies** does not choose the best-quality recording.
 
@@ -318,21 +434,21 @@ without moving the tracks.
 
 </details>
 
-### Overview and History
+### Overview and Change history
 
 **Overview** shows library totals, collection size, playing time, formats, uploads per year and iBroadcast's existing play counts. **Metadata health** links to albums with missing metadata or artwork. Account and iBroadcast settings are shown here too; settings such as **Combine Multi-Disc Album Sets** are changed on the iBroadcast website.
 
-**History** stores saves and their results in this browser. Export it as JSON with **Export history**. **Clear history** asks for confirmation and removes the local entries, including their artwork Undo information; it does not revert saved changes in iBroadcast. Clearing is available after ongoing saves and read-back checks finish. History belongs to this browser and local address, so another browser or port has its own history.
+**Change history** stores saves and their results in this browser. Export it as JSON with **Export changes**. **Clear change history** asks for confirmation and removes the local entries, including their artwork Undo information; it does not revert saved changes in iBroadcast. Clearing is available after ongoing saves and read-back checks finish. Change history belongs to this browser and local address, so another browser or port has its own history.
 
 ## Updating Tagcast
 
-Tagcast checks GitHub for a newer **stable release** at startup, at most once a day. A notification links to the release page. Use **Sources & keys → Tagcast updates** to check immediately or disable automatic checks. No account credentials or library data are sent to GitHub. Updates are downloaded and installed manually.
+Tagcast checks GitHub for a newer **stable release** at startup, at most once a day. A notification links to the release page. Use **Settings → Tagcast updates** to check immediately or disable automatic checks. No account credentials or library data are sent to GitHub. Updates are downloaded and installed manually.
 
 1. **Stop the old Tagcast first.** Close its desktop launcher, or stop its terminal server with Ctrl+C. Closing only the browser tab is not enough.
 2. Download and extract the new package for your computer, then replace the old application/folder. Source users should update their checkout or use a freshly extracted source archive.
 3. Start the new version. Your account settings, tokens and cache remain in `~/.tagcast/`, or your configured `TAGCAST_HOME`. Reload the browser page if it still shows the old interface.
 
-If you start the new copy while the old server is still running, the launcher opens that existing server. The version at the bottom of the sidebar tells you which version you are using.
+If you start the new copy while the old server is still running, the launcher opens that existing server. The small version beside **Tagcast** at the top of the sidebar tells you which version you are using.
 
 ## Screenshots
 
@@ -340,6 +456,26 @@ Some screenshots of the features released in **0.30.0** were captured during
 development and still show a 0.20.0 badge. The [duplicate-removal walkthrough](#move-tracks-to-trash)
 shows the released 0.30.0 interface. Earlier 0.20.0 views below also illustrate
 browsing and editing.
+
+<details>
+<summary><b>New in 0.40.0: Recently played and Settings</b></summary>
+
+**Recently played:** iBroadcast's recent tracks playlist, with search, paging and
+play/queue controls. **Change history** keeps metadata saves separate from listening.
+
+![Recently played in the iBroadcast inspired palette, with the native recent tracks list and Change history navigation](docs/screenshots/recently-played-ibroadcast.png)
+
+**Settings:** optionally report plays to iBroadcast and restore the library
+information banner after hiding it. Play reporting is off by default; enabling
+it also shows Recently played.
+
+![Settings showing the hidden library banner, optional iBroadcast play reporting and online source keys](docs/screenshots/settings-playback-ibroadcast.png)
+
+These features are included in the 0.40.0 standalone downloads. The screenshots
+were captured during development and still show a 0.30.0 badge; the current
+version is displayed beside Tagcast at the top of the sidebar.
+
+</details>
 
 <details open>
 <summary><b>New in 0.30.0: batch cleanup, formats and fullscreen playback</b></summary>
@@ -443,7 +579,7 @@ The editor keeps album and track metadata alongside source suggestions. A sugges
 
 ## Online sources and keys
 
-MusicBrainz (with Cover Art Archive), Deezer, Apple Music / iTunes (iTunes Search) and TheAudioDB work without a key. Apple covers appear directly among the cover suggestions. For the others, open **Sources & keys** in the sidebar:
+MusicBrainz (with Cover Art Archive), Deezer, Apple Music / iTunes (iTunes Search) and TheAudioDB work without a key. Apple covers appear directly among the cover suggestions. For the others, open **Settings** in the sidebar:
 
 | Source | What it adds | Key |
 |---|---|---|
@@ -453,7 +589,7 @@ MusicBrainz (with Cover Art Archive), Deezer, Apple Music / iTunes (iTunes Searc
 
 Keys are stored in `~/.tagcast/config.json` (readable by you only), or supplied through `DISCOGS_TOKEN`, `LASTFM_API_KEY` and `FANART_API_KEY`. Saved keys stay server-side and are never returned to the page. The Last.fm key is for metadata lookups, not scrobbling.
 
-By default, opening an album's **editor** looks it up in the available sources. Turn automatic lookup off in **Sources & keys** if you prefer to press **Search** yourself. A lookup sends the artist and album name to each source. Requests are spaced per source and responses are cached for an hour.
+By default, opening an album's **editor** looks it up in the available sources. Turn automatic lookup off in **Settings** if you prefer to press **Search** yourself. A lookup sends the artist and album name to each source. Requests are spaced per source and responses are cached for an hour.
 
 Matching ignores case, accents, "The", and edition text such as "(2011 Remaster)" or "- Deluxe Edition"; each suggestion shows its title/artist match score. MusicBrainz and Discogs give the **first release** year. Deezer and Apple Music give the date of the edition they have, which may be a later remaster.
 
@@ -462,8 +598,8 @@ Matching ignores case, accents, "The", and edition text such as "(2011 Remaster)
 **Keep this iBroadcast setting off.** Tagcast groups the discs itself while retaining the separate album records needed to save changes. You can change the setting on [media.ibroadcast.com](https://media.ibroadcast.com/), then reload your library in Tagcast.
 
 - **Setting off:** discs with the same title, album artist, album year and set of upload dates, and different disc numbers appear as one album in Tagcast. One card represents the set, with a CD icon per disc; its album page lists all discs, and Play/Add to queue includes them all. Duplicate disc numbers remain separate, as do different titles such as `Album (CD1)` and `Album (CD2)`.
-- **Editing a set:** title, album artist, year, genres or composers apply across its discs. The review lists changes per disc because iBroadcast receives separate writes. Change a disc number individually with **Edit disc 2**, for example. A shared cover is uploaded once and applied disc by disc, with a History entry and available artwork Undo per disc. Each disc waits for the previous read-back.
-- **Setting on:** iBroadcast combines disc records in the library it sends and refuses album changes. Tagcast warns in the review, can still save supported track changes, and marks album changes **Not sent · setting**. Turn the setting off, reload, and use **Review the rest again** in the results or History.
+- **Editing a set:** title, album artist, year, genres or composers apply across its discs. The review lists changes per disc because iBroadcast receives separate writes. Change a disc number individually with **Edit disc 2**, for example. A shared cover is uploaded once and applied disc by disc, with a Change history entry and available artwork Undo per disc. Each disc waits for the previous read-back.
+- **Setting on:** iBroadcast combines disc records in the library it sends and refuses album changes. Tagcast warns in the review, can still save supported track changes, and marks album changes **Not sent · setting**. Turn the setting off, reload, and use **Review the rest again** in the results or Change history.
 
 The upload-date comparison uses active tracks and calendar dates, ignoring time of day. Unknown years or dates only group with the same unknown values. Different years or dates keep albums separate; these are clues, not release identifiers. This display grouping never splits tracks already inside an iBroadcast album into separate uploads or releases.
 
@@ -474,9 +610,9 @@ The library cache follows this setting, so changing it triggers a fresh download
 1. The server checks your library against iBroadcast and compares every **before** value. If something changed since you loaded it, the conflicting save is blocked and you are asked to reload. If iBroadcast reports no change, the in-memory copy is used; otherwise the library is downloaded first.
 2. Artist names match existing artists by exact name first, then case-insensitively. A new name is flagged in the review and created only when you save.
 3. Only changed, supported fields are sent. Saves are **not transactional**: if a request fails, later metadata requests stop, but earlier accepted changes may already have been applied.
-4. A fresh library download verifies accepted writes. History distinguishes confirmed saves, sent but unconfirmed changes, failures, blocked changes and requests not sent. Read-back runs in the background, shown as **Checking…**.
+4. A fresh library download verifies accepted writes. Change history distinguishes confirmed saves, sent but unconfirmed changes, failures, blocked changes and requests not sent. Read-back runs in the background, shown as **Checking…**.
 
-Temporary network errors, HTTP 429 and 5xx responses are retried twice, after 2 and 6 seconds. Creating an artist is never automatically retried. Refusals are shown in the results and History and logged in the terminal and `~/.tagcast/tagcast.log`.
+Temporary network errors, HTTP 429 and 5xx responses are retried twice, after 2 and 6 seconds. Creating an artist is never automatically retried. Refusals are shown in the results and Change history and logged in the terminal and `~/.tagcast/tagcast.log`.
 
 Artwork has its own comparison and explicit save. The current artwork is checked before uploading and applying the new image, then read back. Album covers apply to active tracks; Undo retains previous artwork IDs per track and restores the available previous images.
 
@@ -523,7 +659,7 @@ TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9555 TAGCAST_HOME=/tmp/tagcast-test \
 
 ## Limits
 
-Tagcast does not upload music, permanently delete tracks or edit local music files. It does not scrobble, report plays, sync its queue or manage saved playlists. Metadata suggestions require your review; automatic updates only notify you and do not install software.
+Tagcast does not upload music, permanently delete tracks or edit local music files. It does not send Last.fm scrobbles. Queue synchronisation and native iBroadcast play reporting are optional and off by default. Playlist changes and metadata suggestions require your review; automatic updates only notify you and do not install software.
 
 An artist name change assigns an existing artist or creates a new one; it does not rename the original artist in place. Metadata saves stay limited to one album or albums by one album artist. Artwork Undo needs a previous image; it does not undo metadata, ratings or trash moves.
 
@@ -533,4 +669,4 @@ Developed by Cyberdelia, with AI-assisted development using Claude (Anthropic) a
 
 ## License
 
-[MIT](LICENSE). Tagcast is an independent project and not affiliated with iBroadcast.
+[MIT](LICENSE) for Tagcast code. The official Powered by iBroadcast logos belong to iBroadcast and are displayed unchanged under its [branding guidelines](https://help.ibroadcast.com/en/developer/branding). Tagcast is an independent project and not affiliated with iBroadcast.

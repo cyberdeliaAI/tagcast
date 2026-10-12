@@ -62,7 +62,8 @@ def run(args):
                     raise RuntimeError("The bundled page version does not match the executable")
                 scripts = page_scripts(page, app.STATIC)
                 for name in [*scripts, "style.css", "dark.css", "palettes.css",
-                             "tagcast-mark.svg", "tagcast-icon.png"]:
+                             "tagcast-mark.svg", "tagcast-icon.png", "ibroadcast-dark-compact-powered.svg",
+                             "ibroadcast-light-compact-powered.svg"]:
                     data, mime = get("/" + name)
                     if not data or (name.endswith(".js") and mime != "text/javascript"):
                         raise RuntimeError(f"The bundled static file is not served correctly: {name}")

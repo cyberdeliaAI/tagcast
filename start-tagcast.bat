@@ -37,6 +37,11 @@ goto :launch
   ".venv\Scripts\python.exe" -m pip install --quiet -e . || goto :failed
 
 :launch
+rem Upgrade dependencies in an existing source environment without clearing it.
+".venv\Scripts\python.exe" -c "import websocket" >nul 2>nul
+if errorlevel 1 (
+  ".venv\Scripts\python.exe" -m pip install --quiet -e . || goto :failed
+)
 ".venv\Scripts\tagcast.exe" --open %*
 goto :done
 
