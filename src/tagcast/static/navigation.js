@@ -63,6 +63,7 @@ function routeLabel(hash) {
 function viewState(index, from) {
   return {index, from, search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
+    artistsRandomNames: $("#artists-sort").value === "random" ? artistBrowse.randomNames : [], artistsLibrary: artistBrowse.library,
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
     collections: {query: collectionsView.query, offset: collectionsView.offset},
     recentSearch: $("#recently-played-search").value, recentPage: recentlyPlayed.page,
@@ -116,6 +117,9 @@ function showRoute(route, saved = {}) {
     if (saved.artistsSearch !== undefined) $("#artists-search").value = saved.artistsSearch;
     if (saved.artistsSort) $("#artists-sort").value = saved.artistsSort;
     if (saved.artistsFilter) $("#artists-filter").value = saved.artistsFilter;
+    if (saved.artistsLibrary === artistBrowse.library && Array.isArray(saved.artistsRandomNames)) {
+      artistBrowse.randomNames = [...new Set(saved.artistsRandomNames.filter(name => typeof name === "string"))];
+    }
     artistBrowse.page = saved.artistsPage || 0;
     showArtistBrowse();
   } else if (route.screen === "tracks") {

@@ -794,6 +794,47 @@ class ClientTests(unittest.TestCase):
         undo = studio.save([edit("track", track["id"], 73, genres=(["Art Pop", "Art Rock"], track["genres"]))])
         self.wait_job(studio, undo["job"])
 
+    def test_invalid_album_or_track_year_blocks_all_metadata_requests(self):
+        studio = self.local_connection()
+        studio.load_library()
+        album = studio.album_details([74])[0]
+        track = album["tracks"][0]
+        for year in [1799, 2051]:
+            for kind, item_id, before in [("album", 74, album["year"]),
+                                          ("track", track["id"], track["year"])]:
+                with self.subTest(kind=kind, year=year), self.assertRaises(ValueError):
+                    studio.save([edit("album", 74, 74, name=(album["name"], "New title")),
+                                 edit(kind, item_id, 74, year=(before, year))]
+                                if kind == "track" else
+                                [edit("album", 74, 74, name=(album["name"], "New title"),
+                                      year=(before, year))])
+                self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
+    def test_various_artists_saves_only_album_artist_and_reads_back_track_credits(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            mock_ibroadcast.STATE["tracks"][904]["additional"] = [[41, None, "artist"]]
+            studio = self.local_connection()
+            studio.load_library()
+            album = studio.album_details([74])[0]
+            tracks = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+            result = studio.save([edit("album", 74, 74, artist_id=(album["artist_id"], 0))])
+            self.assertEqual(result["created_artists"], [])
+            self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 1)
+            write = mock_ibroadcast.STATE["writes"][0]
+            self.assertEqual(write["mode"], "update_album")
+            self.assertEqual(write["albums"], [{"album_id": 74, "artist_id": 0}])
+            self.assertNotIn("tracks", write)
+            self.assertEqual(mock_ibroadcast.STATE["tracks"], tracks)
+            job = self.wait_job(studio, result["job"])
+            self.assertEqual(job["results"][0]["status"], "saved")
+            after = studio.album_details([74])[0]
+            self.assertEqual((after["artist_id"], after["artist"]), (0, "Various Artists"))
+            self.assertEqual(after["tracks"], album["tracks"])
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
     def test_album_only_artist_marked_trashed_still_gets_an_image(self):
         studio = self.connect()  # Pink Floyd (42) is marked trashed in the mock library
         current = studio.album_details(["74"])[0]["artist_artwork_id"]

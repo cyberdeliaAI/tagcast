@@ -25,7 +25,7 @@ FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "a
            "audio/aiff": "AIFF", "audio/x-aiff": "AIFF", "audio/x-ape": "APE", "audio/ape": "APE"}
 
 VIEW_FIELDS = {
-    "album": ("name", "artist", "year", "disc"),
+    "album": ("name", "artist", "artist_id", "year", "disc"),
     "track": ("title", "artist", "year", "genre", "genres", "composers", "track"),
 }
 MAX_GENRES = 20
@@ -768,6 +768,15 @@ def _clean_id(value):
 
 
 def _clean_value(key, value):
+    if key == "year":
+        if isinstance(value, bool) or not isinstance(value, int) \
+                or (value != 0 and not 1800 <= value <= 2050):
+            raise LibraryError("Years must be from 1800 to 2050. Use 0 to clear the year.")
+        return value
+    if key == "artist_id":  # The explicit Various Artists checkbox uses the reserved ID.
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+            raise LibraryError("Only the reserved Various Artists ID can be chosen directly.")
+        return 0
     if key in NUMBER_FIELDS:
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 9999:
             raise LibraryError(f"{key} must be a whole number from 0 to 9999.")
@@ -819,6 +828,8 @@ def plan_save(library, changes):
             raise LibraryError("A change has no fields.")
         if not set(fields) <= set(VIEW_FIELDS[kind]):
             raise LibraryError("Only supported metadata fields can be saved.")
+        if "artist_id" in fields and "artist" in fields:
+            raise LibraryError("Choose an album artist name or Various Artists, not both.")
 
         try:
             now = library.current(kind, item_id)

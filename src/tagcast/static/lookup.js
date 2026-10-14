@@ -92,8 +92,21 @@ function suggestionCard(source, c, index) {
 function setFormField(name, value) {
   const input = $("#metadata-form")?.elements.namedItem(name);
   if (!input || !editing) return;
+  if (name === "year") {
+    try { readYear(value); } catch (error) { toast(error.message); return; }
+  }
+  const previous = input.value;
   if (input.disabled) { const box = document.querySelector(`[data-enable="${name}"]`); if (box) box.checked = true; input.disabled = false; }
   input.value = value; editing.dirty.add(name);
+  if (name === "year") validateYearInput(input);
+  if (name === "artist") {
+    const various = $("#album-various-artists");
+    if (various) {
+      various.checked = value === "Various Artists"; various.indeterminate = false;
+      if (various.checked) input.value = previous;
+    }
+    syncAlbumArtistControls();
+  }
   input.classList.remove("filled"); void input.offsetWidth; input.classList.add("filled");
 }
 
@@ -112,7 +125,10 @@ function openSettings() {
   const keyed = lookup.sources.filter(s => s.key);
   $("#settings-content").innerHTML = `<section class="interface-settings"><h3>Interface</h3>
     <p class="muted">The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
-    <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button></section>`
+    <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
+    <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> Show file format and stream quality in the compact player</label>
+    <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>
+    <p class="muted">These choices apply immediately and are remembered in this browser. Track and album pages and fullscreen Now playing keep their information.</p></section>`
     + (!lookup.sources.length ? '<p class="muted">Playback and source settings need the Tagcast server.</p>' : `
     <form id="settings-form"><section class="playback-settings"><h3>Playback</h3>
     <label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>

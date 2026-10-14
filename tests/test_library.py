@@ -487,6 +487,49 @@ class PlanTests(unittest.TestCase):
         plan = plan_save(lib(), [change("album", 10, artist=("Artist A", "Artist C"))])
         self.assertEqual(plan["artists"], {"Artist C": 6})
 
+    def test_various_artists_uses_reserved_id_without_changing_tracks_or_creating_artist(self):
+        data = raw()
+        data["library"]["artists"]["7"] = ["Various Artists"]
+        library = Library(data)
+        self.assertEqual(library.find_artist("Various Artists"), 7)
+        plan = plan_save(library, [change("album", 10, artist_id=(4, 0)),
+                                   change("album", 12, artist_id=(4, 0))])
+        self.assertEqual(plan["new_artists"], [])
+        self.assertEqual(plan["artists"], {})
+        self.assertEqual(write_requests(plan, {}), [("update_album", {"albums": [
+            {"album_id": 10, "artist_id": 0}, {"album_id": 12, "artist_id": 0}]})])
+        self.assertEqual([r["status"] for r in verify(library, plan, {})],
+                         ["unverified", "unverified"])
+        data["library"]["albums"]["10"][1] = 0
+        data["library"]["albums"]["12"][1] = 0
+        after = Library(data)
+        self.assertEqual(after.album_view(10)["artist"], "Various Artists")
+        self.assertEqual([t["artist"] for t in after.album_view(10)["tracks"]],
+                         ["Artist A", "Artist A"])
+        self.assertEqual([r["status"] for r in verify(after, plan, {})], ["saved", "saved"])
+
+    def test_various_artists_checks_identity_and_rejects_ambiguous_or_unsupported_ids(self):
+        with self.assertRaises(ConflictError):
+            plan_save(edited("albums", 10, "artist_id", 5),
+                      [change("album", 10, artist_id=(4, 0))])
+        for value in [True, False, 4, -1, "0", None]:
+            with self.subTest(value=value), self.assertRaises(LibraryError):
+                plan_save(lib(), [change("album", 10, artist_id=(4, value))])
+        with self.assertRaises(LibraryError):
+            plan_save(lib(), [change("track", 100, 10, artist_id=(4, 0))])
+        with self.assertRaises(LibraryError):
+            plan_save(lib(), [change("album", 10, artist_id=(4, 0),
+                                      artist=("Artist A", "Artist B"))])
+        with self.assertRaises(LibraryError):
+            plan_save(lib(), [change("album", 10, artist_id=(4, 0)),
+                              change("album", 11, artist_id=(5, 0))])
+
+    def test_various_artists_can_be_replaced_by_a_named_album_artist(self):
+        library = edited("albums", 10, "artist_id", 0)
+        plan = plan_save(library, [change("album", 10, artist=("Various Artists", "Artist B"))])
+        self.assertEqual(write_requests(plan, plan["artists"]),
+                         [("update_album", {"albums": [{"album_id": 10, "artist_id": 5}]})])
+
     def test_conflict_is_detected_against_fresh_data(self):
         fresh = edited("albums", 10, "year", 2000)
         with self.assertRaises(ConflictError):
@@ -516,6 +559,28 @@ class PlanTests(unittest.TestCase):
                     change("album", 10, trashed=(False, True)), change("track", 100, 10, name=("", "x"))):
             with self.assertRaises(LibraryError):
                 plan_save(lib(), [bad])
+
+    def test_album_and_track_year_boundaries_allow_clearing_and_future_releases(self):
+        for kind, item_id in [("album", 10), ("track", 100)]:
+            for year in [0, 1800, 2027, 2050]:
+                with self.subTest(kind=kind, year=year):
+                    plan = plan_save(lib(), [change(kind, item_id, 10, year=(1982, year))])
+                    mode, payload = write_requests(plan, {})[0]
+                    self.assertEqual(mode, "update_album" if kind == "album" else "update_track")
+                    self.assertEqual(payload["albums" if kind == "album" else "tracks"][0]["year"], str(year))
+            for year in [-1, 1, 1799, 2051, 9999, True, "2000", 2000.5]:
+                with self.subTest(kind=kind, year=year), self.assertRaises(LibraryError):
+                    plan_save(lib(), [change(kind, item_id, 10, year=(1982, year))])
+
+    def test_existing_bad_year_does_not_block_unrelated_metadata_or_a_valid_correction(self):
+        for year in [1700, 3000]:
+            with self.subTest(year=year):
+                library = edited("albums", 10, "year", year)
+                plan = plan_save(library, [change("album", 10, name=("Original", "Correct title"))])
+                self.assertEqual(write_requests(plan, {}), [("update_album", {
+                    "albums": [{"album_id": 10, "name": "Correct title"}]})])
+                plan = plan_save(library, [change("album", 10, year=(year, 2000))])
+                self.assertEqual(plan["items"][0]["patch"], {"year": 2000})
 
     def test_duplicates_and_empty_saves_are_rejected(self):
         with self.assertRaises(LibraryError):
