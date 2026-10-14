@@ -9,7 +9,7 @@ Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collect
 
 Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
 
-**New in [0.41.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.41.0):** A Various Artists checkbox that preserves track artists; album and track years limited to 1800–2050; simpler album card labels; Random sorting for Album artists; and separate compact-player options for quality information and track artists. All features are included in the standalone downloads for macOS, Windows and Linux.
+**New in [0.41.1](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.41.1):** Sign in directly with Tagcast's public iBroadcast registration. No app creation, client ID entry or client secret is needed. Existing registrations and connections are preserved. This sign-in is included in the standalone downloads for macOS, Windows and Linux.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
 
@@ -21,14 +21,14 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.41.0** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.41.1** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.41.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.41.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.41.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.41.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.41.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.41.1-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.41.1-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.41.1-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.41.1-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.41.1-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
 On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
 
@@ -111,49 +111,43 @@ Use `--port 8913` to choose another local port, for example `uv run --frozen tag
 
 Without an account, Tagcast opens a **demo library** so you can try browsing and preview metadata edits. Demo edits are never saved to iBroadcast. Playback, the play queue and favourites need a live connection.
 
-### 1. Create your own iBroadcast app (once)
+### Sign in from Tagcast
 
-Tagcast signs in through an app you register in your own iBroadcast account. You approve its access on the iBroadcast website; Tagcast does not ask for your iBroadcast password.
-
-1. Open [media.ibroadcast.com](https://media.ibroadcast.com/) and sign in.
-2. Click **your name at the top right** and choose **Apps**.
-3. Scroll to the **bottom** of the Apps page. Under **Developers**, click the **developer** link.
-4. Next to **Your Apps**, click **+**. Give the app a name, such as *Tagcast*, and a short description, then save it.
-5. Open your new app and copy its **client ID**. The client secret is not needed.
-
-Use the client ID registered in your own account. If you distribute an iBroadcast
-app registration for other users, follow iBroadcast's [App Review requirements](https://help.ibroadcast.com/en/developer/branding#app-review).
-
-<details>
-<summary>Where to find Apps, Developers and Your Apps</summary>
-
-**Account menu → Apps**
-
-<img src="docs/screenshots/setup-1-apps-menu.png" width="300" alt="The iBroadcast account menu at the top right, with Apps">
-
-**Bottom of the Apps page → developer**
-
-<img src="docs/screenshots/setup-2-developer-link.png" width="560" alt="The Developers section with the developer link">
-
-**Your Apps → +**
-
-<img src="docs/screenshots/setup-3-your-apps.png" width="420" alt="The developer page with Your Apps and the + button">
-
-</details>
-
-### 2. Sign in from Tagcast
+Tagcast includes its public iBroadcast client ID. **You do not need to create an
+app, copy a client ID or supply a client secret.** You approve access on the
+iBroadcast website; your password stays on iBroadcast.
 
 1. In Tagcast, click **Connect iBroadcast**.
-2. Paste the client ID and click **Save**.
-3. Choose **Sign in with a code**, then **Open iBroadcast sign-in**.
-4. Enter the displayed code if asked, and approve Tagcast on the iBroadcast page.
-5. Return to Tagcast. Your library loads automatically, and the sidebar shows your account name with a green connection dot.
+2. Choose **Sign in with a code**, then **Open iBroadcast sign-in**.
+3. Enter the displayed code if asked, and approve Tagcast on the iBroadcast page.
+4. Return to Tagcast. Your library loads automatically, and the sidebar shows your account name with a green connection dot.
+
+![Tagcast's connection dialog, with direct code sign-in and no client ID setup](docs/screenshots/connect-ibroadcast.png)
 
 The first download of a large library can take a little while. Later starts reuse a local cache when iBroadcast reports no changes. **Reload library** checks for changes; **Download everything again** in the connection dialog forces a fresh download.
 
-For browser redirect sign-in instead, add `http://127.0.0.1:8912/callback` as a redirect URI in your iBroadcast app, then choose **Use browser redirect**. If you use a different port, use that port in the redirect URI too.
+**Existing connections are preserved.** A previously saved client ID or
+`IBROADCAST_CLIENT_ID` environment override still takes precedence, and tokens
+continue to use the registration that issued them. No automatic migration or
+reconnection takes place. If you want to switch an older saved configuration,
+choose **Disconnect**, reopen **Connect iBroadcast**, choose **Use Tagcast sign-in**
+and sign in with a code. An environment override must be removed before restarting
+to switch to Tagcast's default registration.
 
-The client ID, tokens and cache stay in `~/.tagcast/` (`.tagcast` in your user folder on Windows). Set `TAGCAST_HOME` to use another folder. Settings from the earlier `~/.library-studio/` folder are migrated on first start. **Disconnect** revokes the token and removes the local library cache. Source users can also supply `IBROADCAST_CLIENT_ID` as an environment variable.
+Browser redirect remains available for an existing custom configuration. Its
+registered redirect URI must match `http://127.0.0.1:8912/callback`, or the actual
+port you use. The shared Tagcast registration uses code sign-in, which also works
+with the standalone launcher's automatically chosen port.
+
+Tokens, saved configuration and cache stay in `~/.tagcast/` (`.tagcast` in your user
+folder on Windows). Set `TAGCAST_HOME` to use another folder. Settings from the
+earlier `~/.library-studio/` folder are migrated on first start. **Disconnect**
+revokes the token and removes the local library cache. The bundled client ID is
+public; access and refresh tokens are private and stay in the local server.
+
+iBroadcast Support confirmed that Tagcast may distribute its public client ID
+while review is pending. The review determines listing on iBroadcast's Apps page;
+Tagcast does not claim that listing or endorsement.
 
 ## Using Tagcast
 
@@ -639,6 +633,11 @@ As an example, a tested library of roughly **286,000 tracks** required a full do
 Built on [ibroadcast-python](https://github.com/ctrueden/ibroadcast-python) for OAuth device-code and PKCE browser-redirect flows, token refresh and the request format. The requested scopes are `user.library:read`, `user.library:write` and `user.account:read`.
 
 The [public API reference](https://help.ibroadcast.com/en/developer/api) documents library reads and ratings; `trash` is supported by ibroadcast-python. Metadata modes (`update_album`, `update_track`, `create_artist`) and artwork modes (`set_artwork`, `set_artist_artwork`, `get_artwork` and artwork upload) partly follow the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. Year and disc are sent as strings and track number as `track_no`, matching the web editor. These write modes are not all publicly documented; server refusals and partial results are reported explicitly.
+
+During Tagcast's app review, iBroadcast Support confirmed that these metadata and
+artwork operations are acceptable for third-party apps and that the existing
+sidebar logo placement is sufficient. Play and skip reporting are recommended,
+but optional; Tagcast's play reporting remains off by default.
 
 Automated write tests use [the mock iBroadcast server](tests/mock_ibroadcast.py), which lets the save, read-back, trash, rating and artwork flows run without a real account. Passing mock tests does not establish compatibility with every live-service response. Audio streaming follows iBroadcast's web-player format, with the token kept in the local server.
 

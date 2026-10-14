@@ -175,6 +175,8 @@ class Handler(SimpleHTTPRequestHandler):
         routes = {
             "/api/config": lambda b: (self.studio.set_client_id(b.get("client_id")),
                                       self.studio.status())[1],
+            "/api/config/default": lambda b: (self.studio.use_default_client(),
+                                              self.studio.status())[1],
             "/api/auth/device": lambda b: {"device": self.studio.start_device()},
             "/api/auth/cancel": lambda b: (self.studio.cancel_device(), {"ok": True})[1],
             "/api/auth/browser": lambda b: {"url": self.studio.browser_url(self._redirect_uri())},

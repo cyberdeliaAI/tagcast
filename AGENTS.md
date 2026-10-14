@@ -95,6 +95,10 @@ and preserve a valid script order in `index.html`.
 - Settings, tokens, cache and logs default to `~/.tagcast/`; `TAGCAST_HOME` can
   override this. Preserve existing migration support for the earlier name
   `library-studio`.
+- New installations use Tagcast's public OAuth client ID and device-code sign-in,
+  without a client secret or user-created app. Existing environment/saved client IDs
+  and their tokens take precedence; switching to the default is explicit after
+  Disconnect. Preserve browser-redirect sign-in for existing custom configurations.
 - The demo library remains a local preview and is never saved to iBroadcast.
 - Tagcast starts on Album artists. Back and Forward follow the browser history;
   dialogs get no history entry, and Back never closes an open editor.

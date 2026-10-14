@@ -73,6 +73,7 @@ class StartTests(unittest.TestCase):
         studio.check_updates.return_value = {"state": "current", "current": "0.10.1"}
         studio.cleanup.labels.return_value = {"labels": [], "total": 0}
         studio.cleanup.prepare.return_value = {"state": "preview"}
+        studio.status.return_value = {"configured": True, "using_default_client": True}
         handler = type("TestHandler", (app.Handler,), {"studio": studio, "port": 0})
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         handler.port = server.server_port
@@ -93,6 +94,7 @@ class StartTests(unittest.TestCase):
             for path, action in [("/api/playlist", studio.collections.save_playlist),
                                  ("/api/album-rating", studio.collections.rate_album),
                                  ("/api/queue-tracks", studio.collections.queue_tracks),
+                                 ("/api/config/default", studio.use_default_client),
                                  ("/api/queue-sync", studio.queue_sync.action)]:
                 self.assertEqual(request("POST", path), 403)
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)
