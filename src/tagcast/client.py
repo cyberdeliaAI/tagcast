@@ -42,6 +42,8 @@ from .updates import UpdateChecker
 log = logging.getLogger("tagcast")
 
 SCOPES = ["user.library:read", "user.library:write", "user.account:read"]
+# Public OAuth identifier; device-code sign-in never uses a client secret.
+DEFAULT_CLIENT_ID = "5d8e2ee2bfee11f1b50eb49691aa2236"
 CLIENT_NAME = "tagcast"
 TIMEOUT = 120
 COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings, and "
@@ -368,7 +370,8 @@ class Studio:
 
     @property
     def client_id(self):
-        return os.environ.get("IBROADCAST_CLIENT_ID") or self.config.get("client_id") or ""
+        return (os.environ.get("IBROADCAST_CLIENT_ID") or self.config.get("client_id")
+                or DEFAULT_CLIENT_ID)
 
     @property
     def scopes(self):
@@ -382,6 +385,18 @@ class Studio:
             if client_id != self.client_id:
                 self._disconnect()
             self.config["client_id"] = client_id
+            self._write("config.json", self.config)
+
+    def use_default_client(self):
+        """Switch explicitly after disconnecting; never migrate an existing session."""
+        with self.lock:
+            if os.environ.get("IBROADCAST_CLIENT_ID"):
+                raise ApiError("The client ID is set by IBROADCAST_CLIENT_ID. Remove that override and restart to use Tagcast sign-in.")
+            if self.client:
+                raise ApiError("Disconnect before switching to Tagcast sign-in.")
+            if self.client_id != DEFAULT_CLIENT_ID:
+                self._disconnect()
+            self.config.pop("client_id", None)
             self._write("config.json", self.config)
 
     # -- connection ----------------------------------------------------------
@@ -427,6 +442,7 @@ class Studio:
         return {
             "configured": bool(self.client_id),
             "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
+            "using_default_client": self.client_id == DEFAULT_CLIENT_ID,
             "connected": bool(client),
             "combine_sets": self.combine_sets,
             "premium": self.premium,

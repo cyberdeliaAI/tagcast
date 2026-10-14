@@ -850,11 +850,9 @@ function connectView(view, extra = {}) {
   const error = extra.error ? `<div class="error-box">${escapeHtml(extra.error)}</div>` : "";
   if (view === "connected") {
     box.innerHTML = `<div class="connect-step"><p class="muted">Connected${c.account ? ` as <strong>${escapeHtml(c.account)}</strong>` : ""}. Tagcast can read your library and save metadata you review.</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">Disconnect</button><button class="button" id="connect-redownload" title="Normally the library is only downloaded when iBroadcast reports a change">Download everything again</button><button class="button primary" id="connect-reload">Reload library</button></div>`;
-  } else if (view === "client") {
-    box.innerHTML = `<div class="connect-step"><p class="muted">Tagcast signs in with your own iBroadcast app, so it only gets the access you approve.</p><ol class="muted"><li>Open <a href="https://media.ibroadcast.com/" target="_blank" rel="noopener noreferrer"><u>media.ibroadcast.com</u></a>, click <strong>your name at the top right</strong> and choose <strong>Apps</strong>.</li><li>Scroll to the bottom and click the <strong>developer</strong> link under Developers.</li><li>Next to <strong>Your Apps</strong>, click <strong>+</strong>, give it a name (for example Tagcast) and save it.</li><li>Open the app and paste its <strong>client ID</strong> below. The client secret is not needed.</li></ol><div class="connect-row"><input id="client-id" placeholder="Client ID" aria-label="Client ID" autocomplete="off" spellcheck="false"><button class="button primary" id="client-save">Save</button></div><p class="muted">Stored on this computer only, in the Tagcast settings folder.</p>${error}</div>`;
-    setTimeout(() => $("#client-id")?.focus(), 50);
   } else if (view === "ready") {
-    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in with a short code on the iBroadcast website. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name.</p>${error}</div><div class="dialog-footer">${c.client_id_from_env ? "" : '<button class="text-button" id="client-change" style="color:var(--green);margin-right:auto">Change client ID</button>'}<button class="button" id="browser-start">Use browser redirect</button><button class="button primary" id="device-start">Sign in with a code →</button></div><p class="muted">Browser redirect needs <code>http://127.0.0.1:${location.port || 80}/callback</code> as the redirect URI in your app settings.</p>`;
+    const previous = c.using_default_client === false;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in with a short code on the iBroadcast website. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name. Your password stays on iBroadcast.</p><p class="muted">${previous ? "Your previously configured app registration is still in use." : "Tagcast is already registered with iBroadcast. You do not need to create an app or enter a client ID."}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? '<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">Use Tagcast sign-in</button>' : ""}${previous ? '<button class="button" id="browser-start">Use browser redirect</button>' : ""}<button class="button primary" id="device-start">Sign in with a code →</button></div>${previous ? `<p class="muted">Browser redirect uses <code>http://127.0.0.1:${location.port || 80}/callback</code>; it must match your existing registration.</p>` : ""}`;
   } else if (view === "device") {
     const d = extra.device, link = d.verification_uri_complete || d.verification_uri;
     box.innerHTML = `<div class="connect-step"><p class="muted">Open the iBroadcast sign-in page and enter this code:</p><div class="device-code">${escapeHtml(d.user_code)}</div><p class="muted"><span class="spinner"></span>Waiting for you to approve Tagcast…</p>${error}</div><div class="dialog-footer"><button class="button" id="device-cancel">Cancel</button><a class="button primary" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open iBroadcast sign-in ↗</a></div>`;
@@ -863,7 +861,7 @@ function connectView(view, extra = {}) {
 
 function openConnect() {
   const c = state.connection;
-  connectView(c.connected ? "connected" : c.device?.state === "pending" ? "device" : c.configured ? "ready" : "client", {device: c.device});
+  connectView(c.device?.state === "pending" ? "device" : c.connected ? "connected" : "ready", {device: c.device});
   if (c.device?.state === "pending") pollDevice();
   $("#connect").showModal();
 }
@@ -876,7 +874,7 @@ function pollDevice() {
     try {
       const status = await api("/api/status");
       state.connection = status;
-      if (status.connected) {
+      if (status.connected && !["pending", "error"].includes(status.device?.state)) {
         stopPoll(); $("#connect").close(); toast("Connected to iBroadcast."); updateChrome(); loadLive(); return;
       }
       if (!status.device) { stopPoll(); return; }
@@ -889,11 +887,9 @@ function pollDevice() {
 
 async function connectAction(target) {
   try {
-    if (target.id === "client-save") {
-      state.connection = await api("/api/config", {client_id: $("#client-id").value});
+    if (target.id === "client-default") {
+      state.connection = await api("/api/config/default", {});
       updateChrome(); connectView("ready");
-    } else if (target.id === "client-change") {
-      connectView("client");
     } else if (target.id === "device-start") {
       target.disabled = true;
       const {device} = await api("/api/auth/device", {});
@@ -918,7 +914,7 @@ async function connectAction(target) {
     }
   } catch (error) {
     target.disabled = false;
-    const view = target.id === "client-save" ? "client" : state.connection.connected ? "connected" : "ready";
+    const view = ["device-start", "browser-start", "client-default"].includes(target.id) ? "ready" : state.connection.connected ? "connected" : "ready";
     if ($("#connect").open) connectView(view, {error: error.message}); else toast(error.message);
   }
 }
@@ -1062,10 +1058,9 @@ function showResults(result, overall, entry) {
 }
 
 document.addEventListener("click", event => {
-  const target = event.target.closest("#client-save, #client-change, #device-start, #device-cancel, #browser-start, #connect-reload, #connect-redownload, #connect-logout, #reload-button, #logout-button");
+  const target = event.target.closest("#client-default, #device-start, #device-cancel, #browser-start, #connect-reload, #connect-redownload, #connect-logout, #reload-button, #logout-button");
   if (target) connectAction(target);
 });
-document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "client-id") connectAction($("#client-save")); });
 $("#connect-button").addEventListener("click", openConnect);
 $("#mode-badge").addEventListener("click", openConnect);
 

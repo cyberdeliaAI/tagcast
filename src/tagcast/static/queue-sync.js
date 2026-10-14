@@ -168,6 +168,9 @@ document.addEventListener("click", async event => {
   if (target.closest("[data-queue-reconnect]")) {
     $("#settings").close();
     if (!lookup.queueSync) { toast("Save Enable queue synchronisation first, then reconnect."); return; }
+    if (state.connection.using_default_client !== false) {
+      connectView("ready"); $("#connect").showModal(); return;
+    }
     try { const result = await api("/api/auth/browser", {}); window.open(result.url, "_blank", "noopener"); }
     catch (error) { toast(error.message); }
   }

@@ -30,6 +30,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
     back() { this.go(-1); }, forward() { this.go(1); }};
   let nextTimer = 1;
   let respond = null;
+  let respondStatus = null;
   let respondUpdates = null;
   let playbackClock = 0;
   function element() {
@@ -73,6 +74,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
     clearTimeout(id) { timers.delete(id); }, setInterval() { return 1; }, clearInterval() {},
     fetch: async (url, options) => {
       requests.push({url, options});
+      if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
       if (respond && url !== "/api/status") return respond(url, options);
@@ -87,6 +89,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
   return {run: source => vm.runInContext(source, context), nodes, requests, downloads, history, location,
     setPlaybackClock(value) { playbackClock = value; },
     setFetch(handler) { respond = handler; },
+    setStatusFetch(handler) { respondStatus = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
     flushTimers(delay) {
       for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
@@ -96,7 +99,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
       await Promise.all((documentEvents.get(type) || []).map(handler => handler(dispatched)));
     },
     async click(matches) {
-      const event = {target: {closest: selector => matches[selector] || null}};
+      const event = {target: {closest: selector => matches[selector] || selector.split(',').map(s => matches[s.trim()]).find(Boolean) || null}};
       for (const handler of documentEvents.get("click") || []) await handler(event);
       await new Promise(resolve => setImmediate(resolve));
     },
@@ -108,6 +111,69 @@ function page({hash = "", storage = {}, server = true} = {}) {
     },
     json: source => JSON.parse(vm.runInContext(`JSON.stringify(${source})`, context))};
 }
+
+test("new installations sign in with a code without client ID setup", async () => {
+  const p = page(); await settle();
+  p.run('state.connection = {configured: true, connected: false, using_default_client: true}; openConnect()');
+  const content = p.nodes.get('#connect-content');
+  assert.match(content.innerHTML, /Tagcast is already registered/);
+  assert.match(content.innerHTML, /id="device-start"/);
+  assert.doesNotMatch(content.innerHTML, /id="client-id"|id="client-save"|id="client-change"|id="browser-start"|Developers|Your Apps/);
+  p.setFetch(url => {
+    assert.equal(url, '/api/auth/device');
+    return {ok: true, json: async () => ({device: {state: 'pending', user_code: 'TEST-CODE', verification_uri: 'https://example.invalid/device'}})};
+  });
+  await p.click({'#device-start': {id: 'device-start'}});
+  assert.match(content.innerHTML, /TEST-CODE/);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/config')).length, 0);
+});
+
+test("existing registrations stay connected and switching is explicit after disconnect", async () => {
+  const p = page(); await settle();
+  p.run('state.connection = {configured: true, connected: true, using_default_client: false}; openConnect()');
+  assert.doesNotMatch(p.nodes.get('#connect-content').innerHTML, /id="client-default"/);
+  assert.equal(p.requests.filter(r => r.options?.method === 'POST').length, 0);
+  p.setFetch(url => ({ok: true, json: async () => url === '/api/config/default'
+    ? {configured: true, connected: false, using_default_client: true} : {}}));
+  await p.click({'#connect-logout': {id: 'connect-logout'}}); p.run('openConnect()');
+  assert.match(p.nodes.get('#connect-content').innerHTML, /previously configured app registration/);
+  assert.match(p.nodes.get('#connect-content').innerHTML, /id="browser-start"/);
+  assert.match(p.nodes.get('#connect-content').innerHTML, /id="client-default"/);
+  await p.click({'#client-default': {id: 'client-default'}});
+  assert.equal(p.requests.filter(r => r.url === '/api/config/default').length, 1);
+  assert.match(p.nodes.get('#connect-content').innerHTML, /Tagcast is already registered/);
+  assert.doesNotMatch(p.nodes.get('#connect-content').innerHTML, /id="client-default"|id="browser-start"/);
+  p.run('state.connection = {configured: true, connected: false, using_default_client: false, client_id_from_env: true}; openConnect()');
+  assert.doesNotMatch(p.nodes.get('#connect-content').innerHTML, /id="client-default"/);
+});
+
+test("code reauthorization keeps waiting even while the previous session is connected", async () => {
+  const p = page(); await settle();
+  p.run('state.connection = {connected: true, configured: true, using_default_client: true, device: {state: "pending", user_code: "NEW-CODE", verification_uri: "https://example.invalid/device"}}; openConnect()');
+  p.setStatusFetch(() => ({ok: true, json: async () => ({connected: true, using_default_client: true, device: {state: 'pending'}})}));
+  p.flushTimers(2000); await settle();
+  assert.equal(p.nodes.get('#connect').open, true);
+  assert.match(p.nodes.get('#connect-content').innerHTML, /Waiting for you to approve/);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/library')).length, 0);
+  p.setStatusFetch(() => ({ok: true, json: async () => ({connected: true, using_default_client: true, device: {state: 'error', error: 'Permission denied'}})}));
+  p.flushTimers(2000); await settle();
+  assert.match(p.nodes.get('#connect-content').innerHTML, /Permission denied/);
+  assert.match(p.nodes.get('#connect-content').innerHTML, /id="device-start"/);
+  assert.equal(p.nodes.get('#connect').open, true);
+});
+
+test("queue permissions use code sign-in for the public registration without changing playback", async () => {
+  const p = livePage(); await settle();
+  p.run('state.connection.using_default_client = true; lookup.queueSync = true; playTracks(state.details.get("1")); $("#settings").showModal()');
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  await p.click({'[data-queue-reconnect]': {}});
+  assert.equal(p.nodes.get('#settings').open, false);
+  assert.equal(p.nodes.get('#connect').open, true);
+  assert.match(p.nodes.get('#connect-content').innerHTML, /id="device-start"/);
+  assert.equal(p.requests.filter(r => r.url === '/api/auth/browser').length, 0);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+});
 
 for (const field of ["genres", "composers"]) {
   test(`demo: reviewed ${field} arrays can be applied to the local preview`, async () => {

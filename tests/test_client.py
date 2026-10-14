@@ -72,6 +72,84 @@ class ClientTests(unittest.TestCase):
         self.assertPrivate(tokens)
         self.assertTrue(client.Studio(self.home).status()["connected"])
 
+    def test_fresh_settings_use_public_client_without_configuration(self):
+        studio = client.Studio(self.home)
+        self.assertEqual(studio.client_id, client.DEFAULT_CLIENT_ID)
+        self.assertTrue(studio.status()["configured"])
+        self.assertTrue(studio.status()["using_default_client"])
+        self.assertFalse(studio.status()["connected"])
+        self.assertFalse(Path(self.home, "config.json").exists())
+        code = {"device_code": "test-device", "user_code": "TEST-CODE"}
+        for queue in (False, True):
+            with self.subTest(queue=queue):
+                studio.config["queue_sync"] = queue
+                with patch.object(client.auth, "device_code_request", return_value=code) as request, \
+                        patch.object(client.threading.Thread, "start"):
+                    studio.start_device()
+                request.assert_called_once_with(client.DEFAULT_CLIENT_ID,
+                                                 client.SCOPES + (client.QUEUE_SCOPES if queue else []))
+        self.assertFalse(Path(self.home, "tokens.json").exists())
+
+    def test_existing_client_and_session_are_not_migrated(self):
+        self.connect()
+        config = Path(self.home, "config.json").read_bytes()
+        tokens = Path(self.home, "tokens.json").read_bytes()
+        studio = client.Studio(self.home)
+        self.assertEqual(studio.client_id, "test")
+        self.assertTrue(studio.status()["connected"])
+        self.assertFalse(studio.status()["using_default_client"])
+        self.assertEqual(Path(self.home, "config.json").read_bytes(), config)
+        self.assertEqual(Path(self.home, "tokens.json").read_bytes(), tokens)
+
+    def test_environment_client_still_overrides_saved_client(self):
+        studio = client.Studio(self.home)
+        studio.set_client_id("saved-client")
+        config = Path(self.home, "config.json").read_bytes()
+        with patch.dict(os.environ, {"IBROADCAST_CLIENT_ID": "environment-client"}):
+            studio = client.Studio(self.home)
+            self.assertEqual(studio.client_id, "environment-client")
+            self.assertTrue(studio.status()["client_id_from_env"])
+            self.assertFalse(studio.status()["using_default_client"])
+        self.assertEqual(Path(self.home, "config.json").read_bytes(), config)
+
+    def test_public_client_tokens_resume_without_a_saved_client_override(self):
+        studio = client.Studio(self.home)
+        studio._connect(client.oauth.TokenSet(mock_ibroadcast.TOKEN, "refresh-1", time.time() + 3600))
+        tokens = Path(self.home, "tokens.json").read_bytes()
+        restored = client.Studio(self.home)
+        self.assertTrue(restored.status()["connected"])
+        self.assertTrue(restored.status()["using_default_client"])
+        self.assertEqual(restored.client._client_id, client.DEFAULT_CLIENT_ID)
+        self.assertEqual(Path(self.home, "tokens.json").read_bytes(), tokens)
+        self.assertFalse(Path(self.home, "config.json").exists())
+
+    def test_switch_to_public_client_requires_disconnect_and_preserves_preferences(self):
+        studio = self.connect()
+        tokens = Path(self.home, "tokens.json").read_bytes()
+        with self.assertRaisesRegex(client.ApiError, "Disconnect"):
+            studio.use_default_client()
+        self.assertEqual(studio.client_id, "test")
+        self.assertEqual(Path(self.home, "tokens.json").read_bytes(), tokens)
+        studio.config["record_plays"] = True
+        studio.logout()
+        studio.device = {"state": "pending"}
+        studio.use_default_client()
+        self.assertIsNone(studio.device)
+        self.assertEqual(studio.client_id, client.DEFAULT_CLIENT_ID)
+        self.assertNotIn("client_id", studio._read("config.json"))
+        self.assertTrue(studio._read("config.json")["record_plays"])
+        self.assertFalse(Path(self.home, "tokens.json").exists())
+        self.assertTrue(client.Studio(self.home).status()["using_default_client"])
+
+    def test_switch_to_public_client_cannot_override_environment(self):
+        studio = client.Studio(self.home)
+        studio.set_client_id("saved-client")
+        config = Path(self.home, "config.json").read_bytes()
+        with patch.dict(os.environ, {"IBROADCAST_CLIENT_ID": "environment-client"}):
+            with self.assertRaisesRegex(client.ApiError, "IBROADCAST_CLIENT_ID"):
+                studio.use_default_client()
+        self.assertEqual(Path(self.home, "config.json").read_bytes(), config)
+
     def local_connection(self):
         studio = client.Studio(self.home)
         studio.set_client_id("test")
