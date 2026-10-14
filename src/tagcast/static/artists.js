@@ -1,15 +1,33 @@
 "use strict";
 
 // Album artists come from compact album summaries; opening this view loads no tracks.
-const artistBrowse = {page: 0, pageSize: storedPageSize("tagcast-artists-per-page") || 24};
+const artistBrowse = {page: 0, pageSize: storedPageSize("tagcast-artists-per-page") || 24, randomNames: [], library: 0};
 let artistBrowseTimer;
+
+function resetArtistBrowse() {
+  clearTimeout(artistBrowseTimer);
+  artistBrowse.page = 0; artistBrowse.randomNames = []; artistBrowse.library += 1;
+}
 
 // Album artists without an image, like the albums filter "Artist without image".
 const noArtistImage = ([name, group]) => !group.image && name !== "Various Artists";
 
+function randomArtistGroups(groups) {
+  const byName = new Map(groups), names = artistBrowse.randomNames.filter(name => byName.has(name));
+  const known = new Set(names), added = groups.map(([name]) => name).filter(name => !known.has(name));
+  for (let i = added.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [added[i], added[j]] = [added[j], added[i]];
+  }
+  // Shuffle once before filtering/paging; metadata edits keep the remaining artists in place.
+  artistBrowse.randomNames = [...names, ...added];
+  return artistBrowse.randomNames.map(name => [name, byName.get(name)]);
+}
+
 function filteredArtistGroups() {
   const query = $("#artists-search").value.toLocaleLowerCase().trim(), bare = $("#artists-filter").value === "no_image";
-  const groups = artistGroups().filter(entry => entry[0].toLocaleLowerCase().includes(query) && (!bare || noArtistImage(entry)));
+  const all = artistGroups(), ordered = $("#artists-sort").value === "random" ? randomArtistGroups(all) : all;
+  const groups = ordered.filter(entry => entry[0].toLocaleLowerCase().includes(query) && (!bare || noArtistImage(entry)));
   return $("#artists-sort").value === "za" ? groups.reverse() : groups;
 }
 
@@ -44,7 +62,10 @@ $("#artists-search").addEventListener("input", () => {
   clearTimeout(artistBrowseTimer);
   artistBrowseTimer = setTimeout(() => { artistBrowse.page = 0; renderArtistBrowse(); }, 150);
 });
-for (const id of ["#artists-sort", "#artists-filter"]) $(id).addEventListener("change", () => { artistBrowse.page = 0; renderArtistBrowse(); });
+$("#artists-sort").addEventListener("change", () => {
+  artistBrowse.randomNames = []; artistBrowse.page = 0; renderArtistBrowse();
+});
+$("#artists-filter").addEventListener("change", () => { artistBrowse.page = 0; renderArtistBrowse(); });
 $("#artists-per-page").addEventListener("change", event => {
   const size = Number(event.target.value);
   artistBrowse.page = Math.floor(artistBrowse.page * artistBrowse.pageSize / size); artistBrowse.pageSize = size;

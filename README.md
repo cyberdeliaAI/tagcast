@@ -9,7 +9,7 @@ Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collect
 
 Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
 
-**New in [0.40.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.40.0):** Streaming quality controls; album ratings and favourites; native playlists, including adding one track and saving the queue; Play next and repeat; optional play reporting and Recently played; optional queue synchronisation and remote control; and a cover lightbox. All features are included in the standalone downloads for macOS, Windows and Linux.
+**New in [0.41.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.41.0):** A Various Artists checkbox that preserves track artists; album and track years limited to 1800–2050; simpler album card labels; Random sorting for Album artists; and separate compact-player options for quality information and track artists. All features are included in the standalone downloads for macOS, Windows and Linux.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
 
@@ -21,14 +21,14 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.40.0** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.41.0** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.40.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.40.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.40.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.40.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.40.0/tagcast-0.40.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.40.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.41.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.41.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.41.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.41.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.0/tagcast-0.41.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.41.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
 On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
 
@@ -163,7 +163,7 @@ Tagcast starts on **Album artists**. Choose an artist to see their albums, or us
 
 | Page | What you can do |
 |---|---|
-| **Album artists** | Search artists, see their photos and album counts, or filter those without an image. Open an artist's albums and select several of their albums to edit together. |
+| **Album artists** | Search artists, see their photos and album counts, or filter those without an image. Sort by name or choose **Random** for a shuffled list; its order stays the same while searching, paging and going Back. Choose a name sort and then Random again to reshuffle. Open an artist's albums and select several of their albums to edit together. |
 | **Track artists / Composers** | Find albums featuring a performer or composer, with album and track counts. Stored iBroadcast artist IDs determine membership. |
 | **Genres** | Browse main and additional genres. Click a genre on an album to open the same group. Combined labels such as `Pop;Rock` stay as stored until you choose to split them in the editor or reviewed cleanup. |
 | **Release year** | Browse albums by track year, falling back to album year. Tracks without either appear under **Unknown year**. |
@@ -275,6 +275,12 @@ current browser. Restore it through **Settings → Interface → Show library in
 banner**. Hiding this banner does not hide save errors or review warnings, and
 changing these preferences does not restart the player.
 
+**Settings → Interface** also lets you show or hide **file format and stream quality**
+and **track artists** in the compact player. Both are shown by default. These choices
+apply immediately and are remembered in the current browser. The title, album artist
+and album stay visible; track and album pages and fullscreen Now playing keep their
+information. Hiding the quality label does not change the streaming quality.
+
 ### Enlarging album covers
 
 Double-click an album cover in the album grid or list, on the album page, or in
@@ -321,6 +327,10 @@ Favourites use **iBroadcast's native track ratings**: adding sets the rating to 
 3. **Review** the before/after values, then choose **Save to iBroadcast**. Tagcast checks the existing values first and downloads the library again to confirm accepted writes. Change history shows the progress and result.
 
 To edit several albums, open **one album artist**, tick their album cards and edit the selection. Only the fields you enable are changed. Album year changes leave track years alone unless you tick **Also apply the release year to tracks**; individual track edits take precedence over album-wide edits.
+
+For compilations, tick **Various Artists** beneath **Album artist**. This uses iBroadcast's native Various Artists album artist and preserves every track's artist and additional credits. Untick it to enter an album artist again. The choice is included in the normal before/after review, also for all discs of a set; when editing a selection, first enable **Change Album artist**.
+
+New album and track years must be **1800–2050**; use **0** or clear the field to remove a year. The editor and server both enforce this range, including online suggestions and album-wide track-year changes. An existing year outside the range can remain untouched while you edit other metadata.
 
 Genres are separate labels: the first is the main genre, and the others become additional genres. **Split** or **Split combined genres** explicitly separates labels such as `Pop;Rock`. Composers are stored as composer credits; other credits, such as featured artists, are preserved.
 

@@ -109,7 +109,7 @@ function browseCard(g) {
 
 function browseAlbumCard(a) {
   return `<article class="album-card"><button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button>
-    <div class="card-meta"><span>${a.year || "Year unknown"} · ${a.track_count} ${a.track_count === 1 ? "track" : "tracks"}${discNote(a) ? ` · ${discNote(a)}` : ""}</span>${badge(a)}${queueButton(a.id, null, true)}</div></article>`;
+    <div class="card-meta"><span>${albumCardMetadata(a)}</span>${badge(a)}${queueButton(a.id, null, true)}</div></article>`;
 }
 
 function shuffledAlbumIds(albums) {

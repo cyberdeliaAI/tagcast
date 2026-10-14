@@ -8,6 +8,32 @@ const audio = $("#audio");
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: []};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null};
+const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
+
+function storedPlayerDisplay(key) {
+  try { return localStorage.getItem(`tagcast-player-${key}`) !== "hidden"; }
+  catch { return true; }
+}
+
+function setPlayerDisplay(key, visible) {
+  if (key === "quality") playerDisplay.quality = visible;
+  else if (key === "track-artists") playerDisplay.trackArtists = visible;
+  else return;
+  try { localStorage.setItem(`tagcast-player-${key}`, visible ? "shown" : "hidden"); } catch { /* private window */ }
+  renderPlayerDisplay();
+}
+
+// These browser-local preferences affect only the compact player, without touching audio.
+function renderPlayerDisplay() {
+  const track = player.queue[player.index];
+  $("#player-quality").hidden = !playerDisplay.quality;
+  $("#player-track-line").hidden = !playerDisplay.trackArtists || !track
+    || ((!track.artist || track.artist === track.album.artist) && !(track.performers?.length > 1));
+}
+
+document.addEventListener("change", event => {
+  if (event.target.matches?.("[data-player-display]")) setPlayerDisplay(event.target.dataset.playerDisplay, event.target.checked);
+});
 
 function applyPlaybackSettings(data) {
   if (data.stream_quality) lookup.streamQuality = data.stream_quality;
@@ -276,7 +302,7 @@ function playCurrent(autoPlay = true) {
   performer.textContent = track.artist; performer.title = track.artist;
   performer.setAttribute("aria-label", `Open albums with tracks by ${track.artist}`);
   $("#player-extra-artists").innerHTML = performerLinks(track, true);
-  $("#player-track-line").hidden = (!track.artist || track.artist === player.album.artist) && !(track.performers?.length > 1);
+  renderPlayerDisplay();
   album.textContent = player.album.name; album.title = player.album.name;
   album.setAttribute("aria-label", `Open album ${player.album.name}`);
   const art = $("#player-art");
@@ -549,6 +575,7 @@ function renderStreamQuality() {
   const track = player.queue[player.index];
   $("#player-quality").textContent = track ? `${track.format ? `File: ${track.format} · ` : ""}Stream: ${player.quality === "orig" ? `Original${track.format ? ` ${track.format}` : ""}` : `MP3 ${player.quality} kbps`}${player.fallback ? " (fallback)" : ""}` : "";
   $("#visual-player-quality").textContent = $("#player-quality").textContent;
+  renderPlayerDisplay();
 }
 $("#player-repeat").addEventListener("click", () => {
   player.repeat = {none: "queue", queue: "track", track: "none"}[player.repeat];

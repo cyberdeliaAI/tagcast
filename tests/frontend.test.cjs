@@ -368,6 +368,192 @@ test("a new album artist does not inherit the old artist's artwork target", () =
   assert.equal(p.run('artistPageTarget("New artist")'), null);
 });
 
+test("year inputs reject out-of-range edits, accept boundaries and leave other numeric fields alone", async () => {
+  const p = page(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  assert.match(p.nodes.get("#editor-content").innerHTML, /name="year"[^>]*max="2050"/);
+  assert.match(p.nodes.get("#editor-content").innerHTML, /name="disc"[^>]*max="9999"/);
+  for (const year of ["", "0", "1800", "2027", "2050"]) assert.equal(p.run(`readYear(${JSON.stringify(year)})`), Number(year));
+  for (const year of ["-1", "1", "1799", "2051", "3000", "2000.5"]) {
+    assert.throws(() => p.run(`readYear(${JSON.stringify(year)})`), /1800 to 2050/);
+  }
+  assert.equal(p.run('readNumber("9999")'), 9999);
+  assert.equal(p.run('readMetadataNumber("year", "3000", 3000)'), 3000);
+  const input = {value: "1799", dataset: {originalYear: "1975"}, setCustomValidity(message) { this.message = message; }};
+  p.nodes.set("#year-validation-input", input);
+  p.run('validateYearInput($("#year-validation-input"))');
+  assert.match(input.message, /1800 to 2050/);
+  input.value = "2050";
+  p.run('validateYearInput($("#year-validation-input"))');
+  assert.equal(input.message, "");
+  input.value = "3000"; input.dataset.originalYear = "3000";
+  p.run('validateYearInput($("#year-validation-input"))');
+  assert.equal(input.message, "", "An existing invalid value can remain unchanged");
+});
+
+test("year suggestions and album-wide track-year changes enforce the same range", async () => {
+  const p = page(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  const input = {type: "number", value: "2000", disabled: false, dataset: {originalYear: "2000"},
+    classList: {remove() {}, add() {}}, setCustomValidity() {}};
+  p.nodes.get("#metadata-form").elements = {year: input, namedItem: name => name === "year" ? input : null};
+  p.run('setFormField("year", "2051")');
+  assert.equal(input.value, "2000");
+  assert.equal(p.run('editing.dirty.has("year")'), false);
+  p.run('setFormField("year", "2027"); buildReview()');
+  assert.equal(p.run('pending.changes[0].fields.year.after'), 2027);
+  p.run('pending = null; editing.dirty.clear()');
+  input.value = "3000"; p.nodes.get("#track-years").checked = true;
+  p.run('buildReview()');
+  assert.equal(p.run("pending"), null, "An unchanged bad album year cannot be copied to tracks");
+});
+
+test("unchanged bad album and track years do not block title corrections", async () => {
+  const p = page(); await settle();
+  p.run('state.details.get(state.albums[0].id).year = 3000');
+  await p.run("openEditor([state.albums[0].id])");
+  assert.match(p.nodes.get("#editor-content").innerHTML, /name="year"[^>]*max="3000"/);
+  const title = {value: "Corrected title", type: "text", disabled: false};
+  const year = {value: "3000", type: "number", disabled: false};
+  p.nodes.get("#metadata-form").elements = {namedItem: name => name === "year" ? year : name === "name" ? title : null};
+  p.run('editing.dirty.add("name"); editing.dirty.add("year"); buildReview()');
+  assert.deepEqual(p.json('Object.keys(pending.changes[0].fields)'), ["name"]);
+  const pane = p.nodes.get("#track-inline");
+  const trackId = p.run('String(editing.originals[0].tracks[0].id)');
+  p.run('editing.originals[0].tracks[0].year = 1700');
+  pane.dataset.track = trackId;
+  const trackYear = {type: "number", value: "1700", dataset: {key: "year"}};
+  pane.querySelectorAll = () => [{type: "text", value: "Correct track title", dataset: {key: "title"}}, trackYear];
+  p.run("stashTrack()");
+  assert.deepEqual(p.json(`editing.trackPatches[${JSON.stringify(trackId)}]`), {title: "Correct track title"});
+  trackYear.value = "1799";
+  assert.throws(() => p.run("stashTrack()"), /1800 to 2050/);
+  trackYear.value = ""; trackYear.validity = {badInput: true};
+  assert.throws(() => p.run("stashTrack()"), /1800 to 2050/, "Malformed numeric input must not clear the year");
+});
+
+function artistEditorForm(p, value = "Pink Floyd", enable = null) {
+  const input = {type: "text", value, disabled: false, hidden: false, classList: {remove() {}, add() {}}};
+  const form = p.nodes.get("#metadata-form");
+  form.elements = {namedItem: name => name === "artist" ? input : null};
+  form.querySelector = selector => selector === '[data-enable="artist"]' ? enable : null;
+  return input;
+}
+
+async function tickVariousArtists(p, checked) {
+  const box = p.nodes.get("#album-various-artists");
+  box.id = "album-various-artists"; box.checked = checked;
+  await p.emitDocument("input", {target: box});
+}
+
+test("Various Artists checks the native album identity, including a real artist with the same name", async () => {
+  const p = livePage(); await settle();
+  p.run('Object.assign(state.details.get(state.albums[0].id), {artist: "Various Artists", artist_id: 0})');
+  await p.run("openEditor([state.albums[0].id])");
+  assert.equal(p.nodes.get("#album-various-artists").checked, true);
+  assert.match(p.nodes.get("#editor-content").innerHTML, /name="artist"[^>]*value=""[^>]*hidden/);
+  p.nodes.get("#editor").close();
+  p.run('state.details.get(state.albums[0].id).artist_id = 99');
+  await p.run("openEditor([state.albums[0].id])");
+  assert.equal(p.nodes.get("#album-various-artists").checked, false);
+  const input = artistEditorForm(p, "Various Artists");
+  await tickVariousArtists(p, true); p.run("buildReview()");
+  assert.deepEqual(p.json('pending.changes[0].fields.artist_id'),
+    {before: 99, after: 0, before_name: "Various Artists (named artist)", after_name: "Various Artists"});
+  assert.equal(input.hidden, true);
+});
+
+test("Various Artists reviews only the album artist and preserves tracks, credits and playback", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get(state.albums[0].id))');
+  const tracks = p.json('state.details.get(state.albums[0].id).tracks');
+  await p.run("openEditor([state.albums[0].id])");
+  const input = artistEditorForm(p);
+  await tickVariousArtists(p, true); p.run("buildReview()");
+  assert.equal(input.hidden, true); assert.equal(input.disabled, true);
+  assert.equal(p.run("pending.changes.length"), 1);
+  assert.equal(p.run('pending.changes[0].kind'), "album");
+  assert.deepEqual(p.json('Object.keys(pending.changes[0].fields)'), ["artist_id"]);
+  assert.match(p.run('reviewList(pending.changes)'), /Album artist.*Pink Floyd.*Various Artists/);
+  p.run("applyLocally(pending.changes)");
+  assert.equal(p.run('state.albums[0].artist'), "Various Artists");
+  assert.equal(p.run('state.albums[0].artist_id'), 0);
+  assert.equal(p.run('state.albums[0].artist_image'), "");
+  assert.deepEqual(p.json('state.details.get(state.albums[0].id).tracks'), tracks);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.ok(p.requests.every(r => !r.options?.body), "Checking and reviewing never writes");
+  await tickVariousArtists(p, false);
+  assert.equal(input.value, "Pink Floyd"); assert.equal(input.hidden, false);
+});
+
+test("unchecking an existing compilation requires a named album artist and preserves track artists", async () => {
+  const p = livePage(); await settle();
+  p.run('Object.assign(state.details.get(state.albums[0].id), {artist: "Various Artists", artist_id: 0})');
+  await p.run("openEditor([state.albums[0].id])");
+  const input = artistEditorForm(p, "");
+  await tickVariousArtists(p, false); p.run("buildReview()");
+  assert.equal(p.run("pending"), null, "An empty album artist is not a valid replacement");
+  assert.equal(input.disabled, false); assert.equal(input.hidden, false);
+  input.value = "Kate Bush"; p.run("buildReview()");
+  assert.deepEqual(p.json('pending.changes.map(c => [c.kind, c.fields.artist])'),
+    [["album", {before: "Various Artists", after: "Kate Bush"}]]);
+});
+
+test("album artist suggestions replace the checkbox selection and retain the named draft when toggled back", async () => {
+  const p = livePage(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  const input = artistEditorForm(p);
+  await tickVariousArtists(p, true);
+  p.run('setFormField("artist", "Kate Bush")');
+  assert.equal(p.nodes.get("#album-various-artists").checked, false);
+  assert.equal(input.disabled, false); assert.equal(input.hidden, false);
+  p.run('setFormField("artist", "Various Artists")');
+  assert.equal(p.nodes.get("#album-various-artists").checked, true);
+  assert.equal(input.hidden, true);
+  await tickVariousArtists(p, false);
+  assert.equal(input.value, "Kate Bush");
+  p.run("buildReview()");
+  assert.deepEqual(p.json('Object.keys(pending.changes[0].fields)'), ["artist"]);
+});
+
+test("bulk Various Artists waits for Change Album artist and keeps every track artist", async () => {
+  const p = livePage(); await settle();
+  p.run(`const another = structuredClone(state.details.get(state.albums[0].id)); another.id = "88"; another.name = "Another album";
+    state.details.set("88", another); state.albums.push(summarize(another)); state.artist = "Pink Floyd";`);
+  await p.run('openEditor([state.albums[0].id, "88"])');
+  const enable = {checked: false}; const input = artistEditorForm(p, "Pink Floyd", enable);
+  assert.equal(p.nodes.get("#album-various-artists").disabled, true);
+  p.run("buildReview()"); assert.equal(p.run("pending"), null);
+  enable.checked = true; p.run("syncAlbumArtistControls()");
+  await tickVariousArtists(p, true); p.run("buildReview()");
+  assert.equal(input.disabled, true);
+  assert.equal(p.run("pending.scope"), "artist");
+  assert.deepEqual(p.json('pending.changes.map(c => [c.kind, c.fields.artist_id.after])'), [["album", 0], ["album", 0]]);
+});
+
+test("Various Artists works in the local demo without sending writes", async () => {
+  const p = page(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  artistEditorForm(p);
+  const tracks = p.json('editing.originals[0].tracks');
+  await tickVariousArtists(p, true); p.run("buildReview(); applyDraft()");
+  assert.equal(p.run('state.albums[0].artist'), "Various Artists");
+  assert.deepEqual(p.json('state.details.get(state.albums[0].id).tracks'), tracks);
+  assert.ok(p.requests.every(r => !r.options?.body));
+});
+
+test("Various Artists reviews every disc of one native set without track changes", async () => {
+  const p = setPage(); await settle();
+  p.run('state.mode = "live"; for (const id of ["71", "72", "73"]) state.details.get(id).artist_id = 42; state.albums = [...state.details.values()].map(summarize)');
+  await p.run('openEditor(["71", "72", "73"])');
+  artistEditorForm(p);
+  await tickVariousArtists(p, true); p.run("buildReview()");
+  assert.equal(p.run("editing.set"), true);
+  assert.equal(p.run("pending.scope"), "album");
+  assert.deepEqual(p.json('pending.changes.map(c => [c.kind, String(c.id), c.fields.artist_id.after])'),
+    [["album", "71", 0], ["album", "72", 0], ["album", "73", 0]]);
+});
+
 test("opening an album shows read-only tracks; editing remains an explicit choice", async () => {
   const p = page();
   await p.click({"[data-album]": {dataset: {album: "1"}}});
@@ -625,6 +811,88 @@ test("artist cards use an available image, safe metadata and initials when an im
   assert.match(html, /loading="lazy" referrerpolicy="no-referrer"/);
 });
 
+test("Random album artists keeps one complete order across pages, filters and Back without loading tracks", async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"), "100");
+    state.albums = Array.from({length: 75}, (_, i) => ({...state.albums[0], id: String(i),
+      artist: "Artist " + String(i).padStart(3, "0"), artist_image: i % 3 ? "https://example.test/photo" : ""}));
+    let shuffleCalls = 0; Math.random = () => { shuffleCalls += 1; return 0; }; showArtistBrowse()`);
+  p.nodes.get("#artists-sort").value = "random";
+  await p.nodes.get("#artists-sort").emit("change");
+  const order = p.json("filteredArtistGroups().map(([name]) => name)");
+  assert.equal(order.length, 75);
+  assert.equal(new Set(order).size, 75);
+  assert.notDeepEqual(order, [...order].sort());
+  const requests = p.requests.length, shuffleCalls = p.run("shuffleCalls");
+  const visibleNames = () => [...p.nodes.get("#artists-grid").innerHTML.matchAll(/data-browse-artist="([^"]+)"/g)].map(match => match[1]);
+  const pages = visibleNames();
+  for (let pageIndex = 1; pageIndex < 4; pageIndex++) {
+    await p.click({"[data-artist-page]": {dataset: {artistPage: "1"}}});
+    pages.push(...visibleNames());
+  }
+  assert.deepEqual(pages, order, "Every artist appears once across all pages");
+  await p.click({"[data-browse-artist]": {dataset: {browseArtist: order[72]}}});
+  await p.nodes.get("#artist-back").emit("click");
+  assert.equal(p.nodes.get("#artists-sort").value, "random");
+  assert.equal(p.run("artistBrowse.page"), 3);
+  assert.deepEqual(visibleNames(), order.slice(72));
+  p.nodes.get("#artists-search").value = "Artist 03";
+  await p.nodes.get("#artists-search").emit("input"); p.flushTimers(150);
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), order.filter(name => name.includes("Artist 03")));
+  p.nodes.get("#artists-search").value = "";
+  await p.nodes.get("#artists-search").emit("input"); p.flushTimers(150);
+  p.nodes.get("#artists-filter").value = "no_image";
+  await p.nodes.get("#artists-filter").emit("change");
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), order.filter(name => Number(name.slice(-3)) % 3 === 0));
+  p.nodes.get("#artists-filter").value = "all";
+  await p.nodes.get("#artists-filter").emit("change");
+  p.nodes.get("#artists-per-page").value = "50";
+  await p.nodes.get("#artists-per-page").emit("change", {target: p.nodes.get("#artists-per-page")});
+  assert.deepEqual(visibleNames(), order.slice(0, 50));
+  assert.equal(p.run("shuffleCalls"), shuffleCalls);
+  assert.equal(p.requests.length, requests, "Sorting uses existing album summaries only");
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.match(readFileSync(path.join(staticDir, "index.html"), "utf8"), /<option value="random">Random<\/option>/);
+});
+
+test("Random artists can reshuffle, follow metadata edits and discard an old library's remembered order", async () => {
+  const p = livePage(); await settle();
+  p.run("Math.random = () => 0; showArtistBrowse()");
+  p.nodes.get("#artists-sort").value = "random";
+  await p.nodes.get("#artists-sort").emit("change");
+  const original = p.json("filteredArtistGroups().map(([name]) => name)");
+  await p.click({"[data-browse-artist]": {dataset: {browseArtist: original[0]}}});
+  await p.nodes.get("#show-artists").emit("click");
+  p.nodes.get("#artists-sort").value = "az";
+  await p.nodes.get("#artists-sort").emit("change");
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), [...original].sort());
+  p.run("Math.random = () => 0.999");
+  p.nodes.get("#artists-sort").value = "random";
+  await p.nodes.get("#artists-sort").emit("change");
+  assert.notDeepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), original);
+  p.history.back(); p.history.back();
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), original, "Older history restores its own shuffle");
+  p.run('applyLocally([{kind: "album", albumId: "1", fields: {artist: {after: "New artist"}}}]); render()');
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), [...original, "New artist"]);
+  p.run('state.albums = state.albums.filter(a => a.artist !== "New artist"); render()');
+  assert.deepEqual(p.json("filteredArtistGroups().map(([name]) => name)"), original);
+  const saved = p.json("history.state");
+  p.run('useLocal(demoLibrary().map(a => ({...a, artist: "Replacement " + a.artist})), "demo"); render()');
+  assert.equal(p.run("artistBrowse.page"), 0);
+  p.run(`showRoute({screen: "artists"}, ${JSON.stringify(saved)})`);
+  const replacement = p.json("filteredArtistGroups().map(([name]) => name)");
+  assert.equal(replacement.length, 3);
+  assert.ok(replacement.every(name => name.startsWith("Replacement ")));
+  p.setFetch(async url => {
+    assert.equal(url, "/api/library");
+    return {ok: true, json: async () => ({albums: p.json('state.albums').map(a => ({...a, artist: "Live " + a.artist})), artists: []})};
+  });
+  await p.run("loadLive()"); await settle();
+  assert.ok(p.json("filteredArtistGroups().map(([name]) => name)").every(name => name.startsWith("Live ")));
+  assert.notEqual(p.run("artistBrowse.library"), saved.artistsLibrary);
+});
+
 test("an artist card opens all of that artist's albums and keeps music playing", async () => {
   const p = livePage();
   p.run('playTracks(state.details.get("1"), "100"); $("#filter").value = "cover"; $("#search").value = "No match"; showArtistBrowse()');
@@ -815,7 +1083,7 @@ test("the discs of a set are one album in the lists, with their numbers added up
   p.nodes.get("#filter").value = "all";
   await p.nodes.get("#all-albums").emit("click");
   const card = p.nodes.get("#albums").innerHTML.match(/<article[^]*?<\/article>/g).find(html => html.includes('data-album="71"'));
-  assert.match(card, /6 tracks <span aria-hidden="true">·<\/span> <span class="disc-icons" role="img" aria-label="3 discs"/);
+  assert.match(card, /6 tracks · album · <span class="disc-icons" role="img" aria-label="3 discs"/);
   assert.equal(card.match(/<span class="disc-icons"[^]*?<\/span>/)[0].match(/<svg/g).length, 3, "One CD icon per disc");
   assert.match(p.run("discIcons(9)"), /<small>9<\/small>/);
   assert.equal(p.run("discIcons(9)").match(/<svg/g).length, 6);
@@ -1557,6 +1825,83 @@ test("the library info banner can be hidden, remembered and restored without req
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.match(html, />Settings ⚙</);
   assert.match(html, /<h2>Settings<\/h2>/);
+});
+
+test("compact player display choices act independently without changing playback, queue or full metadata views", async () => {
+  const p = livePage(); await settle();
+  p.run(`state.connection.premium = true; state.connection.playback_session = "display-test-session";
+    const displayAlbum = state.details.get("1");
+    displayAlbum.tracks[0].format = "FLAC"; displayAlbum.tracks[0].artist = "Guest Artist";
+    displayAlbum.tracks[1].artist = "Second Guest";
+    lookup.streamQuality = "orig"; applyPlaybackSettings({record_plays:true});
+    playTracks(displayAlbum, "100"); audio.currentTime = 24; const displayWatch = playReporting.watch; openSettings()`);
+  const source = p.nodes.get("#audio").src, queue = p.json("player.queue"), epoch = p.run("player.epoch"), requests = p.requests.length;
+  assert.match(p.nodes.get("#settings-content").innerHTML, /data-player-display="quality" checked/);
+  assert.match(p.nodes.get("#settings-content").innerHTML, /data-player-display="track-artists" checked/);
+  const toggle = (key, checked) => p.change({dataset:{playerDisplay:key}, checked, matches: selector => selector === "[data-player-display]"});
+  await toggle("quality", false);
+  assert.equal(p.nodes.get("#player-quality").hidden, true);
+  assert.equal(p.nodes.get("#player-track-line").hidden, false);
+  await toggle("quality", true); await toggle("track-artists", false);
+  assert.equal(p.nodes.get("#player-quality").hidden, false);
+  assert.equal(p.nodes.get("#player-track-line").hidden, true);
+  await toggle("quality", false);
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.equal(p.nodes.get("#audio").currentTime, 24);
+  assert.equal(p.run("playReporting.watch === displayWatch"), true);
+  assert.equal(p.run("player.epoch"), epoch);
+  assert.deepEqual(p.json("player.queue"), queue);
+  assert.equal(p.requests.length, requests, "Interface choices are not sent to the server");
+  assert.equal(p.nodes.get("#player-title").textContent, p.run("displayAlbum.tracks[0].title"));
+  assert.equal(p.nodes.get("#player-artist").textContent, "Pink Floyd");
+  assert.equal(p.nodes.get("#player-album").textContent, "Wish You Were Here");
+  p.run('$("#settings").close(); openVisualPlayer()');
+  assert.equal(p.nodes.get("#visual-player-quality").textContent, "File: FLAC · Stream: Original FLAC");
+  assert.equal(p.nodes.get("#visual-player-track-artist").textContent, "Track artist: Guest Artist");
+  assert.equal(p.nodes.get("#visual-player-track-artist").hidden, false);
+  await p.run("closeVisualPlayer(); openAlbum('1')");
+  assert.match(p.nodes.get("#album-page").innerHTML, /Guest Artist/);
+  assert.match(p.nodes.get("#album-page").innerHTML, /FLAC/);
+  await p.nodes.get("#audio").emit("error");
+  assert.match(p.nodes.get("#player-quality").textContent, /fallback/);
+  assert.equal(p.nodes.get("#player-quality").hidden, true, "A stream fallback keeps the display preference");
+  p.run("step(1)");
+  assert.equal(p.nodes.get("#player-title").textContent, p.run("displayAlbum.tracks[1].title"));
+  assert.equal(p.nodes.get("#player-quality").hidden, true);
+  assert.equal(p.nodes.get("#player-track-line").hidden, true, "The next track does not restore hidden info");
+  await toggle("track-artists", true);
+  assert.equal(p.nodes.get("#player-track-line").hidden, false);
+  assert.equal(p.nodes.get("#player-track-artist").textContent, "Second Guest");
+  await toggle("quality", true);
+  assert.equal(p.nodes.get("#player-quality").hidden, false);
+});
+
+test("compact player choices survive reloads and work when browser storage is unavailable", async () => {
+  const storage = {}, p = page({storage}); await settle();
+  const toggle = (page, key, checked) => page.change({dataset:{playerDisplay:key}, checked, matches: selector => selector === "[data-player-display]"});
+  await toggle(p, "quality", false);
+  assert.equal(storage["tagcast-player-quality"], "hidden");
+  assert.equal(storage["tagcast-player-track-artists"], undefined);
+  const reopened = page({storage}); await settle();
+  reopened.run(`state.mode="live"; state.details.get("1").tracks[0].artist="Guest Artist";
+    playTracks(state.details.get("1"), "100"); openSettings()`);
+  assert.equal(reopened.nodes.get("#player-quality").hidden, true);
+  assert.equal(reopened.nodes.get("#player-track-line").hidden, false);
+  assert.match(reopened.nodes.get("#settings-content").innerHTML, /data-player-display="quality" >/);
+  assert.match(reopened.nodes.get("#settings-content").innerHTML, /data-player-display="track-artists" checked/);
+  await toggle(reopened, "track-artists", false);
+  const bothHidden = page({storage}); await settle();
+  bothHidden.run("openSettings()");
+  assert.match(bothHidden.nodes.get("#settings-content").innerHTML, /data-player-display="track-artists" >/);
+  assert.equal(bothHidden.run("playerDisplay.quality"), false);
+  assert.equal(bothHidden.run("playerDisplay.trackArtists"), false);
+  bothHidden.run('localStorage.setItem = () => { throw Error("Storage unavailable"); }');
+  await toggle(bothHidden, "quality", true);
+  assert.equal(bothHidden.run("playerDisplay.quality"), true);
+  assert.equal(bothHidden.nodes.get("#player-quality").hidden, false);
+  bothHidden.run('localStorage.getItem = () => { throw Error("Storage unavailable"); }');
+  assert.equal(bothHidden.run('storedPlayerDisplay("quality")'), true);
 });
 
 test("Now playing escapes metadata and has no route, queue jumping works, and Clear queue stops everything", async () => {
