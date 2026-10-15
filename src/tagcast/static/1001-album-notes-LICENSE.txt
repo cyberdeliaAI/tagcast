@@ -1,0 +1,28 @@
+1001 Albums: offline album background texts
+
+These texts are excerpts attributed to Wikipedia contributors by the Album Summary
+sections of 1001albumsgenerator.com, with four reviewed album-specific paraphrases
+from Wikipedia. They are not book excerpts or user reviews.
+
+Text license: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+Legal code: https://creativecommons.org/licenses/by-sa/4.0/legalcode.en
+
+Each entry in 1001-album-notes.json retains:
+- source_url: the Wikipedia article (with its linked contributor history)
+- captured_from: the page on 1001 Albums Generator from which it was captured
+- captured_at: capture date and time
+- attribution and license_url
+- modified/excerpt: changes made for this offline presentation
+- editorial_reason, where present: a reviewed replacement of an unrelated summary;
+  source_url identifies the article used for that adapted text. The original capture
+  URL/date remain recorded separately. The review file retains the replacement text.
+
+Changes: plain text extraction, normalized whitespace and sentence spacing,
+and shortening to an excerpt of at most 200 words. Four entries use reviewed,
+album-specific paraphrases; two have editorial context about their reference title
+or partial coverage. No endorsement is implied.
+The texts retain their CC BY-SA license independently of Tagcast's MIT code.
+Please retain this notice, per-entry attribution and the license links when
+redistributing or adapting these texts. The album view displays source and
+license links next to each excerpt.

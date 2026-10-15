@@ -63,10 +63,15 @@ def run(args):
                 scripts = page_scripts(page, app.STATIC)
                 for name in [*scripts, "style.css", "dark.css", "palettes.css",
                              "tagcast-mark.svg", "tagcast-icon.png", "ibroadcast-dark-compact-powered.svg",
-                             "ibroadcast-light-compact-powered.svg"]:
+                             "ibroadcast-light-compact-powered.svg", "1001-albums.json",
+                             "1001-album-notes.json", "1001-album-notes-LICENSE.txt"]:
                     data, mime = get("/" + name)
                     if not data or (name.endswith(".js") and mime != "text/javascript"):
                         raise RuntimeError(f"The bundled static file is not served correctly: {name}")
+                for name in ("1001-albums.json", "1001-album-notes.json"):
+                    data, mime = get("/" + name)
+                    if mime != "application/json" or len(json.loads(data)["entries"]) != 1001:
+                        raise RuntimeError(f"The bundled album guide data is incomplete: {name}")
                 for path, headers, expected in [("/api/tracks?q=test", {}, 401),
                                                  ("/api/cleanup/labels", {}, 401),
                                                  ("/api/status", {"Sec-Fetch-Site": "cross-site"}, 403),

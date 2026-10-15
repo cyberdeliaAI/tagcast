@@ -32,11 +32,13 @@ function page({hash = "", storage = {}, server = true} = {}) {
   let respond = null;
   let respondStatus = null;
   let respondUpdates = null;
+  let respondNotes = null;
   let playbackClock = 0;
   function element() {
     const classes = new Set();
     const events = new Map(), attributes = new Map();
-    return {value: "", checked: false, disabled: false, dataset: {}, options: [], innerHTML: "", textContent: "",
+    return {value: "", checked: false, disabled: false, dataset: {}, options: [], children: [], innerHTML: "", textContent: "",
+      appendChild(node) { this.children = this.children.filter(child => child !== node); this.children.push(node); return node; },
       isConnected: true, style: {}, clientWidth: 1265, clientHeight: 710,
       getBoundingClientRect() { return {left: 1000, right: 1042, top: 300, bottom: 336, width: 220, height: 130}; },
       paused: true,
@@ -57,7 +59,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
@@ -74,6 +76,8 @@ function page({hash = "", storage = {}, server = true} = {}) {
     clearTimeout(id) { timers.delete(id); }, setInterval() { return 1; }, clearInterval() {},
     fetch: async (url, options) => {
       requests.push({url, options});
+      if (url === "/1001-album-notes.json") return respondNotes ? respondNotes(url, options)
+        : {ok: true, json: async () => ({schema: 1, entries: []})};
       if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
@@ -91,6 +95,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
     setFetch(handler) { respond = handler; },
     setStatusFetch(handler) { respondStatus = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
+    setNotesFetch(handler) { respondNotes = handler; },
     flushTimers(delay) {
       for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
     },
@@ -298,6 +303,448 @@ function livePage() {
     state.albums = [...state.details.values()].map(summarize); state.mode = "live"`);
   return p;
 }
+
+test('Help starts only on request; completing every topic preserves playback and history', async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"))');
+  const queue = p.json('player.queue'), audio = p.nodes.get('#audio');
+  const source = audio.src, hash = p.location.hash, entries = p.history.length;
+  const requests = p.requests.length;
+  assert.equal(!!p.nodes.get('#help-dialog')?.open, false);
+  p.run('$("#help-button").focus()');
+  await p.click({'#help-button': {}});
+  assert.equal(p.nodes.get('#help-dialog').open, true);
+  assert.equal(p.run('helpTour.topic'), 'artists');
+  assert.doesNotMatch(p.json('helpTour.content').steps.flat().join(' '), /1001|playlist|Analyse/);
+  await p.click({'#help-close': {}});
+  for (const topic of p.json('Object.keys(HELP_TOPICS)')) {
+    p.run(`openHelp(${JSON.stringify(topic)})`);
+    assert.equal(p.nodes.get('#help-dialog').open, true);
+    for (let i = 0; i < p.run(`HELP_TOPICS[${JSON.stringify(topic)}].steps.length`); i++) {
+      assert.equal(p.run('helpTour.index'), i);
+      await p.click({'#help-next': {}});
+    }
+    assert.equal(p.nodes.get('#help-dialog').open, false);
+  }
+  assert.equal(audio.src, source);
+  assert.equal(audio.paused, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.location.hash, hash);
+  assert.equal(p.history.length, entries);
+  assert.equal(p.requests.length, requests, 'Tours do not fetch, analyse, change settings or write');
+});
+
+test('Help above an editor preserves the draft and returns focus on Escape', async () => {
+  const p = page(); await settle();
+  await p.run('openEditor([state.albums[0].id])');
+  p.run('editing.trackPatches[String(editing.originals[0].tracks[0].id)] = {title: "My unsaved title"}; $("#review-button").focus(); openHelp("editing")');
+  const draft = p.json('editing'), requests = p.requests.length;
+  await p.click({'#help-next': {}});
+  assert.match(p.nodes.get('#help-hint').textContent, /album editor/);
+  await p.click({'#help-prev': {}});
+  assert.equal(p.run('helpTour.index'), 0);
+  await p.emitDocument('keydown', {key: 'Escape', preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() {}});
+  assert.equal(p.nodes.get('#help-dialog').open, false);
+  assert.equal(p.nodes.get('#editor').open, true);
+  assert.equal(p.run('document.activeElement === $("#review-button")'), true);
+  assert.deepEqual(p.json('editing'), draft);
+  assert.equal(p.requests.length, requests);
+});
+
+test('Help closes on navigation and library replacement without enabling optional features', async () => {
+  const p = page(); await settle();
+  p.run('openHelp("guide"); showScreen("albums")');
+  assert.equal(p.nodes.get('#help-dialog').open, false);
+  assert.equal(p.run('albumGuide.enabled'), false);
+  p.run('openHelp("artists"); useLocal([...state.details.values()], "demo")');
+  assert.equal(p.nodes.get('#help-dialog').open, false);
+  assert.equal(p.run('albumGuide.enabled'), false);
+  assert.equal(p.requests.filter(r => r.options?.method === 'POST').length, 0);
+});
+
+test('the question mark selects only the current page or dialog help', async () => {
+  const p = page(); await settle();
+  const requests = p.requests.length;
+  for (const [screen, context] of [['artists', 'artists'], ['albums', 'albums'], ['album', 'album'],
+    ['tracks', 'tracks'], ['favourites', 'favourites'], ['album-favourites', 'album-favourites'],
+    ['playlists', 'playlists'], ['recently-played', 'recently-played'], ['overview', 'overview'],
+    ['album-guide', 'guide'], ['browse', 'browse']]) {
+    p.run(`state.screen = ${JSON.stringify(screen)}`);
+    await p.click({'#help-button': {}});
+    assert.equal(p.run('helpTour.topic'), context);
+    if (screen !== 'album-guide') assert.doesNotMatch(p.json('helpTour.content').steps.flat().join(' '), /1001/);
+    await p.click({'#help-close': {}});
+  }
+  p.run('state.screen = "playlists"; collectionsView.playlist = "25"; openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'playlist');
+  p.run('closeHelp(); $("#editor").showModal(); openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'editing');
+  p.run('closeHelp(); $("#review").showModal(); openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'review');
+  p.run('closeHelp(); $("#review").close(); $("#settings").showModal(); openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'settings');
+  p.run('closeHelp(); $("#settings").close(); $("#editor").close(); $("#guide-link-dialog").showModal(); openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'guide-link');
+  assert.equal(p.requests.length, requests);
+  const html = readFileSync(path.join(staticDir, 'index.html'), 'utf8');
+  assert.match(html, /id="help-button"[^>]*aria-label="Help for this page"[^>]*>\?<\/button>/);
+  assert.doesNotMatch(html, /help-topics|help-topic-list|help-all|>\? Help</);
+});
+
+test('Help positioning keeps the card inside small and large viewports', () => {
+  const p = page();
+  for (const [width, height] of [[390, 700], [1265, 900]]) {
+    const card = {width: Math.min(410, width - 24), height: 330};
+    for (const rect of [null, {left: 10, right: width - 10, top: 10, bottom: 55},
+      {left: 10, right: 220, top: height - 70, bottom: height - 10}]) {
+      const pos = p.json(`helpCardPosition(${JSON.stringify(rect)}, ${JSON.stringify(card)}, ${width}, ${height})`);
+      assert.ok(pos.left >= 12 && pos.top >= 12);
+      assert.ok(pos.left + card.width <= width - 12);
+      assert.ok(pos.top + card.height <= height - 12);
+    }
+  }
+});
+
+test('Help keeps forward and reverse Tab focus inside its visible controls', async () => {
+  const p = page(); await settle();
+  p.run(`openHelp("artists");
+    const helpControls = [$("#help-close"), $("#help-next")];
+    for (const node of helpControls) node.getClientRects = () => [{}];
+    document.querySelectorAll = selector => selector === "#help-card button:not([disabled])" ? helpControls : [];
+    $("#help-next").focus()`);
+  let prevented = false;
+  const event = {key: 'Tab', preventDefault() { prevented = true; }};
+  await p.emitDocument('keydown', event);
+  assert.equal(prevented, true);
+  assert.equal(p.run('document.activeElement === $("#help-close")'), true);
+  await p.emitDocument('keydown', {...event, shiftKey: true});
+  assert.equal(p.run('document.activeElement === $("#help-next")'), true);
+});
+
+function guideReport(p) {
+  return {enabled: true, state: 'ready', revision: 'reference-v1', lastmodified: 'library-v1',
+    total: 1001, counts: {found: 1, possible: 1, missing: 999},
+    entries: [
+      {id: 1, album: 'Reference title', artist: 'Reference artist', year: 1980, status: 'found', album_ids: [p.run('state.albums[0].id')]},
+      {id: 2, album: 'Maybe <script>', artist: 'Another artist', year: 1990, status: 'possible', album_ids: [p.run('state.albums[1].id')]},
+      {id: 3, album: 'Missing album', artist: 'Absent artist', year: 2000, status: 'missing', album_ids: []},
+    ]};
+}
+
+test('1001 Albums is off by default; enabling only shows navigation, analysis is explicit', async () => {
+  const p = livePage(); await settle();
+  assert.equal(p.nodes.get('#show-album-guide').hidden, true);
+  p.run('lookup.sources = [{name:"musicbrainz",label:"MusicBrainz",enabled:true}]; openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /name="album_guide" > Enable 1001 Albums/);
+  p.setFetch((url, options) => {
+    if (url === '/api/settings') {
+      assert.equal(JSON.parse(options.body).album_guide, true);
+      return {ok: true, json: async () => ({sources: [], album_guide: true, auto_lookup: false})};
+    }
+    assert.equal(url, '/api/album-guide');
+    assert.equal(options?.method || 'GET', 'GET');
+    return {ok: true, json: async () => ({enabled: true, state: 'empty'})};
+  });
+  await p.run('saveSettings({elements:{auto_lookup:{checked:false},auto_updates:{checked:false},album_guide:{checked:true}},querySelectorAll:()=>[]})');
+  assert.equal(p.nodes.get('#show-album-guide').hidden, false);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/album-guide')).length, 0);
+  p.run('showAlbumGuide()'); await settle();
+  assert.equal(p.location.hash, '#/album-guide');
+  assert.match(p.nodes.get('#guide-note').textContent, /only when you press/);
+  assert.equal(p.requests.filter(r => r.url.endsWith('/analyse')).length, 0);
+  const report = guideReport(p);
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/album-guide/analyse');
+    assert.equal(options.method, 'POST');
+    return {ok: true, json: async () => report};
+  });
+  await p.nodes.get('#guide-analyse').emit('click'); await settle();
+  assert.match(p.nodes.get('#guide-results').textContent, /1 of 1,001 albums found/);
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Reference title/);
+  assert.doesNotMatch(p.nodes.get('#guide-list').innerHTML, /Missing album|Maybe/);
+});
+
+test('guide results filter locally, escape text and preserve search on Back without disturbing audio', async () => {
+  const p = livePage(); await settle();
+  const report = guideReport(p);
+  p.setFetch(url => { assert.equal(url, '/api/album-guide'); return {ok: true, json: async () => report}; });
+  p.run('applyAlbumGuideSettings({album_guide:true}); playTracks(state.details.get(state.albums[0].id)); showAlbumGuide()'); await settle();
+  const queue = p.json('player.queue'), src = p.nodes.get('#audio').src;
+  p.nodes.get('#guide-filter').value = 'possible'; await p.nodes.get('#guide-filter').emit('change');
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Possible match|Maybe &lt;script&gt;/);
+  assert.doesNotMatch(p.nodes.get('#guide-list').innerHTML, /<script>|data-queue-album/);
+  p.nodes.get('#guide-search').value = 'Maybe'; await p.nodes.get('#guide-search').emit('input');
+  const before = p.requests.length;
+  p.run('showScreen("albums"); render()');
+  p.history.back(); await settle();
+  assert.equal(p.location.hash, '#/album-guide');
+  assert.equal(p.nodes.get('#guide-search').value, 'Maybe');
+  assert.equal(p.nodes.get('#guide-filter').value, 'possible');
+  assert.equal(p.requests.length, before);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, src);
+  p.run('applyAlbumGuideSettings({album_guide:false})');
+  assert.equal(p.nodes.get('#show-album-guide').hidden, true);
+  assert.equal(p.run('state.screen'), 'artists');
+  assert.equal(p.run('albumGuide.data'), null);
+});
+
+test('album background uses bundled notes for confirmed guide links only, escapes text and keeps playback', async () => {
+  const p = livePage(); await settle();
+  const report = guideReport(p), ref = report.entries[0];
+  p.run(`applyAlbumGuideSettings({album_guide:true}); albumGuide.data = ${JSON.stringify(report)}; albumGuide.details = state.details; playTracks(state.details.get("1"))`);
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  p.setNotesFetch(() => ({ok: true, json: async () => ({schema: 1, entries: [
+    {id: ref.id, album: ref.album, artist: ref.artist, text: '<script>alert(1)</script> & an album.',
+      context: '<b>Reviewed title variant</b>',
+      source_url: 'https://en.wikipedia.org/wiki/An_Album'},
+    {id: 50, album: 'Bad link', artist: 'Other', text: 'Unsafe', source_url: 'javascript:alert(1)'}]})}));
+  await p.run('openAlbum("1")'); await settle();
+  const panel = p.nodes.get('#album-guide-notes');
+  assert.match(panel.innerHTML, /About this album|&lt;script&gt;alert/);
+  assert.match(panel.innerHTML, /Wikipedia contributors|CC BY-SA/);
+  assert.doesNotMatch(panel.innerHTML, /<script>|javascript:/);
+  assert.match(panel.innerHTML, /&lt;b&gt;Reviewed title variant&lt;\/b&gt;/);
+  assert.equal(panel.hidden, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.requests.filter(r => r.url === '/1001-album-notes.json').length, 1);
+  assert.ok(p.requests.every(r => !/^https?:/.test(r.url)), 'Reading notes makes no external request');
+  p.run('albumGuide.data.entries[0].status = "possible"; renderGuideAlbumNotes()');
+  assert.equal(panel.hidden, true, 'Unconfirmed candidates never receive album text');
+  p.run('albumGuide.data.entries[0].status = "found"; renderGuideAlbumNotes()');
+  assert.equal(panel.hidden, false);
+  p.run('applyAlbumGuideSettings({album_guide:false})');
+  assert.equal(panel.hidden, true);
+});
+
+test('late album notes never repaint another page and opening an album never analyses the guide', async () => {
+  const p = livePage(); await settle();
+  const report = guideReport(p), ref = report.entries[0];
+  p.setFetch(url => { assert.equal(url, '/api/album-guide'); return {ok: true, json: async () => report}; });
+  let release;
+  p.setNotesFetch(() => new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({schema: 1,
+    entries: [{...ref, text: 'Local background', source_url: 'https://en.wikipedia.org/wiki/Album'}]})}); }));
+  p.run('applyAlbumGuideSettings({album_guide:true})');
+  await p.run('openAlbum("1")'); await settle();
+  assert.equal(p.requests.filter(r => r.url === '/api/album-guide').length, 1);
+  assert.equal(typeof release, 'function');
+  p.run('showScreen("albums"); $("#album-guide-notes").innerHTML = "unchanged"');
+  release(); await settle();
+  assert.equal(p.nodes.get('#album-guide-notes').innerHTML, 'unchanged');
+  assert.equal(p.requests.filter(r => r.url.endsWith('/analyse') || r.options?.method === 'POST').length, 0);
+});
+
+test('guide matching display is remembered across browsers without changing links, filters or playback', async () => {
+  const storage = {}, p = page({storage}); await settle();
+  const report = guideReport(p);
+  Object.assign(report.entries[0], {manual: true, manual_ids: ['1']});
+  p.setFetch((url, options) => {
+    if (url === '/api/settings') return {ok: true, json: async () => JSON.parse(options.body)};
+    assert.equal(url, '/api/album-guide'); return {ok: true, json: async () => report};
+  });
+  p.run('state.mode = "live"; applyAlbumGuideSettings({album_guide:true}); playTracks(state.details.get("1")); showAlbumGuide()');
+  await settle();
+  const data = p.json('albumGuide.data'), queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  const count = p.requests.length;
+  p.nodes.get('#guide-show-matching').checked = false;
+  await p.nodes.get('#guide-show-matching').emit('change');
+  assert.equal(p.nodes.get('#album-guide-page').classList.contains('guide-hide-matching'), true);
+  assert.equal(storage['tagcast-guide-matching-details'], 'hidden');
+  assert.deepEqual(p.json('albumGuide.data'), data);
+  assert.equal(p.run('albumGuide.filter'), 'found');
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.requests.length, count + 1);
+  assert.deepEqual(JSON.parse(p.requests.at(-1).options.body), {guide_matching_details: false});
+  const restored = page({storage}); await settle();
+  assert.equal(restored.run('guideDisplay.matching'), false);
+  const newPort = page(); await settle(); // A new origin has no localStorage preference.
+  newPort.run('applyAlbumGuideSettings({album_guide:true, guide_matching_details:false})');
+  assert.equal(newPort.nodes.get('#guide-show-matching').checked, false);
+  assert.equal(newPort.nodes.get('#album-guide-page').classList.contains('guide-hide-matching'), true);
+  p.nodes.get('#guide-show-matching').checked = true;
+  await p.nodes.get('#guide-show-matching').emit('change');
+  assert.equal(p.nodes.get('#album-guide-page').classList.contains('guide-hide-matching'), false);
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Linked by you|data-guide-unlink/);
+  assert.equal(p.requests.length, count + 2);
+  assert.deepEqual(JSON.parse(p.requests.at(-1).options.body), {guide_matching_details: true});
+  assert.equal(p.requests.filter(r => r.url.includes('/analyse') || r.url.includes('/link')).length, 0);
+});
+
+test('rapid matching-detail choices save in order and late settings cannot undo the final choice', async () => {
+  const p = page(); await settle();
+  const saves = []; let release;
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/settings');
+    const value = JSON.parse(options.body).guide_matching_details;
+    saves.push(value);
+    return new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({guide_matching_details: value})}); });
+  });
+  p.nodes.get('#guide-show-matching').checked = false;
+  const first = p.nodes.get('#guide-show-matching').emit('change'); await settle();
+  p.nodes.get('#guide-show-matching').checked = true;
+  const last = p.nodes.get('#guide-show-matching').emit('change'); await settle();
+  assert.deepEqual(saves, [false]);
+  p.run('applyAlbumGuideSettings({album_guide:true, guide_matching_details:false})');
+  assert.equal(p.nodes.get('#guide-show-matching').checked, true);
+  release(); await first; await settle();
+  assert.deepEqual(saves, [false, true]);
+  release(); await last;
+  assert.equal(p.run('guideDisplay.matching'), true);
+  p.setFetch(() => { throw Error('Server unavailable'); });
+  p.nodes.get('#guide-show-matching').checked = false;
+  await p.nodes.get('#guide-show-matching').emit('change');
+  assert.equal(p.nodes.get('#guide-show-matching').checked, false);
+  assert.match(p.nodes.get('#toast').textContent, /could not remember.*Server unavailable/);
+});
+
+test('guide suppresses disabled or replaced-library responses and explains stale results without rescanning', async () => {
+  const p = livePage(); await settle();
+  p.run('applyAlbumGuideSettings({album_guide:true})');
+  p.setFetch(() => ({ok: true, json: async () => ({enabled: true, state: 'stale', total: 1001})}));
+  p.run('showAlbumGuide()'); await settle();
+  assert.match(p.nodes.get('#guide-note').textContent, /changed.*Analyse again/);
+  assert.equal(p.requests.filter(r => r.url.endsWith('/analyse')).length, 0);
+  let release;
+  const report = guideReport(p);
+  p.setFetch(() => new Promise(resolve => { release = () => resolve({ok: true, json: async () => report}); }));
+  const pending = p.run('loadAlbumGuide(true)');
+  p.run('applyAlbumGuideSettings({album_guide:false})'); release(); await pending;
+  assert.equal(p.run('albumGuide.data'), null);
+  assert.equal(p.nodes.get('#show-album-guide').hidden, true);
+  p.run('applyAlbumGuideSettings({album_guide:true}); albumGuide.details = state.details');
+  const next = p.run('loadAlbumGuide(true)');
+  p.run('useLocal(demoLibrary(), "demo")'); release(); await next;
+  assert.equal(p.run('albumGuide.data'), null);
+  assert.equal(p.run('albumGuide.loading'), false);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/albums')).length, 0);
+});
+
+test('guide merges matching discs into one edition and paginates list entries rather than editions', async () => {
+  const p = livePage(); await settle();
+  p.run(`const one = state.albums[0]; state.albums = [
+    {...one, id:"1", disc:1, year:1980, upload_dates:["2020-01-01"]},
+    {...one, id:"2", disc:2, year:1980, upload_dates:["2020-01-01"]},
+    {...one, id:"3", disc:1, year:2020, upload_dates:["2021-01-01"]}];
+    applyAlbumGuideSettings({album_guide:true})`);
+  const report = {enabled:true, state:'ready', total:25, counts:{found:25,possible:0,missing:0},
+    entries: Array.from({length:25}, (_,i) => ({id:i+1, album:'Reference '+i, artist:'Artist', year:1980, status:'found', album_ids:['1','2','3']}))};
+  p.setFetch(() => ({ok: true, json: async () => report}));
+  p.run('showAlbumGuide()'); await settle();
+  assert.equal((p.nodes.get('#guide-list').innerHTML.match(/class="album-card guide-card"/g)||[]).length,24);
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Edition 2 \(2020\)/);
+  assert.doesNotMatch(p.nodes.get('#guide-list').innerHTML, /Edition 3/);
+  assert.match(p.nodes.get('#guide-pagination').innerHTML, /Page 1 of 2/);
+});
+
+test('guide confirms candidates, searches summaries locally, and undoes links without changing playback', async () => {
+  const p = livePage(); await settle();
+  const report = guideReport(p);
+  p.setFetch((url, options) => {
+    if (url === '/api/album-guide') return {ok: true, json: async () => report};
+    assert.equal(url, '/api/album-guide/link');
+    const body = JSON.parse(options.body), entry = report.entries.find(e => e.id === body.entry_id);
+    assert.deepEqual(body.before, entry.manual_ids || []);
+    assert.equal(body.revision, 'reference-v1'); assert.equal(body.lastmodified, 'library-v1');
+    entry.manual = body.album_ids.length > 0; entry.manual_ids = body.album_ids;
+    entry.album_ids = body.album_ids.length ? body.album_ids : [p.run('state.albums[1].id')];
+    entry.status = body.album_ids.length ? 'found' : 'possible';
+    report.counts = {found: entry.manual ? 2 : 1, possible: entry.manual ? 0 : 1, missing: 999};
+    return {ok: true, json: async () => report};
+  });
+  p.run('applyAlbumGuideSettings({album_guide:true}); playTracks(state.details.get(state.albums[0].id)); showAlbumGuide()'); await settle();
+  const queue = p.json('player.queue'), src = p.nodes.get('#audio').src, history = p.history.length;
+  p.nodes.get('#guide-filter').value = 'possible'; await p.nodes.get('#guide-filter').emit('change');
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Confirm match…/);
+  await p.click({'[data-guide-link]': {dataset: {guideLink: '2'}}});
+  assert.equal(p.nodes.get('#guide-link-dialog').open, true);
+  assert.equal(p.nodes.get('#guide-link-reference').textContent, 'Another artist · Maybe <script> (1990)');
+  assert.match(p.nodes.get('#guide-link-choices').innerHTML, /Use this album/);
+  const requests = p.requests.length;
+  p.nodes.get('#guide-link-search').value = p.run('state.albums[2].name');
+  await p.nodes.get('#guide-link-search').emit('input');
+  assert.match(p.nodes.get('#guide-link-choices').innerHTML, /data-guide-pick/);
+  assert.equal(p.requests.length, requests, 'Search only uses loaded album summaries');
+  await p.click({'[data-guide-pick]': {dataset: {guidePick: p.run('String(state.albums[2].id)')}}}); await settle();
+  assert.equal(p.nodes.get('#guide-link-dialog').open, false);
+  assert.match(p.nodes.get('#guide-results').textContent, /2 of 1,001/);
+  p.nodes.get('#guide-filter').value = 'found'; await p.nodes.get('#guide-filter').emit('change');
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Linked by you|Undo link/);
+  await p.click({'[data-guide-unlink]': {dataset: {guideUnlink: '2'}}}); await settle();
+  assert.match(p.nodes.get('#guide-results').textContent, /1 of 1,001/);
+  p.run('openGuideLink(3)');
+  assert.match(p.nodes.get('#guide-link-choices').innerHTML, /Search your library/);
+  p.run('guideLink.focus = null');
+  p.nodes.get('#guide-link-dialog').close(); await p.nodes.get('#guide-link-dialog').emit('close');
+  assert.equal(p.run('guideLink.entry'), null);
+  assert.equal(p.run('document.activeElement === $("#guide-analyse")'), true);
+  assert.equal(p.history.length, history);
+  assert.deepEqual(p.json('player.queue'), queue); assert.equal(p.nodes.get('#audio').src, src);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/albums')).length, 0);
+});
+
+test('guide ignores late manual-link results after disabling or replacing the library', async () => {
+  const p = livePage(); await settle();
+  const report = guideReport(p);
+  p.setFetch(() => ({ok: true, json: async () => report}));
+  p.run('applyAlbumGuideSettings({album_guide:true}); showAlbumGuide()'); await settle();
+  let release;
+  p.setFetch(() => new Promise(resolve => { release = () => resolve({ok: true, json: async () => report}); }));
+  p.run('openGuideLink(2)');
+  const pending = p.run('saveGuideLink(2, [String(state.albums[1].id)])');
+  assert.equal(p.nodes.get('#guide-analyse').disabled, true);
+  p.run('applyAlbumGuideSettings({album_guide:false})'); release(); await pending;
+  assert.equal(p.run('albumGuide.data'), null); assert.equal(p.run('guideLink.entry'), null);
+  assert.equal(p.nodes.get('#guide-link-dialog').open, false);
+  p.setFetch(() => ({ok: true, json: async () => report}));
+  p.run('applyAlbumGuideSettings({album_guide:true}); showAlbumGuide()'); await settle();
+  p.setFetch(() => new Promise(resolve => { release = () => resolve({ok: true, json: async () => report}); }));
+  const second = p.run('saveGuideLink(3, [String(state.albums[0].id)])');
+  p.run('useLocal(demoLibrary(), "demo")'); release(); await second;
+  assert.equal(p.run('albumGuide.data'), null); assert.equal(p.run('guideLink.busy'), false);
+});
+
+test('guide combines compact decade chips with reference-year sorting before paging and restores them on Back', async () => {
+  const p = livePage(); await settle();
+  const report = guideReport(p);
+  report.entries = Array.from({length: 30}, (_, i) => ({...report.entries[0], id:i+1,
+    album:`Book album ${i+1}`, year:1980 + i % 10}));
+  report.entries.push({...report.entries[0], id:31, album:'Nineties album', year:1991});
+  p.setFetch(url => { assert.equal(url, '/api/album-guide'); return {ok:true, json:async () => report}; });
+  p.run('applyAlbumGuideSettings({album_guide:true}); playTracks(state.details.get(state.albums[0].id)); showAlbumGuide()'); await settle();
+  const count = p.requests.length, queue = p.json('player.queue'), src = p.nodes.get('#audio').src;
+  assert.match(p.nodes.get('#guide-decades').innerHTML, /All decades.*1980s.*1990s/);
+  await p.click({'[data-guide-decade]': {dataset:{guideDecade:'1980'}}});
+  p.nodes.get('#guide-sort').value = 'year-desc'; await p.nodes.get('#guide-sort').emit('change');
+  const html = p.nodes.get('#guide-list').innerHTML;
+  assert.match(html, /Book album 10/); assert.doesNotMatch(html, /Nineties album/);
+  assert.ok(html.indexOf('Book album 10</span>') < html.indexOf('Book album 9</span>'));
+  assert.match(p.nodes.get('#guide-pagination').innerHTML, /Page 1 of 2/);
+  p.run('showScreen("albums"); render()'); p.history.back(); await settle();
+  assert.equal(p.run('albumGuide.decade'), '1980'); assert.equal(p.run('albumGuide.sort'), 'year-desc');
+  assert.equal(p.nodes.get('#guide-sort').value, 'year-desc');
+  assert.match(p.nodes.get('#guide-decades').innerHTML, /data-guide-decade="1980" aria-pressed="true"/);
+  p.nodes.get('#guide-sort').value = 'year-asc'; await p.nodes.get('#guide-sort').emit('change');
+  assert.ok(p.nodes.get('#guide-list').innerHTML.indexOf('Book album 1</span>') < p.nodes.get('#guide-list').innerHTML.indexOf('Book album 2</span>'));
+  await p.click({'[data-guide-decade]': {dataset:{guideDecade:'all'}}});
+  p.nodes.get('#guide-sort').value = 'year-desc'; await p.nodes.get('#guide-sort').emit('change');
+  assert.match(p.nodes.get('#guide-list').innerHTML, /Nineties album/);
+  assert.equal(p.requests.length, count); assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, src);
+});
+
+test('an older running server explains that manual linking needs a restart and keeps the chooser open', async () => {
+  const p = livePage(); await settle(); const report = guideReport(p);
+  p.setFetch(() => ({ok:true, json:async () => report}));
+  p.run('applyAlbumGuideSettings({album_guide:true}); showAlbumGuide()'); await settle();
+  p.setFetch(() => ({ok:false,status:404,json:async () => ({error:'Unknown endpoint.'})}));
+  p.run('openGuideLink(2)'); await p.run('saveGuideLink(2, [String(state.albums[0].id)])');
+  assert.equal(p.nodes.get('#guide-link-dialog').open, true);
+  assert.match(p.nodes.get('#guide-link-error').textContent, /Restart Tagcast.*reload this page/);
+  assert.equal(p.run('albumGuide.data.entries[1].status'), 'possible');
+  assert.equal(p.run('guideLink.busy'), false);
+});
 
 test("favourites are native ratings, require confirmation for existing lower ratings, and wait for read-back", async () => {
   const p = livePage(); await settle();
@@ -1016,6 +1463,60 @@ test("Tagcast starts on Album artists, the first page in the sidebar", async () 
   assert.doesNotMatch(html, /import-file|Import library/);
 });
 
+test('sidebar shortcuts hide independently of feature settings, persist and preserve essential controls and playback', async () => {
+  const storage = {}, p = page({storage}); await settle();
+  p.run('state.mode="live"; playTracks(state.details.get(state.albums[0].id)); openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /Choose shortcuts and order/);
+  const queue = p.json('player.queue'), src = p.nodes.get('#audio').src, count = p.requests.length, route = p.location.hash;
+  const input = {checked:false,dataset:{sidebarItem:'show-genres'},matches(selector) {return selector === '[data-sidebar-item]';}};
+  await p.change(input);
+  assert.equal(p.nodes.get('#show-genres').hidden, true);
+  input.dataset.sidebarItem = 'show-history'; await p.change(input);
+  assert.equal(p.nodes.get('#show-history').hidden, false);
+  assert.equal(p.nodes.get('#show-artists').hidden, false); assert.equal(p.nodes.get('#all-albums').hidden, false);
+  assert.notEqual(p.run('$("#settings-button").hidden'), true);
+  input.dataset.sidebarItem = 'show-recently-played'; await p.change(input);
+  p.run('playReporting.enabled=true; updateRecentlyPlayedControls()');
+  assert.equal(p.nodes.get('#show-recently-played').hidden, true);
+  input.checked = true; await p.change(input);
+  assert.equal(p.nodes.get('#show-recently-played').hidden, false);
+  p.run('playReporting.enabled=false; updateRecentlyPlayedControls()');
+  assert.equal(p.nodes.get('#show-recently-played').hidden, true);
+  assert.equal(p.requests.length, count); assert.equal(p.location.hash, route);
+  assert.deepEqual(p.json('player.queue'), queue); assert.equal(p.nodes.get('#audio').src, src);
+  const reloaded = page({storage}); await settle();
+  assert.equal(reloaded.nodes.get('#show-genres').hidden, true);
+  assert.equal(reloaded.nodes.get('#show-album-guide').hidden, true);
+  assert.equal(reloaded.nodes.get('#show-history').hidden, false);
+});
+
+test('sidebar order changes DOM and keyboard order, restores defaults, and ignores invalid saved items', async () => {
+  const storage = {'tagcast-sidebar':JSON.stringify({order:['unknown','show-genres','show-genres'],hidden:['show-artists','unknown','show-composers']})};
+  const p = page({storage}); await settle();
+  assert.equal(p.run('sidebarLayout.order[0]'), 'show-genres');
+  assert.equal(p.nodes.get('#workspace-nav').children[0], p.nodes.get('#show-genres'));
+  assert.equal(p.nodes.get('#show-artists').hidden, false);
+  assert.equal(p.nodes.get('#show-composers').hidden, true);
+  assert.equal(new Set(p.json('sidebarLayout.order')).size, p.run('SIDEBAR_ITEMS.length'));
+  await p.click({'[data-sidebar-move]': {dataset:{sidebarMove:'show-genres',direction:'1'}}});
+  assert.equal(p.nodes.get('#workspace-nav').children[1], p.nodes.get('#show-genres'));
+  assert.equal(JSON.parse(storage['tagcast-sidebar']).order[1], 'show-genres');
+  const reloaded = page({storage}); await settle();
+  assert.equal(reloaded.nodes.get('#workspace-nav').children[1], reloaded.nodes.get('#show-genres'));
+  await p.click({'[data-sidebar-reset]': {}});
+  assert.deepEqual(p.json('sidebarLayout.order'), p.json('SIDEBAR_ITEMS.map(i=>i[0])'));
+  assert.equal(p.nodes.get('#workspace-nav').children[0], p.nodes.get('#show-artists'));
+  assert.equal(p.nodes.get('#show-composers').hidden, false);
+  assert.equal(p.nodes.get('#show-album-guide').hidden, true, 'Restoring shortcuts cannot enable a feature');
+  p.run('localStorage.setItem = () => {throw Error("Storage unavailable")}; sidebarLayout.hidden=["show-genres"]; saveSidebarLayout()');
+  assert.equal(p.nodes.get('#show-genres').hidden, true);
+  assert.match(p.nodes.get('#toast').textContent, /could not save/);
+  for (const saved of ['broken', 'null', '[]', '{"order":12,"hidden":false}']) {
+    const fresh = page({storage:{'tagcast-sidebar':saved}}); await settle();
+    assert.deepEqual(fresh.json('sidebarLayout.order'), fresh.json('SIDEBAR_ITEMS.map(i=>i[0])'));
+  }
+});
+
 test("Back returns from an album to the artist and then to the artist grid as it was", async () => {
   const p = page();
   await settle();
@@ -1292,7 +1793,7 @@ test("you choose how many albums and album artists a page shows, and Tagcast rem
   assert.equal(again.run("artistBrowse.pageSize"), 200);
 });
 
-test("Duplicate tracks requires matching track numbers and titles per disc", async () => {
+test("Duplicate badges mark repeated numbers; extra-copy selection requires matching titles per disc", async () => {
   const p = page();
   p.run(`const album = state.details.get("5"); album.tracks.push(
       {...album.tracks[2], id: 599, title: " TEARDROP "},
@@ -1303,7 +1804,7 @@ test("Duplicate tracks requires matching track numbers and titles per disc", asy
   p.nodes.get("#filter").value = "duplicates";
   assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), ["5"]);
   await p.run('openAlbum("5")');
-  assert.equal((p.nodes.get("#album-page").innerHTML.match(/>Duplicate</g) || []).length, 2, "Both copies are marked");
+  assert.equal((p.nodes.get("#album-page").innerHTML.match(/>Duplicated</g) || []).length, 3, "Every repeated position is marked, including a different title");
   assert.deepEqual(p.json('extraCopies([state.details.get("5")])'), ["599"], "Reprises and missing numbers are not selected");
   const sets = setPage();
   sets.run(`state.details.get("72").tracks.push({...state.details.get("72").tracks[0], id: 7299});
@@ -1330,7 +1831,7 @@ test("Quote variants agree across duplicate filters, badges and extra-copy selec
   assert.deepEqual(p.json("filteredAlbums().map(a => a.id)"), ["91"]);
   assert.equal(p.run('state.albums[0].duplicates'), 2);
   await p.run('openAlbum("91")');
-  assert.equal((p.nodes.get("#album-page").innerHTML.match(/>Duplicate</g) || []).length, 3);
+  assert.equal((p.nodes.get("#album-page").innerHTML.match(/>Duplicated</g) || []).length, 4);
   assert.deepEqual(p.json('extraCopies([state.details.get("91")])'), ["942", "943"]);
   assert.deepEqual(p.json('state.details.get("91").tracks.slice(0, 3).map(t => t.title)'), [plain, quoted, curly]);
   for (const [first, second] of [["Song (Live)", "Song"], ["Song (Radio Edit)", "Song"],
@@ -1338,6 +1839,114 @@ test("Quote variants agree across duplicate filters, badges and extra-copy selec
     assert.notEqual(p.run(`titleKey(${JSON.stringify(first)})`), p.run(`titleKey(${JSON.stringify(second)})`));
   }
   assert.equal(p.run('duplicateTrackKey({track: 4, title: "\\\"\\\""})'), "", "Quote-only titles are not matched");
+});
+
+test('Repeated track numbers find soundtrack title variants, while extra-copy selection keeps different titles', async () => {
+  const p = page(); await settle();
+  const first = 'Sous le soleil exactement', second = "C'est la cristallisation comme dit Stendhal";
+  const tracks = [
+    {id: 901, title: first, artist: 'Michel Colombier', track: 1},
+    {id: 902, title: first, artist: 'Anna Karina', track: 2},
+    {id: 903, title: first + ' (Bande originale de la comédie musicale télévisée "Anna")', artist: 'Anna Karina', track: 2},
+    {id: 904, title: second, artist: 'Serge Gainsbourg', track: 3},
+    {id: 905, title: second + ' (BOF "Anna")', artist: 'Serge Gainsbourg', track: 3},
+    {id: 906, title: 'Pas mal pas mal du tout', track: 4},
+    {id: 907, title: 'Pas mal pas mal du tout', track: 4},
+    {id: 908, title: first, track: 17},
+    {id: 909, title: 'Unknown', track: 0}, {id: 910, title: 'Unknown'}];
+  const album = {id: 91, name: 'Anna', artist: 'Serge Gainsbourg', disc: 1, year: 1967, tracks};
+  p.run(`useLocal([${JSON.stringify(album)}], "live"); playTracks(state.details.get("91")); render()`);
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  const summary = p.json('state.albums[0]'), detail = p.json('state.details.get("91")');
+  assert.deepEqual([summary.repeated_numbers, summary.duplicates], [3, 1]);
+  p.run('state.details = new Map()'); // The live album list has summaries only.
+  const before = p.requests.length;
+  p.nodes.get('#filter').value = 'duplicates'; p.run('render()');
+  assert.deepEqual(p.json('filteredAlbums().map(a => a.id)'), ['91']);
+  assert.equal(p.requests.length, before, 'Finding candidates never downloads album tracks');
+  assert.match(p.nodes.get('#page-subtitle').textContent, /repeated track numbers/);
+  p.setFetch(url => {
+    assert.equal(url, '/api/albums?ids=91');
+    return {ok: true, json: async () => ({albums: [detail]})};
+  });
+  await p.run('openAlbum("91")');
+  const html = p.nodes.get('#album-page').innerHTML;
+  assert.equal((html.match(/>Duplicated</g) || []).length, 6);
+  assert.equal((html.match(/title="This track number occurs more than once/g) || []).length, 4);
+  assert.equal((html.match(/title="This track number and title occur more than once/g) || []).length, 2);
+  assert.doesNotMatch(html.match(/<tr data-row="901"[\s\S]*?<\/tr>/)[0], /duplicate|Duplicate/,
+    'The same title at another track number is not flagged');
+  await p.click({'[data-trash-start]': {}});
+  await p.click({'[data-trash-duplicates]': {}});
+  assert.deepEqual(p.json('[...albumView.trash]'), ['907'], 'Only the matching title is preselected');
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.equal(p.requests.filter(r => r.options?.method === 'POST').length, 0);
+  assert.deepEqual(p.json('state.details.get("91").tracks.map(t => t.title)'), tracks.map(t => t.title));
+});
+
+test('Repeated track-number counts stay per disc when albums are merged', () => {
+  const p = setPage();
+  p.run('state.albums = [...state.details.values()].map(summarize)');
+  p.nodes.get('#filter').value = 'duplicates';
+  assert.deepEqual(p.json('filteredAlbums().map(a => a.id)'), []);
+  p.run(`state.details.get("72").tracks.push({...state.details.get("72").tracks[0], id: 7299, title: "Different title"});
+    state.albums = [...state.details.values()].map(summarize)`);
+  assert.deepEqual(p.json('filteredAlbums().map(a => a.id)'), ['71']);
+  assert.deepEqual(p.json('[(albumShelf().find(a => a.id === "71")).repeated_numbers, (albumShelf().find(a => a.id === "71")).duplicates]'), [1, 0]);
+  assert.deepEqual(p.json('extraCopies([state.details.get("72"), state.details.get("73")])'), []);
+});
+
+test('Native combined sets retain original disc boundaries for duplicate badges and selection', async () => {
+  const p = page(); await settle();
+  p.run(`useLocal([{id: 91, name: "Combined set", artist: "Artist", year: 1970, disc: 1,
+    tracks: [{id: 1, album_id: "81", track: 1, title: "Same title"},
+             {id: 2, album_id: "82", track: 1, title: "Same title"}]}], "demo"); render()`);
+  p.nodes.get('#filter').value = 'duplicates';
+  assert.deepEqual(p.json('filteredAlbums().map(a => a.id)'), []);
+  await p.run('openAlbum("91")');
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML, />Duplicated</);
+  assert.deepEqual(p.json('extraCopies([state.details.get("91")])'), []);
+  p.run(`state.details.get("91").tracks.push({id: 3, album_id: "82", track: 1, title: "Different title"});
+    state.albums = [...state.details.values()].map(summarize); render()`);
+  assert.deepEqual(p.json('filteredAlbums().map(a => a.id)'), ['91']);
+  assert.equal((p.nodes.get('#album-page').innerHTML.match(/>Duplicated</g) || []).length, 2);
+  assert.deepEqual(p.json('extraCopies([state.details.get("91")])'), []);
+});
+
+test('The album overview and track rows mark repeated numbers with the same Duplicated label', async () => {
+  const p = page(); await settle();
+  p.run(`useLocal([{id: 91, name: "Listen", artist: "A Flock of Seagulls", year: 1983, disc: 1,
+    tracks: [{id: 901, album_id: "91", track: 9, title: "The Fall", genre: "Pop"},
+             {id: 902, album_id: "91", track: 10, title: "(It's Not Me) Talking", genre: "Pop"},
+             {id: 903, album_id: "91", track: 10, title: "(It's Not Me) Talking (Single Edit)", genre: "Pop"}]},
+    {id: 92, name: "No duplicates", artist: "Artist", year: 1980, disc: 1,
+     tracks: [{id: 904, track: 1, title: "Same title"}, {id: 905, track: 2, title: "Same title"}]}], "live"); render()`);
+  const detail = p.json('state.details.get("91")');
+  p.run('state.details = new Map()');
+  const before = p.requests.length;
+  assert.equal((p.nodes.get('#albums').innerHTML.match(/>Duplicated</g) || []).length, 1,
+    'The unfiltered overview marks candidates using compact summaries only');
+  p.nodes.get('#filter').value = 'duplicates'; p.run('render()');
+  assert.deepEqual(p.json('filteredAlbums().map(a => a.id)'), ['91']);
+  assert.equal((p.nodes.get('#albums').innerHTML.match(/>Duplicated</g) || []).length, 1);
+  p.run('state.view = "list"; render()');
+  assert.equal((p.nodes.get('#albums').innerHTML.match(/>Duplicated</g) || []).length, 1);
+  assert.equal(p.requests.length, before, 'Grid, list and filtering never download track details');
+  assert.match(p.run('duplicateAlbumBadge({duplicates: 1})'), />Duplicated</,
+    'Older compact summaries still mark known candidates');
+  p.setFetch(url => {
+    assert.equal(url, '/api/albums?ids=91');
+    return {ok: true, json: async () => ({albums: [detail]})};
+  });
+  await p.run('openAlbum("91")');
+  const html = p.nodes.get('#album-page').innerHTML;
+  for (const id of [902, 903]) assert.match(html.match(new RegExp(`<tr data-row="${id}"[\\s\\S]*?<\\/tr>`))[0], />Duplicated</);
+  assert.doesNotMatch(html.match(/<tr data-row="901"[\s\S]*?<\/tr>/)[0], />Duplicated</);
+  assert.deepEqual(p.json('extraCopies([state.details.get("91")])'), [],
+    'Marking a different version does not automatically select it for removal');
+  assert.equal(p.requests.filter(r => r.options?.method === 'POST').length, 0);
 });
 
 test("Album artists can show only the artists without an image", async () => {
@@ -1387,6 +1996,65 @@ test("tracks go to the trash only after a review, and duplicates can be picked f
   assert.equal(p.run("state.history[0].trash"), true);
   assert.equal(p.run("albumView.trash"), null);
   assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /data-trash-track/);
+});
+
+test('Trash suggestions group two complete uploads and prefer older FLAC over newer MP3 without selecting or writing', async () => {
+  const p = page(); await settle();
+  const tracks = Array.from({length: 10}, (_, i) => [
+    {id: `old-${i}`, album_id: '91', track: i + 1, title: `Song ${i + 1}`, artist: 'Artist', length: 180 + i,
+      format: 'FLAC', uploaded_at: '2022-04-05T09:45:47'},
+    {id: `new-${i}`, album_id: '91', track: i + 1, title: `Song ${i + 1} (Remastered Version)`, artist: 'Artist', length: 180 + i,
+      format: 'MP3', uploaded_at: '2026-09-23T22:48:19'},
+  ]).flat();
+  p.run(`useLocal([{id: 91, name: "Two uploads", artist: "Artist", year: 1980, disc: 1,
+    tracks: ${JSON.stringify(tracks)}}], "live"); playTracks(state.details.get("91")); render()`);
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src, count = p.requests.length;
+  const original = p.json('state.details.get("91").tracks');
+  await p.run('openAlbum("91")');
+  await p.click({'[data-trash-start]': {}});
+  assert.deepEqual(p.json('[...albumView.trash]'), [], 'Opening only presents the proposal');
+  assert.deepEqual(p.json('trashSuggestion(albumDiscs()).remove'), tracks.filter(t => t.format === 'MP3').map(t => t.id));
+  let html = p.nodes.get('#album-page').innerHTML;
+  assert.match(html, /2022-04-05<\/td><td>FLAC<\/td><td>10<\/td><td>1, 2, 3, 4, 5, 6, 7, 8, 9, 10/);
+  assert.match(html, /2026-09-23<\/td><td>MP3<\/td><td>10<\/td>/);
+  assert.equal((html.match(/>Suggested keep</g) || []).length, 10);
+  assert.equal((html.match(/>Suggested trash</g) || []).length, 10);
+  assert.match(html, /Titles differ; compare versions before confirming/);
+  assert.match(html, /Uploaded 2022-04-05 09:45:47/);
+  p.run('$("#album-page .trash-upload-groups").open = true');
+  await p.click({'[data-trash-suggested]': {}});
+  assert.match(p.nodes.get('#album-page').innerHTML, /class="trash-upload-groups" open/);
+  assert.equal(p.run('document.activeElement === $("[data-trash-suggested]")'), true);
+  assert.deepEqual(p.json('[...albumView.trash]'), tracks.filter(t => t.format === 'MP3').map(t => t.id));
+  assert.match(p.nodes.get('#album-page').innerHTML, /10 of 20 tracks selected/);
+  await p.click({'[data-trash-review]': {}});
+  html = p.nodes.get('#trash-content').innerHTML;
+  assert.match(html, /Move 10 tracks to the trash/);
+  assert.match(html, /MP3.*Uploaded 2026-09-23 22:48:19/);
+  assert.doesNotMatch(html, /2022-04-05|old-0/);
+  assert.equal(p.requests.length, count, 'Suggestions reuse the open album without requests');
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.deepEqual(p.json('state.details.get("91").tracks'), original);
+});
+
+test('Trash suggestions use the newest upload within one format and preserve unresolved versions and disc boundaries', () => {
+  const p = page();
+  const base = {album_id: '91', track: 1, title: 'Song', artist: 'Artist', length: 180, format: 'FLAC', uploaded_at: '2026-10-15T10:00:00'};
+  const propose = copies => p.json(`trashSuggestion([{tracks:${JSON.stringify(copies)}}]).remove`);
+  assert.deepEqual(propose([{...base,id:'old'}, {...base,id:'new',uploaded_at:'2026-10-15T11:00:00'}]), ['old']);
+  assert.deepEqual(propose([{...base,id:'old'}, {...base,id:'new',uploaded_at:'2026-10-16'}]), ['old']);
+  assert.deepEqual(propose([{...base,id:'old',format:'MP3'}, {...base,id:'new',uploaded_at:'2026-10-16'}]), ['old']);
+  assert.deepEqual(propose([{...base,id:'first'}, {...base,id:'second'}]), [], 'Equal timestamps need a manual decision');
+  for (const patch of [{length:240}, {artist:'Other artist'}, {format:''}, {format:'AAC/ALAC'},
+    {uploaded_at:''}, {uploaded_at:'2026-02-30'}, {uploaded_at:'2026-10-15'}, {track:2}, {track:0}, {album_id:'92'}]) {
+    assert.deepEqual(propose([{...base,id:'first'}, {...base,...patch,id:'second'}]), [], JSON.stringify(patch));
+  }
+  assert.deepEqual(p.json(`trashSuggestion([{tracks:[${JSON.stringify({...base,id:'first'})}]},
+    {tracks:[${JSON.stringify({...base,id:'second',uploaded_at:'2026-10-16'})}]}]).remove`), [], 'Separate discs stay separate');
+  assert.deepEqual(propose([{...base,id:'flac-1'}, {...base,id:'flac-2'}, {...base,id:'mp3',format:'MP3'}]), ['mp3'],
+    'Equivalent FLAC candidates both stay; only the lower-priority MP3 is proposed');
 });
 
 test("Tracks searches every track by title, artist, album or composer and opens its album with the track marked", async () => {
@@ -2038,8 +2706,14 @@ test("decades sample unique merged albums, Surprise reshuffles locally and Back 
   assert.equal(new Set(selected).size, 60);
   assert.match(p.nodes.get("#browse-results").textContent, /Showing 24 random albums of 60/);
   assert.equal(p.nodes.get("#browse-pagination").innerHTML, "");
+  const introduction = p.nodes.get("#browse-decade-intro").textContent;
+  assert.match(introduction, /Synth-pop/);
+  assert.equal(p.nodes.get("#browse-decade-intro").hidden, false);
+  assert.equal(p.nodes.get("#browse-toolbar").hidden, false);
+  assert.equal(p.nodes.get("#browse-per-page").hidden, false);
   await p.run(`openAlbum("${selected[0]}")`); p.history.back(); await settle();
   assert.deepEqual(p.json('browseView.randomIds'), selected);
+  assert.equal(p.nodes.get("#browse-decade-intro").textContent, introduction);
   const calls = p.requests.length;
   p.run('Math.random = () => 0');
   await p.nodes.get("#browse-surprise").emit("click");
@@ -2047,6 +2721,33 @@ test("decades sample unique merged albums, Surprise reshuffles locally and Back 
   assert.equal(p.requests.length, calls);
   assert.equal(p.location.hash, "#/decades/1980");
   assert.equal(p.nodes.get("#browse-sort").hidden, true);
+});
+
+test("the decade overview has no toolbar and introductions follow the chosen decade without leaking into other browse pages", async () => {
+  const p = page(); await settle();
+  p.run('showBrowse("decades", null, {sort: "count"})');
+  assert.equal(p.nodes.get('#browse-toolbar').hidden, true);
+  assert.equal(p.nodes.get('#browse-sort').hidden, true);
+  assert.equal(p.nodes.get('#browse-per-page').hidden, true);
+  assert.equal(p.nodes.get('#browse-decade-intro').hidden, true);
+  const keys = p.json('browseView.rows.map(g => Number(g.key))');
+  assert.deepEqual(keys, [...keys].sort((a, b) => b - a));
+  const calls = p.requests.length;
+  await p.click({'[data-browse-key]': {dataset: {browseKey: '1980', browseLabel: '1980s'}}});
+  assert.match(p.nodes.get('#browse-decade-intro').textContent, /Synth-pop/);
+  assert.equal(p.nodes.get('#browse-toolbar').hidden, false);
+  assert.equal(p.nodes.get('#browse-search-field').hidden, false);
+  assert.equal(p.nodes.get('#browse-surprise').hidden, false);
+  p.run('showBrowse("decades", "1990", {label: "1990s"})');
+  assert.match(p.nodes.get('#browse-decade-intro').textContent, /Grunge/);
+  assert.doesNotMatch(p.nodes.get('#browse-decade-intro').textContent, /Synth-pop/);
+  p.run('showBrowse("genres")');
+  assert.equal(p.nodes.get('#browse-toolbar').hidden, false);
+  assert.equal(p.nodes.get('#browse-sort').hidden, false);
+  assert.equal(p.nodes.get('#browse-per-page').hidden, false);
+  assert.equal(p.nodes.get('#browse-decade-intro').hidden, true);
+  assert.equal(p.nodes.get('#browse-decade-intro').textContent, '');
+  assert.equal(p.requests.length, calls);
 });
 
 test("album grid and browse cards keep the compact queue action inside their metadata footer", async () => {

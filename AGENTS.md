@@ -30,14 +30,16 @@ The application consists of a Python server and a plain JavaScript frontend.
   reports, bounded track-only batches and explicit stop/resume with fresh checks.
 - `src/tagcast/updates.py`: public stable-release checks, version comparison and a
   daily persistent cache, independent of iBroadcast credentials.
+- `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
+  cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
 - `src/tagcast/collections.py`: native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/queue_sync.py`: opt-in server-side WebSocket bridge; extra OAuth queue
   scopes, sanitized account sessions, five-second reconnect pacing and controller roles.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and seventeen JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and nineteen JavaScript files:
   `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `album.js`,
-  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `queue-sync.js`, `navigation.js`. `album.js` provides album browsing;
+  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -107,12 +109,28 @@ and preserve a valid script order in `index.html`.
 - Tracks go to iBroadcast's trash (`trash`) only from the album page, after the
   trash review; the server first checks that every track is still active on its
   album. Never delete permanently.
-- Duplicate candidates require the same positive track number and normalized title
-  within one disc. Title comparison ignores case, spacing and straight/curly quotation
-  marks; retain version text and other punctuation. Repeated titles at different positions
-  or on different discs are not duplicates; missing numbers are not matched. Summary counts, badges and
-  Select extra copies use the same rule. Selection keeps the first candidate and
-  still requires review; metadata cannot establish audio identity or quality.
+- The Duplicate tracks filter includes repeated positive track numbers within one
+  disc, even when titles differ. Summary `repeated_numbers` counts the extra numbered
+  positions, per disc; merging discs sums these counts without comparing across discs.
+  Within a native combined view, also keep the track's original `album_id` in the
+  comparison key so separate original discs are not flagged or preselected together.
+  Album grid/list badges use the same predicate as the filter and show Duplicated.
+  Repeated positions also show Duplicated on track rows; tooltips distinguish matching
+  and differing titles. Matching normalized titles contribute to `duplicates`. Title comparison ignores
+  case, spacing and straight/curly quotation marks; retain version text and punctuation.
+  Repeated titles at different positions or on different discs are not duplicates;
+  missing numbers are not matched. Select extra copies keeps its stricter number/title
+  rule and the first candidate; differing titles require manual selection. Every trash
+  operation still requires review; metadata cannot establish audio identity or quality.
+  Trash mode also presents optional format/date suggestions within these per-disc
+  repeated positions: prefer FLAC over MP3, then newest upload within the same format.
+  Keep unresolved ties and missing-date candidates; do not rank unknown/incomparable
+  formats or different artists/durations (>2 seconds). Differing titles require
+  complete artist/duration metadata and a visible comparison notice. Opening never
+  preselects; Select suggested copies is explicit and remains adjustable before review.
+  Show stored upload dates/times and day/format groups only from loaded album details;
+  do not scan audio or fetch tracks to build suggestions. Keep uploaded_on day precision
+  for set grouping; uploaded_at preserves validated date/time without inventing a timezone.
 - A normal editor metadata save remains limited to one album or one album artist.
   Only changed, supported fields are sent.
 - Compare `before` values with the current library view before writes.
@@ -169,12 +187,65 @@ and preserve a valid script order in `index.html`.
 - Settings contains online sources/keys, playback recording and update checks. The
   library information banner is dismissible with a browser-local remembered preference
   and can be restored in Settings. Never hide other warnings or errors with it.
+- Help uses a compact **?** button to start only the current page or dialog’s
+  read-only tour; there is no topic chooser or automatic start. Scope highlights
+  and explanations to that context, including distinct editor/review/chooser help. Use a native modal
+  spotlight above existing dialogs, preserving drafts, playback, queue and history.
+  Hidden/missing controls get explanatory fallback text; never enable a feature,
+  navigate, fetch data or invoke writes just to demonstrate it. Preserve keyboard
+  dismissal, focus/scroll return and close Help on navigation or library replacement.
 - The mobile sidebar is a disclosure menu; its open/closed state adds no history
   entry. Keep connection and source settings reachable and support Escape.
+  Browser-local `tagcast-sidebar` preferences hide optional shortcuts and reorder
+  navigation in DOM/keyboard order. Album artists, Albums and Change history cannot
+  be hidden; connection controls and Settings remain outside customization. Hiding
+  a shortcut never disables its feature or changes the current page/audio. Preserve
+  opt-in gates for Recently played and 1001 Albums, support restoring defaults, and
+  ignore unknown/duplicate stored IDs. Routine updates preserve focus and scroll.
 - Decades reuses the browse indexes and effective track/album years. Exclude unknown
   years, use full decade labels (1980s, 2020s), sample merged album summaries locally
   without duplicates, and preserve the random order on Back. Surprise me again
   reshuffles without downloading tracks or writing to iBroadcast.
+- 1001 Albums is off by default (`album_guide` in Settings). Enabling or opening only
+  reads the saved report; analysis requires an explicit button. Compare loaded album
+  metadata locally, never audio, external sources or individual track details.
+  Preserve meaningful title/version text; fuzzy results remain possible matches and
+  do not count as found. Count each reference entry once, merging displayed discs.
+  `album-guide.json` is scoped to the account, library revision, combine setting and
+  catalogue hash. Stale reports require explicit reanalysis; unknown revisions cannot
+  be reused across server restarts. Disable/reset and reject late responses across
+  library/account changes without changing playback. Reference corrections retain
+  entry order, stable IDs and the original selection hash; log original/final values
+  and sources for reviewed title/artist/year corrections. They never modify the
+  original CSV or the user's metadata.
+  Explicit manual links use `album-guide-links.json`, scoped by account and original
+  reference selection. Confirm a candidate or search compact album summaries to
+  choose one displayed album/set; never fetch tracks or write to iBroadcast for it.
+  Preserve links across reanalysis and spelling repairs, compare previous links to
+  reject concurrent changes, and support change/undo. An unavailable linked album
+  must not silently become a different match. Manual links count as found only while
+  all linked discs remain active. Keep distinct numbered volumes out of fuzzy matches.
+  Compact decade filters and ascending/descending year sorting use reference years,
+  combine with status/search before pagination, and survive Back/Forward without
+  triggering analysis or extra library requests.
+  The page-local **Show matching details** checkbox remembers its display preference
+  in local server settings (`guide_matching_details`), surviving restarts, ports and
+  browsers; retain browser storage as an immediate fallback for earlier servers.
+  Serialize changes and ignore late reads after a local choice. It controls status
+  labels and link controls only. Hiding them never changes
+  reports, links, counts, filters, editions or playback; restore the same controls
+  by re-enabling the checkbox. Keep missing-cover styling independent.
+  Bundled background excerpts live separately in `1001-album-notes.json`, with
+  Wikipedia/CC BY-SA attribution and an accompanying license notice. Capture only
+  explicit Wikipedia-attributed summaries, never reviews or book excerpts, through
+  the manually run `tools/import_album_notes.py`. Keep our reference IDs/selection;
+  unique normalized artist/title pairs may import automatically, fuzzy/ambiguous
+  candidates require reviewed source links and an unresolved report. Runtime never
+  contacts external sites for notes. Lazily load the local file once and show an
+  escaped, collapsible About this album above tracks only for confirmed entries in
+  the current account/library's saved guide report. Reading that report is allowed;
+  never auto-analyse, display text on possible/stale matches, or change playback or
+  history. Preserve source/license links and suppress late DOM updates after changes.
 - By default the play queue stays in browser memory. Explicit Play replaces it; Add to queue
   appends a single track or all discs of an album, preserving click order. Store
   each queued track's album metadata for covers and navigation across albums.

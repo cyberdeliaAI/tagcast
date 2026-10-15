@@ -119,6 +119,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.account_settings)
         elif url.path == "/api/settings":
             self._run(self.studio.settings)
+        elif url.path == "/api/album-guide":
+            self._run(self.studio.album_guide.view)
         elif url.path == "/api/updates":
             self._run(self.studio.check_updates)
         elif url.path == "/api/lookup/album":
@@ -187,6 +189,8 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/cleanup/start": lambda b: self.studio.cleanup.start(b.get("id"), b.get("excluded")),
             "/api/cleanup/stop": lambda b: self.studio.cleanup.cancel(b.get("id")),
             "/api/settings": self.studio.save_settings,
+            "/api/album-guide/analyse": lambda b: self.studio.album_guide.analyse(),
+            "/api/album-guide/link": self.studio.album_guide.link,
             "/api/updates/check": lambda b: self.studio.check_updates(manual=True),
             "/api/artwork": self.studio.change_artwork,
             "/api/artwork/undo": self.studio.undo_artwork,

@@ -9,6 +9,40 @@ const browseKinds = {
   genres: {label: "Genres", noun: "genres", singular: "genre", subtitle: "Explore main and additional genres. Combined labels such as Pop;Rock stay together as stored."},
   years: {label: "Release year", noun: "release years", singular: "release year", subtitle: "Explore tracks by release year. The track year takes precedence, with the album year as fallback. Missing years appear under Unknown year."},
 };
+// Brief editorial sketches, independent of the albums in a user's collection.
+// References: Library of Congress Songs of America and Recorded Sound Research;
+// the Met's Nineteenth-Century Classical Music; Smithsonian's Hip-Hop and Rap
+// anthology; Rock Hall artist histories; IFPI Global Music Reports 2021 and 2026.
+// https://guides.loc.gov/recorded-sound-research/print-materials
+// https://www.metmuseum.org/essays/nineteenth-century-classical-music
+// https://nmaahc.si.edu/explore/publications/smithsonian-anthology-hip-hop-and-rap
+// https://rockhall.com/inductees/joy-division-new-order/
+// https://www.ifpi.org/resources/
+const decadeIntroductions = {
+  "1900": "Ragtime, brass bands and popular songs filled theatres and homes, while early records brought performers to new listeners. In concert music, late Romantic richness met new approaches to harmony and colour.",
+  "1910": "Ragtime and dance bands shared the stage with blues and the first jazz recordings. Composers explored new rhythms and harmonies, while folk traditions continued to shape everyday music.",
+  "1920": "Jazz, blues and dance orchestras reached growing audiences through records and radio. Improvisation and distinctive voices flourished alongside country recordings, popular songs and adventurous concert music.",
+  "1930": "Big-band swing brought dance rhythms, memorable singers and inventive soloists to a wide audience. Blues, country and orchestral music offered equally rich paths through the decade.",
+  "1940": "New jazz directions, including bebop, grew alongside swing. Rhythm and blues and bluegrass developed distinctive sounds, while vocalists brought both intimacy and energy to popular songs.",
+  "1950": "Rock and roll brought the energy of rhythm and blues and country to new audiences. Doo-wop, vocal pop, electric blues and varied jazz styles added to the decade's colourful sound.",
+  "1960": "Pop and rock became a space for rapid experimentation, from the British beat boom and folk-rock to psychedelic studio sounds. Soul, jazz and folk traditions offered a wealth of distinctive voices.",
+  "1970": "Funk and disco filled dance floors, progressive rock stretched the album format, and punk brought a sharper edge. Reggae, singer-songwriters, jazz fusion and electronic experiments added their own distinctive sounds.",
+  "1980": "Synth-pop, new wave and electronic dance sounds grew around synthesisers, drum machines and sampling. Hip-hop expanded its reach, while guitar-driven rock and metal continued to flourish.",
+  "1990": "Grunge, alternative rock and Britpop gave guitar music fresh directions, while hip-hop and R&B became major creative forces. House, techno and other club sounds flourished alongside a wide range of independent scenes.",
+  "2000": "Hip-hop, R&B, pop, indie rock and electronic music shared an increasingly digital world. Downloads and online discovery changed how listeners found music, while albums and independent scenes continued to evolve.",
+  "2010": "Streaming and playlists changed everyday listening, bringing music from many places within easy reach. Pop, hip-hop and electronic dance music crossed paths, while independent artists found new ways to reach listeners.",
+  "2020": "Streaming connects pop, hip-hop and electronic music with regional scenes around the world. New releases sit alongside rediscovered recordings, bringing fresh voices and older favourites into the same listening space.",
+};
+
+function decadeIntroduction(key) {
+  if (Object.hasOwn(decadeIntroductions, key)) return decadeIntroductions[key];
+  const year = Number(key);
+  if (!Number.isInteger(year) || year <= 0 || year % 10 !== 0) return "";
+  if (year >= 1800 && year < 1900) return "Concert halls, opera houses and music at home shaped this era of classical and Romantic music. Recordings in your collection may revisit works written long before recording became widespread.";
+  if (year < 1800) return "Music from earlier centuries lives on through songs, instrumental works and performances passed down across generations. Explore the recordings that connect your collection with this period.";
+  if (year > new Date().getFullYear()) return "The music of this decade is still ahead of us. Explore releases associated with these future years in your collection.";
+  return "Discover the music your collection connects with these years, from familiar styles to new directions and distinctive voices.";
+}
 const browseView = {kind: "track-artists", key: null, label: "", rows: [], albumIds: new Set(), total: 0, page: 0,
   query: "", sort: "az", pageSize: storedPageSize("tagcast-browse-per-page") || 24,
   request: 0, details: null, loaded: false, loading: false, error: "", randomIds: []};
@@ -134,21 +168,26 @@ function renderBrowse() {
   if (state.screen !== "browse") return;
   if (!state.loading && !browseView.loading && (browseView.details !== state.details || !browseView.loaded && !browseView.error)) { loadBrowse(); return; }
   const config = browseKinds[browseView.kind], detail = browseView.key !== null;
-  const surprise = detail && browseView.kind === "decades";
+  const decades = browseView.kind === "decades", surprise = detail && decades;
   $("#browse-title").textContent = detail ? browseView.label || "Albums" : `${config.label}.`;
   $("#breadcrumb").textContent = detail ? `${config.label} / ${browseView.label || "Albums"}` : config.label;
   $("#browse-eyebrow").textContent = detail ? config.label.toLocaleUpperCase() : "EXPLORE YOUR COLLECTION";
   $("#browse-subtitle").textContent = surprise ? "A random selection from this decade. Open an album to listen, add it to your queue, or try Surprise me again." : detail ? "Albums with at least one matching track. Open an album to see its tracks, listen or edit." : config.subtitle;
+  const introduction = surprise ? decadeIntroduction(browseView.key) : "";
+  $("#browse-decade-intro").textContent = introduction;
+  $("#browse-decade-intro").hidden = !introduction;
   $("#browse-back").hidden = !detail;
   $("#browse-back").textContent = `← Back to ${backLabel(config.label)}`;
-  $("#browse-search-field").hidden = browseView.kind === "decades" && !detail;
+  $("#browse-toolbar").hidden = decades && !detail;
+  $("#browse-search-field").hidden = decades && !detail;
   $("#browse-search").placeholder = detail ? "Search albums in this group" : `Search ${config.noun}`;
   $("#browse-search").setAttribute("aria-label", detail ? "Search group albums" : `Search ${config.noun}`);
   $("#browse-per-page").value = String(browseView.pageSize);
+  $("#browse-per-page").hidden = decades && !detail;
   $("#browse-surprise").hidden = !surprise;
   $("#browse-surprise").disabled = state.loading || browseView.loading || Boolean(browseView.error);
   const sort = $("#browse-sort");
-  sort.hidden = surprise;
+  sort.hidden = decades;
   sort.setAttribute("aria-label", detail ? "Sort group albums" : `Sort ${config.noun}`);
   sort.innerHTML = detail ? '<option value="artist">Album artist · A–Z</option><option value="artist_za">Album artist · Z–A</option><option value="title">Album title · A–Z</option><option value="title_za">Album title · Z–A</option><option value="year">Release year · oldest first</option><option value="newest">Release year · newest first</option>'
     : ["years", "decades"].includes(browseView.kind) ? '<option value="az">Year · oldest first</option><option value="za">Year · newest first</option><option value="count">Most tracks first</option>'
@@ -168,7 +207,7 @@ function renderBrowse() {
     rows = albums.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
   }
   $("#browse-results").textContent = state.loading || browseView.loading ? "Loading…" : browseView.error ? ""
-    : surprise ? `Showing ${rows.length} random albums of ${browseView.total.toLocaleString("en")}` : `${browseView.total.toLocaleString("en")} ${detail ? browseView.total === 1 ? "album" : "albums" : browseView.total === 1 ? config.singular : config.noun}`;
+    : surprise ? `Showing ${rows.length} random ${rows.length === 1 ? "album" : "albums"} of ${browseView.total.toLocaleString("en")}` : `${browseView.total.toLocaleString("en")} ${detail ? browseView.total === 1 ? "album" : "albums" : browseView.total === 1 ? config.singular : config.noun}`;
   const list = $("#browse-list");
   list.className = detail ? "album-grid" : "artists-grid";
   list.innerHTML = state.loading || browseView.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading your collection…</div>'
@@ -186,7 +225,7 @@ function showBrowse(kind, key = null, saved = {}) {
   if (!browseKinds[kind]) return;
   clearTimeout(browseTimer);
   Object.assign(browseView, {kind, key, label: saved.label || "", query: kind === "decades" && key === null ? "" : saved.query || "", page: saved.page || 0,
-    sort: saved.sort || (key !== null ? "artist" : ["years", "decades"].includes(kind) ? "za" : "az"), rows: [], albumIds: new Set(), details: null, loaded: false, randomIds: Array.isArray(saved.randomIds) ? saved.randomIds.filter(id => typeof id === "string") : []});
+    sort: kind === "decades" && key === null ? "za" : saved.sort || (key !== null ? "artist" : kind === "years" ? "za" : "az"), rows: [], albumIds: new Set(), details: null, loaded: false, randomIds: Array.isArray(saved.randomIds) ? saved.randomIds.filter(id => typeof id === "string") : []});
   $("#browse-search").value = browseView.query;
   showScreen("browse"); loadBrowse(); window.scrollTo?.({top: 0});
 }

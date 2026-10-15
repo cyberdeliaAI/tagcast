@@ -68,6 +68,25 @@ class DecodeTests(unittest.TestCase):
 
 
 class SummaryTests(unittest.TestCase):
+    def test_full_upload_timestamp_keeps_stored_precision_and_disc_group_dates(self):
+        for day, clock, expected in [
+            ("2026-10-15", "09:45:47", "2026-10-15T09:45:47"),
+            ("2026-10-15 22:48:19", "", "2026-10-15T22:48:19"),
+            ("2026-10-15", "", "2026-10-15"),
+            ("2026-10-15", "25:00:00", "2026-10-15"),
+            ("2026-02-30", "09:45:47", ""), ("", "09:45:47", ""),
+        ]:
+            with self.subTest(day=day, clock=clock):
+                data = raw()
+                rows = data["library"]["tracks"]
+                rows["map"].update({"uploaded_on": 8, "uploaded_time": 9})
+                rows["100"].extend([day, clock])
+                library = Library(data)
+                self.assertEqual(library.track_view(100)["uploaded_at"], expected)
+                self.assertEqual(Library(library.to_cache()).track_view(100)["uploaded_at"], expected)
+                self.assertEqual(library.track_view(100)["uploaded_on"], day[:10])
+                self.assertNotIn("uploaded_at", library.album_summary(10))
+
     def test_file_formats_reuse_stored_types_in_details_search_favourites_and_cache(self):
         for mime, expected in [("audio/flac", "FLAC"), ("audio/x-flac", "FLAC"),
                                (" Audio/MPEG ", "MP3"), ("audio/mp3", "MP3"),
@@ -406,6 +425,45 @@ class ComposerAndGapTests(unittest.TestCase):
                 self.assertEqual(library.album_summary(10)["duplicates"], expected)
                 self.assertEqual([library.track_view(i)["title"] for i in (1, 2)],
                                  [first, second])  # Comparing never changes stored titles.
+
+    def test_repeated_numbers_find_differing_titles_but_keep_discs_and_trash_separate(self):
+        titles = ["Sous le soleil exactement", "Sous le soleil exactement",
+                  'Sous le soleil exactement (Bande originale de la comédie musicale télévisée "Anna")',
+                  "C'est la cristallisation comme dit Stendhal",
+                  'C\'est la cristallisation comme dit Stendhal (BOF "Anna")',
+                  "Pas mal pas mal du tout", "Unknown", "Unknown", "Trashed"]
+        numbers = [1, 2, "2", 3, 3, 4, 0, 0, 4]
+        rows = {str(i): [title, 10, 6, position, i == 9]
+                for i, (title, position) in enumerate(zip(titles, numbers), 1)}
+        rows["10"] = [titles[0], 11, 6, 1, False]
+        library = Library({"library": {
+            "artists": {"map": {"name": 0}, "6": ["Anna"]},
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2, "disc": 3},
+                       "10": ["Anna", 6, list(range(1, 10)), 1], "11": ["Anna", 6, [10], 2]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "track": 3,
+                               "trashed": 4}, **rows}}})
+        summary = library.album_summary(10)
+        self.assertEqual((summary["repeated_numbers"], summary["duplicates"]), (2, 0))
+        self.assertNotIn("tracks", summary, "The filter uses summaries without fetching tracks")
+        self.assertEqual(library.album_summary(11)["repeated_numbers"], 0)
+        self.assertEqual(Library(library.to_cache()).album_summary(10)["repeated_numbers"], 2)
+        self.assertEqual([library.tracks[i]["title"] for i in range(1, 10)], titles)
+
+    def test_native_combined_view_compares_the_original_discs_separately(self):
+        value = {"combine_sets": True, "library": {
+            "artists": {"map": {"name": 0}, "6": ["Artist"]},
+            "albums": {"map": {"name": 0, "artist_id": 1, "tracks": 2},
+                       "10": ["Combined set", 6, [1, 2]]},
+            "tracks": {"map": {"title": 0, "album_id": 1, "artist_id": 2, "track": 3},
+                       "1": ["Same title", 91, 6, 1], "2": ["Same title", 92, 6, 1]}}}
+        library = Library(value)
+        self.assertEqual((library.album_summary(10)["repeated_numbers"],
+                          library.album_summary(10)["duplicates"]), (0, 0))
+        self.assertEqual([t["album_id"] for t in library.album_view(10)["tracks"]], ["91", "92"])
+        value["library"]["albums"]["10"][2].append(3)
+        value["library"]["tracks"]["3"] = ["Different title", 92, 6, 1]
+        summary = Library(value).album_summary(10)
+        self.assertEqual((summary["repeated_numbers"], summary["duplicates"]), (1, 0))
 
     def test_composers_keep_other_extra_artists(self):
         plan = plan_save(self.library(), [change("track", 1, 10, composers=(["Bach"], ["Bach", "Guest"]))])

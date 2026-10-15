@@ -15,6 +15,7 @@ import re
 import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
+from datetime import datetime
 from threading import Lock
 
 ARTWORK_SERVER = "https://artwork.ibroadcast.com"
@@ -35,6 +36,24 @@ MAX_CHANGES = 2000
 MAX_IDS_PER_REQUEST = 500
 MAX_TRACK_RESULTS = 1000
 TITLE_QUOTES = str.maketrans("", "", "'\"‘’‚‛“”„‟«»‹›")
+
+
+def uploaded_at(track):
+    """Stored upload date/time, without inventing a timezone or missing precision."""
+    value = text(track.get("uploaded_on")).strip()
+    day = value[:10]
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        return ""
+    clock = text(track.get("uploaded_time")).strip() or value[11:19]
+    try:
+        datetime.strptime(clock, "%H:%M:%S")
+    except ValueError:
+        return day
+    return f"{day}T{clock}" if re.fullmatch(r"\d{2}:\d{2}:\d{2}", clock) else day
 
 
 class LibraryError(ValueError):
@@ -356,6 +375,7 @@ class Library:
             "track": number(track.get("track")),
             "length": number(track.get("length")),
             "uploaded_on": text(track.get("uploaded_on")).strip()[:10],
+            "uploaded_at": uploaded_at(track),
             "format": FORMATS.get(text(track.get("type")).strip().lower(), ""),
             "artwork_id": number(track.get("artwork_id")),
             "rating": number(track.get("rating")),
@@ -368,7 +388,7 @@ class Library:
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
         genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
-        duplicate_keys, upload_dates = [], set()
+        duplicate_keys, positions, upload_dates = [], [], set()
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
@@ -383,8 +403,12 @@ class Library:
             no_composer += not self.composer_entries(track)
             numbers.add(number(track.get("track")))
             position, title = number(track.get("track")), title_key(track.get("title"))
+            # Combined sets can contain tracks from different original discs.
+            disc = number(track.get("album_id"))
+            if position > 0:
+                positions.append((disc, position))
             if position > 0 and title:
-                duplicate_keys.append((position, title))
+                duplicate_keys.append((disc, position, title))
         self._upload_dates[album_id] = tuple(sorted(upload_dates))
         return {
             "id": str(album_id),
@@ -409,6 +433,8 @@ class Library:
             "track_gaps": (max(numbers) - len(numbers - {0})) if numbers - {0} else 0,
             # Same numbered position and title on this disc; audio is not compared.
             "duplicates": len(duplicate_keys) - len(set(duplicate_keys)),
+            # Repeated positions also flag candidates whose titles differ.
+            "repeated_numbers": len(positions) - len(set(positions)),
         }
 
     def album_index(self):

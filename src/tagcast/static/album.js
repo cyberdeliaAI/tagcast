@@ -122,6 +122,12 @@ function twice(album) {
   return doubled;
 }
 
+function duplicateTrackBadge(track, titles, numbers) {
+  if (titles.has(duplicateTrackKey(track))) return ' <span class="pill missing" title="This track number and title occur more than once on this disc. Compare the tracks before choosing a copy.">Duplicated</span>';
+  if (numbers.has(duplicateTrackPosition(track))) return ' <span class="pill missing" title="This track number occurs more than once on this disc, with different titles. Compare the tracks before choosing a copy.">Duplicated</span>';
+  return "";
+}
+
 function backButton() {
   return `<button class="button small" data-album-back>← Back to ${escapeHtml(backLabel(state.artist || "Albums"))}</button>`;
 }
@@ -164,6 +170,8 @@ function renderAlbumView() {
     ? ` · ${trackDuration(album.tracks.reduce((sum, t) => sum + Number(t.length), 0))}` : "";
   const genres = [...new Map(album.tracks.flatMap(trackGenres).map(g => [g.toLocaleLowerCase(), g])).values()];
   const doubled = new Map(discs.map(d => [d, twice(d)]));
+  const repeated = new Map(discs.map(d => [d, repeatedTrackPositions(d)]));
+  const trashAdvice = albumView.trash ? trashSuggestion(discs) : null;
   $("#breadcrumb").textContent = album.name;
   $("#album-page").innerHTML = `${backButton()}
     <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="Enlarge cover of ${escapeHtml(album.name)}" ${album.artwork ? "" : "disabled"}>${cover(album)}</button><div class="album-detail-info"><div class="eyebrow">YOUR ALBUM</div>
@@ -174,12 +182,14 @@ function renderAlbumView() {
       <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ Play album</button>
         ${queueButton(album.id)}${playlistAlbumButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">Edit album →</button>${live() ? `<button class="button danger" data-trash-start ${albumView.trash ? "disabled" : ""}>${trashIcon}Move to trash…</button>` : ""}</div>
       ${live() ? "" : '<p class="muted">Connect iBroadcast to listen. You can edit this local preview.</p>'}</div></div>
+    <section id="album-guide-notes" aria-label="Album background" hidden></section>
     <div class="tracks-heading"><h2>Tracks</h2><span class="muted">${canPlay ? "Play from any track" : "Local preview"}</span></div>
     ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number">#</th><th>Title / Artist</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>
       ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>Disc ${d.disc || "?"}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">Edit disc ${d.disc || "?"}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}<button class="album-track-play" data-play="${escapeHtml(t.id)}" data-play-album-id="${id}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button><span>${t.track || "–"}</span></td>
-        <td><strong>${escapeHtml(t.title)}${doubled.get(d).has(duplicateTrackKey(t)) ? ' <span class="pill missing">Duplicate</span>' : ""}</strong><small>${performerLinks(t)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(album.id, t)}${heartButton(t)}</td></tr>`).join("")).join("")}
+        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(d), repeated.get(d))}</strong><small>${performerLinks(t)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small>${trashAdvice ? trashTrackNote(t, trashAdvice) : ""}</td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(album.id, t)}${heartButton(t)}</td></tr>`).join("")).join("")}
     </tbody></table>`;
   markPlaying();
+  if (typeof loadGuideAlbumNotes === "function") loadGuideAlbumNotes();
 }
 
 document.addEventListener("click", event => {
