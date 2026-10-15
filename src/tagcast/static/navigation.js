@@ -8,6 +8,92 @@
 const nav = {ready: false, restoring: false, pending: null};
 const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#playlist-dialog"];
 
+const SIDEBAR_ITEMS = [
+  ["show-artists", "Album artists", true], ["all-albums", "Albums", true],
+  ["show-track-artists", "Track artists"], ["show-composers", "Composers"],
+  ["show-genres", "Genres"], ["show-years", "Release year"], ["show-decades", "Decades"],
+  ["show-tracks", "Tracks"], ["show-favourites", "Favourites"], ["show-playlists", "Playlists"],
+  ["show-album-favourites", "Album favourites"], ["show-recently-played", "Recently played"],
+  ["show-album-guide", "1001 Albums"], ["show-overview", "Overview"], ["show-history", "Change history", true],
+];
+const sidebarLayout = readSidebarLayout();
+
+function readSidebarLayout() {
+  const defaults = SIDEBAR_ITEMS.map(([id]) => id), optional = new Set(SIDEBAR_ITEMS.filter(i => !i[2]).map(i => i[0]));
+  try {
+    const saved = JSON.parse(localStorage.getItem("tagcast-sidebar") || "{}");
+    const order = Array.isArray(saved?.order) ? saved.order.filter(id => defaults.includes(id)) : [];
+    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(id => optional.has(id)) : [];
+    return {order: [...new Set([...order, ...defaults])], hidden: [...new Set(hidden)]};
+  } catch { return {order: defaults, hidden: []}; }
+}
+
+function applySidebarLayout() {
+  const container = $("#workspace-nav");
+  const buttons = sidebarLayout.order.map(id => {
+    const button = $(`#${id}`);
+    button.hidden = sidebarLayout.hidden.includes(id)
+      || (id === "show-album-guide" && !albumGuide.enabled)
+      || (id === "show-recently-played" && (!live() || !playReporting.enabled));
+    return button;
+  });
+  if (buttons.some((button, index) => container.children[index] !== button)) {
+    const focus = document.activeElement, scroll = container.scrollTop;
+    // DOM order also controls keyboard navigation. Leave unchanged nodes in place
+    // on routine status/settings updates, preserving focus and the sidebar scroll.
+    for (const button of buttons) container.appendChild(button);
+    if (container.contains?.(focus) && !focus.hidden) focus.focus({preventScroll:true});
+    container.scrollTop = scroll;
+  }
+}
+
+function saveSidebarLayout() {
+  applySidebarLayout();
+  try { localStorage.setItem("tagcast-sidebar", JSON.stringify(sidebarLayout)); }
+  catch { toast("Sidebar changed for this tab. This browser could not save the preference."); }
+}
+
+function sidebarSettingsRows() {
+  return sidebarLayout.order.map((id, index) => {
+    const [, label, required] = SIDEBAR_ITEMS.find(item => item[0] === id);
+    const note = required ? "Always available" : id === "show-album-guide" && !albumGuide.enabled ? "Enable 1001 Albums under Discovery to show it"
+      : id === "show-recently-played" && !playReporting.enabled ? "Enable play reporting under Playback to show it" : "";
+    return `<li class="sidebar-setting-row"><label><input type="checkbox" data-sidebar-item="${id}" ${sidebarLayout.hidden.includes(id) ? "" : "checked"} ${required ? "disabled" : ""}><span>${label}${note ? `<small>${note}</small>` : ""}</span></label><div><button type="button" class="button small" data-sidebar-move="${id}" data-direction="-1" aria-label="Move ${label} up" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="button small" data-sidebar-move="${id}" data-direction="1" aria-label="Move ${label} down" ${index === sidebarLayout.order.length - 1 ? "disabled" : ""}>↓</button></div></li>`;
+  }).join("");
+}
+
+function sidebarSettingsPanel() {
+  return `<section class="sidebar-layout-settings"><h3>Sidebar</h3><details><summary>Choose shortcuts and order</summary><p class="muted">Show or hide extra shortcuts and move items with the arrow buttons. Changes apply immediately and are remembered in this browser. Hiding a shortcut keeps its feature and your music available. Connection controls and Settings always stay visible.</p><ul id="sidebar-layout-list">${sidebarSettingsRows()}</ul><button type="button" class="button small" data-sidebar-reset>Restore default sidebar</button></details></section>`;
+}
+
+document.addEventListener("change", event => {
+  const input = event.target.matches?.("[data-sidebar-item]") ? event.target : null;
+  if (!input) return;
+  const item = SIDEBAR_ITEMS.find(([id]) => id === input.dataset.sidebarItem);
+  if (!item || item[2]) return;
+  sidebarLayout.hidden = sidebarLayout.hidden.filter(id => id !== item[0]);
+  if (!input.checked) sidebarLayout.hidden.push(item[0]);
+  saveSidebarLayout();
+});
+document.addEventListener("click", event => {
+  const move = event.target.closest("[data-sidebar-move]");
+  if (move) {
+    const index = sidebarLayout.order.indexOf(move.dataset.sidebarMove), delta = Number(move.dataset.direction);
+    if (index < 0 || ![-1, 1].includes(delta) || !sidebarLayout.order[index + delta]) return;
+    [sidebarLayout.order[index], sidebarLayout.order[index + delta]] = [sidebarLayout.order[index + delta], sidebarLayout.order[index]];
+    saveSidebarLayout(); $("#sidebar-layout-list").innerHTML = sidebarSettingsRows();
+    const focus = document.querySelector(`[data-sidebar-move="${move.dataset.sidebarMove}"][data-direction="${delta}"]`);
+    if (focus && !focus.disabled) focus.focus();
+    else document.querySelector(`[data-sidebar-move="${move.dataset.sidebarMove}"][data-direction="${-delta}"]`)?.focus();
+  }
+  if (event.target.closest("[data-sidebar-reset]")) {
+    sidebarLayout.order = SIDEBAR_ITEMS.map(([id]) => id); sidebarLayout.hidden = [];
+    saveSidebarLayout(); $("#sidebar-layout-list").innerHTML = sidebarSettingsRows();
+    toast("Default sidebar restored.");
+  }
+});
+applySidebarLayout();
+
 // The mobile menu is a disclosure, not a page or a dialog. Desktop navigation
 // stays visible through CSS; opening the menu never adds a history entry.
 function setSidebarMenu(open) {
@@ -35,7 +121,7 @@ function currentRoute() {
   if (state.screen === "browse") return `${browseView.kind}${browseView.key === null ? "" : `/${encodeURIComponent(browseView.key)}`}`;
   if (state.screen === "playlists" && collectionsView.playlist) return `playlist/${encodeURIComponent(collectionsView.playlist)}`;
   if (state.screen === "album" && albumView.id) return `album/${encodeURIComponent(albumView.id)}`;
-  if (["overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "recently-played"].includes(state.screen)) return state.screen;
+  if (["overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
   return state.artist ? `artist/${encodeURIComponent(state.artist)}` : "albums";
 }
 
@@ -44,7 +130,7 @@ function parseRoute(hash) {
   let value = "";
   try { value = decodeURIComponent(rest.join("/")); } catch { return null; }
   if (Object.hasOwn(browseKinds, kind)) return {screen: "browse", kind, key: rest.length ? value : null};
-  if (["artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "recently-played", "overview"].includes(kind)) return {screen: kind};
+  if (["artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
   if (kind === "playlist" && /^\d+$/.test(value)) return {screen: "playlists", playlist: value};
   if (kind === "artist" && value) return {screen: "albums", artist: value};
   if (kind === "album" && value) return {screen: "album", album: value};
@@ -54,6 +140,7 @@ function parseRoute(hash) {
 function routeLabel(hash) {
   const route = parseRoute(hash);
   if (!route) return "";
+  if (route.screen === "album-guide") return "1001 Albums";
   if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : history.state?.browse?.label || browseKinds[route.kind].label;
   if (route.playlist) return collectionsView.data?.id === route.playlist ? collectionsView.data.name : "the playlist";
   if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || "the album";
@@ -67,6 +154,7 @@ function viewState(index, from) {
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
     collections: {query: collectionsView.query, offset: collectionsView.offset},
     recentSearch: $("#recently-played-search").value, recentPage: recentlyPlayed.page,
+    guide: {query: albumGuide.query, filter: albumGuide.filter, decade: albumGuide.decade, sort: albumGuide.sort, page: albumGuide.page},
     browse: {query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
 }
 
@@ -111,7 +199,9 @@ function goBack(fallback) {
 }
 
 function showRoute(route, saved = {}) {
-  if (route.screen === "browse") {
+  if (route.screen === "album-guide") {
+    showAlbumGuide(saved.guide || {});
+  } else if (route.screen === "browse") {
     showBrowse(route.kind, route.key, saved.browse || {});
   } else if (route.screen === "artists") {
     if (saved.artistsSearch !== undefined) $("#artists-search").value = saved.artistsSearch;

@@ -14,7 +14,8 @@ data = [(str(root / "src" / "tagcast" / "static"), "tagcast/static"),
         (str(assets / "licenses"), "licenses"),
         (str(root / "LICENSE"), "."), (str(root / "README.md"), "."),
         (str(root / "docs" / "native-builds.md"), "docs"),
-        (str(root / "docs" / "metadata-cleanup.md"), "docs")]
+        (str(root / "docs" / "metadata-cleanup.md"), "docs"),
+        (str(root / "docs" / "1001-albums.md"), "docs")]
 data += copy_metadata("ibroadcast")
 analysis = Analysis([str(root / "tools" / "pyinstaller_entry.py")],
                     pathex=[str(root / "src"), str(root / "tools")], datas=data)

@@ -393,6 +393,7 @@ body.has-player .now-playing-panel{bottom:76px}
 .album-card .card-meta{margin-top:auto;padding-top:11px;gap:7px}
 .album-card .card-meta>span:first-child{margin-right:auto;min-width:0}
 .album-card .card-meta>.pill{flex:none}
+.album-duplicate{display:block;margin-top:8px}
 .queue-add.queue-compact{display:inline-grid;place-items:center;flex:none;width:36px;min-height:36px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--palette-surface,#fff);color:var(--green);font-size:23px}
 .queue-add.queue-compact:hover{background:var(--palette-tint,#edf2e7)}
 .queue-add.queue-compact:disabled{opacity:.4}
@@ -511,3 +512,59 @@ body.visual-player-open{overflow:hidden}
 #player-repeat{min-width:36px;font-size:13px}.now-playing-footer{gap:8px;flex-wrap:wrap}
 .collection-search,#playlist-form input:not([type=checkbox]),#playlist-form textarea,#playlist-form select,#remote-controls input:not([type=range]),#remote-controls select,.playback-settings select{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
 .collection-search{width:min(560px,100%)}#playlist-form textarea{min-height:80px;resize:vertical}.playback-settings>label:has(select){display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.page-intro p.decade-intro{max-width:75ch;margin-bottom:12px;color:var(--ink)}
+.guide-card .guide-status{font-size:12px;color:var(--green);margin-bottom:10px}
+.guide-card .guide-possible{color:var(--ink);font-weight:700}
+.guide-card .guide-edition{font-size:12px;line-height:1.5;margin:10px 0 0;overflow-wrap:anywhere}
+.guide-card .guide-edition:empty{display:none}
+.guide-editions{font-size:12px;line-height:1.7;margin-top:8px}
+.guide-missing .cover{filter:grayscale(1)}
+.guide-missing .cover::after{inset:0;width:auto;height:auto;transform:none;z-index:2;background:color-mix(in srgb,var(--paper) 40%,transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);pointer-events:none}
+#guide-note{line-height:1.6;max-width:85ch;margin:0 0 24px}
+.guide-link-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:12px}
+.guide-hide-matching .guide-status,.guide-hide-matching .guide-link-actions{display:none}
+.guide-page-actions{display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap}
+.guide-display-choice{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}
+.guide-display-choice input{accent-color:var(--green);margin:0}
+.album-guide-note{margin:22px 0;border:1px solid var(--line);border-radius:8px;background:var(--palette-surface,var(--paper))}
+.album-guide-note summary{padding:15px 18px;cursor:pointer;font-size:14px;font-weight:600}
+.album-guide-note summary span{font-size:11px;font-weight:400;color:var(--muted);margin-left:10px}
+.album-guide-note-copy{padding:0 18px 14px;max-width:90ch;line-height:1.8;font-size:14px}
+.album-guide-note-copy p{margin:0 0 12px}.album-guide-note-copy a{text-decoration:underline;text-underline-offset:3px}
+.guide-link-choice{display:flex;align-items:center;gap:18px;padding:14px 0;border-bottom:1px solid var(--line)}
+.guide-link-choice>div{min-width:0;flex:1;overflow-wrap:anywhere}
+.guide-link-choice small{display:block;color:var(--muted);line-height:1.6;margin-top:4px}
+.guide-link-choice .button{flex:none}
+.guide-decades{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
+.guide-decades .chip{padding:5px 11px}
+#guide-decades [aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--paper)}
+#guide-toolbar{flex-wrap:wrap}
+#guide-toolbar .search{min-width:200px}
+.sidebar-layout-settings{border-top:1px solid var(--line);padding-top:22px;margin-top:22px}
+.sidebar-layout-settings h3{margin:0 0 14px}
+.sidebar-layout-settings summary{cursor:pointer;font-weight:600}
+#sidebar-layout-list{list-style:none;padding:0;margin:16px 0}
+.sidebar-setting-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--line);padding:9px 0}
+.sidebar-setting-row label{display:flex;align-items:center;gap:10px;min-width:0}
+.sidebar-setting-row small{display:block;color:var(--muted);line-height:1.5;font-size:11px;margin-top:3px}
+.sidebar-setting-row>div{display:flex;gap:5px;flex:none}
+
+/* Optional read-only tours live in the top layer, including above an open editor. */
+body.help-open{overflow:hidden}
+.dialog-heading-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+#help-dialog{position:fixed;inset:0;margin:0;padding:0;width:100vw;height:100dvh;max-width:none;max-height:none;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:hidden}
+#help-dialog::backdrop{background:transparent;backdrop-filter:none}
+.help-spotlight{position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 150vmax rgb(0 0 0 / .65)}
+.help-spotlight.has-target{outline:2px solid var(--green);outline-offset:1px}
+.help-card{position:fixed;width:min(410px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);box-shadow:0 12px 40px rgb(0 0 0 / .25)}
+.help-card h2{font-size:23px;margin:0;letter-spacing:-.5px}
+.help-card #help-title:focus{outline:none}
+.help-card #help-copy{font-size:14px;line-height:1.7;margin:22px 0}
+.help-card .eyebrow{line-height:1.6;margin:0 0 10px}
+.help-controls{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:22px;flex-wrap:wrap}
+@media(max-width:480px){.help-card{padding:18px}.help-card h2{font-size:21px}.dialog-heading-actions{gap:6px}}
+
+.help-trigger{display:inline-grid;place-items:center;width:36px;min-width:36px;height:36px;padding:0!important;font-size:16px;font-weight:600}
+
+.trash-suggestion{border:1px solid var(--line);border-radius:7px;padding:12px 15px;margin-bottom:14px;font-size:12px;line-height:1.6}
+.trash-suggestion p{margin:0 0 8px}.trash-suggestion p:last-child{margin-bottom:0}.trash-bar{flex-wrap:wrap}.trash-track-info{line-height:1.7}.trash-upload-groups{margin-top:10px}.trash-upload-groups summary{cursor:pointer}.trash-upload-groups table{margin-top:10px;width:100%;border-collapse:collapse}.trash-upload-groups th,.trash-upload-groups td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.trash-upload-groups td:last-child{overflow-wrap:anywhere}

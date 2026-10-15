@@ -9,7 +9,7 @@ Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collect
 
 Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
 
-**New in [0.41.1](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.41.1):** Sign in directly with Tagcast's public iBroadcast registration. No app creation, client ID entry or client secret is needed. Existing registrations and connections are preserved. This sign-in is included in the standalone downloads for macOS, Windows and Linux.
+**New in [0.42.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.42.0):** Discover your collection with optional **1001 Albums**, manual matching and offline album background texts. Page-specific **?** tours explain the current screen. Duplicate-track cleanup now compares upload dates and formats, preferring FLAC over MP3 and then the newest upload. Customize the sidebar and explore decades with short music introductions. All features are included in the standalone downloads for macOS, Windows and Linux.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
 
@@ -21,14 +21,14 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.41.1** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.42.0** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.41.1-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.41.1-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.41.1-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.41.1-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.41.1/tagcast-0.41.1-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.41.1-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.42.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.42.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.42.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.42.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.42.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
 On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
 
@@ -166,11 +166,103 @@ Tagcast starts on **Album artists**. Choose an artist to see their albums, or us
 
 Track artist, composer, genre and year cards open **matching albums**, rather than a separate track list. One matching active track is enough to include an album. Multi-disc sets stay together and count as one album in these cards. Decades use the same year fallback and omit tracks with unknown years.
 
-Album filters help you find missing years, genres, covers or composers; combined genres; artists without an image; albums with only 1–2 tracks; gaps in track numbering; duplicate track positions and titles; and named editions. **Next album** lets you work through a filtered collection.
+Album filters help you find missing years, genres, covers or composers; combined genres; artists without an image; albums with only 1–2 tracks; gaps in track numbering; repeated track numbers; and named editions. **Next album** lets you work through a filtered collection.
 
 Browser **Back** and **Forward** restore the page you came from, including its search, filters and page. Back also preserves a decade's random selection. Collection and artist totals emphasize albums, with track counts below, using existing summaries. On a narrow screen, the hamburger menu keeps navigation, connection controls and source settings accessible.
 
+In **Settings → Sidebar → Choose shortcuts and order**, hide optional shortcuts or
+move items up and down. These changes apply immediately and are remembered in this
+browser. **Album artists**, **Albums**, **Change history**, Settings and connection
+controls remain available. **Restore default sidebar** resets the layout. Hiding a
+shortcut does not disable its feature; Recently played and 1001 Albums still require
+their separate opt-in settings.
+
 The **Theme** button opens one menu with **Appearance** (Auto, Light or Dark) and **Colour**: **Forest** (the original green), **Ocean**, **Warm** and **iBroadcast inspired**. Colour and light/dark appearance are independent and remembered in this browser. The palette also applies to the sidebar, player and fullscreen Now playing. Switching colours keeps playback running and makes no library requests.
+
+### Help and guided tours
+
+Choose **?** in the top bar to start help for the page you are viewing. Album
+artists explains that artist list; 1001 Albums explains its analysis and matching.
+There is no topic chooser or unrelated tour. The **?** inside the album editor,
+draft review, Settings and album chooser explains that dialog specifically.
+
+Use **Previous**, **Next**, **Finish**, or **×** / Escape. Tours highlight controls
+within the current page or dialog. If content is not available yet, the explanation
+stays readable without opening another page. Tours never start playback, analysis
+or saves, change preferences, or add browser history. Open drafts stay intact;
+closing Help returns focus and the previous scroll position.
+
+### 1001 Albums (optional)
+
+Based on [*1001 Albums You Must Hear Before You Die*](https://en.wikipedia.org/wiki/1001_Albums_You_Must_Hear_Before_You_Die),
+edited by **Robert Dimery**, with contributions from music critics.
+
+Enable **1001 Albums** in **Settings → Discovery** and save. The sidebar then shows
+the optional listening list. Press **Analyse my library** to compare it with your
+loaded albums. Enabling the feature or opening the page never starts an analysis.
+
+The page separates **In your library**, **Possible matches** and **Not found**.
+Small decade buttons filter by the reference release year; **Year · oldest first**
+and **Year · newest first** sort the complete filtered selection before pagination.
+These choices combine with search and matching status and are restored on Back.
+Open or queue a found album as usual. Multiple discs/editions count once for each
+reference entry. Results are saved locally for your account; library changes are
+flagged and require **Analyse again**. No audio is scanned and nothing is written
+to iBroadcast.
+
+Uncheck **Show matching details**, next to **Analyse again**, to hide the match
+labels and the choose/change/undo link buttons on cards. Check it again to manage
+links. This display choice is saved on this computer, including after a restart
+or when Tagcast opens on a different local port or in another browser. Matches and links stay saved. Album names, editions, counts, filters and queue actions remain available.
+
+Open a confirmed matching album to find **About this album** above its tracks.
+Expand it for a locally bundled background text, with Wikipedia attribution and
+license links. All 1,001 reference entries have a background text; reviewed title
+and credit variants keep their original reference IDs. Reading a text makes no request to
+Wikipedia or 1001 Albums Generator. See [offline texts and the capture tool](docs/1001-albums.md#offline-album-background)
+for the comparison report and adding reviewed source links.
+
+Choose **Confirm match…** for a possible match, or **Choose album…** to search your
+loaded library and select the correct album yourself. Confirm with **Use this
+album**. It then counts as found and is marked **Linked by you**. Manual links stay
+local to your account and survive **Analyse again**. Use **Change link…** or **Undo
+link** to revise a choice; undo restores the automatic analysis result.
+
+The bundled selection contains the supplied 1,001 albums from 1955–2007, with repaired
+characters, titles, artist names, swapped columns and selected release years. The
+original entry order and manual links remain intact. After updating, restart Tagcast
+and choose **Analyse again** to use the revised reference. Matching allows recognised remaster/deluxe suffixes while
+retaining live/remix distinctions. A match does not confirm that every track is
+present. See [reference cleanup and matching details](docs/1001-albums.md).
+
+<details>
+<summary><b>1001 Albums: results and choosing your edition</b></summary>
+
+**In your library:** browse the matched albums, filter by decade and sort by year.
+
+![1001 Albums showing matched albums, decade buttons and matching filters](docs/screenshots/1001-albums-found.png)
+
+**Not found:** grey, softened placeholders keep missing entries visible in the list.
+
+![Missing reference albums shown with grey placeholder covers](docs/screenshots/1001-albums-missing.png)
+
+**Possible matches:** compare suggested editions before confirming them.
+
+![Possible matches with covers from the user's library](docs/screenshots/1001-albums-possible.png)
+
+**Confirm a match:** check the album and choose **Use this album** to save a local link.
+
+![Album chooser with a suggested Solomon Burke edition and Use this album](docs/screenshots/1001-albums-confirm.png)
+
+**Search for your edition:** find an album when automatic matching missed it.
+
+![Library search finding a Duke Ellington multi-disc edition for a missing entry](docs/screenshots/1001-albums-search.png)
+
+**Album background:** open a confirmed match to read its locally bundled, attributed text.
+
+![About this album with a local Wikipedia-attributed background text for The Wildest](docs/screenshots/1001-albums-background.png)
+
+</details>
 
 ### Listen, Now playing and the play queue
 
@@ -381,12 +473,23 @@ filter. Open an album to inspect its tracks.
 
 Remove unwanted duplicate copies from an album in three reviewed steps:
 
-1. **Open the album and choose Move to trash…** Tracks marked **Duplicate** are
-   candidates with the same positive track number and title on the same disc.
+Use **Albums → Duplicate tracks** to find albums with repeated track numbers on
+one disc, for example `1, 1, 2, 3, 4, 4`. The filter includes different titles,
+such as a plain title and a copy with added soundtrack information.
+
+1. **Open the album and choose Move to trash…** **Duplicated** appears on album
+   cards, list rows and tracks with repeated positive track numbers on the same
+   disc, even when titles differ. Hover over a track badge for the matching reason.
    Checkboxes appear beside the tracks; nothing is sent yet.
-2. **Select the copies you want to remove.** Tick them individually, or use
-   **Select extra copies** to select each matching copy after the first on its
-   disc. The first copy stays unselected. Check the selection and change it if
+2. **Select the copies you want to remove.** Upload dates/times and **Suggested keep**,
+   **Suggested trash** or **Compare manually** labels help you compare the copies.
+   **Select suggested copies** prefers FLAC over MP3, then the newest upload within
+   the same format. **Upload dates and formats** groups the tracks by day and format
+   on each disc, so two uploads of ten tracks are easier to identify.
+   Nothing is preselected on opening. Tick tracks individually, or use
+   **Select extra copies** to select each matching title after the first on its
+   disc, regardless of format or date. It leaves differing titles unselected so you can compare and select those
+   manually. The first matching copy stays unselected. Check the selection and change it if
    you prefer to keep another copy; listen and compare the displayed duration
    and file format where available. **Select all** selects the entire album,
    including tracks without duplicates. The bar shows the selected track count.
@@ -403,17 +506,29 @@ by Tagcast, and your local music files are unchanged. Restore them through
 **iBroadcast's trash**; Tagcast cannot restore them. An album disappears from
 Tagcast when it has no active tracks left.
 
-Duplicate detection ignores case, spacing and quotation marks in titles. For
+The stricter title comparison ignores case, spacing and quotation marks. For
 example, `Red Shoes (from the "Dumplin'" Original Motion Picture Soundtrack)` and
 `Red Shoes (from the Dumplin' Original Motion Picture Soundtrack)` match at the
 same track number on the same disc. Straight and curly apostrophes also match.
 Version text such as `(Live)` or `(Radio Edit)` remains part of the comparison.
+At a repeated track number, differing versions receive the **Duplicated** label
+and require manual selection; they are not automatically selected as extra copies.
 A repeated title at track 1 and track 17, or on separate discs, is not a duplicate. Missing track
 numbers are not matched. Audio files and recording quality are not compared,
-and **Select extra copies** does not choose the best-quality recording.
+and the format preference does not prove recording quality or audio identity.
+The suggestions compare only repeated positive positions on the same disc. Different
+artists, durations differing by more than two seconds, unknown/incomparable formats,
+missing dates and tied newest uploads can require manual comparison. Different
+titles are explicitly flagged even when duration and artist agree. The suggestion
+keeps unresolved preferred copies; it never chooses an arbitrary winner.
+**Select extra copies** retains its separate, stricter title rule and keeps the first.
 
 <details>
 <summary><b>Step-by-step screenshots: remove duplicate tracks</b></summary>
+
+**Compare uploads before selecting copies.** The upload-date/format table and per-track suggestions explain which copies Tagcast proposes keeping. Apply the suggestion, adjust the checkboxes and review the chosen tracks.
+
+![Duplicate-track selection with upload groups and suggestions on the BOF Anna album](docs/screenshots/duplicate-tracks-upload-suggestions.png)
 
 **1. Open the album and choose Move to trash…**
 

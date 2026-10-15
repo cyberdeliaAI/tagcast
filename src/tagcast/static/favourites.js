@@ -200,6 +200,7 @@ function resetRecentlyPlayed() {
 
 function updateRecentlyPlayedControls() {
   $("#show-recently-played").hidden = !live() || !playReporting.enabled;
+  if (typeof applySidebarLayout === "function") applySidebarLayout();
 }
 
 async function loadRecentlyPlayed(refresh = false) {

@@ -22,6 +22,7 @@ import requests
 from ibroadcast import oauth
 
 from . import __version__, artwork, auth
+from .album_guide import AlbumGuide
 from .cleanup import Cleanup
 from .collections import Collections
 from .library import (
@@ -307,6 +308,7 @@ class Studio:
         self._pkce = {}
         self._pkce_gen = 0
         self.config = self._read("config.json") or {}
+        self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
         self.lookup = Lookup(self.source_keys)
         self.cleanup = Cleanup(self)
@@ -941,6 +943,8 @@ class Studio:
                 "record_plays": self.config.get("record_plays") is True,
                 "stream_quality": self.config.get("stream_quality", "128"),
                 "queue_sync": self.config.get("queue_sync") is True,
+                "album_guide": self.config.get("album_guide") is True,
+                "guide_matching_details": self.config.get("guide_matching_details"),
                 "premium": self.premium}
 
     def check_updates(self, manual=False):
@@ -950,6 +954,10 @@ class Studio:
 
     def save_settings(self, body):
         with self.lock:
+            if "album_guide" in body and type(body["album_guide"]) is not bool:
+                raise ApiError("Choose whether 1001 Albums is enabled.")
+            if "guide_matching_details" in body and type(body["guide_matching_details"]) is not bool:
+                raise ApiError("Choose whether matching details are shown.")
             if "auto_updates" in body and not isinstance(body["auto_updates"], bool):
                 raise ApiError("Choose whether automatic update checks are enabled.")
             if "record_plays" in body and not isinstance(body["record_plays"], bool):
@@ -977,6 +985,10 @@ class Studio:
                 self.config["auto_updates"] = body["auto_updates"]
             if "record_plays" in body:
                 self.config["record_plays"] = body["record_plays"]
+            if "album_guide" in body:
+                self.config["album_guide"] = body["album_guide"]
+            if "guide_matching_details" in body:
+                self.config["guide_matching_details"] = body["guide_matching_details"]
             self._write("config.json", self.config)
         if not self.config.get("queue_sync"):
             self.queue_sync.disconnect()
