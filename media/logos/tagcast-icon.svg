@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Tagcast</title>
+<rect width="256" height="256" rx="58" fill="#5263E8"/>
+<g transform="rotate(-9 128 128)">
+  <rect x="49" y="46" width="172" height="128" rx="12" fill="#172D4D"/>
+  <rect x="61" y="58" width="148" height="63" rx="7" fill="#5263E8"/>
+  <path d="M77 69h116" fill="none" stroke="#FFF7DE" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+  <rect x="71" y="79" width="128" height="31" rx="15.5" fill="#172D4D"/>
+  <g fill="#FFF7DE"><circle cx="90" cy="94.5" r="12"/><circle cx="180" cy="94.5" r="12"/></g>
+  <g fill="#172D4D"><circle cx="90" cy="94.5" r="4.5"/><circle cx="180" cy="94.5" r="4.5"/></g>
+  <path d="M34 120h190v77a11 11 0 0 1-11 11H45a11 11 0 0 1-11-11Z" fill="#FFF7DE"/>
+  <circle cx="80" cy="164" r="25" fill="#5263E8"/>
+  <path d="m74 151 19 13-19 13Z" fill="#FFF7DE"/>
+  <path d="M122 153h71m-71 21h45" fill="none" stroke="#5263E8" stroke-width="7" stroke-linecap="round"/>
+</g>
+</svg>

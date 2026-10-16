@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="title desc">
+  <title id="title">Tagcast — Metadata editor and album player for iBroadcast</title>
+  <desc id="desc">Your iBroadcast library. Your way. The Tagcast cassette-in-sleeve icon, with macOS, Windows and Linux availability. Independent app by Cyberdelia.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#14243b"/>
+      <stop offset="1" stop-color="#0b1422"/>
+    </linearGradient>
+    <radialGradient id="halo">
+      <stop stop-color="#5263e8" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#5263e8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#background)"/>
+  <circle cx="1020" cy="299" r="307" fill="url(#halo)"/>
+  <g fill="none" stroke="#8a9be0" stroke-opacity=".09">
+    <circle cx="1020" cy="299" r="230"/>
+    <circle cx="1020" cy="299" r="271"/>
+  </g>
+  <svg x="864" y="143" width="312" height="312" viewBox="0 0 256 256"><rect width="256" height="256" rx="58" fill="#5263E8"/>
+<g transform="rotate(-9 128 128)">
+  <rect x="49" y="46" width="172" height="128" rx="12" fill="#172D4D"/>
+  <rect x="61" y="58" width="148" height="63" rx="7" fill="#5263E8"/>
+  <path d="M77 69h116" fill="none" stroke="#FFF7DE" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+  <rect x="71" y="79" width="128" height="31" rx="15.5" fill="#172D4D"/>
+  <g fill="#FFF7DE"><circle cx="90" cy="94.5" r="12"/><circle cx="180" cy="94.5" r="12"/></g>
+  <g fill="#172D4D"><circle cx="90" cy="94.5" r="4.5"/><circle cx="180" cy="94.5" r="4.5"/></g>
+  <path d="M34 120h190v77a11 11 0 0 1-11 11H45a11 11 0 0 1-11-11Z" fill="#FFF7DE"/>
+  <circle cx="80" cy="164" r="25" fill="#5263E8"/>
+  <path d="m74 151 19 13-19 13Z" fill="#FFF7DE"/>
+  <path d="M122 153h71m-71 21h45" fill="none" stroke="#5263E8" stroke-width="7" stroke-linecap="round"/>
+</g></svg>
+  <g font-family="Arial,Helvetica,sans-serif">
+    <text x="64" y="68" fill="#9dacd0" font-size="14" font-weight="700" letter-spacing="2.5">METADATA EDITOR &amp; ALBUM PLAYER</text>
+    <text x="59" y="229" fill="#fff7de" font-size="106" font-weight="700" letter-spacing="-5">Tagcast</text>
+    <text x="64" y="302" fill="#e7edf7" font-size="34">Your iBroadcast library.</text>
+    <text x="64" y="350" fill="#e7edf7" font-size="34">Your way.</text>
+    <text x="64" y="422" fill="#b3c2d2" font-size="21">Edit metadata. Explore. Listen.</text>
+    <text x="64" y="466" fill="#8fa4bd" font-size="16">Independent app by Cyberdelia</text>
+    <path d="M64 514H1216" stroke="#314159"/>
+    <text x="64" y="570" fill="#c0cbd9" font-size="19">macOS · Windows · Linux</text>
+    <text x="1216" y="570" fill="#9dacd0" font-size="17" text-anchor="end">github.com/cyberdeliaAI/tagcast</text>
+  </g>
+</svg>

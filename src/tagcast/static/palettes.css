@@ -1,7 +1,11 @@
 /* Named colour roles. Forest uses the original style.css / dark.css fallbacks.
-   Keep light/dark preference independent of the colour palette. */
+   Keep light/dark preference independent of the colour palette.
+   Sidebar logo colours follow only the palette; standalone icons stay fixed. */
 
 :root[data-palette="ocean"]{
+  --palette-brand-background:#32768b;
+  --palette-brand-ink:#172d38;
+  --palette-brand-paper:#fff7de;
   --palette-sidebar:#172d38;
   --palette-accent:#9bdce7;
   --palette-shell-ink:#e8f3f7;
@@ -37,6 +41,9 @@
 }
 
 :root[data-palette="warm"]{
+  --palette-brand-background:#9b673e;
+  --palette-brand-ink:#39291f;
+  --palette-brand-paper:#fff0d6;
   --palette-sidebar:#33281f;
   --palette-accent:#efc99e;
   --palette-shell-ink:#f7eee3;
@@ -72,6 +79,9 @@
 }
 
 :root[data-palette="ibroadcast"]{
+  --palette-brand-background:#235b96;
+  --palette-brand-ink:#142c4a;
+  --palette-brand-paper:#eff6ff;
   --palette-sidebar:#162234;
   --palette-accent:#a0dafa;
   --palette-shell-ink:#ecedf1;
