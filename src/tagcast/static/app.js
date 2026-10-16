@@ -305,7 +305,7 @@ function discIcons(count) {
 const discNote = a => a.discs ? discIcons(a.discs.length) : a.disc > 1 ? `Disc ${a.disc}` : "";
 
 function selectBox(a) {
-  return state.artist ? `<label class="album-select"><input type="checkbox" data-select="${escapeHtml(a.id)}" aria-label="Select ${escapeHtml(a.name)}" ${isSelected(a) ? "checked" : ""}></label>` : "";
+  return state.artist || live() ? `<label class="album-select"><input type="checkbox" data-select="${escapeHtml(a.id)}" aria-label="Select ${escapeHtml(a.name)}" ${isSelected(a) ? "checked" : ""}></label>` : "";
 }
 
 function gridView(items) {
@@ -315,7 +315,8 @@ function gridView(items) {
 function listView(items) {
   const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
   const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
-  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Play or queue album"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button> ${duplicateAlbumBadge(a)}${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</td></tr>`).join("")}</tbody></table>`;
+  const selectable = state.artist || live();
+  return `<table class="album-table"><thead><tr>${selectable ? '<th class="col-check" aria-label="Select albums"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Play or queue album"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${selectable ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button> ${duplicateAlbumBadge(a)}${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
@@ -333,8 +334,8 @@ function render() {
   renderArtistPanel();
   $("#page-subtitle").textContent = $("#filter").value === "duplicates"
     ? "Albums with repeated track numbers on the same disc, including tracks whose titles differ. Open an album to compare the copies."
-    : state.artist ? "Open an album to listen, or select albums by this artist to edit or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
-  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to see its tracks and listen";
+    : state.artist ? "Open an album to listen, or select albums by this artist to edit or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
+  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to move them to the trash together" : "Open an album to see its tracks and listen";
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   const scope = albumShelf().filter(a => !state.artist || a.artist === state.artist);
   for (const option of $("#filter").options) {
@@ -351,9 +352,11 @@ function render() {
   $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
   $("#selection-bar").hidden = !state.selected.size;
   $("#trash-selection").hidden = !live();
-  $("#trash-selection").disabled = saving || checking > 0 || !state.artist;
-  const chosen = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id))).length;
-  $("#selection-count").textContent = `${chosen} ${chosen === 1 ? "album" : "albums"} selected · ${state.artist || ""}`;
+  $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
+  $("#edit-selection").hidden = !state.artist;
+  const chosen = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id)));
+  const visible = new Set(items), outside = chosen.filter(a => !visible.has(a)).length;
+  $("#selection-count").textContent = `${chosen.length} ${chosen.length === 1 ? "album" : "albums"} selected${state.artist ? ` · ${state.artist}` : ""}${outside ? ` · ${outside} outside current results` : ""}`;
   $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
   if (typeof renderAlbumView === "function") renderAlbumView();
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();

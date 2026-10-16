@@ -1168,7 +1168,7 @@ class Studio:
             self.save_lock.release()
 
     def trash_albums(self, body):
-        """Reviewed complete albums from one artist; never accept a partial/stale set.
+        """Reviewed complete albums; never accept a partial/stale set.
 
         The browser reviews all chosen albums, then sends bounded batches. Each
         batch checks the full membership, including added tracks and merged discs.
@@ -1200,7 +1200,7 @@ class Studio:
             if bool(fresh.combine_sets) != body["combine_sets"]:
                 raise ConflictError("The multi-disc setting changed. Review the albums again.")
             fresh._browse_index("genres")
-            groups, artists = set(), set()
+            groups = set()
             for album_id, before in snapshots.items():
                 active = fresh.active_track_ids(album_id)
                 if album_id not in fresh._browse_albums or set(active) != {
@@ -1211,10 +1211,9 @@ class Studio:
                 if text(now.get("name")) != before.get("name") or artist != before.get("artist") \
                         or any(fresh.track_view(t)["title"] != wanted[t][1] for t in active):
                     raise ConflictError("An album or track changed. Reload and review the albums again.")
-                artists.add(artist)
                 groups.add(fresh._browse_albums[album_id])
-            if len(artists) != 1 or len(groups) > 20:
-                raise ApiError("Choose at most 20 displayed albums by one album artist per batch.")
+            if len(groups) > 20:
+                raise ApiError("Choose at most 20 displayed albums per batch.")
             if any(album_id not in snapshots for album_id, group in fresh._browse_albums.items()
                    if group in groups):
                 raise ConflictError("The discs of an album set changed. Review the complete set again.")

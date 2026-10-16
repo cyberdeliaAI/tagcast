@@ -470,9 +470,12 @@ complete steps, exact genre replacement and recovery.
 
 ### Move tracks to trash
 
-On an album artist's page, select albums and choose **Move selected albums to
-trash…** to review and remove those complete albums together. The review lists
-every album and lets you expand its tracks. Confirm once; larger selections use
+In **Albums**, use any filter, such as **1–2 tracks**, then tick albums in the grid
+or list and choose **Move selected albums to trash…**. Albums by different artists
+can be selected together; the same action is available on an album artist's page.
+Selections survive paging and filter changes. The selection count flags albums
+outside the current results, and **Clear** clears the whole selection.
+The review lists every album and lets you expand its tracks. Confirm once; larger selections use
 batches of up to 20 displayed albums / 500 tracks, checking complete membership
 and reading back each batch before continuing. Stop or close the review to prevent
 later batches. Changed albums or unconfirmed results stop processing. Results go

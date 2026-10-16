@@ -366,6 +366,42 @@ test("direct album play loads only its discs and clearing the queue cancels a la
   assert.equal(p.nodes.get("#audio").src, undefined);
 });
 
+test("filtered album overview selects across artists and pages, reviewing only explicit selections", async () => {
+  const p = livePage(); await settle();
+  p.run(`useLocal(Array.from({length:26},(_,i)=>({id:String(i+1),name:"Album "+i,artist:"Artist "+i,year:1985+i,disc:1,
+    tracks:Array.from({length:i===25?3:2},(_,n)=>({id:String(i*10+n+100),title:"Song "+n,artist:"Artist "+i,track:n+1,genres:["Rock"]}))})),"live");
+    state.artist=null; state.selected.clear(); state.screen="albums"; $("#filter").value="small"; $("#sort").value="year"; render()`);
+  assert.equal(p.run("filteredAlbums().length"), 25);
+  assert.match(p.nodes.get("#albums").innerHTML, /data-select="1"/);
+  assert.doesNotMatch(p.nodes.get("#albums").innerHTML, /data-select="25"|data-select="26"/);
+  await p.change({matches:s=>s==="[data-select]",checked:true,dataset:{select:"1"}});
+  p.run('state.page=1; render()');
+  assert.match(p.nodes.get("#albums").innerHTML, /data-select="25"/);
+  await p.change({matches:s=>s==="[data-select]",checked:true,dataset:{select:"25"}});
+  assert.deepEqual(p.json("[...state.selected]"), ["1","25"]);
+  assert.equal(p.nodes.get("#selection-count").textContent, "2 albums selected");
+  assert.equal(p.nodes.get("#trash-selection").disabled, false);
+  assert.equal(p.nodes.get("#edit-selection").hidden, true);
+  assert.match(p.run("listView(filteredAlbums())"), /col-check.*data-select="1"/);
+  const reads = p.requests.length;
+  await p.run('openEditor([...state.selected])');
+  assert.equal(p.nodes.get("#editor").open, undefined);
+  assert.equal(p.requests.length, reads, "Mixed-artist metadata editing remains blocked");
+  p.nodes.get("#filter").value="genre"; p.run("render()");
+  assert.match(p.nodes.get("#selection-count").textContent, /2 outside current results/);
+  await p.run("reviewSelectedAlbumTrash()");
+  assert.deepEqual(p.json("selectedAlbumsTrash.groups.map(g=>g.id)"), ["1","25"]);
+  assert.deepEqual(p.json("selectedAlbumsTrash.groups.map(g=>g.artist)"), ["Artist 0","Artist 24"]);
+  assert.match(p.nodes.get("#trash-content").innerHTML, /2 albums · 4 tracks/);
+  assert.equal(p.requests.length, reads, "Only the chosen cached albums are reviewed; nothing is sent");
+  await p.nodes.get("#clear-selection").emit("click");
+  assert.equal(p.run("state.selected.size"), 0);
+  p.run('state.mode="demo"; render()');
+  assert.doesNotMatch(p.run("gridView(albumShelf())"), /data-select=/);
+  assert.doesNotMatch(p.run("listView(albumShelf())"), /col-check/);
+  assert.equal(p.nodes.get("#trash-selection").hidden, true);
+});
+
 test("selected album trash reviews complete tracks, checks read-back and preserves unrelated playback", async () => {
   const p = livePage(); await settle();
   p.run('state.artist="Pink Floyd"; state.selected=new Set(["1","2"]); playTracks(state.details.get("3")); render()');
