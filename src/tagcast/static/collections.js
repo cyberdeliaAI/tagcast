@@ -1,7 +1,7 @@
 "use strict";
 
 // Native collections stay separate from metadata drafts and Change history.
-const collectionsView = {request: 0, query: "", offset: 0, playlist: null, data: null, busy: false, rating: null};
+const collectionsView = {request: 0, query: "", offset: 0, playlist: null, data: null, loading: false, busy: false, rating: null};
 const playlistDraft = {body: null, details: null, session: "", selected: null, request: 0};
 
 async function collectionJob(response, current) {
@@ -22,7 +22,8 @@ function albumRatingControls(discs) {
   const rating = current?.pending ? current.value : Math.min(...discs.map(d => d.rating || 0)), mixed = new Set(discs.map(d => d.rating || 0)).size > 1;
   const ids = escapeHtml(discs.map(d => d.id).join(","));
   const disabled = !live() || state.loading || collectionsView.busy || saving || checking;
-  return `<div class="album-rating" role="group" aria-label="Album rating" aria-busy="${Boolean(current?.pending)}"><button class="text-action" data-album-rating="${ids}" data-value="${rating === 5 ? 0 : 5}" data-heart title="Album favourite (rating 5)" aria-label="${rating === 5 ? "Remove album favourite" : "Favourite album"}" ${disabled ? "disabled" : ""}>${rating === 5 ? "♥" : "♡"}</button>${[1, 2, 3, 4, 5].map(n => `<button class="text-action" data-album-rating="${ids}" data-value="${n}" aria-label="Rate album ${n} out of 5" ${disabled ? "disabled" : ""}>${n <= rating ? "★" : "☆"}</button>`).join("")}<button class="text-action" data-album-rating="${ids}" data-value="0" ${disabled ? "disabled" : ""}>Clear</button>${mixed && !current?.pending ? '<small class="muted">Different disc ratings</small>' : ""}${current ? `<small class="album-rating-status ${current.error ? "error-text" : "muted"}" role="status">${escapeHtml(current.message)}</small>` : ""}</div>`;
+  const hasRating = current?.pending ? current.value > 0 : discs.some(d => d.rating > 0);
+  return `<div class="album-rating" role="group" aria-label="Album rating" aria-busy="${Boolean(current?.pending)}"><button class="album-rating-choice ${rating === 5 ? "is-selected" : ""}" data-album-rating="${ids}" data-value="${rating === 5 ? 0 : 5}" data-heart title="Album favourite (rating 5)" aria-label="${rating === 5 ? "Remove album favourite" : "Favourite album"}" aria-pressed="${rating === 5}" ${disabled ? "disabled" : ""}>${rating === 5 ? "♥" : "♡"}</button>${[1, 2, 3, 4, 5].map(n => `<button class="album-rating-choice ${n <= rating ? "is-selected" : ""}" data-album-rating="${ids}" data-value="${n}" aria-label="Rate album ${n} out of 5" aria-pressed="${n <= rating}" ${disabled ? "disabled" : ""}>${n <= rating ? "★" : "☆"}</button>`).join("")}${hasRating ? `<button class="text-action album-rating-clear" data-album-rating="${ids}" data-value="0" ${disabled ? "disabled" : ""}>Clear</button>` : ""}${mixed && !current?.pending ? '<small class="muted">Different disc ratings</small>' : ""}${current ? `<small class="album-rating-status ${current.error ? "error-text" : "muted"}" role="status">${escapeHtml(current.message)}</small>` : ""}</div>`;
 }
 
 async function rateAlbum(ids, rating, heart) {
@@ -104,6 +105,7 @@ async function renderCollections() {
     return;
   }
   const request = ++collectionsView.request, details = state.details;
+  collectionsView.loading = true;
   if (!collectionsView.data) page.innerHTML = '<p class="muted" role="status">Loading playlists…</p>';
   try {
     const data = await api(`/api/playlists?${collectionsView.playlist ? `id=${encodeURIComponent(collectionsView.playlist)}` : `q=${encodeURIComponent(collectionsView.query)}`}&offset=${collectionsView.offset}`);
@@ -114,6 +116,12 @@ async function renderCollections() {
     } else replaceCollections(`<div class="page-intro"><div><h1>Playlists<span>.</span></h1><p>Your editable iBroadcast playlists. System lists are managed by iBroadcast.</p></div></div><div class="toolbar"><input class="collection-search" id="collection-search" placeholder="Search playlists" value="${escapeHtml(collectionsView.query)}" aria-label="Search playlists"><button class="button" data-playlist-create>Create playlist…</button></div><p>${data.total} playlists</p><div class="playlist-cards">${data.playlists.map(p => `<button class="button playlist-card" data-playlist-open="${p.id}"><strong>${escapeHtml(p.name)}</strong><small>${p.count} tracks</small></button>`).join("") || '<p class="muted">No matching playlists. Add an album or save the queue to create one.</p>'}</div>${collectionPages(data.total, 100)}`);
     if (typeof syncHistory === "function") syncHistory();
   } catch (error) { if (request === collectionsView.request && details === state.details) page.innerHTML = `<p class="error-box">${escapeHtml(error.message)}</p>`; }
+  finally {
+    if (request === collectionsView.request) {
+      collectionsView.loading = false;
+      if (typeof syncHistory === "function") syncHistory();
+    }
+  }
 }
 
 function collectionPages(total, size) {

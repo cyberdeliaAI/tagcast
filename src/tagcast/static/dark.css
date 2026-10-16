@@ -130,6 +130,7 @@
 :root[data-theme="dark"] .artist-card{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .artist-card:hover{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] .artist-card-photo{background:var(--palette-tint,#4f554d);color:var(--palette-ink,#b2cbba)}
+:root[data-theme="dark"] .album-genre-chip:hover,:root[data-theme="dark"] .album-tag-add:hover{background:var(--palette-tint,#2c2e29)}
 :root[data-theme="dark"] .album-tracks{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .album-tracks tr.found td{background:#2d2924}
 :root[data-theme="dark"] .album-tracks tr.playing td{background:var(--palette-tint,#2b2e26)}
@@ -145,6 +146,8 @@
 :root[data-theme="dark"] .theme-menu{background:var(--palette-surface,#1b2520);box-shadow:0 10px 30px #0003}
 :root[data-theme="dark"] .theme-menu label:hover,:root[data-theme="dark"] .theme-menu label:focus-within{background:var(--palette-tint,#2c2d28)}
 :root[data-theme="dark"] .collection-search,:root[data-theme="dark"] #playlist-form input:not([type=checkbox]),:root[data-theme="dark"] #playlist-form textarea,:root[data-theme="dark"] #playlist-form select,:root[data-theme="dark"] #remote-controls input:not([type=range]),:root[data-theme="dark"] #remote-controls select,:root[data-theme="dark"] .playback-settings select{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root[data-theme="dark"] .audio-output-devices select{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] .album-action-menu #album-action-trash{color:#f6877d}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -290,6 +293,7 @@
 :root:not([data-theme="light"]) .artist-card{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .artist-card:hover{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) .artist-card-photo{background:var(--palette-tint,#4f554d);color:var(--palette-ink,#b2cbba)}
+:root:not([data-theme="light"]) .album-genre-chip:hover,:root:not([data-theme="light"]) .album-tag-add:hover{background:var(--palette-tint,#2c2e29)}
 :root:not([data-theme="light"]) .album-tracks{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .album-tracks tr.found td{background:#2d2924}
 :root:not([data-theme="light"]) .album-tracks tr.playing td{background:var(--palette-tint,#2b2e26)}
@@ -305,6 +309,8 @@
 :root:not([data-theme="light"]) .theme-menu{background:var(--palette-surface,#1b2520);box-shadow:0 10px 30px #0003}
 :root:not([data-theme="light"]) .theme-menu label:hover,:root:not([data-theme="light"]) .theme-menu label:focus-within{background:var(--palette-tint,#2c2d28)}
 :root:not([data-theme="light"]) .collection-search,:root:not([data-theme="light"]) #playlist-form input:not([type=checkbox]),:root:not([data-theme="light"]) #playlist-form textarea,:root:not([data-theme="light"]) #playlist-form select,:root:not([data-theme="light"]) #remote-controls input:not([type=range]),:root:not([data-theme="light"]) #remote-controls select,:root:not([data-theme="light"]) .playback-settings select{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root:not([data-theme="light"]) .audio-output-devices select{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) .album-action-menu #album-action-trash{color:#f6877d}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

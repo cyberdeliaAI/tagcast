@@ -11,6 +11,12 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 **New in [0.42.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.42.0):** Discover your collection with optional **1001 Albums**, manual matching and offline album background texts. Page-specific **?** tours explain the current screen. Duplicate-track cleanup now compares upload dates and formats, preferring FLAC over MP3 and then the newest upload. Customize the sidebar and explore decades with short music introductions. All features are included in the standalone downloads for macOS, Windows and Linux.
 
+**Development on `main` (unreleased):** native tag management, reviewed album
+selection trash, refreshed branding/sidebar and album pages, clickable browsing
+breadcrumbs and release years, plus audio-output and system playback controls.
+The packaged **0.42.0** downloads are unchanged. Current screenshots are
+being refreshed; see the [capture checklist](docs/screenshot-checklist.md).
+
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast) · [Media kit](media/README.md)
 
 ![Tagcast 0.40.0: Earth & Fire album details with ratings, playlists, Recently played and separate file/stream quality](docs/screenshots/album-player-0.40.0.png)
@@ -180,6 +186,15 @@ their separate opt-in settings.
 
 The **Theme** button opens one menu with **Appearance** (Auto, Light or Dark) and **Colour**: **Forest** (the original green), **Ocean**, **Warm** and **iBroadcast inspired**. Colour and light/dark appearance are independent and remembered in this browser. The palette also applies to the sidebar, player and fullscreen Now playing. Switching colours keeps playback running and makes no library requests.
 
+The sidebar header shows **Tagcast.**, with a dot in the palette's accent colour.
+**Metadata editor & player** sits directly below the name, alongside the icon.
+The version appears in one muted colour beside **Settings** in the footer,
+with a compact original Powered by iBroadcast logo on the right.
+The account status uses regular text weight.
+**Reload library** and **Disconnect** share a row. Album artists uses a microphone,
+Genres a label and Tags a hash icon. Album favourites uses a disc with a heart,
+distinct from the heart for track favourites.
+
 The cassette-in-sleeve sidebar icon follows the chosen colour palette. The standalone
 app icon uses the primary blue and cream design.
 
@@ -189,7 +204,9 @@ app icon uses the primary blue and cream design.
 Open one to browse albums containing at least one tagged track. Search, sort and
 page through tags as in the other overviews. Settings can hide or reorder this shortcut.
 
-On an album, choose **Manage tags…**, or use **Tags…** below a track's artist.
+Album tags share a compact row with the genre chips. **+ Tag** stays available
+whether or not tags are assigned and opens the same manager. You can also use
+**Tags…** below a track's artist.
 Album changes apply to all its tracks, including every disc of the displayed set.
 The counts show partial assignments. **Keep as is** preserves them; choose
 **Add to all tracks** or **Remove from all tracks** only for labels you want to change.
@@ -311,6 +328,29 @@ Open an album and choose **Play album**, or use ▶ beside a track to start ther
 | **Clear queue & stop** | Stops playback and removes the entire queue, including the current track. |
 
 Use the player's previous/next buttons, seek bar and volume controls while browsing. Its album artist and album title link to their pages. A third line appears when the track artist differs; that name opens albums featuring that track artist.
+
+The **speaker button → Sound** always provides a **Player volume** slider and
+**Mute**, independently of the browser's native media controls. It adjusts the same
+audio element without restarting playback or changing the queue, and follows
+volume changes made through the native controls. It controls this player, separately
+from system or speaker volume. Outputs or browsers that refuse volume changes show
+a message to use the system or device controls.
+
+Below the volume controls, **Audio output** offers a browser device picker or a list of
+permitted outputs when supported. In Safari and compatible wrappers, **AirPlay…**
+opens the native route picker when available. Otherwise, choose an output in your
+computer's sound settings; compatible AirPlay speakers, including supported Sonos
+models, may appear there. Available devices depend on your browser and system.
+Tagcast does not request microphone access to discover speakers. Changing an output
+keeps the existing audio element, track position and queue; the choice is not saved
+as a Tagcast preference. This does not add direct Sonos or Chromecast control.
+
+Where the browser supports Media Session, system media controls and media keys can
+play/pause, move to the previous/next track and seek. The system receives the current
+track artist, album, cover, playback state and progress. **Stop** clears the queue,
+like **Clear queue & stop**. The controls operate only this browser's local player;
+an optional queue-sync controller does not claim system playback. The controls
+shown by the operating system vary by browser and platform.
 
 Track rows show the file format (such as FLAC or MP3) below the duration when iBroadcast provides a recognized format. The same label appears in Tracks search and Favourites; it requires no extra requests and does not indicate the playback stream’s bitrate or resolution.
 
@@ -439,7 +479,7 @@ Favourites use **iBroadcast's native track ratings**: adding sets the rating to 
 
 ### Edit metadata and artwork
 
-1. Open an album and choose **Edit album**. Edit its title, album artist, release year or disc number, and genres or composers for its tracks. Individual tracks can also have their own title, artist, year, track number, genres and composers.
+1. Open an album and choose **Edit**. Edit its title, album artist, release year or disc number, and genres or composers for its tracks. Individual tracks can also have their own title, artist, year, track number, genres and composers.
 2. Use the online suggestions beside the form if helpful. Click a year or genre to fill the form, Shift-click a genre to add it, or choose **Use all** for the suggested genres. Suggestions do not save anything by themselves.
 3. **Review** the before/after values, then choose **Save to iBroadcast**. Tagcast checks the existing values first and downloads the library again to confirm accepted writes. Change history shows the progress and result.
 
@@ -456,6 +496,15 @@ For covers and artist images, choose an online suggestion, existing iBroadcast a
 **Artwork Undo restores a previous image when one exists.** If an artist had no image before, Undo cannot remove the new image and explains that no previous image is available. Metadata edits, favourites and trash moves do not have automatic Undo. See [how saving stays safe](#how-saving-stays-safe) and [multi-disc sets](#combine-multi-disc-album-sets) below.
 
 ### Fullscreen Now playing
+
+Album pages keep the cover aligned with the title and group genres and tags in one
+compact row. Click the release year to browse that year in your collection.
+**+ Tag** opens tag management; partial and archived assignments remain
+visible. Unset hearts/stars stay neutral, and **Clear** appears only when rated.
+Use **⋯ → Move to trash…** for the existing track selection and review.
+The clickable breadcrumb follows where you opened the album, such as
+**Workspace / Tags / Emusic / album**. Return to that context with its filters,
+order, page and scroll position; direct album links fall back to **Albums**.
 
 The fullscreen icon in the player opens a focused view of the current album cover,
 track title, album artist and album. A different track artist appears underneath.
@@ -628,7 +677,7 @@ Tagcast checks GitHub for a newer **stable release** at startup, at most once a 
 2. Download and extract the new package for your computer, then replace the old application/folder. Source users should update their checkout or use a freshly extracted source archive.
 3. Start the new version. Your account settings, tokens and cache remain in `~/.tagcast/`, or your configured `TAGCAST_HOME`. Reload the browser page if it still shows the old interface.
 
-If you start the new copy while the old server is still running, the launcher opens that existing server. The small version beside **Tagcast** at the top of the sidebar tells you which version you are using.
+If you start the new copy while the old server is still running, the launcher opens that existing server. The small version beside **Settings** at the bottom of the sidebar tells you which version you are using.
 
 ## Screenshots
 
@@ -653,7 +702,7 @@ it also shows Recently played.
 
 These features are included in the 0.40.0 standalone downloads. The screenshots
 were captured during development and still show a 0.30.0 badge; the current
-version is displayed beside Tagcast at the top of the sidebar.
+version is displayed beside Settings at the bottom of the sidebar.
 
 </details>
 

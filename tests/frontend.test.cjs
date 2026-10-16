@@ -9,7 +9,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
-function page({hash = "", storage = {}, server = true} = {}) {
+function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
   const timers = new Map(), windowEvents = new Map();
@@ -59,13 +59,14 @@ function page({hash = "", storage = {}, server = true} = {}) {
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
   document.querySelector("#sort").value = "artist";
-  const window = {addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
-  const context = vm.createContext({document, window, location, history, navigator: {}, console, confirm: () => true,
+  const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
+  if (setupAudio) setupAudio(document.querySelector("#audio"));
+  const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
     performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
@@ -294,8 +295,8 @@ test("changing genre order still counts as a conflict", async () => {
   assert.match(p.nodes.get("#toast").textContent, /changed since this draft/);
 });
 
-function livePage() {
-  const p = page();
+function livePage(options) {
+  const p = page(options);
   p.run(`const first = state.details.get(state.albums[0].id);
     Object.assign(first, {artist_id: 42, artist_image: "https://example.test/artist-150", artist_artwork_id: 8});
     const second = state.details.get(state.albums[2].id);
@@ -303,6 +304,251 @@ function livePage() {
     state.albums = [...state.details.values()].map(summarize); state.mode = "live"`);
   return p;
 }
+
+function playbackPage({outputs = false, choose, enumerate, unsupported = [], airplay = false} = {}) {
+  const actions = new Map(), positions = [], sinks = [], events = new Map();
+  const session = {setActionHandler(action, handler) {
+    if (unsupported.includes(action)) throw new Error("Unsupported action");
+    actions.set(action, handler);
+  }, setPositionState(position) { positions.push(position && structuredClone(position)); }};
+  const mediaDevices = {addEventListener: (name, handler) => events.set(name, handler)};
+  if (outputs) mediaDevices.enumerateDevices = enumerate || (async () => [
+    {kind: "audiooutput", deviceId: "default", label: "Default"},
+    {kind: "audiooutput", deviceId: "dac", label: "USB DAC"},
+    {kind: "audioinput", deviceId: "microphone", label: "Microphone"},
+  ]);
+  if (choose) mediaDevices.selectAudioOutput = choose;
+  mediaDevices.getUserMedia = () => { throw new Error("Microphone access must never be requested"); };
+  const p = livePage({browserNavigator: {mediaSession: session, mediaDevices},
+    metadataClass: class { constructor(data) { Object.assign(this, data); } },
+    setupAudio(audio) {
+      Object.assign(audio, {duration: 120, currentTime: 15, playbackRate: 1, sinkId: "", volume: 1, muted: false});
+      if (outputs) audio.setSinkId = async id => { sinks.push(id); audio.sinkId = id; };
+      if (airplay) audio.webkitShowPlaybackTargetPicker = () => { sinks.push("AirPlay picker"); };
+    }});
+  return Object.assign(p, {actions, positions, sinks, session, deviceEvents: events});
+}
+
+test("player volume and mute work independently of browser output APIs without restarting audio", async () => {
+  for (const options of [{}, {outputs: true}, {airplay: true}]) {
+    const p = playbackPage(options); await settle();
+    p.run('playTracks(state.details.get("1")); audio.pause(); audio.volume = 0.65; openPlaybackOutput()'); await settle();
+    const source = p.nodes.get("#audio").src, queue = p.json("player.queue"), history = p.history.length;
+    assert.equal(p.nodes.get("#audio-volume").value, "65", "Opening reads volume without resetting it");
+    await p.nodes.get("#audio-volume").emit("input", {target: {value: "35"}});
+    assert.equal(p.nodes.get("#audio").volume, 0.35);
+    assert.equal(p.nodes.get("#audio-volume-value").textContent, "35%");
+    await p.nodes.get("#audio-mute").emit("click");
+    assert.equal(p.nodes.get("#audio").muted, true);
+    assert.equal(p.nodes.get("#audio").volume, 0.35, "Muting keeps the volume available for unmuting");
+    assert.equal(p.nodes.get("#audio-mute").textContent, "Unmute");
+    await p.nodes.get("#audio-mute").emit("click");
+    assert.equal(p.nodes.get("#audio").muted, false);
+    p.run('audio.muted = true');
+    await p.nodes.get("#audio-volume").emit("input", {target: {value: "50"}});
+    assert.equal(p.nodes.get("#audio").muted, false, "Raising volume explicitly unmutes");
+    assert.equal(p.nodes.get("#audio").paused, true);
+    assert.equal(p.nodes.get("#audio").currentTime, 15);
+    assert.equal(p.nodes.get("#audio").src, source);
+    assert.deepEqual(p.json("player.queue"), queue);
+    assert.equal(p.history.length, history);
+  }
+});
+
+test("volume follows native changes, stays bounded, and displays refused changes honestly", async () => {
+  const p = playbackPage(); await settle();
+  p.run('playTracks(state.details.get("1")); openPlaybackOutput(); audio.volume = 0.22; audio.muted = true');
+  await p.nodes.get("#audio").emit("volumechange");
+  assert.equal(p.nodes.get("#audio-volume").value, "22");
+  assert.match(p.nodes.get("#audio-volume").getAttribute("aria-valuetext"), /22%.*muted/);
+  for (const [value, expected] of [["200", 1], ["-50", 0], ["invalid", 0]]) {
+    await p.nodes.get("#audio-volume").emit("input", {target: {value}});
+    assert.equal(p.nodes.get("#audio").volume, expected);
+  }
+  p.run('Object.defineProperty(audio, "volume", {get: () => 1, set: () => {}})');
+  await p.nodes.get("#audio-volume").emit("input", {target: {value: "25"}});
+  assert.equal(p.nodes.get("#audio-volume").value, "100", "The slider reflects an output that ignores volume changes");
+  assert.match(p.nodes.get("#audio-volume-note").textContent, /system or device/);
+});
+
+test("stale volume and mute controls cannot affect a stopped player or queue controller", async () => {
+  for (const reset of ['stopPlayer()', 'queueSync.active = true; queueSync.allowed = false']) {
+    const p = playbackPage(); await settle();
+    p.run('playTracks(state.details.get("1")); openPlaybackOutput()');
+    p.run(reset);
+    await p.nodes.get("#audio-volume").emit("input", {target: {value: "25"}});
+    await p.nodes.get("#audio-mute").emit("click");
+    assert.equal(p.nodes.get("#audio").volume, 1);
+    assert.equal(p.nodes.get("#audio").muted, false);
+  }
+});
+
+test("system media controls keep track metadata, progress and local playback in sync", async () => {
+  const p = playbackPage({unsupported: ["seekbackward"]}); await settle();
+  p.run('const album = state.details.get("1"); album.tracks[0].artist = "Track performer"; playTracks(album)');
+  assert.equal(p.session.metadata.artist, "Track performer");
+  assert.equal(p.session.metadata.album, p.run("player.album.name"));
+  assert.equal(p.session.playbackState, "playing");
+  assert.deepEqual(p.positions.at(-1), {duration: 120, position: 15, playbackRate: 1});
+  assert.equal(typeof p.actions.get("nexttrack"), "function", "One unsupported action leaves other controls working");
+  p.actions.get("pause")();
+  assert.equal(p.nodes.get("#audio").paused, true);
+  assert.equal(p.session.playbackState, "paused");
+  p.actions.get("play")(); await settle();
+  assert.equal(p.nodes.get("#audio").paused, false);
+  p.actions.get("nexttrack")();
+  assert.equal(p.run("player.index"), 1);
+  assert.equal(p.session.metadata.title, p.run("player.queue[1].title"));
+  p.actions.get("previoustrack")();
+  assert.equal(p.run("player.index"), 0);
+  p.actions.get("seekto")({seekTime: 999});
+  assert.equal(p.nodes.get("#audio").currentTime, 120);
+  p.actions.get("seekto")({seekTime: -8});
+  assert.equal(p.nodes.get("#audio").currentTime, 0);
+  p.actions.get("seekforward")({});
+  assert.equal(p.nodes.get("#audio").currentTime, 10);
+  p.actions.get("seekto")({seekTime: NaN});
+  assert.equal(p.nodes.get("#audio").currentTime, 10);
+  p.actions.get("stop")();
+  assert.equal(p.session.metadata, null);
+  assert.equal(p.session.playbackState, "none");
+  assert.equal(p.run("player.queue.length"), 0);
+  assert.equal(p.positions.at(-1), undefined);
+  assert.ok([...p.actions.values()].every(handler => handler === null));
+});
+
+test("system timeline handles fast seek, unknown duration and throttled progress updates", async () => {
+  const p = playbackPage(); await settle();
+  p.run('playTracks(state.details.get("1")); audio.fastSeek = target => {audio.currentTime = target};');
+  p.actions.get("seekto")({seekTime: 42, fastSeek: true});
+  assert.equal(p.nodes.get("#audio").currentTime, 42);
+  const count = p.positions.length;
+  p.setPlaybackClock(500); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(p.positions.length, count);
+  p.setPlaybackClock(1100); await p.nodes.get("#audio").emit("timeupdate");
+  assert.equal(p.positions.length, count + 1);
+  p.run('audio.duration = NaN'); await p.nodes.get("#audio").emit("durationchange");
+  assert.equal(p.positions.at(-1), undefined);
+  p.actions.get("seekforward")({seekOffset: 20});
+  assert.equal(p.nodes.get("#audio").currentTime, 42, "Unknown duration cannot produce an invalid seek");
+});
+
+test("system handlers cannot play after library replacement or in queue controller mode", async () => {
+  const p = playbackPage(); await settle();
+  p.run('playTracks(state.details.get("1"))');
+  const stalePlay = p.actions.get("play"), staleNext = p.actions.get("nexttrack");
+  p.run('queueSync.enabled = true; queueSync.active = true; queueSync.allowed = true; state.connection.playback_session = "test-session";');
+  p.setFetch(async () => ({ok: true, json: async () => ({session: "test-session", own: true, revision: 2,
+    state: {role: "controller"}})}));
+  await p.run('pollQueue()');
+  assert.equal(p.session.metadata, null);
+  assert.equal(p.actions.get("play"), null);
+  stalePlay(); staleNext();
+  assert.equal(p.nodes.get("#audio").paused, true);
+  assert.equal(p.run("player.index"), 0);
+  p.run('useLocal(demoLibrary(), "demo")');
+  stalePlay(); staleNext();
+  assert.equal(p.run("player.queue.length"), 0);
+  assert.equal(p.session.playbackState, "none");
+});
+
+test("partial and missing media session implementations preserve ordinary playback", async () => {
+  const p = livePage({browserNavigator: {mediaSession: {setActionHandler() { throw Error("Unsupported"); },
+    setPositionState() { throw Error("Unsupported"); }, set metadata(_) { throw Error("Unsupported"); }}}});
+  await settle();
+  p.run('playTracks(state.details.get("1")); step(1); stopPlayer()');
+  assert.equal(p.run("player.queue.length"), 0);
+  const absent = livePage(); await settle();
+  absent.run('playTracks(state.details.get("1")); step(1)');
+  assert.equal(absent.run("player.index"), 1);
+});
+
+test("output discovery is explicit and switching leaves source, position, queue and pause unchanged", async () => {
+  let reads = 0;
+  const p = playbackPage({outputs: true, choose: async () => ({deviceId: "dac", label: "USB DAC"}), enumerate: async () => {
+    reads++; return [{kind: "audiooutput", deviceId: "dac", label: "USB DAC"},
+      {kind: "audioinput", deviceId: "mic", label: "Microphone"}];
+  }});
+  await settle();
+  assert.equal(reads, 0);
+  p.run('playTracks(state.details.get("1")); audio.pause(); $("#player-output").focus()');
+  const queue = p.json("player.queue"), source = p.nodes.get("#audio").src, history = p.history.length;
+  await p.nodes.get("#player-output").emit("click"); await settle();
+  assert.equal(p.nodes.get("#audio-output-dialog").open, true);
+  assert.equal(p.nodes.get("#audio-output-choose").hidden, false);
+  assert.doesNotMatch(p.nodes.get("#audio-output-select").innerHTML, /Microphone/);
+  await p.nodes.get("#audio-output-choose").emit("click");
+  assert.deepEqual(p.sinks, ["dac"]);
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.equal(p.nodes.get("#audio").currentTime, 15);
+  assert.equal(p.nodes.get("#audio").paused, true);
+  assert.deepEqual(p.json("player.queue"), queue);
+  assert.match(p.nodes.get("#audio-output-current").textContent, /USB DAC/);
+  await p.nodes.get("#audio-output-select").emit("change", {target: {value: ""}});
+  assert.deepEqual(p.sinks, ["dac", ""]);
+  await p.nodes.get("#audio-output-dialog").emit("cancel", {preventDefault() {}});
+  assert.equal(p.nodes.get("#audio-output-dialog").open, false);
+  assert.equal(p.run('document.activeElement === $("#player-output")'), true);
+  assert.equal(p.history.length, history);
+});
+
+test("cancelled and unavailable outputs keep the current output and can be retried explicitly", async () => {
+  let errorName = "NotAllowedError", attempts = 0;
+  const p = playbackPage({outputs: true, choose: async () => { attempts++; throw {name: errorName}; }});
+  await settle(); p.run('playTracks(state.details.get("1")); openPlaybackOutput()'); await settle();
+  await p.nodes.get("#audio-output-choose").emit("click");
+  assert.match(p.nodes.get("#audio-output-error").textContent, /cancelled/);
+  assert.equal(p.nodes.get("#audio").sinkId, "");
+  errorName = "NotFoundError";
+  await p.nodes.get("#audio-output-choose").emit("click");
+  assert.match(p.nodes.get("#audio-output-error").textContent, /no longer available/);
+  assert.equal(attempts, 2);
+  assert.deepEqual(p.sinks, []);
+});
+
+test("late output picker results cannot switch after closing, stopping or replacing the queue", async () => {
+  for (const change of ['closePlaybackOutput()', 'stopPlayer()', 'playTracks(state.details.get("2"))', 'useLocal(demoLibrary(), "demo")']) {
+    let finish, attempts = 0;
+    const p = playbackPage({outputs: true, choose: () => { attempts++; return new Promise(resolve => { finish = resolve; }); }});
+    await settle(); p.run('playTracks(state.details.get("1")); openPlaybackOutput()'); await settle();
+    const choosing = p.nodes.get("#audio-output-choose").emit("click");
+    await p.nodes.get("#audio-output-choose").emit("click");
+    assert.equal(attempts, 1, "Only one picker can be outstanding");
+    p.run(change); finish({deviceId: "dac", label: "USB DAC"}); await choosing;
+    assert.deepEqual(p.sinks, [], change);
+  }
+});
+
+test("output device changes refresh only an open dialog and ignore an older discovery result", async () => {
+  const resolves = [];
+  const p = playbackPage({outputs: true, enumerate: () => new Promise(resolve => resolves.push(resolve))});
+  await settle(); p.run('playTracks(state.details.get("1")); openPlaybackOutput()');
+  p.run('closePlaybackOutput(); openPlaybackOutput()');
+  resolves[0]([{kind: "audiooutput", deviceId: "old", label: "Old output"}]); await settle();
+  assert.doesNotMatch(p.nodes.get("#audio-output-select").innerHTML, /Old output/);
+  resolves[1]([{kind: "audiooutput", deviceId: "new", label: "New output"}]); await settle();
+  assert.match(p.nodes.get("#audio-output-select").innerHTML, /New output/);
+  p.run('closePlaybackOutput()'); p.deviceEvents.get("devicechange")();
+  assert.equal(resolves.length, 2);
+});
+
+test("native AirPlay and system-settings fallback work without output device APIs", async () => {
+  const p = playbackPage({airplay: true}); await settle();
+  p.run('playTracks(state.details.get("1")); openVisualPlayer(); openPlaybackOutput()');
+  assert.equal(p.nodes.get("#audio-output-airplay").hidden, false);
+  assert.equal(p.nodes.get("#audio-output-choose").hidden, true);
+  assert.equal(p.nodes.get("#audio-output-devices").hidden, true);
+  assert.match(p.nodes.get("#audio-output-note").textContent, /system sound settings/);
+  await p.nodes.get("#audio-output-airplay").emit("click");
+  assert.deepEqual(p.sinks, ["AirPlay picker"]);
+  p.run('audio.webkitCurrentPlaybackTargetIsWireless = true');
+  await p.nodes.get("#audio").emit("webkitcurrentplaybacktargetiswirelesschanged");
+  assert.match(p.nodes.get("#audio-output-current").textContent, /AirPlay/);
+  await p.nodes.get("#audio").emit("webkitplaybacktargetavailabilitychanged", {availability: "not-available"});
+  assert.equal(p.nodes.get("#audio-output-airplay").hidden, true);
+  p.run('closePlaybackOutput()');
+  assert.equal(p.run("visualPlayer.open"), true, "Closing output selection leaves fullscreen playback intact");
+});
 
 function tagFixture() {
   const rows = [{id:"10",name:"<Listen & later>",archived:false,tracks:2,total_tracks:2,before:"tag-ten"},
@@ -397,8 +643,13 @@ test("Tags has its own route and contextual help; album tag chips never change g
   assert.equal(p.run("browseAlbums().length"), 1);
   assert.equal(p.nodes.get("#browse-tag-delete").hidden, false);
   assert.match(p.run('JSON.stringify(helpContentFor("browse"))'), /Tags.*labels/);
-  assert.match(p.run('albumTagPanel({id:"1",tracks:[{tags:[{id:"10",name:"Listen later"}]},{tags:[]}]})'), /data-browse-kind="tags".*1\/2 tracks/);
-  assert.match(p.run('albumTagPanel({id:"1",tags_loaded:false,tracks:[{tags:[]}]})'), /Open Manage tags to load labels/);
+  assert.match(p.run('albumTagChips({id:"1",tracks:[{tags:[{id:"10",name:"Listen later"}]},{tags:[]}]})'), /data-browse-kind="tags".*1\/2 tracks.*data-album-tags="1"/);
+  assert.match(p.run('albumTagChips({id:"1",tags_loaded:false,tracks:[{tags:[]}]})'), /Load and manage.*>\+ Tag/);
+  await p.run('openAlbum("1")');
+  assert.match(p.nodes.get("#album-page").innerHTML, /class="album-labels".*data-album-tags="1"/);
+  assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /class="album-tags"|No tags assigned|album-tags-shortcut/);
+  p.run('state.details.get("1").tracks[0].tags = [{id:"10",name:"Listen later",archived:true}]; renderAlbumView()');
+  assert.match(p.nodes.get("#album-page").innerHTML, /class="album-labels".*Listen later.*archived.*data-album-tags="1"/);
   assert.equal(p.run('SIDEBAR_ITEMS.some(i=>i[0]==="show-tags" && !i[2])'), true);
 });
 
@@ -1422,7 +1673,7 @@ test("browsing a different album preserves playback and plays the viewed album, 
   assert.equal(p.run("player.album.name"), "Hounds of Love");
   assert.equal(p.nodes.get("#audio").src, "/api/stream/300?quality=128");
   p.nodes.get("#editor").close();
-  await p.click({"[data-album-back]": {}});
+  p.history.back(); await settle();
   assert.equal(p.run("state.screen"), "album");
   assert.equal(p.run("albumView.id"), "1", "Back returns to the album viewed before");
   assert.equal(p.nodes.get("#audio").src, "/api/stream/300?quality=128");
@@ -1841,8 +2092,8 @@ test("Back returns from an album to the artist and then to the artist grid as it
   assert.equal(p.nodes.get("#artist-back").textContent, "← Back to Album artists");
   await p.click({"[data-album]": {dataset: {album: "3"}}});
   assert.equal(p.location.hash, "#/album/3");
-  assert.match(p.nodes.get("#album-page").innerHTML, /← Back to Kate Bush/);
-  await p.click({"[data-album-back]": {}});
+  assert.match(p.nodes.get("#breadcrumb").innerHTML, /Album artists.*Kate Bush/);
+  await p.click({"[data-album-crumb]": {dataset: {albumCrumb: "1"}}});
   assert.equal(p.run("state.screen"), "albums");
   assert.equal(p.run("state.artist"), "Kate Bush");
   await p.nodes.get("#artist-back").emit("click");
@@ -1858,8 +2109,8 @@ test("an album opened from the Overview goes back to the Overview", async () => 
   await settle();
   await p.click({"#show-overview": {}});
   await p.click({"[data-album]": {dataset: {album: "2"}}});
-  assert.match(p.nodes.get("#album-page").innerHTML, /← Back to Overview/);
-  await p.click({"[data-album-back]": {}});
+  assert.match(p.nodes.get("#breadcrumb").innerHTML, /Overview/);
+  await p.click({"[data-album-crumb]": {dataset: {albumCrumb: "0"}}});
   assert.equal(p.run("state.screen"), "overview");
   assert.equal(p.location.hash, "#/overview");
 });
@@ -1982,7 +2233,7 @@ test("the album page of a set lists every disc and plays them as one album", asy
   assert.match(html, /Disc 1<\/span>[\s\S]*Part 1\.2[\s\S]*Disc 3<\/span>[\s\S]*Part 3\.2/);
   assert.equal((html.match(/class="disc-gap"/g) || []).length, 2, "Space between the discs, not above the first");
   assert.ok(html.indexOf('class="disc-gap"') > html.indexOf("Part 1.2"));
-  assert.match(html, /data-edit-album="71,72,73">Edit album/);
+  assert.match(html, /data-edit-album="71,72,73">Edit</);
   assert.match(html, /data-edit-album="73">Edit disc 3/);
   await p.click({"[data-play-album]": {dataset: {playAlbumId: "71"}}});
   assert.equal(p.run("player.queue.length"), 6);
@@ -2287,7 +2538,8 @@ test("tracks go to the trash only after a review, and duplicates can be picked f
   p.run(`const album = state.details.get("5"); album.tracks.push({...album.tracks[2], id: 599, title: "Teardrop"});
     state.albums = [...state.details.values()].map(summarize); state.mode = "live"`);
   await p.run('openAlbum("5")');
-  assert.match(p.nodes.get("#album-page").innerHTML, /data-trash-start/);
+  assert.match(p.nodes.get("#album-page").innerHTML, /data-album-more/);
+  assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /Move to trash/);
   assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /data-trash-track/, "No checkboxes until you ask for them");
   await p.click({"[data-trash-start]": {}});
   assert.match(p.nodes.get("#album-page").innerHTML, /0 of 12 tracks selected/);
@@ -2399,8 +2651,8 @@ test("Tracks searches every track by title, artist, album or composer and opens 
   assert.equal(p.run("state.screen"), "album");
   assert.match(p.nodes.get("#album-page").innerHTML, /data-row="408" class="found"/);
   assert.equal((p.nodes.get("#album-page").innerHTML.match(/class="found"/g) || []).length, 1);
-  assert.match(p.nodes.get("#album-page").innerHTML, /← Back to Tracks/);
-  await p.click({"[data-album-back]": {}});
+  assert.match(p.nodes.get("#breadcrumb").innerHTML, /Tracks/);
+  await p.click({"[data-album-crumb]": {dataset: {albumCrumb: "0"}}});
   assert.equal(p.run("state.screen"), "tracks");
   assert.equal(p.nodes.get("#tracks-search").value, "houdini", "Back brings the search back");
   assert.match(p.nodes.get("#tracks-list").innerHTML, /Houdini/);
@@ -2870,7 +3122,7 @@ test("the library info banner can be hidden, remembered and restored without req
   assert.equal(reopened.nodes.get("#library-notice").hidden, true);
   assert.equal(reopened.run("libraryNotice.visible"), false);
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
-  assert.match(html, />Settings ⚙</);
+  assert.match(html, /id="settings-button">Settings</);
   assert.match(html, /<h2>Settings<\/h2>/);
 });
 
@@ -3863,4 +4115,140 @@ test("Finishing Up next at the end consumes it, retains the base queue and appen
   assert.equal(p.run('encodedLocalQueue().current_song'), 0);
   p.run('appendToQueue(state.details.get("3"))');
   assert.equal(p.run('player.queue[player.index].id'), p.run('String(state.details.get("3").tracks[0].id)'));
+});
+
+test("album breadcrumbs remember the actual tag source, filters, ordering and scroll", async () => {
+  const p = page(); await settle();
+  p.run('for (const album of state.details.values()) for (const track of album.tracks) track.tags=[{id:"10",name:"<Emusic>"}]');
+  p.run('showBrowse("tags")'); await settle();
+  p.run('showBrowse("tags","10",{label:"<Emusic>",sort:"name-desc"})'); await settle();
+  p.run('window.scrollY=412; syncHistory()');
+  const source = p.location.hash, random = p.json('browseView.randomIds');
+  await p.run('openAlbum("1")');
+  assert.match(p.nodes.get('#breadcrumb').innerHTML, /Tags.*&lt;Emusic&gt;.*Wish You Were Here/);
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML, /YOUR ALBUM|data-album-back/);
+  assert.equal(p.history.state.albumOrigin.at(-1).saved.scrollY,412);
+  await p.run('openAlbum("3")');
+  assert.match(p.nodes.get('#breadcrumb').innerHTML, /Tags.*&lt;Emusic&gt;.*Hounds of Love/);
+  p.nodes.get('#editor').showModal();
+  await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}});
+  assert.equal(p.location.hash,'#/album/3','A draft stays open over its current page');
+  p.nodes.get('#editor').close();
+  await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}}); await settle();
+  p.flushTimers(0);
+  assert.equal(p.location.hash,source);
+  assert.equal(p.run('browseView.sort'),'name-desc');
+  assert.deepEqual(p.json('browseView.randomIds'),random);
+  assert.equal(p.run('window.scrollY'),412);
+  p.history.forward(); await settle(); p.flushTimers(0);
+  assert.equal(p.location.hash,'#/album/1');
+  assert.match(p.nodes.get('#breadcrumb').innerHTML, /Tags.*&lt;Emusic&gt;/);
+  p.run('state.details = new Map(state.details); renderAlbumView()');
+  assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML, /Emusic/,'A replaced library cannot reuse the old origin');
+});
+
+test("direct album breadcrumbs have a working Albums fallback and Workspace returns to artists", async () => {
+  const p=page({hash:'#/album/3'}); await settle();
+  assert.match(p.nodes.get('#breadcrumb').innerHTML,/Albums.*Hounds of Love/);
+  await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'0'}}});
+  assert.equal(p.location.hash,'#/albums');
+  await p.run('openAlbum("3")');
+  await p.click({'[data-breadcrumb-root]':{}});
+  assert.equal(p.location.hash,'#/artists');
+});
+
+test("breadcrumbs restore a decade's sampled order and reject a stale branch", async () => {
+  const p=page(); await settle();
+  p.run('showBrowse("decades","1980",{label:"1980s"})'); await settle();
+  p.run('browseView.randomIds = browseAlbums().map(a=>String(a.id)).reverse(); renderBrowse(); window.scrollY=250');
+  const sample=p.json('browseView.randomIds');
+  await p.run('openAlbum("3")');
+  await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}}); await settle(); p.flushTimers(0);
+  assert.equal(p.location.hash,'#/decades/1980');
+  assert.deepEqual(p.json('browseView.randomIds'),sample);
+  assert.equal(p.run('window.scrollY'),250);
+  // A new branch drops remembered forward entries rather than jumping to an unrelated page.
+  p.history.back(); await settle(); p.flushTimers(0);
+  p.run('showScreen("albums"); render()');
+  await p.run('openAlbum("1")');
+  assert.match(p.nodes.get('#breadcrumb').innerHTML,/Albums.*Wish You Were Here/);
+  assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/1980s/);
+});
+
+test("More album actions only starts an empty reviewed trash selection after an explicit choice", async () => {
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  const trigger=p.run('document.querySelector("[data-album-more]")'); trigger.disabled=false;
+  const length=p.history.length, count=p.requests.length;
+  p.run('playTracks(state.details.get("1"))');
+  const audio=p.nodes.get('#audio'), src=audio.src;
+  await p.click({'[data-album-more]':trigger});
+  assert.equal(p.nodes.get('#album-action-menu').hidden,false);
+  assert.equal(trigger.getAttribute('aria-expanded'),'true');
+  assert.equal(p.run('albumView.trash'),null);
+  assert.equal(p.requests.length,count);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'Escape',preventDefault(){}});
+  assert.equal(p.nodes.get('#album-action-menu').hidden,true);
+  assert.equal(p.run('document.activeElement')===trigger,true);
+  await p.click({'[data-album-more]':trigger}); await p.click({});
+  assert.equal(p.nodes.get('#album-action-menu').hidden,true);
+  await p.click({'[data-album-more]':trigger});
+  await p.nodes.get('#album-action-trash').emit('click');
+  assert.deepEqual(p.json('[...albumView.trash]'),[]);
+  assert.match(p.nodes.get('#album-page').innerHTML,/0 of .* tracks selected/);
+  assert.equal(p.nodes.get('#trash-review').open,undefined);
+  assert.equal(p.history.length,length);
+  assert.equal(audio.src,src); assert.equal(audio.paused,false);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test("More album actions rejects stale albums and library replacement", async () => {
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  const trigger=p.run('document.querySelector("[data-album-more]")'); trigger.disabled=false;
+  p.run('openAlbumActions(document.querySelector("[data-album-more]")); state.details=new Map(state.details)');
+  await p.nodes.get('#album-action-trash').emit('click');
+  assert.equal(p.run('albumView.trash'),null);
+  p.run('openAlbumActions(document.querySelector("[data-album-more]")); albumView.id="3"');
+  await p.nodes.get('#album-action-trash').emit('click');
+  assert.equal(p.run('albumView.trash'),null);
+  p.run('albumView.id="1"; openAlbumActions(document.querySelector("[data-album-more]")); showScreen("albums")');
+  assert.equal(p.nodes.get('#album-action-menu').hidden,true);
+});
+
+test("album rating choices stay neutral when empty and retain Clear for mixed disc ratings", async () => {
+  const p=livePage(); await settle();
+  assert.doesNotMatch(p.run('albumRatingControls([{id:"1",rating:0}])'),/is-selected|>Clear</);
+  const rated=p.run('albumRatingControls([{id:"1",rating:3}])');
+  assert.equal((rated.match(/is-selected/g)||[]).length,3);
+  assert.match(rated,/>Clear</);
+  const mixed=p.run('albumRatingControls([{id:"1",rating:0},{id:"2",rating:5}])');
+  assert.match(mixed,/>Clear<.*Different disc ratings/);
+  assert.doesNotMatch(mixed,/is-selected/);
+  assert.match(p.run('albumRatingControls([{id:"1",rating:5}])'),/data-heart[^>]*aria-pressed="true"/);
+});
+
+test("the album release year opens the existing year browse without changing playback", async () => {
+  const p = livePage(); await settle();
+  p.run('state.details.get("3").year=1955; state.albums.find(a=>a.id==="3").year=1955');
+  await p.run('openAlbum("3")');
+  const year = p.run('albumYear(albumDiscs())');
+  assert.match(p.nodes.get('#album-page').innerHTML, new RegExp(`class="album-year-link" data-browse-kind="years" data-browse-key="${year}"`));
+  p.run('playTracks(state.details.get("3"))');
+  const audio = p.nodes.get('#audio'), src = audio.src, queue = p.json('player.queue');
+  const before = p.requests.length;
+  p.setFetch(url => {
+    assert.match(url, new RegExp(`/api/browse\\?.*kind=years.*key=${year}`));
+    return {ok:true,json:async()=>({group:{key:String(year),label:String(year)},album_ids:['3']})};
+  });
+  await p.click({'[data-browse-kind]':{dataset:{browseKind:'years',browseKey:String(year),browseLabel:String(year)}}});
+  assert.equal(p.location.hash,`#/years/${year}`);
+  assert.equal(p.run('browseView.label'),String(year));
+  assert.equal(p.run('browseAlbums()[0].id'),'3');
+  assert.equal(audio.src,src); assert.equal(audio.paused,false);
+  assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.requests.slice(before).filter(r=>r.options?.method==='POST').length,0);
+  p.history.back(); await settle();
+  assert.equal(p.location.hash,'#/album/3');
+  p.run('state.details.get("3").year=0; renderAlbumView()');
+  assert.match(p.nodes.get('#album-page').innerHTML,/Year unknown/);
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/album-year-link/);
 });

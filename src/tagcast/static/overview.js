@@ -19,9 +19,11 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();
   if (typeof closeHelp === "function") closeHelp(false);
   if (name !== "album-guide") $("#guide-link-dialog").close();
   if (typeof closeQueueActions === "function") closeQueueActions();
+  if (typeof closeAlbumActions === "function") closeAlbumActions();
   if (typeof closeCoverLightbox === "function") closeCoverLightbox();
   if (name !== "browse" && typeof browseView !== "undefined") {
     clearTimeout(browseTimer); browseView.request += 1; browseView.loading = false;
