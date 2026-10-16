@@ -1,7 +1,7 @@
 "use strict";
 
-// Native collections stay separate from metadata drafts and Change history.
-const collectionsView = {request: 0, query: "", offset: 0, playlist: null, data: null, loading: false, busy: false, rating: null};
+// Local album favourites and native collections stay separate from metadata drafts and History.
+const collectionsView = {request: 0, query: "", offset: 0, playlist: null, data: null, loading: false, busy: false, rating: null, favourite: null};
 const playlistDraft = {body: null, details: null, session: "", selected: null, request: 0};
 
 async function collectionJob(response, current) {
@@ -16,6 +16,15 @@ async function collectionJob(response, current) {
   return job;
 }
 
+function albumFavouriteControls(discs, disabled) {
+  const ids = discs.map(d => String(d.id)), update = collectionsView.favourite;
+  const current = update?.details === state.details && update.session === state.connection.playback_session
+    && update.ids.join(",") === ids.join(",") ? update : null;
+  const favourite = current?.pending ? current.value : ids.every(id => state.albumFavourites.has(id));
+  const status = state.albumFavouriteError || current?.message || "";
+  return {button: `<button class="album-rating-choice ${favourite ? "is-selected" : ""}" data-album-favourite="${escapeHtml(ids.join(","))}" data-heart title="Album favourite · saved locally, independent of stars" aria-label="${favourite ? "Remove album favourite" : "Favourite album"}" aria-pressed="${favourite}" aria-busy="${Boolean(current?.pending)}" ${disabled || state.albumFavouriteError ? "disabled" : ""}>${favourite ? "♥" : "♡"}</button>`, status: status ? `<small class="album-rating-status ${state.albumFavouriteError || current?.error ? "error-text" : "muted"}" role="status">${escapeHtml(status)}</small>` : ""};
+}
+
 function albumRatingControls(discs) {
   const update = collectionsView.rating, current = update?.details === state.details && update.session === state.connection.playback_session
     && update.ids.join(",") === discs.map(d => String(d.id)).join(",") ? update : null;
@@ -23,19 +32,48 @@ function albumRatingControls(discs) {
   const ids = escapeHtml(discs.map(d => d.id).join(","));
   const disabled = !live() || state.loading || collectionsView.busy || saving || checking;
   const hasRating = current?.pending ? current.value > 0 : discs.some(d => d.rating > 0);
-  return `<div class="album-rating" role="group" aria-label="Album rating" aria-busy="${Boolean(current?.pending)}"><button class="album-rating-choice ${rating === 5 ? "is-selected" : ""}" data-album-rating="${ids}" data-value="${rating === 5 ? 0 : 5}" data-heart title="Album favourite (rating 5)" aria-label="${rating === 5 ? "Remove album favourite" : "Favourite album"}" aria-pressed="${rating === 5}" ${disabled ? "disabled" : ""}>${rating === 5 ? "♥" : "♡"}</button>${[1, 2, 3, 4, 5].map(n => `<button class="album-rating-choice ${n <= rating ? "is-selected" : ""}" data-album-rating="${ids}" data-value="${n}" aria-label="Rate album ${n} out of 5" aria-pressed="${n <= rating}" ${disabled ? "disabled" : ""}>${n <= rating ? "★" : "☆"}</button>`).join("")}${hasRating ? `<button class="text-action album-rating-clear" data-album-rating="${ids}" data-value="0" ${disabled ? "disabled" : ""}>Clear</button>` : ""}${mixed && !current?.pending ? '<small class="muted">Different disc ratings</small>' : ""}${current ? `<small class="album-rating-status ${current.error ? "error-text" : "muted"}" role="status">${escapeHtml(current.message)}</small>` : ""}</div>`;
+  const favourite = albumFavouriteControls(discs, disabled);
+  return `<div class="album-rating" role="group" aria-label="Album favourite and rating" aria-busy="${Boolean(current?.pending)}">${favourite.button}${[1, 2, 3, 4, 5].map(n => `<button class="album-rating-choice ${n <= rating ? "is-selected" : ""}" data-album-rating="${ids}" data-value="${n}" aria-label="Rate album ${n} out of 5" aria-pressed="${n <= rating}" ${disabled ? "disabled" : ""}>${n <= rating ? "★" : "☆"}</button>`).join("")}${hasRating ? `<button class="text-action album-rating-clear" data-album-rating="${ids}" data-value="0" ${disabled ? "disabled" : ""}>Clear</button>` : ""}${mixed && !current?.pending ? '<small class="muted">Different disc ratings</small>' : ""}${current ? `<small class="album-rating-status ${current.error ? "error-text" : "muted"}" role="status">${escapeHtml(current.message)}</small>` : ""}${favourite.status}</div>`;
 }
 
-async function rateAlbum(ids, rating, heart) {
+async function toggleAlbumFavourite(ids) {
+  if (!live() || state.loading || collectionsView.busy || saving || checking || state.albumFavouriteError) return;
+  if (document.querySelector("dialog[open]")) { toast("Close the open review first."); return; }
+  if (!ids.length || !ids.every(id => state.details.has(id))) return;
+  const before = ids.map(id => state.albumFavourites.has(id)), favourite = !before.every(Boolean);
+  const focused = document.activeElement?.getAttribute?.("data-album-favourite") === ids.join(",");
+  const details = state.details, session = state.connection.playback_session;
+  const current = () => details === state.details && session === state.connection.playback_session && live();
+  const update = {ids, value: favourite, details, session, pending: true, error: false, message: "Saving favourite locally…"};
+  collectionsView.rating = null; collectionsView.favourite = update; collectionsView.busy = true; renderAlbumView();
+  try {
+    const response = await api("/api/album-favourite", {albums: ids, before, favourite, session,
+      combine_sets: Boolean(state.connection.combine_sets)});
+    if (!current()) return;
+    if (!ids.every(id => response.results?.some(r => r.id === id && r.favourite === favourite))) throw Error("The local favourite was not confirmed. Reload before trying again.");
+    for (const id of ids) { if (favourite) state.albumFavourites.add(id); else state.albumFavourites.delete(id); }
+    update.message = favourite ? "Album favourite saved locally." : "Album favourite removed locally.";
+    toast(update.message);
+  } catch (error) { if (current()) { update.error = true; update.message = error.message; toast(error.message); } }
+  finally {
+    update.pending = false; collectionsView.busy = false;
+    if (current()) {
+      renderAlbumView();
+      if (state.screen === "album-favourites") renderCollections();
+      if (focused && state.screen === "album") document.querySelector(`[data-album-favourite="${ids.join(",")}"]`)?.focus();
+    }
+  }
+}
+
+async function rateAlbum(ids, rating) {
   if (!live() || state.loading || collectionsView.busy || saving || checking) return;
   if (document.querySelector("dialog[open]")) { toast("Close the open review first."); return; }
   const discs = ids.map(id => state.details.get(id));
   if (!discs.every(Boolean)) return;
   const before = discs.map(d => d.rating || 0), details = state.details, session = state.connection.playback_session;
-  if (heart && rating === 5 && before.some(n => n > 0 && n < 5) && !confirm("Replace this album’s existing star rating with 5 to add it to favourites?")) return;
   const update = {ids, value: rating, details, session, pending: true, message: "Saving rating…", error: false};
   const current = () => details === state.details && session === state.connection.playback_session && live();
-  collectionsView.rating = update;
+  collectionsView.favourite = null; collectionsView.rating = update;
   collectionsView.busy = true;
   renderAlbumView();
   try {
@@ -51,7 +89,7 @@ async function rateAlbum(ids, rating, heart) {
     }
     if (response.error || !ids.every(id => job.results?.some(r => String(r.id) === String(id) && r.status === "saved" && Number(r.rating) === rating))) throw Error(response.error || "One or more discs were not confirmed. Reload before trying again.");
     update.message = "Rating saved and confirmed in iBroadcast.";
-    toast(rating === 5 ? "Album added to iBroadcast favourites." : "Album rating saved in iBroadcast.");
+    toast("Album rating saved in iBroadcast.");
   } catch (error) { if (current()) { update.error = true; update.message = error.message; toast(error.message); } }
   finally {
     update.pending = false; collectionsView.busy = false;
@@ -99,8 +137,9 @@ async function renderCollections() {
   if (!live() || state.loading) { page.innerHTML = '<div class="empty">Connect iBroadcast to use playlists and album favourites.</div>'; return; }
   collectionsView.details = state.details;
   if (state.screen === "album-favourites") {
-    const albums = albumShelf().filter(a => a.rating >= 5), filtered = albums.filter(a => `${a.name} ${a.artist}`.toLowerCase().includes(collectionsView.query.toLowerCase()));
-    replaceCollections(`<div class="page-intro"><div><h1>Album favourites<span>.</span></h1><p>Albums rated 5 in iBroadcast. Multi-disc sets appear once when every disc is a favourite.</p></div></div><input class="collection-search" id="collection-search" placeholder="Search favourite albums" value="${escapeHtml(collectionsView.query)}" aria-label="Search favourite albums"><p>${filtered.length} ${filtered.length === 1 ? "album" : "albums"}</p><div class="album-grid">${gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50))}</div>${collectionPages(filtered.length, 50)}`);
+    const albums = albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))), filtered = albums.filter(a => `${a.name} ${a.artist}`.toLowerCase().includes(collectionsView.query.toLowerCase()));
+    if (state.albumFavouriteError) { page.innerHTML = `<p class="error-box">${escapeHtml(state.albumFavouriteError)}</p>`; return; }
+    replaceCollections(`<div class="page-intro"><div><h1>Album favourites<span>.</span></h1><p>Albums marked with a heart in Tagcast. Saved on this computer for your account, independently of star ratings. Multi-disc sets appear once when every disc is a favourite.</p></div></div><input class="collection-search" id="collection-search" placeholder="Search favourite albums" value="${escapeHtml(collectionsView.query)}" aria-label="Search favourite albums"><p>${filtered.length} ${filtered.length === 1 ? "album" : "albums"}</p><div class="album-grid">${gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50))}</div>${collectionPages(filtered.length, 50)}`);
     if (typeof syncHistory === "function") syncHistory();
     return;
   }
@@ -224,8 +263,10 @@ document.addEventListener("submit", event => {
 });
 document.addEventListener("click", async event => {
   const target = event.target;
+  const favourite = target.closest("[data-album-favourite]");
+  if (favourite) return toggleAlbumFavourite(favourite.dataset.albumFavourite.split(","));
   const rating = target.closest("[data-album-rating]");
-  if (rating) return rateAlbum(rating.dataset.albumRating.split(","), Number(rating.dataset.value), rating.hasAttribute("data-heart"));
+  if (rating) return rateAlbum(rating.dataset.albumRating.split(","), Number(rating.dataset.value));
   const album = target.closest("[data-playlist-album]");
   if (album) {
     const details = state.details;

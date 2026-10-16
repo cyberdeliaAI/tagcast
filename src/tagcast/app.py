@@ -141,6 +141,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.queue_sync.view)
         elif url.path == "/api/playlists":
             self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0")))
+        elif url.path == "/api/album-favourites":
+            self._run(self.studio.collections.album_favourites)
         elif url.path == "/api/tags":
             self._run(lambda: self.studio.tags.catalogue(query.get("q"), query.get("offset", "0"), query.get("id")))
         elif url.path == "/api/tags/selection":
@@ -211,6 +213,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/favourite": self.studio.favourite,
             "/api/play": self.studio.record_play,
             "/api/album-rating": self.studio.collections.rate_album,
+            "/api/album-favourite": self.studio.collections.favourite_album,
             "/api/playlist": self.studio.collections.save_playlist,
             "/api/queue-tracks": self.studio.collections.queue_tracks,
             "/api/queue-sync": self.studio.queue_sync.action,

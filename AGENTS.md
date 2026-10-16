@@ -34,7 +34,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
-- `src/tagcast/collections.py`: native album ratings, private playlists, reviewed
+- `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/tags.py`: native tag browsing and reviewed creation, rename, deletion
   and per-album/track assignments, separate from genres and metadata saves.
@@ -400,7 +400,17 @@ and preserve a valid script order in `index.html`.
   fallback. Require Premium for every choice other than 128; keep all stream tokens server-side.
 - Native album ratings use scalar `album_id` with `ratealbum`, one request per disc of
   one displayed set. Check the current rating before writing and read back each disc;
-  do not add metadata History entries. A set is a favourite only when all discs rate 5.
+  do not add metadata History entries. Album hearts are independent local favourites,
+  persisted per account in album-favourites.json. On first use, import existing active
+  five-star albums once; preserve an empty account entry so later ratings never reimport.
+  Heart changes never write to iBroadcast or change stars; star changes never toggle hearts.
+  Share favourites through the local server/settings folder, not browser storage. Check
+  session, loaded account/library, displayed set and previous heart values before atomic
+  local writes; preserve other accounts and inactive IDs, and read back before confirming.
+  Use original disc IDs inside native combined views. A set is a favourite when all its
+  discs are marked. Report file errors without replacing damaged data or blocking library
+  loading or star ratings. Ignore late frontend responses after library/account replacement.
+  Track favourites retain their existing native rating behavior.
   Show requested ratings/hearts immediately as saving/checking; update confirmed
   cached ratings only after read-back. Rating jobs return only their results, without
   serializing the full album index. Keep playback intact and suppress stale results.

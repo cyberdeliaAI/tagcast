@@ -65,6 +65,8 @@ class StartTests(unittest.TestCase):
         studio.collections.playlists.return_value = {"playlists": []}
         studio.collections.save_playlist.return_value = {"job": "check"}
         studio.collections.rate_album.return_value = {"job": "check"}
+        studio.collections.album_favourites.return_value = {"albums": ["1"]}
+        studio.collections.favourite_album.return_value = {"results": [{"id": "1", "favourite": True}]}
         studio.collections.queue_tracks.return_value = {"tracks": []}
         studio.queue_sync.view.return_value = {"status": "disconnected"}
         studio.queue_sync.action.return_value = {"status": "disconnected"}
@@ -107,6 +109,7 @@ class StartTests(unittest.TestCase):
             for path, action in [("/api/playlist", studio.collections.save_playlist),
                                  ("/api/tags/save", studio.tags.save),
                                  ("/api/album-rating", studio.collections.rate_album),
+                                 ("/api/album-favourite", studio.collections.favourite_album),
                                  ("/api/queue-tracks", studio.collections.queue_tracks),
                                  ("/api/config/default", studio.use_default_client),
                                  ("/api/album-guide/analyse", studio.album_guide.analyse),
@@ -117,7 +120,7 @@ class StartTests(unittest.TestCase):
                 action.assert_not_called()
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
                 action.assert_called_once()
-            for path in ("/api/playlists", "/api/queue-sync", "/api/album-guide", "/api/tags", "/api/tags/selection?albums=1&track=2"):
+            for path in ("/api/playlists", "/api/album-favourites", "/api/queue-sync", "/api/album-guide", "/api/tags", "/api/tags/selection?albums=1&track=2"):
                 self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)
