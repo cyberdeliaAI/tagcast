@@ -1,9 +1,9 @@
 Background text visible in 1001-albums-background.png
 
-Album: Violent Femmes
-Source: Wikipedia contributors, "Violent Femmes (album)"
-https://en.wikipedia.org/wiki/Violent_Femmes_(album)
-Contributor history: https://en.wikipedia.org/w/index.php?title=Violent_Femmes_(album)&action=history
+Album: In The Wee Small Hours — Frank Sinatra
+Source: Wikipedia contributors, "In the Wee Small Hours"
+https://en.wikipedia.org/wiki/In_the_Wee_Small_Hours
+Contributor history: https://en.wikipedia.org/w/index.php?title=In_the_Wee_Small_Hours&action=history
 
 License: Creative Commons Attribution-ShareAlike 4.0 International
 https://creativecommons.org/licenses/by-sa/4.0/
@@ -11,10 +11,10 @@ Legal code: https://creativecommons.org/licenses/by-sa/4.0/legalcode.en
 
 Captured from the local Tagcast interface on 16 October 2026. The text was
 captured for Tagcast on 15 October 2026 from the Wikipedia-attributed Album
-Summary at https://1001albumsgenerator.com/albums/2G9onFLGqlMJd1ThYf0vIB/violent-femmes
+Summary at https://1001albumsgenerator.com/albums/3GmwKB1tgPZgXeRJZSm9WX/in-the-wee-small-hours
 Changes for the offline presentation: plain text extraction, whitespace
-normalization and adaptation/shortening. The screenshot shows only the portion
-visible in the viewport; the in-app attribution footer is below that viewport.
+normalization and adaptation to an excerpt. The screenshot includes the in-app
+Wikipedia attribution and CC BY-SA license links below the note.
 The original screenshot pixels have not been altered for this media kit.
 
 The text retains CC BY-SA 4.0 independently of Tagcast's MIT code and logo artwork.

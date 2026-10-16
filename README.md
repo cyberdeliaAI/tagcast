@@ -15,7 +15,7 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 selection trash, refreshed branding/sidebar and album pages, clickable browsing
 breadcrumbs and release years, plus audio-output and system playback controls.
 The packaged **0.42.0** downloads are unchanged. The current development interface is shown in the new screenshots below;
-see the [capture checklist](docs/screenshot-checklist.md) for the remaining views.
+see the [capture inventory](docs/screenshot-checklist.md) for current and retained examples.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast) · [Media kit](media/README.md)
 
@@ -308,11 +308,11 @@ edition, use the search field in the chooser shown above.
 
 **Album background:** open a confirmed match to read its locally bundled, attributed text.
 
-![Violent Femmes album with the narrower About this album text expanded and the compact player running](docs/screenshots/1001-albums-background.png)
+![In The Wee Small Hours by Frank Sinatra with About this album expanded and the Wikipedia and CC BY-SA attribution visible](docs/screenshots/1001-albums-background.png)
 
-Background text: adapted from [Wikipedia contributors, *Violent Femmes (album)*](https://en.wikipedia.org/wiki/Violent_Femmes_(album)),
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The in-app
-attribution is below this capture’s viewport; [text-license notice](src/tagcast/static/1001-album-notes-LICENSE.txt).
+Background text: adapted from [Wikipedia contributors, *In the Wee Small Hours*](https://en.wikipedia.org/wiki/In_the_Wee_Small_Hours),
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The source and
+license links are visible below the text; [text-license notice](src/tagcast/static/1001-album-notes-LICENSE.txt).
 
 </details>
 
@@ -660,12 +660,17 @@ rows below were chosen by the user, not by an automatic suggestion.
 **4. Choose Review → before confirming.** Review the exact tracks and count. Only
 **Move N tracks to the trash** sends the change; **Keep them** closes the review.
 
-The current upload-group suggestion and final track-review captures are still
-pending in the [checklist](docs/screenshot-checklist.md). These earlier-interface
-examples retain the same review steps:
+**Automatic suggestions — earlier interface.** This retained BOF Anna example
+shows upload groups and four suggested copies selected for review. The contributor
+has already finished automatic duplicate cleanup, so the earlier capture is kept.
 
-- [Upload groups and suggested copies](docs/screenshots/duplicate-tracks-upload-suggestions.png)
-- [Final selected-track review](docs/screenshots/duplicate-tracks-review.png)
+![Earlier-interface duplicate selection showing upload-date groups and Select suggested copies on BOF Anna](docs/screenshots/duplicate-tracks-upload-suggestions.png)
+
+**Final review — earlier interface.** This retained example lists fourteen selected
+tracks and the explicit confirmation button. The interface styling is older; the
+review and confirmation steps remain the same.
+
+![Earlier-interface review of fourteen selected tracks with Keep them and the final Move tracks to trash button](docs/screenshots/duplicate-tracks-review.png)
 
 </details>
 
@@ -691,7 +696,7 @@ Captured on 16 October 2026 from the local development build. The cassette logo,
 compact sidebar, album breadcrumbs, tags and Sound controls reflect `main`; the
 published 0.42.0 packages retain their earlier interface. All supplied originals
 are indexed in the [capture checklist](docs/screenshot-checklist.md), which also
-lists missing and partially covered views. The older sign-in illustration and
+records the supplied views and accepted earlier-interface examples. The older sign-in illustration and
 linked cleanup examples retain their earlier styling.
 
 <details open>
@@ -704,6 +709,11 @@ linked cleanup examples retain their earlier styling.
 **Albums:** search/filter/sort controls and compact Play / + actions on cards.
 
 ![Album collection with Al Green covers, filters and compact Play and queue buttons](docs/screenshots/albums.png)
+
+**Filtered collection:** the 1–2 tracks filter keeps album selection available;
+random playback is hidden for this cleanup filter. No albums are selected in this capture.
+
+![Albums filtered to one or two tracks with selection checkboxes and no random playback action](docs/screenshots/albums-filtered.png)
 
 **Select an artist's albums:** edit together or review complete albums for the trash.
 
@@ -751,7 +761,7 @@ Artwork has its own comparison and save action.
 
 [Earlier-interface credit cleanup preview](docs/screenshots/cleanup-artists-preview.png)
 · [Earlier-interface genre cleanup progress](docs/screenshots/cleanup-genres-running.png).
-Updated cleanup captures are still pending.
+These earlier examples are retained; a new cleanup session is not needed for documentation.
 
 </details>
 
@@ -784,6 +794,11 @@ or direct you to system sound settings.
 **Composers:** browse albums with tracks credited to Burt Bacharach.
 
 ![Burt Bacharach composer albums with sorting and random playback](docs/screenshots/composer-albums.png)
+
+**Release year:** choose a year card to browse its matching albums. A known year
+on an album page opens the matching year group directly.
+
+![Release-year overview with year cards and album and track totals](docs/screenshots/release-years.png)
 
 **Decades:** discover a sample and choose Surprise me again for another selection.
 
@@ -828,11 +843,15 @@ play reporting.
 </details>
 
 <details>
-<summary><b>Light appearance</b></summary>
+<summary><b>Light appearance and mobile layout</b></summary>
 
 The same album controls with light content surfaces and the independent sidebar.
 
 ![Odessa by Bee Gees in Light appearance, with album actions and the compact player](docs/screenshots/album-light.png)
+
+**Mobile:** the sidebar becomes a menu button and the artist grid adapts to the width.
+
+<img src="docs/screenshots/album-artists-mobile.png" width="390" alt="Narrow Album artists view with the mobile menu button, wrapping filters and two artist cards per row">
 
 </details>
 

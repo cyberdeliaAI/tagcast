@@ -45,8 +45,8 @@ primary blue icon for app listings and general coverage, and preserve its propor
 
 The original Tagcast artwork is supplied under the repository's [MIT license](LICENSE).
 Album artwork and iBroadcast branding visible in screenshots belong to their
-respective owners. The background text in the Violent Femmes screenshot is adapted
-from [Wikipedia contributors](https://en.wikipedia.org/wiki/Violent_Femmes_(album))
+respective owners. The background text in the Frank Sinatra screenshot is adapted
+from [Wikipedia contributors](https://en.wikipedia.org/wiki/In_the_Wee_Small_Hours)
 under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); see the
 [screenshot text attribution](screenshots/1001-albums-background-LICENSE.txt).
 Tagcast is independent and is not made or endorsed by iBroadcast.
