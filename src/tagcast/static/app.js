@@ -4,7 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), artistNames: [], artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistNames: [], artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 
 function setLibraryNotice(visible) {
@@ -127,6 +127,7 @@ function useLocal(albums, mode) {
   if (typeof resetAlbumView === "function") resetAlbumView();
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
   state.mode = mode; state.artistNames = [];
+  state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.details = new Map(albums.map(a => [String(a.id), a]));
   state.albums = albums.map(summarize);
 }
@@ -871,10 +872,13 @@ async function loadLive(refresh = false) {
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear();
+  state.albumFavourites = new Set(); state.albumFavouriteError = "";
   updateChrome(); render();
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    state.albumFavourites = new Set(data.album_favourites?.albums || []);
+    state.albumFavouriteError = data.album_favourites?.error || "";
     state.connection.combine_sets = Boolean(data.combine_sets);
     if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
     if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;

@@ -1,4 +1,4 @@
-"""Native album ratings and private playlists; all writes are reviewed and read back."""
+"""Local album favourites, native ratings and reviewed private playlists."""
 
 from .library import ConflictError, LibraryError, fold, number, text
 
@@ -13,6 +13,92 @@ def track_ids(values, maximum=10000):
 class Collections:
     def __init__(self, studio):
         self.studio = studio
+
+    @staticmethod
+    def _favourite_members(library, album_id):
+        if library.combine_sets:
+            return {str(number(library.tracks[i].get("album_id")) or album_id)
+                    for i in library.active_track_ids(album_id)}
+        return {str(album_id)}
+
+    def _album_favourites(self, library):
+        """Called under the Studio lock; import the former rating-based hearts once."""
+        studio = self.studio
+        if library is None or library is not studio.library or not studio.client or not studio.library_user:
+            raise ConflictError("The account or library changed. Reload the library.")
+        filename = "album-favourites.json"
+        data = studio._read(filename)
+        if data is None and not (studio.home / filename).exists():
+            data = {"version": 1, "accounts": {}}
+        if not isinstance(data, dict) or data.get("version") != 1 \
+                or not isinstance(data.get("accounts"), dict) \
+                or any(not isinstance(ids, list) or any(
+                    not isinstance(i, str) or not i.isascii() or not i.isdigit()
+                    or len(i) > 32 or int(i) <= 0 for i in ids)
+                    for ids in data["accounts"].values()):
+            raise LibraryError("Could not read local album favourites. Check album-favourites.json.")
+        account = str(studio.library_user)
+        if account not in data["accounts"]:
+            data["accounts"][account] = sorted({member for i in library.album_ids()
+                if number(library.albums[i].get("rating")) >= 5
+                for member in self._favourite_members(library, i)}, key=int)
+            try:
+                studio._write(filename, data)
+            except OSError as error:
+                raise LibraryError("Could not save local album favourites. Check the settings folder.") from error
+        return data, account
+
+    def album_favourites(self, library=None):
+        studio = self.studio
+        with studio.lock:
+            studio._require_client()
+            library = library if library is not None else studio.library
+            data, account = self._album_favourites(library)
+            saved = set(data["accounts"][account])
+            return {"albums": [str(i) for i in library.album_ids()
+                               if self._favourite_members(library, i).issubset(saved)]}
+
+    def favourite_album(self, body):
+        ids = track_ids(body.get("albums"), 20)
+        before, favourite = body.get("before"), body.get("favourite")
+        if not ids or len(ids) != len(set(ids)) or type(favourite) is not bool \
+                or not isinstance(before, list) or len(before) != len(ids) \
+                or any(type(value) is not bool for value in before):
+            raise LibraryError("Choose one album and its current favourite state.")
+        studio = self.studio
+        with studio.lock:
+            studio._require_client()
+            library = studio.library
+            if not library or body.get("session") != studio.playback_session \
+                    or type(body.get("combine_sets")) is not bool \
+                    or body["combine_sets"] != library.combine_sets:
+                raise ConflictError("The account or library changed. Reload the library.")
+            active = set(library.album_ids())
+            if not set(ids).issubset(active):
+                raise ConflictError("This album is no longer available. Reload the library.")
+            keys = {library.album_set_key(i) for i in ids}
+            discs = [number(library.albums[i].get("disc")) for i in ids]
+            if len(ids) > 1 and (len(keys) != 1 or any(i <= 0 for i in discs)
+                                 or len(set(discs)) != len(ids)):
+                raise LibraryError("Favourite one album or one multi-disc set at a time.")
+            data, account = self._album_favourites(library)
+            saved = set(data["accounts"][account])
+            members = [self._favourite_members(library, i) for i in ids]
+            if [group.issubset(saved) for group in members] != before:
+                raise ConflictError("This album's favourite changed in another window. Reload the library.")
+            if favourite:
+                saved.update(set().union(*members))
+            else:
+                saved.difference_update(set().union(*members))
+            data["accounts"][account] = sorted(saved, key=int)
+            try:
+                studio._write("album-favourites.json", data)
+                checked, _ = self._album_favourites(library)
+            except OSError as error:
+                raise LibraryError("Could not save local album favourites. Reload before trying again.") from error
+            saved = set(checked["accounts"][account])
+            return {"results": [{"id": str(i), "favourite": group.issubset(saved)}
+                                for i, group in zip(ids, members)]}
 
     def library(self, refresh=False):
         client = self.studio._require_client()

@@ -33,7 +33,7 @@ const HELP_TOPICS = {
   ]},
   album: {title: "Album details", scope: "#album-page", steps: [
     ["Your album", "The breadcrumb returns to the browsing context where you opened this album, with its filters and position. The header shows the album artist, release year, track count and duration. Click a known year to browse releases from that year. Genre and tag chips stay together; + Tag opens tag management. Double-click a real cover to enlarge it. If About this album is available below the header, expand it to read the background text.", ["#album-page .album-detail-header"]],
-    ["Album ratings", "Choose stars to rate this album, or use the heart to make it a favourite. For a multi-disc set, the rating applies to every disc and is checked afterwards.", ["#album-page .album-rating"], "Album ratings are available with a connected iBroadcast account."],
+    ["Album ratings", "Stars rate this album in iBroadcast. The heart saves a separate album favourite locally for your account, without changing its stars. Both apply to every disc of a multi-disc set.", ["#album-page .album-rating"], "Album ratings are available with a connected iBroadcast account."],
     ["Play or queue", "Play album starts from the beginning and replaces the queue. The + menu offers Add to queue and Play next, preserving disc and track order. Add to playlist saves the album after a review.", ["#album-page .album-detail-actions"]],
     ["Choose a track", "Play beside a track starts there and continues through the album. A track's + menu can queue just that track or add it to a playlist. Its heart controls the track favourite.", ["#album-page .album-tracks"]],
     ["Edit this album", "Edit opens a draft with online suggestions. Review the changes before saving. A multi-disc set also has an Edit disc option for each disc.", ["#album-page [data-edit-album]"]],
@@ -69,8 +69,8 @@ const HELP_TOPICS = {
     ["Remove a favourite", "The filled heart removes a favourite by setting its rating to 0. The track remains in your library. Rating changes are checked afterwards.", ["#favourites-list"]],
   ]},
   "album-favourites": {title: "Album favourites", scope: "#collections-page", steps: [
-    ["Your favourite albums", "Albums rated 5 appear here. A multi-disc set appears once when all its discs have a rating of 5.", ["#collections-page .page-intro", "#collections-page"]],
-    ["Find an album", "Search favourite albums by title or artist. Open a card to listen or change the album rating. Removing its favourite keeps the album in your library.", ["#collection-search", "#collections-page .album-card"]],
+    ["Your favourite albums", "Albums marked with a heart appear here, independently of their stars. These favourites are saved on this computer for your account. A multi-disc set appears once when all its discs are favourites.", ["#collections-page .page-intro", "#collections-page"]],
+    ["Find an album", "Search favourite albums by title or artist. Open a card to listen, change its stars or toggle its separate heart. Removing a favourite keeps its star rating and music.", ["#collection-search", "#collections-page .album-card"]],
   ]},
   playlists: {title: "Playlists", scope: "#collections-page", steps: [
     ["Your playlists", "Browse and search your iBroadcast playlists, then open one to see its tracks in order. System playlists and folders are protected.", ["#collections-page .page-intro", "#collections-page"]],

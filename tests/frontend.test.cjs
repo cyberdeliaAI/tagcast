@@ -4223,7 +4223,7 @@ test("album rating choices stay neutral when empty and retain Clear for mixed di
   const mixed=p.run('albumRatingControls([{id:"1",rating:0},{id:"2",rating:5}])');
   assert.match(mixed,/>Clear<.*Different disc ratings/);
   assert.doesNotMatch(mixed,/is-selected/);
-  assert.match(p.run('albumRatingControls([{id:"1",rating:5}])'),/data-heart[^>]*aria-pressed="true"/);
+  assert.match(p.run('albumRatingControls([{id:"1",rating:5}])'),/data-heart[^>]*aria-pressed="false"/);
 });
 
 test("the album release year opens the existing year browse without changing playback", async () => {
@@ -4251,4 +4251,85 @@ test("the album release year opens the existing year browse without changing pla
   p.run('state.details.get("3").year=0; renderAlbumView()');
   assert.match(p.nodes.get('#album-page').innerHTML,/Year unknown/);
   assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/album-year-link/);
+});
+
+test("album hearts save locally without changing stars, playback or history", async () => {
+  const p = livePage(); await settle(); await p.run('openAlbum("1")');
+  p.run('state.details.get("1").rating=3; state.albums.find(a=>a.id==="1").rating=3; playTracks(state.details.get("1"),"100")');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), route = p.location.hash;
+  const writes = [];
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/album-favourite');
+    const body = JSON.parse(options.body); writes.push(body);
+    return {ok: true, json: async () => ({results: body.albums.map(id => ({id, favourite: body.favourite}))})};
+  });
+  await p.run('toggleAlbumFavourite(["1"])');
+  assert.equal(p.run('state.albumFavourites.has("1")'), true);
+  assert.equal(p.run('state.details.get("1").rating'), 3);
+  assert.equal((p.run('albumRatingControls([state.details.get("1")])').match(/★/g) || []).length, 3);
+  await p.run('showCollections("album-favourites")'); await settle();
+  assert.match(p.nodes.get('#collections-page').innerHTML, /Saved on this computer/);
+  assert.match(p.nodes.get('#collections-page').innerHTML, /data-album="1"/);
+  await p.run('toggleAlbumFavourite(["1"])');
+  assert.equal(p.run('state.albumFavourites.has("1")'), false);
+  assert.equal(p.run('state.details.get("1").rating'), 3);
+  assert.deepEqual(writes.map(b => [b.before, b.favourite]), [[[false], true], [[true], false]]);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.run('state.history.length'), 0);
+  assert.notEqual(p.location.hash, route, 'Only explicit navigation changes the route');
+});
+
+test("rating an album five stars or clearing its stars does not toggle its local heart", async () => {
+  const p = livePage(); await settle(); await p.run('openAlbum("1")');
+  let value;
+  p.setFetch((url, options) => {
+    if (url === '/api/album-rating') { value = JSON.parse(options.body).rating; return {ok: true, json: async () => ({job: 'stars'})}; }
+    assert.equal(url, '/api/jobs/stars');
+    return {ok: true, json: async () => ({state: 'done', results: [{id: '1', rating: value, status: 'saved'}]})};
+  });
+  await p.run('rateAlbum(["1"],5)');
+  assert.equal(p.run('state.albumFavourites.has("1")'), false);
+  assert.match(p.run('albumRatingControls([state.details.get("1")])'), /data-heart[^>]*aria-pressed="false"/);
+  p.run('state.albumFavourites.add("1")');
+  await p.run('rateAlbum(["1"],0)');
+  assert.equal(p.run('state.albumFavourites.has("1")'), true);
+  assert.equal(p.run('state.details.get("1").rating'), 0);
+  assert.match(p.run('albumRatingControls([state.details.get("1")])'), /data-heart[^>]*aria-pressed="true"/);
+});
+
+test("album favourite failures and late responses cannot change another library", async () => {
+  const p = livePage(); await settle(); await p.run('openAlbum("1")');
+  p.setFetch(() => { throw Error('Local disk unavailable'); });
+  await p.run('toggleAlbumFavourite(["1"])');
+  assert.equal(p.run('state.albumFavourites.size'), 0);
+  assert.match(p.nodes.get('#album-page').innerHTML, /Local disk unavailable/);
+  let finish;
+  p.setFetch(() => new Promise(resolve => { finish = resolve; }));
+  const write = p.run('toggleAlbumFavourite(["1"])'); await settle();
+  assert.equal(p.run('state.albumFavourites.size'), 0, 'Pending hearts are not confirmed local data');
+  assert.match(p.nodes.get('#album-page').innerHTML, /data-heart[^>]*aria-pressed="true"/);
+  p.run('useLocal(demoLibrary(),"demo")');
+  finish({ok: true, json: async () => ({results: [{id: '1', favourite: true}]})});
+  await write;
+  assert.equal(p.run('state.albumFavourites.size'), 0);
+  assert.equal(p.run('collectionsView.busy'), false);
+});
+
+test("local album favourites restore with the library and storage errors leave stars usable", async () => {
+  const p = livePage(); await settle();
+  const albums = p.json('state.albums');
+  p.setFetch(url => {
+    assert.equal(url, '/api/library');
+    return {ok: true, json: async () => ({albums, artists: [], album_favourites: {albums: ['1']}})};
+  });
+  await p.run('loadLive()');
+  assert.equal(p.run('state.albumFavourites.has("1")'), true);
+  p.setFetch(() => ({ok: true, json: async () => ({albums, artists: [], album_favourites: {albums: null, error: 'Local favourites unavailable'}})}));
+  await p.run('loadLive()');
+  const controls = p.run('albumRatingControls([{id:"1",rating:4}])');
+  assert.match(controls, /data-heart[^>]*disabled/);
+  assert.doesNotMatch(controls, /data-album-rating="1"[^>]*disabled/);
+  assert.match(controls, /Local favourites unavailable/);
+  assert.equal(p.run('state.albumFavourites.size'), 0);
 });

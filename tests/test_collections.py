@@ -57,6 +57,98 @@ class CollectionTests(unittest.TestCase):
         with self.assertRaises(LibraryError):
             self.studio.collections.rate_album({'albums': ['72', '73'], 'before': [0, 5], 'rating': 5})
 
+    def favourite(self, ids=('73',), before=(False,), value=True):
+        return self.studio.collections.favourite_album({
+            'albums': list(ids), 'before': list(before), 'favourite': value,
+            'session': self.studio.playback_session, 'combine_sets': self.studio.combine_sets})
+
+    def test_local_album_favourite_preserves_native_ratings_and_survives_restart(self):
+        self.job(self.studio.collections.rate_album({'albums': ['73'], 'before': [0], 'rating': 3}))
+        writes = copy.deepcopy(mock_ibroadcast.STATE['writes'])
+        with patch.object(self.studio.client, '_jsonrequest', side_effect=AssertionError('Local hearts must not contact iBroadcast')):
+            response = self.favourite()
+            self.assertEqual(response['results'], [{'id': '73', 'favourite': True}])
+            self.assertIn('73', self.studio.collections.album_favourites()['albums'])
+            self.assertEqual(self.studio.album_details(['73'])[0]['rating'], 3)
+        self.assertEqual(mock_ibroadcast.STATE['writes'], writes)
+        restarted = client.Studio(self.home.name)
+        loaded = restarted.load_library()
+        self.assertIn('73', loaded['album_favourites']['albums'])
+        self.assertEqual(restarted.album_details(['73'])[0]['rating'], 3)
+        with restarted.cache_lock:
+            pass
+        self.favourite(before=(True,), value=False)
+        self.assertEqual(self.studio.album_details(['73'])[0]['rating'], 3)
+
+    def test_former_five_star_favourites_are_imported_once_per_account(self):
+        path = self.studio.home / 'album-favourites.json'
+        path.unlink()
+        self.studio.library.albums.rows[73][-1] = 5
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], ['73'])
+        self.favourite(before=(True,), value=False)
+        self.assertEqual(self.studio.album_details(['73'])[0]['rating'], 5)
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
+        self.studio.library.albums.rows[74][-1] = 5
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
+        self.studio.library_user = 'another-account'
+        self.assertEqual(set(self.studio.collections.album_favourites()['albums']), {'73', '74'})
+        self.studio.library_user = '7'
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
+
+    def test_local_album_favourites_reject_stale_account_membership_and_concurrent_changes(self):
+        self.favourite()
+        with self.assertRaises(ConflictError):
+            self.favourite()
+        with self.assertRaises(ConflictError):
+            self.favourite(ids=('999999',))
+        body = {'albums': ['73'], 'before': [True], 'favourite': False,
+                'session': 'old-session', 'combine_sets': False}
+        with self.assertRaises(ConflictError):
+            self.studio.collections.favourite_album(body)
+        with self.assertRaises(ConflictError):
+            self.studio.collections.favourite_album({**body, 'session': self.studio.playback_session, 'combine_sets': True})
+        with self.assertRaises(LibraryError):
+            self.favourite(ids=('73', '74'), before=(True, False))
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], ['73'])
+
+    def test_local_album_favourite_file_errors_do_not_erase_data_or_block_the_library(self):
+        self.favourite()
+        with patch.object(self.studio, '_write', side_effect=OSError('Disk full')):
+            with self.assertRaisesRegex(LibraryError, 'Could not save'):
+                self.favourite(before=(True,), value=False)
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], ['73'])
+        path = self.studio.home / 'album-favourites.json'
+        path.write_text('{broken')
+        view = self.studio.load_library()
+        self.assertTrue(view['albums'])
+        self.assertIsNone(view['album_favourites']['albums'])
+        self.assertIn('Could not read', view['album_favourites']['error'])
+        with self.assertRaises(LibraryError):
+            self.favourite()
+        self.assertEqual(path.read_text(), '{broken')
+
+    def test_local_multi_disc_favourites_keep_separate_ratings_and_original_disc_ids(self):
+        library = self.studio.library
+        # The two displayed discs share identity, but retain independent stars.
+        library.albums.rows[73][-1] = 3
+        library.albums.rows[74] = [*library.albums.rows[73]]
+        library.albums.rows[74][1] = [904]
+        library.albums.rows[74][5] = 2
+        library.albums.rows[74][-1] = 4
+        self.favourite(ids=('73', '74'), before=(False, False))
+        self.assertEqual(set(self.studio.collections.album_favourites()['albums']), {'73', '74'})
+        self.assertEqual([a['rating'] for a in self.studio.album_details(['73', '74'])], [3, 4])
+        # iBroadcast's combined view exposes one album containing both originals.
+        library.combine_sets = self.studio.combine_sets = True
+        library.albums.rows[73][1] = [903, 904]
+        library.albums.rows[74][3] = True
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], ['73'])
+        self.favourite(before=(True,), value=False)
+        library.combine_sets = self.studio.combine_sets = False
+        library.albums.rows[73][1] = [903]
+        library.albums.rows[74][3] = False
+        self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
+
     def test_private_playlist_create_append_replace_and_stale_review(self):
         response = self.studio.collections.save_playlist({'action': 'create', 'name': 'Album evening', 'description': 'Two albums', 'tracks': [900, 901, 900]})
         self.assertEqual(self.job(response)['results'][0]['status'], 'saved')

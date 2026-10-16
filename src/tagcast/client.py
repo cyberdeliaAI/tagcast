@@ -649,7 +649,12 @@ class Studio:
 
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
+        try:
+            favourites = self.collections.album_favourites(library)
+        except LibraryError as error:
+            favourites = {"albums": None, "error": str(error)}
         return {"albums": library.album_index(), "artists": library.artist_names(),
+                "album_favourites": favourites,
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": self.combine_sets}

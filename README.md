@@ -11,6 +11,8 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 **New in [0.50.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.50.0):** A refreshed look with the cassette-in-sleeve logo, a quieter sidebar and compact album pages. Browse and manage native iBroadcast **tags**, follow context breadcrumbs and clickable release years, choose an available audio output and use system playback controls. Review complete albums for the trash or analyse suggested duplicate copies across your library. All features are included in the standalone downloads for macOS, Windows and Linux.
 
+**Development on `main` (unreleased):** album hearts are now saved locally per account, independently of stars. The 0.50.0 downloads still use the earlier rating-based hearts.
+
 The refreshed interface is shown in the screenshots below; see the
 [capture inventory](docs/screenshot-checklist.md) for current and retained examples.
 
@@ -370,10 +372,21 @@ example: the uploaded file format and this playback request are different things
 If Original cannot play in the browser, Tagcast tries MP3 128 kbps once and labels
 the fallback. It does not infer bit depth, sample rate or audio identity.
 
-The album page has native **0–5 star ratings** and an **album favourite** heart
-(rating 5). **Album favourites** lists the rated albums using existing summaries.
-A merged set is rated disc by disc and appears as a favourite when every disc is
-rated 5. Mixed ratings are shown explicitly. Each write checks the current rating
+The album page has native **0–5 star ratings** and a separate **album favourite**
+heart. Stars are saved to iBroadcast. The heart is saved locally per account in
+`~/.tagcast/album-favourites.json` (or `TAGCAST_HOME`); it survives restarts and is
+shared by browsers using that Tagcast settings folder. It does not sync to other
+computers or change album/track ratings, tags or playlists. **Album favourites**
+lists these hearts using existing summaries. A merged set appears once when every
+disc is a favourite, independently of its stars.
+
+On first use for each account, existing five-star albums are imported as local
+favourites once. After that, adding/removing a heart leaves stars unchanged, and
+rating an album or clearing its stars leaves its heart unchanged. Existing star
+values are preserved; Tagcast cannot recover a rating replaced by an earlier
+rating-based heart. Native combined views retain the original disc IDs for hearts.
+
+A merged set is rated disc by disc. Mixed ratings are shown explicitly. Each write checks the current rating
 and reads it back; ratings stay separate from metadata Change history. The requested
 stars appear immediately with **Saving rating…**, followed by **Checking iBroadcast…**
 and a confirmation or error. The cached rating changes only after read-back, and
