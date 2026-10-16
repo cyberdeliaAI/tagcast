@@ -33,7 +33,9 @@ Available for macOS, Windows and Linux. [Project](https://github.com/cyberdeliaA
 
 PNG logos have transparent corners/backgrounds. SVG wordmarks use Arial with a
 Helvetica/sans-serif fallback; use the PNG when exact lettering is required.
-Screenshots show the interface at the time of capture; some predate the cassette icon.
+Screenshots were refreshed from the development interface on **16 October 2026**,
+with the cassette icon, compact sidebar, context breadcrumb and inline tag chips.
+The published 0.42.0 downloads retain their earlier interface.
 
 ## Colours and use
 
@@ -43,7 +45,11 @@ primary blue icon for app listings and general coverage, and preserve its propor
 
 The original Tagcast artwork is supplied under the repository's [MIT license](LICENSE).
 Album artwork and iBroadcast branding visible in screenshots belong to their
-respective owners. Tagcast is independent and is not made or endorsed by iBroadcast.
+respective owners. The background text in the Violent Femmes screenshot is adapted
+from [Wikipedia contributors](https://en.wikipedia.org/wiki/Violent_Femmes_(album))
+under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); see the
+[screenshot text attribution](screenshots/1001-albums-background-LICENSE.txt).
+Tagcast is independent and is not made or endorsed by iBroadcast.
 
 To refresh the exports with the existing build-only image dependencies:
 
