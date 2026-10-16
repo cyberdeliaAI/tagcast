@@ -41,8 +41,8 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/queue_sync.py`: opt-in server-side WebSocket bridge; extra OAuth queue
   scopes, sanitized account sessions, five-second reconnect pacing and controller roles.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty JavaScript files:
-  `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `album.js`,
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty-one JavaScript files:
+  `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
@@ -87,7 +87,7 @@ and preserve a valid script order in `index.html`.
   neither preference. Preserve outside-click and Escape dismissal and focus return.
   Preserve semantic warning/error colours
   and the same audio element when changing appearance.
-- Keep package, `__version__`, page badge and lockfile versions consistent;
+- Keep package, `__version__`, sidebar footer badge and lockfile versions consistent;
   `python3 tools/release_info.py` checks them. Native build dependencies are
   separate in `requirements-build.txt`; runtime dependencies stay unchanged.
 
@@ -108,6 +108,17 @@ and preserve a valid script order in `index.html`.
 - The demo library remains a local preview and is never saved to iBroadcast.
 - Tagcast starts on Album artists. Back and Forward follow the browser history;
   dialogs get no history entry, and Back never closes an open editor.
+  Album details use a clickable breadcrumb for their browsing origin (artist, tag,
+  genre, playlist or discovery page), with Albums as the direct-link fallback. Restore
+  source filters, ordering, pagination and scroll; never infer a unique album hierarchy
+  from its metadata. Invalidate remembered origins when the loaded library changes.
+  The hero aligns cover/title at the top, groups distinct genre/tag chips with a persistent
+  + Tag control, and uses neutral unset rating controls; Clear appears only for rated discs.
+  More album actions contains Move to trash, opening the existing reviewed selection only
+  on explicit choice. Menu dismissal/navigation never selects tracks or affects playback.
+  A known release year in the hero opens the existing years browse group; unknown
+  years stay plain text. Preserve the same displayed set year and existing browse semantics.
+  Album background prose is limited to 65ch; attribution stays visible.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
 - Tracks go to iBroadcast's trash (`trash`) from the album page after its trash
@@ -191,7 +202,10 @@ and preserve a valid script order in `index.html`.
 - Composers use `artists_additional` with type `composer`; preserve other
   credits. An artist marked `trashed` can still be a valid album artist.
 - Native iBroadcast tags are separate from genres. Cache only tag names, track IDs
-  and archived flags; upgrade caches missing tags with one explicit feature read.
+  and archived flags. Show loaded album tags alongside distinct genre chips in the
+  hero, with a persistent + Tag control for the existing reviewed manager. Never add
+  reads or writes just to choose the display. Preserve partial/archived chips and track controls.
+  Upgrade caches missing tags with one explicit feature read.
   Browse Tags by ID, including empty tags and archived labels, using the same active
   membership and merged album counts as other browse groups. Never send complete tag
   track lists to the browser. Album/track tag management reads compact counts and
@@ -324,6 +338,22 @@ and preserve a valid script order in `index.html`.
 - Player album artist and album title links open their respective pages. Show a
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.
+- `playback.js` owns optional output selection and Media Session controls for the same
+  audio element. The speaker opens Sound with an accessible volume slider and mute
+  button above output selection on every platform. Keep these synchronized through
+  volumechange, use the actual audio volume/muted values and acknowledge rejected
+  changes with a system/device fallback. Never restart audio, request permissions or
+  change the queue for volume; keep native controls available. Do not persist volume
+  or change it on opening. Discover permitted output devices only on explicit dialog opening
+  or device changes while open; never request microphone access. Feature-detect the
+  output picker, sink selection and native AirPlay picker, with system sound settings
+  as fallback. Never restart/resume audio or change source/queue when switching outputs;
+  reject late picker results after closing, stopping or library/queue replacement.
+  Keep device IDs out of persistent settings. The output dialog works inside fullscreen,
+  preserves focus/history, and has local read-only Help. Register supported system
+  play/pause/stop, previous/next and seek actions independently; keep metadata, state and
+  bounded position current. Stop clears the queue. Clear handlers and metadata on stop,
+  library replacement or queue-sync controller role; stale handlers must not play audio.
 - Artwork uses JPEG, PNG, WebP or GIF, up to 15 MB. Preserve checks for local
   addresses and redirects. Album covers are applied to active tracks;
   undo retains previous artwork IDs per track.
@@ -354,6 +384,16 @@ and preserve a valid script order in `index.html`.
   library/session changes.
 - The original Powered by iBroadcast SVG is displayed with its original colours and
   proportions. Keep Tagcast's independent identity explicit; do not imply endorsement.
+  The sidebar header shows Tagcast with an accent-coloured dot and the small, muted
+  Metadata editor & player subtitle directly below the name, alongside the icon.
+  Omit the for iBroadcast subtitle. Keep the version beside
+  Settings at the bottom and the original Powered by logo on its right; Reload library
+  and Disconnect share the row above. Keep these controls outside sidebar customization.
+  Render the entire version as neutral text without a pill background, including in
+  dark mode. The account status uses regular weight. The vendor logo is 78px wide,
+  preserving the source SVG, original colours and aspect ratio.
+  Album artists uses a microphone, Genres a label and Tags a hash icon. Album favourites
+  uses a disc with a heart, distinct from the track favourites heart.
 - Streaming quality is a local server setting (`stream_quality`), default 128. It
   applies on the next track; show it separately from the stored file format. Original
   playback may fall back to 128 once, preserving the listening event and marking the

@@ -3,6 +3,12 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  "audio-output": {title: "Sound", scope: "#audio-output-dialog", steps: [
+    ["Adjust player volume", "The slider and Mute control the current player, even when your browser hides its own volume controls. Arrow keys adjust the focused slider. Your system or speaker may also have its own volume control. Playback and the queue stay in place.", [".audio-volume-controls", "#audio-volume-note"]],
+    ["Choose where to listen", "System default follows your computer’s sound settings. This selection changes only this browser player; the same audio and queue keep running.", ["#audio-output-current"]],
+    ["Available devices", "Choose output opens your browser’s device picker where supported. The list contains only outputs the browser makes available. Tagcast never requests microphone access to discover speakers. If no choices appear, use your system sound settings.", [".audio-output-controls", "#audio-output-note"]],
+    ["Wireless outputs", "AirPlay appears only when your browser supports it and an output is available. It opens the native route picker. Otherwise, use your system sound settings for supported network speakers. Tagcast does not discover Sonos or Chromecast devices itself.", ["#audio-output-airplay", "#audio-output-note"]],
+  ]},
   tags: {title: "Tags", scope: "#tag-dialog", steps: [
     ["Your own labels", "iBroadcast tags are separate from genres. On an album, changes apply to its tracks, including every disc of the displayed set; track controls affect only that track. The selection count shows partial assignments.", ["#tag-dialog-content"]],
     ["Choose changes", "Keep as is preserves existing assignments. Add applies the label to the chosen tracks; Remove unassigns it. Choices survive tag search and paging. Archived tags cannot be added here because they may hide music.", ["#tag-choices", "#tag-dialog-content"]],
@@ -26,12 +32,12 @@ const HELP_TOPICS = {
     ["Select or discover", "With a connected account, tick albums in the grid or list, including filtered results such as 1–2 tracks. Move selected albums to trash reviews all chosen albums and their tracks before confirmation, including selections on other pages or outside the current results. On an artist's page, you can also edit their selected albums together. Play random album is available in All albums when no albums are selected; cleanup filters hide it.", ["#albums-page .album-select", "#albums-page .selection-bar", "#albums-random"]],
   ]},
   album: {title: "Album details", scope: "#album-page", steps: [
-    ["Your album", "The header shows the album artist, release year, track count and duration. Double-click a real cover to enlarge it. If About this album is available below the header, expand it to read the background text.", ["#album-page .album-detail-header"]],
+    ["Your album", "The breadcrumb returns to the browsing context where you opened this album, with its filters and position. The header shows the album artist, release year, track count and duration. Click a known year to browse releases from that year. Genre and tag chips stay together; + Tag opens tag management. Double-click a real cover to enlarge it. If About this album is available below the header, expand it to read the background text.", ["#album-page .album-detail-header"]],
     ["Album ratings", "Choose stars to rate this album, or use the heart to make it a favourite. For a multi-disc set, the rating applies to every disc and is checked afterwards.", ["#album-page .album-rating"], "Album ratings are available with a connected iBroadcast account."],
     ["Play or queue", "Play album starts from the beginning and replaces the queue. The + menu offers Add to queue and Play next, preserving disc and track order. Add to playlist saves the album after a review.", ["#album-page .album-detail-actions"]],
     ["Choose a track", "Play beside a track starts there and continues through the album. A track's + menu can queue just that track or add it to a playlist. Its heart controls the track favourite.", ["#album-page .album-tracks"]],
-    ["Edit this album", "Edit album opens a draft with online suggestions. Review the changes before saving. A multi-disc set also has an Edit disc option for each disc.", ["#album-page [data-edit-album]"]],
-    ["Reviewed trash selection", "Move to trash opens track selection. Duplicated marks repeated track numbers on the same disc, even when the titles differ. The album overview shows the same label. Upload dates and suggested keep/trash labels help compare copies: prefer FLAC over MP3, then the newest upload in the same format. Select suggested copies fills the checkboxes; uncertain versions remain manual. Select extra copies only chooses matching titles and keeps the first. Review the exact selection before confirming. Trashed tracks leave the library in every iBroadcast app.", ["#album-page [data-trash-start]"], "Moving tracks to the trash is available with a connected account."],
+    ["Edit this album", "Edit opens a draft with online suggestions. Review the changes before saving. A multi-disc set also has an Edit disc option for each disc.", ["#album-page [data-edit-album]"]],
+    ["Reviewed trash selection", "Open More album actions (⋯), then Move to trash to choose tracks. Duplicated marks repeated track numbers on the same disc, even when the titles differ. The album overview shows the same label. Upload dates and suggested keep/trash labels help compare copies: prefer FLAC over MP3, then the newest upload in the same format. Select suggested copies fills the checkboxes; uncertain versions remain manual. Select extra copies only chooses matching titles and keeps the first. Review the exact selection before confirming. Trashed tracks leave the library in every iBroadcast app.", ["#album-page [data-album-more]"], "Moving tracks to the trash is available with a connected account."],
   ]},
   editing: {title: "Edit metadata", scope: "#editor", steps: [
     ["Your editing selection", "This header identifies the album, discs or albums by one artist included in the draft. Nothing is saved just by opening the editor.", ["#editor .album-header"]],
@@ -100,6 +106,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
+  if ($("#audio-output-dialog").open) return "audio-output";
   if ($("#tag-dialog").open) return "tags";
   for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
     if ($(`#${id}`).open) return context;

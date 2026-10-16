@@ -425,8 +425,13 @@ async function moveToTrash() {
   } finally { saving = false; }
 }
 
+function startAlbumTrash() {
+  if (!live() || state.loading || state.screen !== "album" || albumView.loading || saving || checking || !albumDiscs().length) return;
+  albumView.trash = new Set(); renderAlbumView();
+}
+
 document.addEventListener("click", event => {
-  if (event.target.closest("[data-trash-start]")) { albumView.trash = new Set(); renderAlbumView(); return; }
+  if (event.target.closest("[data-trash-start]")) { startAlbumTrash(); return; }
   if (!albumView.trash) return;
   if (event.target.closest("[data-trash-cancel]")) { albumView.trash = null; renderAlbumView(); return; }
   if (event.target.closest("[data-trash-all]")) {

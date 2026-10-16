@@ -2,10 +2,10 @@
 
 // Browser history for the pages: every page gets its own address (#/artists, #/artist/<name>,
 // #/albums, #/album/<id>, #/tracks, #/favourites, #/overview and the four browse groups), so Back and Forward work and
-// "← Back" returns to the page you came from. Each history entry remembers that page's
+// Album breadcrumbs return to the browsing context you came from. Each history entry remembers that page's
 // search, filter, sort and page number. Dialogs get no entry: Back never closes an editor.
 
-const nav = {ready: false, restoring: false, pending: null};
+const nav = {ready: false, restoring: false, pending: null, views: new Map(), details: null, scope: 0, scroll: null, crumbs: []};
 const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#duplicate-cleanup", "#playlist-dialog", "#tag-dialog"];
 
 const SIDEBAR_ITEMS = [
@@ -137,18 +137,20 @@ function parseRoute(hash) {
   return null;
 }
 
-function routeLabel(hash) {
+function routeLabel(hash, saved = history.state) {
   const route = parseRoute(hash);
   if (!route) return "";
   if (route.screen === "album-guide") return "1001 Albums";
-  if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : history.state?.browse?.label || browseKinds[route.kind].label;
-  if (route.playlist) return collectionsView.data?.id === route.playlist ? collectionsView.data.name : "the playlist";
+  if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : saved?.browse?.label || browseKinds[route.kind].label;
+  if (route.playlist) return saved?.label || (String(collectionsView.data?.id) === route.playlist ? collectionsView.data.name : "Playlist");
   if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || "the album";
   return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourites", playlists: "Playlists", "album-favourites": "Album favourites", "recently-played": "Recently played", overview: "Overview"}[route.screen];
 }
 
 function viewState(index, from) {
-  return {index, from, search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
+  return {index, from, scrollY: nav.scroll?.hash === `#/${currentRoute()}` ? nav.scroll.top : Math.max(0, window.scrollY || 0),
+    label: state.screen === "browse" && browseView.key !== null ? browseView.label : state.screen === "playlists" && collectionsView.playlist ? collectionsView.data?.name || "Playlist" : routeLabel(`#/${currentRoute()}`, {}),
+    albumOrigin: state.screen === "album" ? history.state?.albumOrigin || [] : [], search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
     artistsRandomNames: $("#artists-sort").value === "random" ? artistBrowse.randomNames : [], artistsLibrary: artistBrowse.library,
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
@@ -158,21 +160,111 @@ function viewState(index, from) {
     browse: {query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
 }
 
-// Called after every page change and render: a new page adds a history entry, the same page
-// only updates the remembered search, filter and page number of its entry.
+// Remember browsing context only within this loaded library.
+function navigationScope() {
+  if (nav.details === state.details) return;
+  nav.details = state.details; nav.scope += 1; nav.views.clear(); nav.scroll = null; nav.crumbs = [];
+}
+
+function navigationSnapshot(hash, saved) {
+  const {albumOrigin, ...view} = saved;
+  return {hash, label: saved.label || routeLabel(hash, saved), index: saved.index, scope: nav.scope, saved: view};
+}
+
+function rememberNavigationScroll() {
+  if (!nav.ready || nav.restoring || nav.scroll || !history.state) return;
+  const entry = {...history.state, scrollY: Math.max(0, window.scrollY || 0)};
+  try { history.replaceState(entry, "", location.hash); } catch { return; }
+  if (parseRoute(location.hash)?.screen !== "album") nav.views.set(location.hash, navigationSnapshot(location.hash, entry));
+}
+
+function albumOrigin(hash, entry) {
+  const source = parseRoute(hash);
+  if (!source) return [];
+  if (source.screen === "album") return (entry.albumOrigin || []).filter(item => item.scope === nav.scope);
+  const parent = source.screen === "browse" && source.key !== null ? `#/${source.kind}`
+    : source.artist ? "#/artists" : source.playlist ? "#/playlists" : null;
+  const trail = parent ? [nav.views.get(parent) || {hash: parent, label: routeLabel(parent, {}), scope: nav.scope, saved: {}}] : [];
+  trail.push(navigationSnapshot(hash, entry));
+  return trail;
+}
+
+function restoreNavigationScroll() {
+  const pending = nav.scroll;
+  if (!pending || pending.hash !== location.hash) { nav.scroll = null; return; }
+  // Run after rendering and page-opening scroll resets, including lazy server results.
+  setTimeout(() => {
+    if (nav.scroll !== pending || pending.hash !== location.hash || pending.scope !== nav.scope) return;
+    const loading = state.loading || (state.screen === "album" && albumView.loading)
+      || (state.screen === "browse" && (browseView.loading || !browseView.loaded && !browseView.error))
+      || (state.screen === "tracks" && trackSearch.loading) || (state.screen === "favourites" && favourites.loading)
+      || (state.screen === "recently-played" && recentlyPlayed.loading)
+      || (state.screen === "album-guide" && albumGuide.loading) || (state.screen === "playlists" && collectionsView.loading);
+    if (loading) return;
+    window.scrollTo?.({top: pending.top}); nav.scroll = null;
+  }, 0);
+}
+
+// Same-page renders update filters; only page changes add history entries.
 function syncHistory() {
   if (!nav.ready || nav.restoring) return;
+  navigationScope();
   const hash = `#/${currentRoute()}`, entry = history.state || {};
   try {
-    if (hash !== location.hash) history.pushState(viewState((entry.index || 0) + 1, routeLabel(location.hash)), "", hash);
-    else {
-      // Only when something changed: Safari refuses more than ~100 updates in a short time.
+    if (hash !== location.hash) {
+      const origin = state.screen === "album" ? albumOrigin(location.hash, entry) : [];
+      for (const [key, view] of nav.views) if (view.index > (entry.index || 0)) nav.views.delete(key);
+      const view = viewState((entry.index || 0) + 1, routeLabel(location.hash, entry));
+      view.albumOrigin = origin; view.scrollY = nav.scroll?.hash === hash ? nav.scroll.top : 0;
+      history.pushState(view, "", hash);
+    } else {
+      // Safari refuses more than ~100 history updates in a short time.
       const view = viewState(entry.index || 0, entry.from || "");
       if (JSON.stringify(view) !== JSON.stringify(entry)) history.replaceState(view, "", hash);
     }
+    if (state.screen !== "album") {
+      nav.views.set(hash, navigationSnapshot(hash, history.state));
+      if (nav.views.size > 100) nav.views.delete(nav.views.keys().next().value);
+    }
   } catch { /* the page works without history; Back then leaves Tagcast */ }
-  showArtistBack();
+  showArtistBack(); renderAlbumBreadcrumb(); restoreNavigationScroll();
 }
+
+function renderAlbumBreadcrumb() {
+  if (state.screen !== "album") return;
+  navigationScope();
+  const origin = (history.state?.albumOrigin || []).filter(item => item.scope === nav.scope && parseRoute(item.hash));
+  nav.crumbs = origin.length ? origin : [{hash: "#/albums", label: "Albums", scope: nav.scope, saved: {}}];
+  const album = state.albums.find(a => String(a.id) === albumView.id);
+  $("#breadcrumb").innerHTML = nav.crumbs.map((item, index) => `<button type="button" class="breadcrumb-link" data-album-crumb="${index}">${escapeHtml(item.label)}</button><span class="slash" aria-hidden="true">/</span>`).join("")
+    + `<span aria-current="page">${escapeHtml(album?.name || "Album")}</span>`;
+}
+
+function followBreadcrumb(target) {
+  if (!target || DIALOGS_WITH_DRAFTS.some(id => $(id).open)) return;
+  navigationScope();
+  if (target.scope !== nav.scope) return;
+  const route = parseRoute(target.hash);
+  if (!route) return;
+  const known = nav.views.get(target.hash), current = history.state?.index || 0;
+  if (Number.isInteger(target.index) && target.index < current && known?.index === target.index) {
+    history.go(target.index - current); return;
+  }
+  rememberNavigationScroll();
+  nav.scroll = {hash: target.hash, top: target.saved?.scrollY || 0, scope: nav.scope};
+  nav.restoring = true;
+  try { showRoute(route, target.saved || {}); } finally { nav.restoring = false; }
+  syncHistory();
+}
+
+document.addEventListener("click", event => {
+  const crumb = event.target.closest("[data-album-crumb]");
+  if (crumb && state.screen === "album") followBreadcrumb(nav.crumbs[Number(crumb.dataset.albumCrumb)]);
+  if (event.target.closest("[data-breadcrumb-root]")) {
+    navigationScope();
+    followBreadcrumb(nav.views.get("#/artists") || {hash: "#/artists", scope: nav.scope, saved: {}});
+  }
+});
 
 // On an artist's albums, a button back to where you came from (normally Album artists).
 function showArtistBack() {
@@ -251,6 +343,8 @@ window.addEventListener("popstate", event => {
     toast("Close the editor first, then go back.");
     return;
   }
+  navigationScope();
+  nav.scroll = {hash: location.hash, top: event.state?.scrollY || 0, scope: nav.scope};
   nav.restoring = true;
   try { showRoute(route, event.state || {}); } finally { nav.restoring = false; }
   syncHistory();
@@ -272,6 +366,6 @@ function restorePendingRoute() {
   const route = parseRoute(location.hash);
   if (route && !route.artist && !route.album) showRoute(route);
   else { nav.pending = route; showScreen("artists"); renderArtistBrowse(); }
-  nav.ready = true;
+  nav.ready = true; navigationScope();
   history.replaceState(viewState(0, ""), "", `#/${currentRoute()}`);
 })();

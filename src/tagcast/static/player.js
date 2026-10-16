@@ -314,13 +314,10 @@ function playCurrent(autoPlay = true) {
   $("#player-next").disabled = player.index >= player.queue.length - 1;
   markPlaying();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
-  if ("mediaSession" in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({title: track.title, artist: track.artist, album: player.album.name,
-      artwork: player.album.artwork ? [{src: player.album.artwork, sizes: "300x300"}] : []});
-  }
 }
 
 function markPlaying() {
+  if (typeof syncSystemPlayback === "function") syncSystemPlayback();
   if (typeof scheduleQueuePublish === "function") scheduleQueuePublish();
   const current = player.queue[player.index]?.id;
   for (const row of document.querySelectorAll("[data-row]")) row.classList.toggle("playing", !audio.paused && row.dataset.row === current);
@@ -387,9 +384,9 @@ function addToQueue(albumId, trackId = null, next = false) {
   return task;
 }
 
-function queueButton(albumId, track = null, compact = false) {
+function queueButton(albumId, track = null, compact = false, plainLabel = false) {
   const label = track ? `Queue actions for ${track.title}` : "Queue actions for this album";
-  return `<button type="button" class="queue-add ${compact ? "queue-compact" : track ? "" : "button small"} queue-menu-trigger" data-queue-album="${escapeHtml(albumId)}" ${track ? `data-queue-track="${escapeHtml(track.id)}"` : ""} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-haspopup="menu" aria-expanded="false" aria-controls="queue-action-menu" ${!live() || state.loading ? "disabled" : ""}>${compact ? '<svg class="queue-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>' : `<span aria-hidden="true">${track ? "+" : "+ Queue"}</span>`}<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="m3 4.5 3 3 3-3"/></svg></button>`;
+  return `<button type="button" class="queue-add ${compact ? "queue-compact" : track ? "" : "button small"} queue-menu-trigger" data-queue-album="${escapeHtml(albumId)}" ${track ? `data-queue-track="${escapeHtml(track.id)}"` : ""} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-haspopup="menu" aria-expanded="false" aria-controls="queue-action-menu" ${!live() || state.loading ? "disabled" : ""}>${compact ? '<svg class="queue-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>' : `<span aria-hidden="true">${track ? "+" : plainLabel ? "Queue" : "+ Queue"}</span>`}<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="m3 4.5 3 3 3-3"/></svg></button>`;
 }
 
 function albumCardActions(album) {
@@ -423,6 +420,7 @@ function closeQueueActions(restoreFocus = false) {
 }
 
 function openQueueActions(trigger, last = false) {
+  if (typeof closeAlbumActions === "function") closeAlbumActions();
   const same = queueActions.trigger === trigger;
   closeQueueActions();
   if (same || trigger.disabled || !live() || state.loading) return;
@@ -493,6 +491,7 @@ function step(delta) {
 }
 
 function stopPlayer() {
+  if (typeof closePlaybackOutput === "function") closePlaybackOutput(false);
   closeQueueActions();
   playReporting.watch = null;
   cancelRandomPlay();
@@ -554,10 +553,6 @@ $("#player-track-artist").addEventListener("click", () => {
 $("#player-album").addEventListener("click", () => {
   if (player.album) return openAlbum(player.album.id, player.queue[player.index]?.id);
 });
-if ("mediaSession" in navigator) {
-  navigator.mediaSession.setActionHandler("previoustrack", () => step(-1));
-  navigator.mediaSession.setActionHandler("nexttrack", () => step(1));
-}
 
 document.addEventListener("click", event => {
   const cardPlay = event.target.closest("[data-card-play]");

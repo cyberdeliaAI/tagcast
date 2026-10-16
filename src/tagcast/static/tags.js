@@ -22,14 +22,14 @@ function tagLinks(tags) {
   return (tags || []).map(t => `<button type="button" class="tag-chip" data-browse-kind="tags" data-browse-key="${escapeHtml(t.id)}" data-browse-label="${escapeHtml(t.name)}">${escapeHtml(t.name)}${t.archived ? " · archived" : ""}</button>`).join("");
 }
 
-function albumTagPanel(album) {
+function albumTagChips(album) {
   if (!live()) return "";
   const tags = new Map();
   for (const track of album.tracks) for (const tag of track.tags || []) {
     const row = tags.get(tag.id) || {...tag, count: 0}; row.count += 1; tags.set(tag.id, row);
   }
-  const empty = album.tags_loaded === false ? "Open Manage tags to load labels" : "No tags assigned";
-  return `<section class="album-tags" aria-label="Album tags"><strong>Tags</strong><div class="tag-chips">${[...tags.values()].map(t => `<span>${tagLinks([t])}${t.count < album.tracks.length ? `<small class="muted"> ${t.count}/${album.tracks.length} tracks</small>` : ""}</span>`).join("") || `<span class="muted">${empty}</span>`}</div><button type="button" class="button small" data-album-tags="${escapeHtml(album.id)}">Manage tags…</button></section>`;
+  return [...tags.values()].map(tag => `<span class="album-tag-chip">${tagLinks([tag])}${tag.count < album.tracks.length ? `<small class="muted" title="Assigned to ${tag.count} of ${album.tracks.length} tracks">${tag.count}/${album.tracks.length} tracks</small>` : ""}</span>`).join("")
+    + `<button type="button" class="album-tag-add" data-album-tags="${escapeHtml(album.id)}" aria-label="Add or manage tags for this album" ${album.tags_loaded === false ? 'title="Load and manage album tags"' : ""}>+ Tag</button>`;
 }
 
 function trackTagControls(album, track) {

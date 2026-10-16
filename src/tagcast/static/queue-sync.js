@@ -112,6 +112,7 @@ async function pollQueue() {
     const controlling = queueSync.active && (!view.own || view.state?.role === "controller");
     $("#player").hidden = controlling || !player.queue.length;
     document.body.classList.toggle("has-player", !controlling && Boolean(player.queue.length));
+    if (typeof syncSystemPlayback === "function") syncSystemPlayback();
     renderDevices(false);
   } catch (error) { queueSync.error = error.message; renderDevices(false); }
   if (queueSync.active || $("#devices-dialog").open) queueSync.timer = setTimeout(pollQueue, 1000);
