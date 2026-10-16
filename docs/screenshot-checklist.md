@@ -1,7 +1,8 @@
 # Screenshot refresh checklist
 
-Capture the current local/source build after reloading the browser. These interface
-changes are on `main`; the published 0.42.0 packages still have the earlier interface.
+This capture round documents the interface prepared for Tagcast 0.50.0.
+Some screenshots still show the previous development version beside Settings;
+the original pixels are preserved.
 The supplied set contains **41 original PNGs captured on 16 October 2026**.
 They are imported without resizing or other image changes; the original files in
 Pictures/Screenshots remain untouched. The capture round is complete: checked rows use current captures or explicitly

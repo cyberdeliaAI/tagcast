@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE = "https://1001albumsgenerator.com"
 INDEX = BASE + "/albums"
 LICENSE = "https://creativecommons.org/licenses/by-sa/4.0/"
-USER_AGENT = "Tagcast-reference-import/0.42.0 (+https://github.com/cyberdeliaAI/tagcast)"
+USER_AGENT = "Tagcast-reference-import/0.50.0 (+https://github.com/cyberdeliaAI/tagcast)"
 
 
 def normalized(value, artist=False):
