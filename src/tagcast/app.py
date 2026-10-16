@@ -151,6 +151,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(lambda: self.studio.cleanup.view(query.get("offset", "0"), query.get("limit", "25")))
         elif url.path == "/api/cleanup/report":
             self._run(lambda: self.studio.cleanup.view(report=True))
+        elif url.path == "/api/duplicate-cleanup":
+            self._run(lambda: self.studio.duplicate_cleanup.view(query.get("offset", "0"), query.get("limit", "10")))
+        elif url.path == "/api/duplicate-cleanup/report":
+            self._run(lambda: self.studio.duplicate_cleanup.view(report=True))
         elif url.path == "/api/cleanup/labels":
             self._run(lambda: self.studio.cleanup.labels(query.get("q"), query.get("offset", "0"),
                                                          query.get("limit", "50")))
@@ -195,6 +199,10 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/artwork": self.studio.change_artwork,
             "/api/artwork/undo": self.studio.undo_artwork,
             "/api/trash": self.studio.trash_tracks,
+            "/api/trash/albums": self.studio.trash_albums,
+            "/api/duplicate-cleanup/preview": lambda b: self.studio.duplicate_cleanup.prepare(),
+            "/api/duplicate-cleanup/start": lambda b: self.studio.duplicate_cleanup.start(b.get("id"), b.get("excluded"), b.get("approved")),
+            "/api/duplicate-cleanup/stop": lambda b: self.studio.duplicate_cleanup.cancel(b.get("id")),
             "/api/favourite": self.studio.favourite,
             "/api/play": self.studio.record_play,
             "/api/album-rating": self.studio.collections.rate_album,

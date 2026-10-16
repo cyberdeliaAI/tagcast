@@ -3,6 +3,11 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  "duplicate-cleanup": {title: "Suggested duplicate copies", scope: "#duplicate-cleanup", steps: [
+    ["Analyse all duplicate albums", "Analyse all albums applies the album page's Select suggested copies rules across your entire library, regardless of search or pagination. It reads stored metadata and prepares a local draft; it does not move tracks.", ["#duplicate-cleanup-preview"]],
+    ["Compare and adjust", "Prefer FLAC over MP3, then the newest upload in the same format. Uncertain copies remain. Review each repeated position, including differing titles. Uncheck an album or an individual proposed copy to keep it.", ["#duplicate-cleanup-content .cleanup-albums"]],
+    ["Approve and process", "Approve your selection before moving copies to iBroadcast's trash in batches. Current metadata and retained copies are checked before each batch, then the result is read back. Stop prevents further requests; uncertain requests are never automatically retried.", ["#duplicate-cleanup-approved", "#duplicate-cleanup-start", "#duplicate-cleanup-stop"]],
+  ]},
   artists: {title: "Album artists", scope: "#artists-page", steps: [
     ["Browse your album artists", "Each card groups the albums credited to one album artist. The totals refer to albums in your library.", ["#artists-page .page-intro"]],
     ["Find an artist", "Search by name, filter artists without an image, or change the order. Random gives you a different way to explore the list.", ["#artists-page .toolbar"]],
@@ -12,8 +17,8 @@ const HELP_TOPICS = {
   albums: {title: "Albums", scope: "#albums-page", steps: [
     ["Your album collection", "These cards show your albums, or the albums by the artist you opened. Discs belonging to the same set are displayed together.", ["#albums-page .page-intro"]],
     ["Search, filter and sort", "Search titles, artists or genres. Filters can help you find missing metadata or duplicate candidates. Choose the order, page size and cover or list view here.", ["#albums-page .toolbar"]],
-    ["Open or queue an album", "Open a title to see its tracks and editor. The + menu adds an album to the queue or plays it next. Double-click a real cover to enlarge it.", ["#albums-page .album-card"]],
-    ["Select or discover", "The selection boxes let you edit albums by one album artist together. Play random album chooses from every filtered album, across all pages, and replaces the queue.", ["#albums-random", "#albums-page .selection-bar"]],
+    ["Open, play or queue", "Click a cover or title to open the album. Its small Play button starts the full album and replaces the queue. The + menu adds it to the queue or plays it next. Enlarge covers on the album page.", ["#albums-page .album-card"]],
+    ["Select or discover", "Select albums by one album artist to edit them or review moving the complete albums to iBroadcast's trash. Play random album is available in All albums when no albums are selected; cleanup filters hide it.", ["#albums-page .selection-bar", "#albums-random"]],
   ]},
   album: {title: "Album details", scope: "#album-page", steps: [
     ["Your album", "The header shows the album artist, release year, track count and duration. Double-click a real cover to enlarge it. If About this album is available below the header, expand it to read the background text.", ["#album-page .album-detail-header"]],
@@ -90,7 +95,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
-  for (const [id, context] of [["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
+  for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
     if ($(`#${id}`).open) return context;
   }
   if (state.screen === "album-guide") return "guide";

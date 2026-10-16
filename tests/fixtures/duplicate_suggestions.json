@@ -1,0 +1,437 @@
+[
+  {
+    "name": "newest same format",
+    "tracks": [
+      {},
+      {
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [
+      "1"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "trash",
+        "reason": "Older upload in this format."
+      },
+      {
+        "choice": "keep",
+        "reason": "Newest upload in this format."
+      }
+    ]
+  },
+  {
+    "name": "older FLAC beats newer MP3",
+    "tracks": [
+      {},
+      {
+        "format": "MP3",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [
+      "2"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "keep",
+        "reason": "Preferred FLAC copy."
+      },
+      {
+        "choice": "trash",
+        "reason": "FLAC copy available."
+      }
+    ]
+  },
+  {
+    "name": "same day exact times",
+    "tracks": [
+      {
+        "uploaded_at": "2022-01-01T12:00:00"
+      },
+      {
+        "uploaded_at": "2022-01-01T12:01:00"
+      }
+    ],
+    "remove": [
+      "1"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "trash",
+        "reason": "Older upload in this format."
+      },
+      {
+        "choice": "keep",
+        "reason": "Newest upload in this format."
+      }
+    ]
+  },
+  {
+    "name": "missing time is not older",
+    "tracks": [
+      {},
+      {
+        "uploaded_at": "2022-01-01T12:01:00"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "No unique newest copy; compare these copies."
+      },
+      {
+        "choice": "manual",
+        "reason": "No unique newest copy; compare these copies."
+      }
+    ]
+  },
+  {
+    "name": "missing day is not older",
+    "tracks": [
+      {
+        "uploaded_at": ""
+      },
+      {
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "No unique newest copy; compare these copies."
+      },
+      {
+        "choice": "manual",
+        "reason": "No unique newest copy; compare these copies."
+      }
+    ]
+  },
+  {
+    "name": "tied FLAC retained with MP3 suggestion",
+    "tracks": [
+      {},
+      {},
+      {
+        "format": "MP3"
+      }
+    ],
+    "remove": [
+      "3"
+    ],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "No unique newest copy; compare these copies."
+      },
+      {
+        "choice": "manual",
+        "reason": "No unique newest copy; compare these copies."
+      },
+      {
+        "choice": "trash",
+        "reason": "FLAC copy available."
+      }
+    ]
+  },
+  {
+    "name": "unknown format",
+    "tracks": [
+      {},
+      {
+        "format": ""
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Unknown or incomparable file formats."
+      },
+      {
+        "choice": "manual",
+        "reason": "Unknown or incomparable file formats."
+      }
+    ]
+  },
+  {
+    "name": "incomparable formats",
+    "tracks": [
+      {},
+      {
+        "format": "AAC"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Unknown or incomparable file formats."
+      },
+      {
+        "choice": "manual",
+        "reason": "Unknown or incomparable file formats."
+      }
+    ]
+  },
+  {
+    "name": "same known format newest",
+    "tracks": [
+      {
+        "format": "WAV"
+      },
+      {
+        "format": "WAV",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [
+      "1"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "trash",
+        "reason": "Older upload in this format."
+      },
+      {
+        "choice": "keep",
+        "reason": "Newest upload in this format."
+      }
+    ]
+  },
+  {
+    "name": "different artists",
+    "tracks": [
+      {},
+      {
+        "artist": "Other",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Different track artists; compare manually."
+      },
+      {
+        "choice": "manual",
+        "reason": "Different track artists; compare manually."
+      }
+    ]
+  },
+  {
+    "name": "different durations",
+    "tracks": [
+      {},
+      {
+        "length": 183,
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Durations differ by more than two seconds; compare versions."
+      },
+      {
+        "choice": "manual",
+        "reason": "Durations differ by more than two seconds; compare versions."
+      }
+    ]
+  },
+  {
+    "name": "two second boundary",
+    "tracks": [
+      {},
+      {
+        "length": 182,
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [
+      "1"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "trash",
+        "reason": "Older upload in this format."
+      },
+      {
+        "choice": "keep",
+        "reason": "Newest upload in this format."
+      }
+    ]
+  },
+  {
+    "name": "different titles comparable metadata",
+    "tracks": [
+      {},
+      {
+        "title": "Song (Edit)",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [
+      "1"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "trash",
+        "reason": "Older upload in this format. Titles differ; compare versions before confirming."
+      },
+      {
+        "choice": "keep",
+        "reason": "Newest upload in this format. Titles differ; compare versions before confirming."
+      }
+    ]
+  },
+  {
+    "name": "different titles missing length",
+    "tracks": [
+      {
+        "length": 0
+      },
+      {
+        "title": "Song (Edit)",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Different titles and incomplete comparison metadata."
+      },
+      {
+        "choice": "manual",
+        "reason": "Different titles and incomplete comparison metadata."
+      }
+    ]
+  },
+  {
+    "name": "quotation case and whitespace normalization",
+    "tracks": [
+      {
+        "title": " “Song”  "
+      },
+      {
+        "title": "song",
+        "length": 0,
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [
+      "1"
+    ],
+    "manual": [],
+    "choices": [
+      {
+        "choice": "trash",
+        "reason": "Older upload in this format."
+      },
+      {
+        "choice": "keep",
+        "reason": "Newest upload in this format."
+      }
+    ]
+  },
+  {
+    "name": "meaningful title punctuation retained",
+    "tracks": [
+      {
+        "title": "Song ?",
+        "length": 0
+      },
+      {
+        "title": "Song?",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Different titles and incomplete comparison metadata."
+      },
+      {
+        "choice": "manual",
+        "reason": "Different titles and incomplete comparison metadata."
+      }
+    ]
+  },
+  {
+    "name": "unicode lower does not fold German sharp s",
+    "tracks": [
+      {
+        "title": "Straße",
+        "length": 0
+      },
+      {
+        "title": "STRASSE",
+        "uploaded_at": "2026-01-01"
+      }
+    ],
+    "remove": [],
+    "manual": [
+      "1",
+      "2"
+    ],
+    "choices": [
+      {
+        "choice": "manual",
+        "reason": "Different titles and incomplete comparison metadata."
+      },
+      {
+        "choice": "manual",
+        "reason": "Different titles and incomplete comparison metadata."
+      }
+    ]
+  }
+]

@@ -143,7 +143,7 @@ function guideAlbumCard(entry, shelf) {
       : `<div class="guide-missing">${cover({name: entry.album, artist: entry.artist, color: colors[(entry.id - 1) % colors.length]})}${reference}</div>`}
     <p class="guide-edition muted">${a && (a.name !== entry.album || a.artist !== entry.artist) ? `Your edition: ${escapeHtml(a.artist)} · ${escapeHtml(a.name)}` : ""}</p>
     ${albums.length > 1 ? `<div class="guide-editions">${albums.map((album, i) => `<button class="text-action" data-album="${escapeHtml(album.id)}" title="${escapeHtml(album.artist)} · ${escapeHtml(album.name)} · ${album.year || "Unknown year"}">Edition ${i + 1}${album.year ? ` (${album.year})` : ""}</button>`).join(" · ")}</div>` : ""}
-    <div class="card-meta"><span>${entry.year} · #${entry.id}</span>${a && entry.status === "found" ? queueButton(a.id, null, true) : ""}</div>
+    <div class="card-meta"><span>${entry.year} · #${entry.id}</span>${a && entry.status === "found" ? albumCardActions(a) : ""}</div>
     <div class="guide-link-actions"><button class="text-action" data-guide-link="${entry.id}">${entry.manual ? "Change link…" : entry.status === "possible" ? "Confirm match…" : "Choose album…"}</button>${entry.manual ? `<button class="text-action" data-guide-unlink="${entry.id}">Undo link</button>` : ""}</div></article>`;
 }
 

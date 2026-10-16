@@ -400,6 +400,15 @@ body.has-player .now-playing-panel{bottom:76px}
 .queue-menu-trigger,.queue-add.queue-menu-trigger:not(.button){display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .queue-add.queue-menu-trigger:not(.button){width:42px}
 .queue-menu-trigger svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+/* Compact, aligned album actions; metadata can wrap without stretching the buttons. */
+.album-card .card-meta{align-items:flex-end;gap:10px}
+.album-card-meta-text{min-width:0;min-height:30px;flex:1;display:flex;flex-direction:column;justify-content:center;line-height:1.6}
+.album-card-meta-text>.pill{align-self:flex-start;margin-top:4px}
+.album-card-actions{display:inline-flex;flex:none;align-items:center;gap:4px;vertical-align:middle}
+.album-card-play,.queue-add.queue-compact.queue-menu-trigger:not(.button){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:30px;min-height:30px;padding:0;border:1px solid var(--line);border-radius:5px;background:var(--palette-surface,#fff);color:var(--green)}
+.album-card-play{width:28px;cursor:pointer}.album-card-play svg{width:13px;height:13px;fill:currentColor}
+.queue-add.queue-compact.queue-menu-trigger:not(.button){width:34px;gap:1px}.queue-compact .queue-plus{width:13px;height:13px}
+.album-card-play:hover{background:var(--palette-tint,#edf2e7)}.album-card-play:disabled{opacity:.4;cursor:default}
 .queue-action-menu{position:fixed;z-index:90;width:220px;max-width:calc(100vw - 16px);padding:5px;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 25px #0002}
 .queue-action-menu button{display:block;width:100%;padding:11px 12px;border:0;border-radius:5px;background:none;color:inherit;text-align:left;font:inherit;font-size:13px}
 .queue-action-menu button:hover,.queue-action-menu button:focus-visible{background:var(--palette-tint,#edf2e7)}
@@ -418,6 +427,12 @@ body.has-player .now-playing-panel{bottom:76px}
 .cleanup-album{border-bottom:1px solid var(--line);padding:15px 0}
 .cleanup-album h3{margin:0;font-size:15px}
 .cleanup-album input{accent-color:var(--green);width:18px;height:18px;vertical-align:middle;margin-right:8px}
+.duplicate-position{border:1px solid var(--line);border-radius:7px;padding:12px 15px;margin:15px 0;overflow-wrap:anywhere}
+#duplicate-cleanup summary{cursor:pointer}#duplicate-cleanup summary h3{display:inline}#duplicate-cleanup summary p{margin:8px 0 0 22px;font-size:12px}
+.duplicate-position h4{margin:0 0 10px;font-size:13px}
+.duplicate-copy{border-top:1px solid var(--line);padding:12px 0;font-size:12px}
+.duplicate-copy .pill{margin-left:10px}.duplicate-copy p{margin:6px 0 0;line-height:1.6}
+#duplicate-cleanup-status{line-height:1.6}
 .cleanup-example{font-size:12px;margin:12px 0;overflow-wrap:anywhere}
 .cleanup-example>div{display:grid;grid-template-columns:55px minmax(0,1fr);gap:10px;margin-top:5px}
 .cleanup-example>div>span:first-child{color:var(--muted)}
@@ -484,7 +499,7 @@ body.visual-player-open{overflow:hidden}
 /* Cover previews use a modal image view without touching the audio or library. */
 .album-cover-preview{padding:0;border:0;background:none;color:inherit;border-radius:7px}
 .album-cover-preview .cover{width:100%}
-.album-cover-preview:not(:disabled),[data-cover-preview],.visual-player-cover{cursor:zoom-in}
+.album-cover-preview:not(:disabled),[data-cover-preview]{cursor:zoom-in}
 .player-stage .visual-player-cover{padding:0;border:0;color:inherit}
 .cover-lightbox{width:min(94vw,1060px);max-width:94vw;max-height:94vh;max-height:94dvh;padding:20px}
 .cover-lightbox[open]{display:flex;flex-direction:column;gap:14px}

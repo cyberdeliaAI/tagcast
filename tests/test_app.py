@@ -73,6 +73,11 @@ class StartTests(unittest.TestCase):
         studio.check_updates.return_value = {"state": "current", "current": "0.10.1"}
         studio.cleanup.labels.return_value = {"labels": [], "total": 0}
         studio.cleanup.prepare.return_value = {"state": "preview"}
+        studio.duplicate_cleanup.view.return_value = {"state": "empty"}
+        studio.duplicate_cleanup.prepare.return_value = {"state": "preview"}
+        studio.duplicate_cleanup.start.return_value = {"state": "running"}
+        studio.duplicate_cleanup.cancel.return_value = {"state": "stopped"}
+        studio.trash_albums.return_value = {"results": [], "job": "check"}
         studio.album_guide.view.return_value = {"enabled": True, "state": "empty"}
         studio.album_guide.analyse.return_value = {"enabled": True, "state": "ready"}
         studio.album_guide.link.return_value = {"enabled": True, "state": "ready"}
@@ -85,6 +90,8 @@ class StartTests(unittest.TestCase):
         def request(method, path, headers=None, body=None):
             connection = HTTPConnection("127.0.0.1", server.server_port, timeout=3)
             try:
+                if isinstance(body, dict):
+                    body = json.dumps(body)
                 connection.request(method, path, body=(body or '{"track_id":"1","before":0,"rating":5}') if method == "POST" else None,
                                    headers=headers or {})
                 response = connection.getresponse()
@@ -146,6 +153,24 @@ class StartTests(unittest.TestCase):
             studio.cleanup.prepare.assert_not_called()
             self.assertEqual(request("POST", "/api/cleanup/preview", {"X-Tagcast": "1"}, removal), 200)
             studio.cleanup.prepare.assert_called_once_with("genre-labels", "P", [], True)
+            self.assertEqual(request("GET", "/api/duplicate-cleanup", {"Sec-Fetch-Site": "cross-site"}), 403)
+            studio.duplicate_cleanup.view.assert_not_called()
+            self.assertEqual(request("GET", "/api/duplicate-cleanup?offset=10&limit=10"), 200)
+            studio.duplicate_cleanup.view.assert_called_once_with("10", "10")
+            self.assertEqual(request("GET", "/api/duplicate-cleanup/report"), 200)
+            studio.duplicate_cleanup.view.assert_called_with(report=True)
+            self.assertEqual(request("POST", "/api/duplicate-cleanup/preview", body={}), 403)
+            studio.duplicate_cleanup.prepare.assert_not_called()
+            self.assertEqual(request("POST", "/api/duplicate-cleanup/preview", {"X-Tagcast": "1"}, {}), 200)
+            studio.duplicate_cleanup.prepare.assert_called_once_with()
+            self.assertEqual(request("POST", "/api/duplicate-cleanup/start", {"X-Tagcast": "1"}, {"id": "draft", "excluded": ["1"], "approved": True}), 200)
+            studio.duplicate_cleanup.start.assert_called_once_with("draft", ["1"], True)
+            self.assertEqual(request("POST", "/api/duplicate-cleanup/stop", {"X-Tagcast": "1"}, {"id": "draft"}), 200)
+            studio.duplicate_cleanup.cancel.assert_called_once_with("draft")
+            self.assertEqual(request("POST", "/api/trash/albums", body={"albums": []}), 403)
+            studio.trash_albums.assert_not_called()
+            self.assertEqual(request("POST", "/api/trash/albums", {"X-Tagcast": "1"}, {"approved": True, "albums": []}), 200)
+            studio.trash_albums.assert_called_once_with({"approved": True, "albums": []})
             studio.favourite.assert_not_called()
             studio.favourites.assert_not_called()
             self.assertEqual(request("GET", "/api/favourites?q=test&offset=50&limit=100"), 200)

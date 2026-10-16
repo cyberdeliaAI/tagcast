@@ -6,7 +6,7 @@
 // search, filter, sort and page number. Dialogs get no entry: Back never closes an editor.
 
 const nav = {ready: false, restoring: false, pending: null};
-const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#playlist-dialog"];
+const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#duplicate-cleanup", "#playlist-dialog"];
 
 const SIDEBAR_ITEMS = [
   ["show-artists", "Album artists", true], ["all-albums", "Albums", true],

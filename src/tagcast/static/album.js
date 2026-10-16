@@ -9,12 +9,7 @@ function cancelCoverClick() {
 }
 
 function coverPreviewFor(target) {
-  const playerCover = target.closest("#player-cover-button, .visual-player-cover");
-  if (playerCover) {
-    const album = player.queue[player.index]?.album;
-    return album?.artwork ? {album, focus: playerCover} : null;
-  }
-  const node = target.closest("[data-cover-preview]");
+  const node = target.closest("#album-page [data-cover-preview]");
   return node?.dataset.coverSrc ? {album: {artwork: node.dataset.coverSrc,
     name: node.dataset.coverName, artist: node.dataset.coverArtist}, focus: node.closest("button") || node} : null;
 }
@@ -174,7 +169,7 @@ function renderAlbumView() {
   const trashAdvice = albumView.trash ? trashSuggestion(discs) : null;
   $("#breadcrumb").textContent = album.name;
   $("#album-page").innerHTML = `${backButton()}
-    <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="Enlarge cover of ${escapeHtml(album.name)}" ${album.artwork ? "" : "disabled"}>${cover(album)}</button><div class="album-detail-info"><div class="eyebrow">YOUR ALBUM</div>
+    <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="Enlarge cover of ${escapeHtml(album.name)}" ${album.artwork ? "" : "disabled"}>${cover(album, false, true)}</button><div class="album-detail-info"><div class="eyebrow">YOUR ALBUM</div>
       <h1>${escapeHtml(album.name)}</h1><button class="text-action" data-artist="${escapeHtml(album.artist)}">${escapeHtml(album.artist)}</button>
       <p class="muted">${albumYear(discs) || "Year unknown"} · ${album.tracks.length} tracks${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · Disc ${album.disc}` : ""}${total}</p>
       ${genres.length ? `<p class="muted album-genre-links">${genres.map(g => `<button class="text-action" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join(' <span aria-hidden="true">·</span> ')}</p>` : ""}
@@ -193,7 +188,7 @@ function renderAlbumView() {
 }
 
 document.addEventListener("click", event => {
-  if (!event.detail && event.target.closest("[data-cover-view], .visual-player-cover")) openCoverLightbox(coverPreviewFor(event.target));
+  if (!event.detail && event.target.closest("[data-cover-view]")) openCoverLightbox(coverPreviewFor(event.target));
   if (event.target.closest("[data-album-back]")) { goBack("albums"); return; }
   const edit = event.target.closest("[data-edit-album]");
   if (edit) openEditor(edit.dataset.editAlbum.split(","));

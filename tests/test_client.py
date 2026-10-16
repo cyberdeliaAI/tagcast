@@ -835,6 +835,112 @@ class ClientTests(unittest.TestCase):
         self.assertEqual([(r["id"], r["status"]) for r in job["results"]], [("901", "saved")])
         self.assertEqual(next(a for a in job["albums"] if a["id"] == "72")["track_count"], 1)
 
+    def test_bulk_duplicate_trash_uses_native_requests_fresh_checks_and_private_report(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        try:
+            mock_ibroadcast.STATE["tracks"][900].update(type="audio/flac", uploaded_on="2022-01-01", length=180)
+            mock_ibroadcast.STATE["tracks"][901].update(title="Running Up That Hill (Remaster)", track=1,
+                type="audio/mpeg", uploaded_on="2026-01-01", uploaded_time="12:00:00", length=180)
+            studio = self.connect()
+            preview = studio.duplicate_cleanup.prepare()
+            self.assertEqual(preview["selection"], [{"id": "901", "group": "72"}])
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+            studio.duplicate_cleanup.start(preview["id"], [], True)
+            for _ in range(300):
+                if not studio.duplicate_cleanup.running:
+                    break
+                time.sleep(.01)
+            self.assertFalse(studio.duplicate_cleanup.running)
+            report = studio.duplicate_cleanup.view()
+            self.assertEqual((report["state"], report["counts"]), ("done", {"confirmed": 1}))
+            self.assertEqual([(w["mode"], w["tracks"]) for w in mock_ibroadcast.STATE["writes"]], [("trash", [901])])
+            self.assertFalse(mock_ibroadcast.STATE["tracks"][900]["trashed"])
+            self.assertPrivate(Path(self.home, "duplicate-cleanup.json"))
+            self.assertNotIn(mock_ibroadcast.TOKEN, json.dumps(report))
+        finally:
+            mock_ibroadcast.STATE["tracks"] = original
+
+    def test_selected_complete_albums_require_review_and_fresh_membership(self):
+        studio = self.connect()
+
+        def selection(ids):
+            return {"approved": True, "combine_sets": False, "albums": [
+                {"id": a["id"], "name": a["name"], "artist": a["artist"],
+                 "tracks": [{"id": t["id"], "title": t["title"]} for t in a["tracks"]]}
+                for a in studio.album_details(ids)]}
+
+        body = selection(["72", "73"])
+        for mutate in [lambda b: b.update(approved=False),
+                       lambda b: b["albums"][0]["tracks"].pop(),
+                       lambda b: b["albums"][0].update(name="Old name"),
+                       lambda b: b["albums"][0]["tracks"][0].update(title="Old title"),
+                       lambda b: b["albums"][0]["tracks"].append(b["albums"][0]["tracks"][0]),
+                       lambda b: b.update(combine_sets=True)]:
+            changed = copy.deepcopy(body)
+            mutate(changed)
+            with self.assertRaises((client.ApiError, ConflictError)):
+                studio.trash_albums(changed)
+        with self.assertRaises(client.ApiError):
+            studio.trash_albums(selection(["72", "74"]))
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        original = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        try:
+            result = studio.trash_albums(body)
+            self.assertEqual([(w["mode"], w["tracks"]) for w in mock_ibroadcast.STATE["writes"]], [("trash", [900, 901, 903])])
+            job = self.wait_job(studio, result["job"])
+            self.assertTrue(all(r["status"] == "saved" for r in job["results"]))
+            self.assertNotIn("72", {a["id"] for a in job["albums"]})
+            self.assertNotIn("73", {a["id"] for a in job["albums"]})
+            self.assertFalse(mock_ibroadcast.STATE["tracks"][904]["trashed"])
+        finally:
+            mock_ibroadcast.STATE["tracks"] = original
+
+    def test_selected_album_trash_rejects_new_tracks_and_partial_merged_sets(self):
+        studio = self.connect()
+        album = studio.album_details(["72"])[0]
+        body = {"approved": True, "combine_sets": False, "albums": [{"id": album["id"], "name": album["name"],
+            "artist": album["artist"], "tracks": [{"id": t["id"], "title": t["title"]} for t in album["tracks"]]}]}
+        original_albums = copy.deepcopy(mock_ibroadcast.STATE["albums"])
+        original_tracks = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        try:
+            mock_ibroadcast.STATE["tracks"][902]["trashed"] = False
+            mock_ibroadcast.STATE["version"] += 1
+            with self.assertRaises(ConflictError):
+                studio.trash_albums(body)
+            mock_ibroadcast.STATE["tracks"][902]["trashed"] = True
+            mock_ibroadcast.STATE["albums"][73].update(name=album["name"], year=0, disc=2)
+            mock_ibroadcast.STATE["version"] += 1
+            with self.assertRaises(ConflictError):
+                studio.trash_albums(body)
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        finally:
+            mock_ibroadcast.STATE["albums"] = original_albums
+            mock_ibroadcast.STATE["tracks"] = original_tracks
+
+    def test_selected_album_trash_enforces_album_and_track_batch_limits(self):
+        original_albums = copy.deepcopy(mock_ibroadcast.STATE["albums"])
+        original_tracks = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        try:
+            for i in range(21):
+                mock_ibroadcast.STATE["albums"][100 + i] = {"name": f"Album {i}", "artist_id": 41,
+                    "year": 1985, "disc": 1, "tracks": [1000 + i]}
+                mock_ibroadcast.STATE["tracks"][1000 + i] = {**original_tracks[900], "album_id": 100 + i}
+            mock_ibroadcast.STATE["version"] += 1
+            studio = self.connect()
+            body = {"approved": True, "combine_sets": False, "albums": [{"id": a["id"], "name": a["name"],
+                "artist": a["artist"], "tracks": [{"id": t["id"], "title": t["title"]} for t in a["tracks"]]}
+                for a in studio.album_details([str(i + 100) for i in range(21)])]}
+            with self.assertRaisesRegex(client.ApiError, "20 displayed albums"):
+                studio.trash_albums(body)
+            body["albums"] = body["albums"][:1]
+            body["albums"][0]["tracks"] = [{"id": str(i + 10000), "title": "Track"} for i in range(501)]
+            with self.assertRaisesRegex(client.ApiError, "500 tracks"):
+                studio.trash_albums(body)
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        finally:
+            mock_ibroadcast.STATE["albums"] = original_albums
+            mock_ibroadcast.STATE["tracks"] = original_tracks
+
     def test_track_search_finds_active_tracks_in_album_order(self):
         studio = self.connect()
         found = studio.search_tracks("kate bush")
