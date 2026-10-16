@@ -11,7 +11,7 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 **New in [0.42.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.42.0):** Discover your collection with optional **1001 Albums**, manual matching and offline album background texts. Page-specific **?** tours explain the current screen. Duplicate-track cleanup now compares upload dates and formats, preferring FLAC over MP3 and then the newest upload. Customize the sidebar and explore decades with short music introductions. All features are included in the standalone downloads for macOS, Windows and Linux.
 
-[Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast)
+[Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast) · [Media kit](media/README.md)
 
 ![Tagcast 0.40.0: Earth & Fire album details with ratings, playlists, Recently played and separate file/stream quality](docs/screenshots/album-player-0.40.0.png)
 
@@ -180,6 +180,9 @@ their separate opt-in settings.
 
 The **Theme** button opens one menu with **Appearance** (Auto, Light or Dark) and **Colour**: **Forest** (the original green), **Ocean**, **Warm** and **iBroadcast inspired**. Colour and light/dark appearance are independent and remembered in this browser. The palette also applies to the sidebar, player and fullscreen Now playing. Switching colours keeps playback running and makes no library requests.
 
+The cassette-in-sleeve sidebar icon follows the chosen colour palette. The standalone
+app icon uses the primary blue and cream design.
+
 ### Your own iBroadcast tags
 
 **Tags** in the sidebar shows your custom iBroadcast labels, including empty tags.
@@ -202,6 +205,8 @@ they can hide music. Manage archiving in iBroadcast itself.
 Tags remain separate from genres. Writes are checked against current data and
 read back, without automatic retry or metadata Undo. Playback stays unchanged.
 Existing assignments on other albums and untouched labels are preserved.
+
+![Native iBroadcast tags on an album and its tracks, with Manage tags and per-track Tags controls](media/screenshots/album-tags.png)
 
 ### Help and guided tours
 
@@ -842,6 +847,12 @@ TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9555 TAGCAST_HOME=/tmp/tagcast-test \
 Tagcast does not upload music, permanently delete tracks or edit local music files. It does not send Last.fm scrobbles. Queue synchronisation and native iBroadcast play reporting are optional and off by default. Playlist changes and metadata suggestions require your review; automatic updates only notify you and do not install software.
 
 An artist name change assigns an existing artist or creates a new one; it does not rename the original artist in place. Metadata saves stay limited to one album or albums by one album artist. Artwork Undo needs a previous image; it does not undo metadata, ratings or trash moves.
+
+## Media and press
+
+The [media kit](media/README.md) contains the cassette logo, SVG and transparent PNG
+exports, wordmarks for light/dark backgrounds, screenshots and the GitHub social
+preview. [Download all media as a ZIP](https://github.com/cyberdeliaAI/tagcast/raw/refs/heads/main/media/tagcast-media-kit.zip).
 
 ## Development credits
 
