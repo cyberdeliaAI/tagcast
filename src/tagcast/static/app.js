@@ -113,6 +113,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetAlbumGuide === "function") resetAlbumGuide();
   if (typeof resetCleanup === "function") resetCleanup(true);
@@ -858,6 +859,7 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetAlbumGuide === "function") resetAlbumGuide();
   if (typeof resetCleanup === "function") resetCleanup();

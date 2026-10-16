@@ -200,6 +200,15 @@ class Library:
         self.artists = decode_table(raw["artists"])
         self.albums = decode_table(raw["albums"])
         self.tracks = decode_table(raw["tracks"])
+        self.tags_loaded = isinstance(raw.get("tags"), dict)
+        self.tags = {int(i): {"name": row["name"], "archived": row.get("archived") is True,
+                             "tracks": list(dict.fromkeys(int(t) for t in row["tracks"]
+                                 if type(t) in (int, str) and str(t).isdigit() and int(t) > 0))}
+                     for i, row in (raw.get("tags") or {}).items()
+                     if str(i).isdigit() and int(i) > 0 and isinstance(row, dict)
+                     and isinstance(row.get("name"), str) and isinstance(row.get("tracks"), list)} \
+            if self.tags_loaded else {}
+        self._track_tags = None
         settings = response.get("settings") if isinstance(response.get("settings"), dict) else {}
         self.artwork_server = str(settings.get("artwork_server") or ARTWORK_SERVER).rstrip("/")
         status = response.get("status") if isinstance(response.get("status"), dict) else {}
@@ -265,6 +274,8 @@ class Library:
             fields = ("name", "tracks", "type", "system_created", "description", "artwork_id", "sort")
             cached["library"]["playlists"] = {str(i): {k: row.get(k) for k in fields}
                                               for i, row in self.playlists.items()}
+        if self.tags_loaded:
+            cached["library"]["tags"] = {str(i): row for i, row in self.tags.items()}
         return cached
 
     # -- reading -------------------------------------------------------------
@@ -354,6 +365,7 @@ class Library:
             "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
                                         .get("artwork_id")),
             "tracks": tracks,
+            "tags_loaded": self.tags_loaded,
         }
 
     def track_view(self, track_id):
@@ -379,7 +391,18 @@ class Library:
             "format": FORMATS.get(text(track.get("type")).strip().lower(), ""),
             "artwork_id": number(track.get("artwork_id")),
             "rating": number(track.get("rating")),
+            "tags": self.track_tags(track_id),
         }
+
+    def track_tags(self, track_id):
+        if self._track_tags is None:
+            index = {}
+            for i, tag in self.tags.items():
+                for t in tag["tracks"]:
+                    index.setdefault(t, []).append({"id": str(i), "name": tag["name"],
+                                                   "archived": tag["archived"]})
+            self._track_tags = index
+        return self._track_tags.get(track_id, [])
 
     def albums_view(self):
         return [self.album_view(i) for i in self.album_ids()]
@@ -549,7 +572,9 @@ class Library:
                             seen.add(track_id)
                             rows.append((track_id, album_id))
                 self._browse_tracks = rows
-            groups = {}
+            groups = {str(i): {"key": str(i), "label": tag["name"], "image": "",
+                              "archived": tag["archived"], "ids": []}
+                      for i, tag in self.tags.items()} if kind == "tags" else {}
             for pair in self._browse_tracks:
                 track_id, album_id = pair
                 track = self.tracks[track_id]
@@ -559,6 +584,8 @@ class Library:
                     keys = list(dict.fromkeys(str(e["artist_id"]) for e in self.composer_entries(track)))
                 elif kind == "genres":
                     keys = stored_genres(track)
+                elif kind == "tags":
+                    keys = [tag["id"] for tag in self.track_tags(track_id)]
                 else:
                     year = number(track.get("year")) or number(self.albums[album_id].get("year"))
                     keys = [str(year // 10 * 10)] if kind == "decades" and year > 0 else [] if kind == "decades" else [str(year)]
@@ -580,7 +607,7 @@ class Library:
         Release years use the track year, with the album year as fallback, as track
         search does. Missing years get their own group, sorted after known years.
         """
-        if kind not in ("track-artists", "composers", "genres", "years", "decades"):
+        if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags"):
             raise LibraryError("Choose track artists, composers, genres, release years or decades.")
         groups = self._browse_index(kind)
         words = fold(query).split()
@@ -600,7 +627,8 @@ class Library:
         else:
             found.sort(key=lambda g: (fold(g["label"]), g["key"]), reverse=sort == "za")
         offset = min(offset, max(0, (len(found) - 1) // limit * limit))
-        return {"groups": [{"key": g["key"], "label": g["label"], "image": g["image"], "tracks": len(g["ids"]), "albums": g["albums"]}
+        return {"groups": [{"key": g["key"], "label": g["label"], "image": g["image"], "tracks": len(g["ids"]), "albums": g["albums"],
+                            **({"archived": g["archived"]} if kind == "tags" else {})}
                            for g in found[offset:offset + limit]],
                 "total": len(found), "count": len(groups), "offset": offset}
 

@@ -894,6 +894,33 @@ class ClientTests(unittest.TestCase):
         finally:
             mock_ibroadcast.STATE["tracks"] = original
 
+    def test_native_tag_create_assign_rename_delete_are_read_back_and_leave_music_unchanged(self):
+        studio = self.connect()
+        original = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        tags_before = copy.deepcopy(mock_ibroadcast.STATE["tags"])
+        try:
+            result = studio.tags.save({"approved": True, "action": "create", "name": "Listen later"})
+            self.assertNotIn("albums", self.wait_job(studio, result["job"]))
+            tag = studio.tags.catalogue()["tags"][0]
+            selection = studio.tags.selection(["72"])
+            result = studio.tags.save({"approved": True, "action": "change", "target": selection["target"],
+                "before": selection["before"], "changes": [{"id": tag["id"], "before": tag["before"], "action": "add"}]})
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            self.assertEqual(studio.browse("tags", tag["id"])["album_ids"], ["72"])
+            self.assertEqual(studio.album_details(["72"])[0]["tracks"][0]["tags"][0]["name"], "Listen later")
+            tag = studio.tags.catalogue(tag_id=tag["id"])
+            result = studio.tags.save({"approved": True, "action": "rename", "id": tag["id"], "before": tag["before"], "name": "On Sunday"})
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            tag = studio.tags.catalogue(tag_id=tag["id"])
+            result = studio.tags.save({"approved": True, "action": "delete", "id": tag["id"], "before": tag["before"]})
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            self.assertEqual(studio.tags.catalogue()["tags"], [])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"], original)
+            self.assertEqual([w["mode"] for w in mock_ibroadcast.STATE["writes"]],
+                             ["createtag", "tagtracks", "updatetag", "deletetags"])
+        finally:
+            mock_ibroadcast.STATE["tags"] = tags_before
+
     def test_selected_album_trash_accepts_different_artists_and_keeps_unselected_albums(self):
         studio = self.connect()
         body = {"approved": True, "combine_sets": False, "albums": [

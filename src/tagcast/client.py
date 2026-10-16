@@ -39,6 +39,7 @@ from .library import (
 from .queue_sync import QUEUE_SCOPES, QueueSync
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
+from .tags import Tags
 from .updates import UpdateChecker
 
 log = logging.getLogger("tagcast")
@@ -54,7 +55,8 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
 MAX_TRASH = 500  # tracks per trash request
-NO_RETRY = {"create_artist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token", "trash"}  # Never repeat an ambiguous collection/trash mutation or one-use token request.
+NO_RETRY = {"create_artist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token", "trash",
+            "createtag", "updatetag", "deletetags", "tagtracks"}  # Never repeat ambiguous collection/tag/trash mutations or one-use tokens.
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
            "fanart_api_key": "FANART_API_KEY"}
@@ -296,6 +298,7 @@ class Studio:
         self.library_user = None
         self.premium = False
         self.collections = Collections(self)
+        self.tags = Tags(self)
         self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
         self.downloads = 0  # library downloads started so far; numbers each one
@@ -709,11 +712,13 @@ class Studio:
             offset, limit = int(offset), int(limit)
         except (TypeError, ValueError):
             raise ApiError("Choose a valid browse page.") from None
-        if kind not in ("track-artists", "composers", "genres", "years", "decades") or sort not in ("az", "za", "count") \
+        if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags") or sort not in ("az", "za", "count") \
                 or len(query) > 200 or offset < 0 or limit not in (24, 50, 100, 200) \
                 or (key is not None and (not isinstance(key, str) or len(key) > 500)):
             raise ApiError("Choose a valid group, page and a search of at most 200 characters.")
         library, _ = self._current(self._require_client())
+        if kind == "tags" and not library.tags_loaded:
+            _, library = self.tags.library()
         return library.browse(kind, key, query, offset, limit, sort)
 
     def record_play(self, body):

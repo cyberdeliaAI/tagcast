@@ -3,6 +3,11 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  tags: {title: "Tags", scope: "#tag-dialog", steps: [
+    ["Your own labels", "iBroadcast tags are separate from genres. On an album, changes apply to its tracks, including every disc of the displayed set; track controls affect only that track. The selection count shows partial assignments.", ["#tag-dialog-content"]],
+    ["Choose changes", "Keep as is preserves existing assignments. Add applies the label to the chosen tracks; Remove unassigns it. Choices survive tag search and paging. Archived tags cannot be added here because they may hide music.", ["#tag-choices", "#tag-dialog-content"]],
+    ["Review and confirm", "Review tag changes before saving. New tag creates an empty label to assign afterwards. Rename and Delete affect the label throughout iBroadcast. Deleting a label keeps your music. Every write is checked and read back; there is no automatic retry or metadata Undo.", ["#tag-review", "#tag-dialog-content"]],
+  ]},
   "duplicate-cleanup": {title: "Suggested duplicate copies", scope: "#duplicate-cleanup", steps: [
     ["Analyse all duplicate albums", "Analyse all albums applies the album page's Select suggested copies rules across your entire library, regardless of search or pagination. It reads stored metadata and prepares a local draft; it does not move tracks.", ["#duplicate-cleanup-preview"]],
     ["Compare and adjust", "Prefer FLAC over MP3, then the newest upload in the same format. Uncertain copies remain. Review each repeated position, including differing titles. Uncheck an album or an individual proposed copy to keep it.", ["#duplicate-cleanup-content .cleanup-albums"]],
@@ -95,6 +100,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
+  if ($("#tag-dialog").open) return "tags";
   for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
     if ($(`#${id}`).open) return context;
   }
@@ -105,6 +111,11 @@ function currentHelpContext() {
 
 function helpContentFor(context) {
   if (context !== "browse") return HELP_TOPICS[context];
+  if (browseView.kind === "tags") return {title: "Tags", scope: "#browse-page", steps: [
+    ["Your iBroadcast labels", "Tags are custom labels attached to tracks. These cards include empty tags and show the matching album and track totals. Archived labels are marked.", ["#browse-list", "#browse-subtitle"]],
+    ["Find albums", "Open a tag to see albums with at least one tagged track, then open an album to manage its tags or a single track's tags. Search, sort and page without loading every track into the browser.", ["#browse-toolbar", "#browse-list"]],
+    ["Manage labels", "New tag creates an empty label after review. Inside a tag, Rename and Delete affect that label throughout iBroadcast. Deleting a tag keeps your tracks. Tags can be hidden or reordered in Settings like other optional shortcuts.", ["#browse-tag-actions"]],
+  ]};
   const detail = browseView.key !== null, decades = browseView.kind === "decades";
   const title = detail ? browseView.label || browseKinds[browseView.kind].label : browseKinds[browseView.kind].label;
   const explanation = browseKinds[browseView.kind].subtitle;

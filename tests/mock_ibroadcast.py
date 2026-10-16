@@ -32,6 +32,7 @@ STATE = {
     "play_requests": [],
     "recent_tracks": [],
     "playlists": {},
+    "tags": {},
     "premium": False,
     "polls": 0,
     "downloads": 0,  # full library downloads
@@ -78,7 +79,7 @@ def library():
                         "playlists": {"map": {"name": 0, "type": 1, "tracks": 2, "system_created": 3, "description": 4},
                                       "777": ["Recently Played", "recently-played", STATE["recent_tracks"][:], True, ""],
                                       **{str(i): [p["name"], None, p["tracks"], False, p.get("description", "")] for i, p in STATE["playlists"].items()}},
-                        "tags": {}}}
+                        "tags": {str(i): row for i, row in STATE["tags"].items()}}}
 
 
 def lastmodified():
@@ -200,7 +201,8 @@ class H(BaseHTTPRequestHandler):
             if mode == "update_album" and STATE["combine_sets"]:
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode in ("update_album", "update_track", "create_artist", "set_artwork",
-                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "createplaylist", "appendplaylist", "updateplaylist", "deleteplaylist"):
+                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "createplaylist", "appendplaylist", "updateplaylist", "deleteplaylist",
+                        "createtag", "updatetag", "deletetags", "tagtracks"):
                 if STATE["busy"]:
                     STATE["busy"] -= 1
                     return self.send(503, {"message": "busy"})
@@ -217,6 +219,22 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, {"result": True})
             if mode == "playqueue_token":
                 return self.send(200, {"result": True, "token": "one-use-secret"})
+            if mode == "createtag":
+                i = max([1000, *STATE["tags"]]) + 1
+                STATE["tags"][i] = {"name": body["tagname"], "archived": False, "tracks": []}
+                return self.send(200, {"result": True, "id": i})
+            if mode == "updatetag":
+                STATE["tags"][body["tag_id"]]["name"] = body["name"]
+                return self.send(200, {"result": True})
+            if mode == "deletetags":
+                for i in body["tags"]:
+                    del STATE["tags"][i]
+                return self.send(200, {"result": True})
+            if mode == "tagtracks":
+                tag = STATE["tags"][body["tagid"]]
+                previous = set(tag["tracks"])
+                tag["tracks"] = sorted(previous - set(body["tracks"]) if body["untag"] else previous | set(body["tracks"]))
+                return self.send(200, {"result": True})
             if mode == "ratealbum":
                 assert type(body["album_id"]) is int
                 STATE["albums"][body["album_id"]]["rating"] = body["rating"]

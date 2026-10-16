@@ -160,6 +160,7 @@ Tagcast starts on **Album artists**. Choose an artist to see their albums, or us
 | **Album artists** | Search artists, see their photos and album counts, or filter those without an image. Sort by name or choose **Random** for a shuffled list; its order stays the same while searching, paging and going Back. Choose a name sort and then Random again to reshuffle. Open an artist's albums and select several of their albums to edit together. |
 | **Track artists / Composers** | Find albums featuring a performer or composer, with album and track counts. Stored iBroadcast artist IDs determine membership. |
 | **Genres** | Browse main and additional genres. Click a genre on an album to open the same group. Combined labels such as `Pop;Rock` stay as stored until you choose to split them in the editor or reviewed cleanup. |
+| **Tags** | Browse custom iBroadcast labels, including empty tags. Manage assignments on albums or individual tracks, or create, rename and delete labels after review. |
 | **Release year** | Browse albums by track year, falling back to album year. Tracks without either appear under **Unknown year**. |
 | **Decades** | Choose a period such as **1980s** for a random selection of albums. **Surprise me again** gives you another selection; use the page-size control to choose how many to show. |
 | **Tracks** | Search every track by title, artist, album or composer. Case and accents do not matter: `bjork` finds Björk. Searches return at most 1,000 results. Open a result's album or play from that track. |
@@ -178,6 +179,29 @@ shortcut does not disable its feature; Recently played and 1001 Albums still req
 their separate opt-in settings.
 
 The **Theme** button opens one menu with **Appearance** (Auto, Light or Dark) and **Colour**: **Forest** (the original green), **Ocean**, **Warm** and **iBroadcast inspired**. Colour and light/dark appearance are independent and remembered in this browser. The palette also applies to the sidebar, player and fullscreen Now playing. Switching colours keeps playback running and makes no library requests.
+
+### Your own iBroadcast tags
+
+**Tags** in the sidebar shows your custom iBroadcast labels, including empty tags.
+Open one to browse albums containing at least one tagged track. Search, sort and
+page through tags as in the other overviews. Settings can hide or reorder this shortcut.
+
+On an album, choose **Manage tags…**, or use **Tags…** below a track's artist.
+Album changes apply to all its tracks, including every disc of the displayed set.
+The counts show partial assignments. **Keep as is** preserves them; choose
+**Add to all tracks** or **Remove from all tracks** only for labels you want to change.
+Search and paging retain your choices. **Review tag changes** lists the exact actions
+before you confirm. Assignments are limited to 500 tracks / 20 tags per review.
+
+**New tag…** creates an empty label after review; assign it to music afterwards.
+Inside a tag's overview, **Rename tag…** and **Delete tag…** review changes to that
+label throughout iBroadcast, including hidden and trashed memberships. Deleting a
+tag keeps the music. Archived labels are marked; adding them is blocked because
+they can hide music. Manage archiving in iBroadcast itself.
+
+Tags remain separate from genres. Writes are checked against current data and
+read back, without automatic retry or metadata Undo. Playback stays unchanged.
+Existing assignments on other albums and untouched labels are preserved.
 
 ### Help and guided tours
 
@@ -779,7 +803,7 @@ As an example, a tested library of roughly **286,000 tracks** required a full do
 
 Built on [ibroadcast-python](https://github.com/ctrueden/ibroadcast-python) for OAuth device-code and PKCE browser-redirect flows, token refresh and the request format. The requested scopes are `user.library:read`, `user.library:write` and `user.account:read`.
 
-The [public API reference](https://help.ibroadcast.com/en/developer/api) documents library reads and ratings; `trash` is supported by ibroadcast-python. Metadata modes (`update_album`, `update_track`, `create_artist`) and artwork modes (`set_artwork`, `set_artist_artwork`, `get_artwork` and artwork upload) partly follow the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. Year and disc are sent as strings and track number as `track_no`, matching the web editor. These write modes are not all publicly documented; server refusals and partial results are reported explicitly.
+The [public API reference](https://help.ibroadcast.com/en/developer/api) documents library reads, ratings and native tags (`createtag`, `tagtracks`, `updatetag`, `deletetags`); `trash` is supported by ibroadcast-python. Metadata modes (`update_album`, `update_track`, `create_artist`) and artwork modes (`set_artwork`, `set_artist_artwork`, `get_artwork` and artwork upload) partly follow the official [web editor script](https://media.ibroadcast.com/js/iBroadcastLibraryEditor.js), inspected on 2026-10-04. Year and disc are sent as strings and track number as `track_no`, matching the web editor. These write modes are not all publicly documented; server refusals and partial results are reported explicitly.
 
 During Tagcast's app review, iBroadcast Support confirmed that these metadata and
 artwork operations are acceptable for third-party apps and that the existing

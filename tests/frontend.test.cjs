@@ -59,7 +59,7 @@ function page({hash = "", storage = {}, server = true} = {}) {
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
@@ -303,6 +303,104 @@ function livePage() {
     state.albums = [...state.details.values()].map(summarize); state.mode = "live"`);
   return p;
 }
+
+function tagFixture() {
+  const rows = [{id:"10",name:"<Listen & later>",archived:false,tracks:2,total_tracks:2,before:"tag-ten"},
+    {id:"20",name:"Week;end",archived:false,tracks:0,total_tracks:0,before:"tag-twenty"},
+    {id:"30",name:"Hidden",archived:true,tracks:0,total_tracks:0,before:"tag-thirty"}];
+  return {rows, selection:{target:{albums:["1"],track:null},label:"Wish You Were Here",tracks:5,before:"target-before",
+    tags:[{...rows[0],selected:2}]}};
+}
+
+test("native tags open read-only, preserve partial assignments and review explicit changes across searches", async () => {
+  const p = livePage(); await settle(); const fixture = tagFixture();
+  p.run('state.screen="albums"; playTracks(state.details.get("3"))');
+  const queue = p.json("player.queue"), audio = p.nodes.get("#audio").src, history = p.history.length;
+  const posts = [];
+  p.setFetch((url, options) => {
+    if (url.startsWith("/api/tags/selection?")) return {ok:true,json:async()=>fixture.selection};
+    if (url.startsWith("/api/tags?")) return {ok:true,json:async()=>({tags:fixture.rows,total:3,offset:0})};
+    if (url === "/api/tags/save") { posts.push(JSON.parse(options.body)); return {ok:true,json:async()=>({job:"tags",error:"",sent:1})}; }
+    if (url === "/api/jobs/tags") return {ok:true,json:async()=>({state:"done",results:[{id:"20",status:"saved"}]})};
+    throw Error(url);
+  });
+  await p.run('openTrackTags("1")');
+  assert.equal(posts.length, 0);
+  assert.match(p.nodes.get("#tag-choices").innerHTML, /&lt;Listen &amp; later&gt;.*2 of 5 tracks/);
+  assert.doesNotMatch(p.nodes.get("#tag-choices").innerHTML, /<Listen & later>/);
+  assert.equal(p.nodes.get("#tag-review").disabled, true);
+  await p.change({matches:s=>s==="[data-tag-change]",dataset:{tagChange:"20"},value:"add"});
+  p.run('tagDraft.query="other page"'); await p.run("loadTagChoices()");
+  assert.equal(p.run("tagDraft.changes.size"), 1);
+  p.run("reviewTags()");
+  assert.equal(posts.length, 0);
+  assert.match(p.nodes.get("#tag-dialog-content").innerHTML, /Week;end.*5 tracks/);
+  assert.deepEqual(p.json("tagDraft.body.changes"), [{id:"20",before:"tag-twenty",action:"add"}]);
+  assert.equal(p.run('document.activeElement === $("#tag-back")'), true);
+  await p.run("saveTags()");
+  assert.equal(posts.length, 1); assert.equal(posts[0].approved, true);
+  assert.deepEqual(posts[0].target, {albums:["1"],track:null});
+  assert.match(p.nodes.get("#tag-dialog-content").innerHTML, /saved and confirmed/);
+  assert.equal(p.run("state.details.size"), 0, "Tag changes invalidate loaded tag metadata");
+  assert.deepEqual(p.json("player.queue"), queue); assert.equal(p.nodes.get("#audio").src, audio);
+  assert.equal(p.history.length, history);
+  assert.equal(p.run("state.history.length"), 0, "Tags do not create metadata Undo entries");
+});
+
+test("tag names remain literal, Keep editing retains drafts and deletion reviews the global scope", async () => {
+  const p = livePage(); await settle(); const fixture = tagFixture();
+  p.setFetch(()=>({ok:true,json:async()=>fixture.rows[0]}));
+  await p.run('openTagAction("create")');
+  p.nodes.get("#tag-name").value="A; B <new>"; p.run("reviewTags()");
+  assert.equal(p.run("tagDraft.body.name"), "A; B <new>");
+  assert.match(p.nodes.get("#tag-dialog-content").innerHTML, /A; B &lt;new&gt;/);
+  await p.click({"#tag-back":{}});
+  assert.match(p.nodes.get("#tag-dialog-content").innerHTML, /value="A; B &lt;new&gt;"/);
+  await p.run('openTagAction("delete", "10")');
+  assert.match(p.nodes.get("#tag-dialog-content").innerHTML, /including hidden or trashed tracks.*music is kept/);
+  p.run("reviewTags()");
+  assert.deepEqual(p.json("tagDraft.body"), {action:"delete",name:"",id:"10",before:"tag-ten"});
+  assert.equal(p.requests.filter(r=>r.options?.method==="POST").length, 0);
+});
+
+test("late tag reads cannot cross library replacement and uncertain saves cannot be retried", async () => {
+  const p = livePage(); await settle(); let resolve; const fixture = tagFixture();
+  p.setFetch(()=>new Promise(done=>{resolve=done;}));
+  const opening = p.run('openTrackTags("1", "101")'); await settle();
+  assert.match(p.requests.at(-1).url, /track=101/);
+  p.run('useLocal(demoLibrary(), "demo")');
+  resolve({ok:true,json:async()=>fixture.selection}); await opening;
+  assert.equal(p.nodes.get("#tag-dialog").open, false);
+  assert.equal(p.run("tagDraft.selection"), null);
+  p.run('state.mode="live"; state.screen="albums"');
+  p.setFetch((url)=>({ok:true,json:async()=>url.startsWith("/api/tags/selection") ? fixture.selection : url.startsWith("/api/tags?")
+    ? {tags:fixture.rows,total:3,offset:0} : url==="/api/tags/save" ? {job:"uncertain",error:"",sent:1}
+      : {state:"done",results:[{id:"20",status:"unverified"}]}}));
+  await p.run('openTrackTags("1")');
+  await p.change({matches:s=>s==="[data-tag-change]",dataset:{tagChange:"20"},value:"add"});
+  p.run("reviewTags()"); await p.run("saveTags()");
+  assert.match(p.nodes.get("#tag-dialog-content").innerHTML, /could not be confirmed/);
+  await p.run("saveTags()");
+  assert.equal(p.requests.filter(r=>r.url==="/api/tags/save").length, 1);
+});
+
+test("Tags has its own route and contextual help; album tag chips never change genres", async () => {
+  const p = livePage(); await settle();
+  p.setFetch((url)=>({ok:true,json:async()=>url.includes("key=10") ? {group:{key:"10",label:"Listen later"},album_ids:["1"]}
+    : {groups:[{key:"10",label:"Listen later",image:"",tracks:2,albums:1},{key:"20",label:"Empty",image:"",tracks:0,albums:0}],total:2,offset:0}}));
+  await p.run('showBrowse("tags")'); await settle();
+  assert.equal(p.location.hash, "#/tags");
+  assert.match(p.nodes.get("#browse-list").innerHTML, /Listen later.*Empty/);
+  assert.equal(p.nodes.get("#browse-tag-actions").hidden, false);
+  await p.run('showBrowse("tags", "10", {label:"Listen later"})'); await settle();
+  assert.equal(p.location.hash, "#/tags/10");
+  assert.equal(p.run("browseAlbums().length"), 1);
+  assert.equal(p.nodes.get("#browse-tag-delete").hidden, false);
+  assert.match(p.run('JSON.stringify(helpContentFor("browse"))'), /Tags.*labels/);
+  assert.match(p.run('albumTagPanel({id:"1",tracks:[{tags:[{id:"10",name:"Listen later"}]},{tags:[]}]})'), /data-browse-kind="tags".*1\/2 tracks/);
+  assert.match(p.run('albumTagPanel({id:"1",tags_loaded:false,tracks:[{tags:[]}]})'), /Open Manage tags to load labels/);
+  assert.equal(p.run('SIDEBAR_ITEMS.some(i=>i[0]==="show-tags" && !i[2])'), true);
+});
 
 test("bulk and single-album suggestions share the same reviewed contract", async () => {
   const p = livePage(); await settle();
