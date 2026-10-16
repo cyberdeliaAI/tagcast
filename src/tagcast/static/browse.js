@@ -7,6 +7,7 @@ const browseKinds = {
   "track-artists": {label: "Track artists", noun: "track artists", singular: "track artist", subtitle: "Explore the performers credited on your tracks. Open a card to see their albums."},
   composers: {label: "Composers", noun: "composers", singular: "composer", subtitle: "Explore composer credits. Open a card to see their albums."},
   genres: {label: "Genres", noun: "genres", singular: "genre", subtitle: "Explore main and additional genres. Combined labels such as Pop;Rock stay together as stored."},
+  tags: {label: "Tags", noun: "tags", singular: "tag", subtitle: "Your own iBroadcast labels, separate from genres. Open a tag to find matching albums. Manage assignments on an album or track."},
   years: {label: "Release year", noun: "release years", singular: "release year", subtitle: "Explore tracks by release year. The track year takes precedence, with the album year as fallback. Missing years appear under Unknown year."},
 };
 // Brief editorial sketches, independent of the albums in a user's collection.
@@ -64,6 +65,7 @@ function localBrowse() {
     if (kind === "track-artists") entries = t.performers?.length ? t.performers.map(p => [String(p.id), p.name]) : [[String(t.artist_id ?? `name:${t.artist}`), t.artist]];
     else if (kind === "composers") entries = (t.composers || []).map((name, i) => [String(t.composer_ids?.[i] ?? `name:${name}`), name]);
     else if (kind === "genres") entries = trackGenres(t).map(name => [name.toLocaleLowerCase(), name]);
+    else if (kind === "tags") entries = (t.tags || []).map(tag => [tag.id, tag.name]);
     else if (kind === "decades") {
       const year = Number(t.year || a.year) || 0, decade = Math.floor(year / 10) * 10;
       entries = year > 0 ? [[String(decade), `${decade}s`]] : [];
@@ -138,7 +140,7 @@ function browseCard(g) {
   const image = g.image ? `<img src="${escapeHtml(g.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
   return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="Open albums for ${escapeHtml(g.label)}">
     ${people ? `<span class="artist-card-photo">${image}<span>${escapeHtml(initials(g.label))}</span></span>` : ""}
-    <strong>${escapeHtml(g.label)}</strong><span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
+    <strong>${escapeHtml(g.label)}</strong>${g.archived ? '<small class="muted">Archived in iBroadcast</small>' : ""}<span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
 }
 
 function browseAlbumCard(a) {
@@ -168,6 +170,9 @@ function renderBrowse() {
   if (state.screen !== "browse") return;
   if (!state.loading && !browseView.loading && (browseView.details !== state.details || !browseView.loaded && !browseView.error)) { loadBrowse(); return; }
   const config = browseKinds[browseView.kind], detail = browseView.key !== null;
+  $("#browse-tag-actions").hidden = browseView.kind !== "tags" || !live();
+  $("#browse-tag-rename").hidden = !detail;
+  $("#browse-tag-delete").hidden = !detail;
   const decades = browseView.kind === "decades", surprise = detail && decades;
   $("#browse-title").textContent = detail ? browseView.label || "Albums" : `${config.label}.`;
   $("#breadcrumb").textContent = detail ? `${config.label} / ${browseView.label || "Albums"}` : config.label;

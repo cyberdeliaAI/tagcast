@@ -6,12 +6,12 @@
 // search, filter, sort and page number. Dialogs get no entry: Back never closes an editor.
 
 const nav = {ready: false, restoring: false, pending: null};
-const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#duplicate-cleanup", "#playlist-dialog"];
+const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#duplicate-cleanup", "#playlist-dialog", "#tag-dialog"];
 
 const SIDEBAR_ITEMS = [
   ["show-artists", "Album artists", true], ["all-albums", "Albums", true],
   ["show-track-artists", "Track artists"], ["show-composers", "Composers"],
-  ["show-genres", "Genres"], ["show-years", "Release year"], ["show-decades", "Decades"],
+  ["show-genres", "Genres"], ["show-tags", "Tags"], ["show-years", "Release year"], ["show-decades", "Decades"],
   ["show-tracks", "Tracks"], ["show-favourites", "Favourites"], ["show-playlists", "Playlists"],
   ["show-album-favourites", "Album favourites"], ["show-recently-played", "Recently played"],
   ["show-album-guide", "1001 Albums"], ["show-overview", "Overview"], ["show-history", "Change history", true],

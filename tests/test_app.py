@@ -78,6 +78,9 @@ class StartTests(unittest.TestCase):
         studio.duplicate_cleanup.start.return_value = {"state": "running"}
         studio.duplicate_cleanup.cancel.return_value = {"state": "stopped"}
         studio.trash_albums.return_value = {"results": [], "job": "check"}
+        studio.tags.catalogue.return_value = {"tags": [], "total": 0, "offset": 0}
+        studio.tags.selection.return_value = {"tags": [], "tracks": 1, "before": "snapshot"}
+        studio.tags.save.return_value = {"job": "check", "error": "", "sent": 1}
         studio.album_guide.view.return_value = {"enabled": True, "state": "empty"}
         studio.album_guide.analyse.return_value = {"enabled": True, "state": "ready"}
         studio.album_guide.link.return_value = {"enabled": True, "state": "ready"}
@@ -102,6 +105,7 @@ class StartTests(unittest.TestCase):
 
         try:
             for path, action in [("/api/playlist", studio.collections.save_playlist),
+                                 ("/api/tags/save", studio.tags.save),
                                  ("/api/album-rating", studio.collections.rate_album),
                                  ("/api/queue-tracks", studio.collections.queue_tracks),
                                  ("/api/config/default", studio.use_default_client),
@@ -113,7 +117,7 @@ class StartTests(unittest.TestCase):
                 action.assert_not_called()
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
                 action.assert_called_once()
-            for path in ("/api/playlists", "/api/queue-sync", "/api/album-guide"):
+            for path in ("/api/playlists", "/api/queue-sync", "/api/album-guide", "/api/tags", "/api/tags/selection?albums=1&track=2"):
                 self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)

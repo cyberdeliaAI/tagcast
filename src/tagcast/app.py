@@ -141,6 +141,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.queue_sync.view)
         elif url.path == "/api/playlists":
             self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0")))
+        elif url.path == "/api/tags":
+            self._run(lambda: self.studio.tags.catalogue(query.get("q"), query.get("offset", "0"), query.get("id")))
+        elif url.path == "/api/tags/selection":
+            self._run(lambda: self.studio.tags.selection((query.get("albums") or "").split(","), query.get("track")))
         elif url.path == "/api/favourites":
             self._run(lambda: self.studio.favourites(query.get("q"), query.get("offset", "0"),
                                                    query.get("limit", "50")))
@@ -200,6 +204,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/artwork/undo": self.studio.undo_artwork,
             "/api/trash": self.studio.trash_tracks,
             "/api/trash/albums": self.studio.trash_albums,
+            "/api/tags/save": self.studio.tags.save,
             "/api/duplicate-cleanup/preview": lambda b: self.studio.duplicate_cleanup.prepare(),
             "/api/duplicate-cleanup/start": lambda b: self.studio.duplicate_cleanup.start(b.get("id"), b.get("excluded"), b.get("approved")),
             "/api/duplicate-cleanup/stop": lambda b: self.studio.duplicate_cleanup.cancel(b.get("id")),

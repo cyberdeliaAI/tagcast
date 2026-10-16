@@ -36,12 +36,14 @@ The application consists of a Python server and a plain JavaScript frontend.
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
 - `src/tagcast/collections.py`: native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
+- `src/tagcast/tags.py`: native tag browsing and reviewed creation, rename, deletion
+  and per-album/track assignments, separate from genres and metadata saves.
 - `src/tagcast/queue_sync.py`: opt-in server-side WebSocket bridge; extra OAuth queue
   scopes, sanitized account sessions, five-second reconnect pacing and controller roles.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
-- `src/tagcast/static/`: HTML, CSS, SVG and nineteen JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty JavaScript files:
   `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `album.js`,
-  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
+  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -188,6 +190,24 @@ and preserve a valid script order in `index.html`.
   in browse, search and links independently of composers and other credit roles.
 - Composers use `artists_additional` with type `composer`; preserve other
   credits. An artist marked `trashed` can still be a valid album artist.
+- Native iBroadcast tags are separate from genres. Cache only tag names, track IDs
+  and archived flags; upgrade caches missing tags with one explicit feature read.
+  Browse Tags by ID, including empty tags and archived labels, using the same active
+  membership and merged album counts as other browse groups. Never send complete tag
+  track lists to the browser. Album/track tag management reads compact counts and
+  prepares explicit add/remove operations; Keep as is preserves partial assignments.
+  Scope assignments to one complete displayed album/set or one of its tracks, at most
+  500 tracks / 20 tag operations, checking account, full album membership, tag names,
+  archived flags and assignments before sending. Preserve all outside memberships.
+  Archived tags cannot be added here because they can hide music; do not archive or
+  unarchive automatically. Create makes an empty label; rename/delete explicitly review
+  their global scope, including hidden/trashed memberships. Delete only the tag, never
+  music. Use documented createtag/tagtracks/updatetag/deletetags payloads, serialize
+  against other saves, stop subsequent requests after errors and read back all writes.
+  Never retry ambiguous tag writes or create metadata Undo entries. Keep partial,
+  not-sent and unconfirmed results distinct. Tag dialogs preserve playback, history,
+  focus and scroll, reject late reads/writes after library replacement, and have local
+  Help. Invalidate loaded tag metadata and browse indexes after checked writes.
 - With `Combine Multi-Disc Album Sets` enabled, album changes are blocked;
   track changes can proceed. The cache must match this setting.
 - With that setting off, the album lists and the album page show the discs of a
