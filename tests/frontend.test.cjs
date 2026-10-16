@@ -304,6 +304,185 @@ function livePage() {
   return p;
 }
 
+test("bulk and single-album suggestions share the same reviewed contract", async () => {
+  const p = livePage(); await settle();
+  const cases = JSON.parse(readFileSync(path.join(__dirname, "fixtures/duplicate_suggestions.json"), "utf8"));
+  for (const example of cases) {
+    const tracks = example.tracks.map((t, i) => ({id: String(i + 1), album_id: "1", track: 1,
+      title: "Song", artist: "Artist", length: 180, format: "FLAC", uploaded_at: "2022-01-01", ...t}));
+    const result = p.json(`(() => {const s = trashSuggestion([{tracks: ${JSON.stringify(tracks)}}]); return {remove: s.remove, choices: [...s.choices.values()], manual: [...s.choices].filter(([, t]) => t.choice === "manual").map(([id]) => id)};})()`);
+    assert.deepEqual(result.remove, example.remove, example.name);
+    assert.deepEqual(result.manual, example.manual, example.name);
+    assert.deepEqual(result.choices, example.choices, example.name);
+  }
+});
+
+function duplicatePreview() {
+  const tracks = [
+    {id: "100", title: '<Song "edit">', artist: "Artist", length: 180, format: "FLAC", uploaded_at: "2022-01-01", choice: "trash", status: "pending", reason: "Older upload in this format. Titles differ; compare versions before confirming."},
+    {id: "101", title: "Song (Edit)", artist: "Artist", length: 180, format: "FLAC", uploaded_at: "2026-01-01", choice: "keep", status: "retained", reason: "Newest upload in this format."},
+  ];
+  return {id: "draft", state: "preview", error: "", excluded: [], scanned: 573, tracks: 1, manual: 3,
+    albums: 1, offset: 0, counts: {pending: 1}, batch_tracks: 200, batch_albums: 20,
+    groups: [{id: "1", album: "Album", artist: "Artist", positions: [{disc: 1, number: 1, tracks}]}],
+    selection: [{id: "100", group: "1"}]};
+}
+
+test("cleanup filters and a manual album selection hide random playback; card play stays explicit", async () => {
+  const p = livePage(); await settle();
+  for (const filter of ["genre", "year", "duplicates", "small", "combined", "cover", "edition"]) {
+    p.nodes.get("#filter").value = filter; p.run("render()");
+    assert.equal(p.nodes.get("#albums-random").hidden, true, filter);
+  }
+  p.nodes.get("#filter").value = "all"; p.run("render()");
+  assert.equal(p.nodes.get("#albums-random").hidden, false);
+  p.run('state.selected.add("1"); render()');
+  assert.equal(p.nodes.get("#albums-random").hidden, true);
+  const count = p.requests.length;
+  await p.nodes.get("#albums-random").emit("click");
+  assert.equal(p.requests.length, count);
+  p.run('state.selected.clear(); render()');
+  const source = p.location.hash, entries = p.history.length;
+  await p.click({"[data-card-play]": {dataset: {cardPlay: "1"}}});
+  assert.equal(p.run("String(player.album.id)"), "1");
+  assert.equal(p.run("player.index"), 0);
+  assert.equal(p.run("player.queue.length"), 5);
+  assert.equal(p.location.hash, source); assert.equal(p.history.length, entries);
+  assert.match(p.run('gridView(albumShelf())'), /album-card-actions.*data-card-play=/);
+  assert.match(p.run('listView(albumShelf())'), /data-card-play=/);
+  assert.match(p.run('browseAlbumCard(albumShelf()[0])'), /data-card-play=/);
+});
+
+test("direct album play loads only its discs and clearing the queue cancels a late response", async () => {
+  const p = livePage(); await settle();
+  const album = p.json('state.details.get("1")'); p.run('state.details.delete("1")');
+  let resolve;
+  const reads = [];
+  p.setFetch((url) => { reads.push(url); return new Promise(done => { resolve = done; }); });
+  const pending = p.run('playCardAlbum("1")'); await settle();
+  assert.deepEqual(reads, ["/api/albums?ids=1"]);
+  p.run("stopPlayer()"); resolve({ok:true, json:async()=>({albums:[album]})}); await pending;
+  assert.equal(p.run("player.queue.length"), 0);
+  assert.equal(p.nodes.get("#audio").src, undefined);
+});
+
+test("selected album trash reviews complete tracks, checks read-back and preserves unrelated playback", async () => {
+  const p = livePage(); await settle();
+  p.run('state.artist="Pink Floyd"; state.selected=new Set(["1","2"]); playTracks(state.details.get("3")); render()');
+  const audio = p.nodes.get("#audio").src, queue = p.json("player.queue");
+  const albumsAfter = p.json('state.albums.filter(a=>!["1","2"].includes(a.id))');
+  const rows = p.json('[...state.details.get("1").tracks,...state.details.get("2").tracks].map(t=>({kind:"track",id:t.id,label:t.title,status:"saved",fields:["trash"]}))');
+  const calls = [];
+  p.setFetch(async (url, options) => {
+    calls.push({url,body:options.body ? JSON.parse(options.body) : null});
+    return {ok:true,json:async()=>url === "/api/trash/albums" ? {job:"trash-albums",results:rows.map(t=>({...t,status:"sent"}))}
+      : {state:"done",results:rows,albums:albumsAfter}};
+  });
+  await p.run("reviewSelectedAlbumTrash()");
+  assert.equal(p.run('document.activeElement === $("#selected-trash-cancel")'), true);
+  assert.equal(calls.length, 0);
+  assert.match(p.nodes.get("#trash-content").innerHTML, /2 albums · 15 tracks/);
+  assert.match(p.nodes.get("#trash-content").innerHTML, /Wish You Were Here/);
+  const pending = p.run("trashSelectedAlbums()"); await settle(); p.flushTimers(2000); await pending;
+  assert.deepEqual(calls.map(c=>c.url), ["/api/trash/albums","/api/jobs/trash-albums"]);
+  assert.equal(calls[0].body.approved, true);
+  assert.equal(calls[0].body.albums.flatMap(a=>a.tracks).length, 15);
+  assert.equal(p.run("state.selected.size"), 0);
+  assert.equal(p.run("state.history[0].status"), "saved");
+  assert.equal(p.run("state.history[0].trash"), true);
+  assert.match(p.nodes.get("#selected-trash-status").textContent, /All selected albums confirmed/);
+  assert.equal(p.nodes.get("#audio").src, audio); assert.deepEqual(p.json("player.queue"), queue);
+});
+
+test("selected album batches bound complete sets without splitting a reviewed album", async () => {
+  const p = livePage(); await settle();
+  const sizes = p.json('selectedAlbumTrashBatches(Array.from({length:21},(_,i)=>({id:i,discs:[{tracks:Array(30).fill({id:i})}]}))).map(batch=>batch.length)');
+  assert.deepEqual(sizes, [16,5]);
+  const albums = p.json('selectedAlbumTrashBatches(Array.from({length:21},(_,i)=>({id:i,discs:[{tracks:[{id:i}]}]}))).map(batch=>batch.length)');
+  assert.deepEqual(albums, [20,1]);
+  assert.throws(()=>p.run('selectedAlbumTrashBatches([{discs:[{tracks:Array(501).fill({id:1})}]}])'), /more than 500 tracks/);
+});
+
+test("selected album trash stops after unconfirmed results and rejects late replies after library replacement", async () => {
+  const p = livePage(); await settle();
+  p.run('useLocal(Array.from({length:21},(_,i)=>({id:String(i+1),name:"Album "+i,artist:"A",year:1985,disc:1,tracks:[{id:String(i+100),title:"Song",artist:"A",track:1,genres:["Rock"]}]})),"demo"); state.mode="live"; state.artist="A"; state.selected=new Set(state.albums.map(a=>a.id))');
+  p.run("const selectedTrashFixture = [...state.details.values()].map(d=>structuredClone(d))");
+  await p.run("reviewSelectedAlbumTrash()");
+  const calls = [];
+  p.setFetch(async (url, options) => {
+    calls.push(url);
+    return {ok:true,json:async()=> options.body ? {job:"partial",results:[]}
+      : {state:"done",albums:p.json("state.albums"),results:p.json('selectedAlbumsTrash.groups.slice(0,20).flatMap(g=>g.discs.flatMap(d=>d.tracks.map(t=>({kind:"track",id:t.id,label:t.title,fields:["trash"],status:"unverified"}))))')}};
+  });
+  const pending = p.run("trashSelectedAlbums()"); await settle(); p.flushTimers(2000); await pending;
+  assert.deepEqual(calls, ["/api/trash/albums","/api/jobs/partial"]);
+  assert.match(p.nodes.get("#selected-trash-status").textContent, /could not be fully confirmed/);
+  assert.equal(p.run("state.selected.size"), 21);
+  p.run('$("#trash-review").close(); $("#results").close(); state.details = new Map(selectedTrashFixture.map(d=>[String(d.id),d]))');
+  await p.run("reviewSelectedAlbumTrash()");
+  let resolve;
+  p.setFetch(()=>new Promise(done=>{resolve=done;}));
+  const late = p.run("trashSelectedAlbums()"); await settle();
+  p.run('useLocal(demoLibrary(), "demo")');
+  resolve({ok:true,json:async()=>({job:"old",results:[]})}); await late;
+  assert.equal(p.run("selectedAlbumsTrash.groups"), null);
+  assert.equal(p.run("saving"), false);
+  assert.equal(p.nodes.get("#trash-review").open, false);
+});
+
+test("bulk duplicate cleanup opens read-only, analyses explicitly and requires adjustable review", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); $("#filter").value = "duplicates"; render()');
+  assert.equal(p.nodes.get("#duplicate-cleanup-open").hidden, false);
+  const source = p.nodes.get("#audio").src, queue = p.json("player.queue"), entries = p.history.length;
+  const data = duplicatePreview(), calls = [];
+  p.setFetch(async (url, options) => {
+    calls.push({url, body: options.body ? JSON.parse(options.body) : null});
+    return {ok: true, json: async () => url === "/api/duplicate-cleanup/preview" ? data
+      : url === "/api/duplicate-cleanup/start" ? {...data, state: "running"} : {state: "empty"}};
+  });
+  await p.nodes.get("#duplicate-cleanup-open").emit("click");
+  assert.deepEqual(calls.map(c => c.url), ["/api/duplicate-cleanup?offset=0&limit=10"]);
+  await p.run('duplicateCleanupAction("preview")');
+  assert.match(p.nodes.get("#duplicate-cleanup-content").innerHTML, /573 duplicate albums/);
+  assert.match(p.nodes.get("#duplicate-cleanup-content").innerHTML, /&lt;Song &quot;edit&quot;&gt;/);
+  assert.match(p.nodes.get("#duplicate-cleanup-content").innerHTML, /Titles differ/);
+  assert.equal(p.nodes.get("#duplicate-cleanup-start").disabled, true);
+  await p.run('duplicateCleanupAction("start")');
+  assert.equal(calls.length, 2);
+  await p.nodes.get("#duplicate-cleanup").emit("change", {target: {dataset: {duplicateCopy: "100"}, checked: false}});
+  assert.deepEqual(p.json("[...duplicateCleanupView.excluded]"), ["100"]);
+  assert.match(p.nodes.get("#duplicate-cleanup-selected").textContent, /0 copies/);
+  await p.nodes.get("#duplicate-cleanup").emit("change", {target: {dataset: {duplicateAlbum: "1"}, checked: true}});
+  await p.nodes.get("#duplicate-cleanup").emit("change", {target: {id: "duplicate-cleanup-approved", checked: true}});
+  assert.equal(p.nodes.get("#duplicate-cleanup-start").disabled, false);
+  await p.run('duplicateCleanupAction("start")');
+  assert.deepEqual(calls.at(-1), {url: "/api/duplicate-cleanup/start", body: {id: "draft", excluded: [], approved: true}});
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.deepEqual(p.json("player.queue"), queue);
+  assert.equal(p.history.length, entries);
+  assert.equal(p.run('currentHelpContext()'), "duplicate-cleanup");
+  p.run('$("#filter").value = "all"; render()');
+  assert.equal(p.nodes.get("#duplicate-cleanup-open").hidden, true);
+});
+
+test("bulk selection changes revoke approval and late results cannot cross library replacements", async () => {
+  const p = livePage(); await settle();
+  const data = duplicatePreview();
+  p.run(`duplicateCleanupView.data = ${JSON.stringify(data)}; duplicateCleanupView.approved = true; renderDuplicateCleanup()`);
+  await p.nodes.get("#duplicate-cleanup").emit("change", {target: {dataset: {duplicateCopy: "100"}, checked: false}});
+  assert.equal(p.run("duplicateCleanupView.approved"), false);
+  assert.equal(p.nodes.get("#duplicate-cleanup-start").disabled, true);
+  let resolve;
+  p.setFetch(() => new Promise(done => { resolve = done; }));
+  const pending = p.run("fetchDuplicateCleanup()"); await settle();
+  p.run('useLocal(demoLibrary(), "demo")');
+  resolve({ok: true, json: async () => data}); await pending;
+  assert.equal(p.run("duplicateCleanupView.data"), null);
+  assert.equal(p.run("duplicateCleanupView.busy"), false);
+  assert.equal(p.run('$("#duplicate-cleanup").open'), undefined);
+});
+
 test('Help starts only on request; completing every topic preserves playback and history', async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1"))');
@@ -3273,7 +3452,8 @@ test("Recently played distinguishes missing, empty and failed remote lists, and 
 test("cover clicks preserve title and keyboard navigation while a double-click opens a modal without requests or history", async () => {
   const p = page(); await settle();
   p.run('state.albums[0].artwork = "https://art.example/artwork/77-300"; render()');
-  assert.match(p.nodes.get("#albums").innerHTML, /data-cover-preview data-cover-src="https:\/\/art.example\/artwork\/77-300"/);
+  assert.doesNotMatch(p.nodes.get("#albums").innerHTML, /data-cover-preview|Double-click/);
+  assert.match(p.run('cover(state.albums.find(a => a.id === "1"), false, true)'), /data-cover-preview/);
   const requests = p.requests.length, entries = p.history.length, route = p.location.hash;
   let actionCount = 0;
   p.run('coverTestActions = 0');
@@ -3289,7 +3469,7 @@ test("cover clicks preserve title and keyboard navigation while a double-click o
   const origin = p.nodes.get("#home");
   const coverNode = {dataset: {coverSrc: "https://art.example/artwork/77-300", coverName: "Cover <title>", coverArtist: "Artist & friends"}, closest: () => origin};
   await p.emitDocument('dblclick', {preventDefault() { actionCount++; },
-    target: {closest: selector => selector === '[data-cover-preview]' ? coverNode : null}});
+    target: {closest: selector => selector === '#album-page [data-cover-preview]' ? coverNode : null}});
   p.flushTimers(400);
   assert.equal(p.run('coverTestActions'), 3, 'The double-click cancels the pending single action');
   assert.equal(actionCount, 1);
@@ -3309,17 +3489,16 @@ test("cover clicks preserve title and keyboard navigation while a double-click o
   assert.equal(p.nodes.get('#cover-lightbox-image').src, undefined);
 });
 
-test("player and fullscreen cover previews leave audio intact and Escape closes only the lightbox", async () => {
+test("player covers keep immediate actions without enlargement; the album viewer preserves audio", async () => {
   const p = livePage(); await settle();
   p.run('const coverAlbum = state.details.get("1"); coverAlbum.artwork = "https://art.example/artwork/9-300"; playTracks(coverAlbum, "100"); setNowPlaying(false)');
   const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), route = p.location.hash;
   await p.nodes.get('#player-cover-button').emit('click', {detail: 1});
-  await p.nodes.get('#player-cover-button').emit('click', {detail: 2});
+  assert.equal(p.nodes.get('#now-playing-panel').hidden, false, 'One click opens Now playing immediately');
   const origin = p.nodes.get('#player-cover-button');
   await p.emitDocument('dblclick', {preventDefault() {}, target: {closest: selector => selector === '#player-cover-button, .visual-player-cover' ? origin : null}});
-  p.flushTimers(400);
-  assert.equal(p.run('coverLightbox.open'), true);
-  assert.equal(p.nodes.get('#now-playing-panel').hidden, true, 'Double-click does not toggle the queue');
+  assert.equal(p.run('coverLightbox.open'), false);
+  p.run('openCoverLightbox({album: player.queue[player.index].album})');
   await p.emitDocument('keydown', {key: 'Escape', preventDefault() { this.defaultPrevented = true; }});
   assert.equal(p.run('coverLightbox.open'), false);
   assert.equal(p.nodes.get('#audio').src, source);

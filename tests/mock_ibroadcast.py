@@ -57,13 +57,14 @@ TOKEN = "access-1"
 def library():
     tmap = {"title": 0, "album_id": 1, "artist_id": 2, "year": 3, "genre": 4, "track": 5,
             "trashed": 6, "artwork_id": 7, "artists_additional": 8, "file": 9, "type": 10,
-            "genres_additional": 11, "rating": 12,
+            "genres_additional": 11, "rating": 12, "uploaded_on": 13, "uploaded_time": 14, "length": 15,
             "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}}
     tracks = {"map": tmap}
     for i, t in STATE["tracks"].items():
         tracks[str(i)] = [t["title"], t["album_id"], t["artist_id"], t["year"], t["genre"],
-                          t["track"], t["trashed"], t["artwork_id"], t.get("additional", []), f"/128/abc/{i}", "audio/mpeg",
-                          t.get("genres_additional", []), t.get("rating", 0)]
+                          t["track"], t["trashed"], t["artwork_id"], t.get("additional", []), f"/128/abc/{i}", t.get("type", "audio/mpeg"),
+                          t.get("genres_additional", []), t.get("rating", 0), t.get("uploaded_on", ""),
+                          t.get("uploaded_time", ""), t.get("length", 0)]
     albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6}}
     for i, a in STATE["albums"].items():
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0)]

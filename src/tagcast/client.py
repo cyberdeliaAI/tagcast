@@ -25,6 +25,7 @@ from . import __version__, artwork, auth
 from .album_guide import AlbumGuide
 from .cleanup import Cleanup
 from .collections import Collections
+from .duplicate_cleanup import DuplicateCleanup
 from .library import (
     ConflictError,
     Library,
@@ -53,7 +54,7 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
 MAX_TRASH = 500  # tracks per trash request
-NO_RETRY = {"create_artist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token"}  # Never repeat an ambiguous collection mutation or one-use token request.
+NO_RETRY = {"create_artist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token", "trash"}  # Never repeat an ambiguous collection/trash mutation or one-use token request.
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
            "fanart_api_key": "FANART_API_KEY"}
@@ -312,6 +313,7 @@ class Studio:
         self.updates = UpdateChecker(self._read, self._write)
         self.lookup = Lookup(self.source_keys)
         self.cleanup = Cleanup(self)
+        self.duplicate_cleanup = DuplicateCleanup(self)
         tokens = self._read("tokens.json")
         if tokens and tokens.get("client_id") == self.client_id and tokens.get("token_set"):
             try:
@@ -1161,20 +1163,80 @@ class Studio:
             if any(track_id not in fresh.active_track_ids(album_id) for track_id, (album_id, _) in wanted.items()):
                 raise ConflictError("These tracks changed in iBroadcast since you loaded them. "
                                     "Reload the library and try again.")
-            client._jsonrequest("trash", tracks=list(wanted))
-
-            def result(track_id, status):
-                return {"kind": "track", "id": str(track_id), "label": wanted[track_id][1] or "Track",
-                        "fields": ["trash"], "status": status}
-
-            def check(after):
-                return [result(t, "saved" if t not in after.tracks or after.tracks[t].get("trashed")
-                               else "unverified") for t in wanted]
-
-            job = self._check_later(client, self.downloads, check)
-            return {"results": [result(t, "sent") for t in wanted], "job": job}
+            return self._trash_checked(client, wanted)
         finally:
             self.save_lock.release()
+
+    def trash_albums(self, body):
+        """Reviewed complete albums from one artist; never accept a partial/stale set.
+
+        The browser reviews all chosen albums, then sends bounded batches. Each
+        batch checks the full membership, including added tracks and merged discs.
+        """
+        albums = body.get("albums")
+        if body.get("approved") is not True or not isinstance(albums, list) or not albums \
+                or len(albums) > 500 or not isinstance(body.get("combine_sets"), bool):
+            raise ApiError("Review and approve the selected albums first.")
+        wanted, snapshots = {}, {}
+        for album in albums:
+            if not isinstance(album, dict) or not number(album.get("id")) \
+                    or number(album["id"]) in snapshots or not isinstance(album.get("tracks"), list) \
+                    or not album["tracks"]:
+                raise ApiError("Choose complete albums for the trash.")
+            album_id = number(album["id"])
+            snapshots[album_id] = album
+            for track in album["tracks"]:
+                if not isinstance(track, dict) or not number(track.get("id")) \
+                        or number(track["id"]) in wanted or not isinstance(track.get("title"), str):
+                    raise ApiError("Choose each reviewed track once.")
+                wanted[number(track["id"])] = (album_id, track["title"])
+        if len(wanted) > MAX_TRASH:
+            raise ApiError(f"Move at most {MAX_TRASH} tracks in one batch.")
+        client = self._require_client()
+        if not self.save_lock.acquire(blocking=False):
+            raise ApiError("Another save is still running.")
+        try:
+            fresh, _ = self._current(client)
+            if bool(fresh.combine_sets) != body["combine_sets"]:
+                raise ConflictError("The multi-disc setting changed. Review the albums again.")
+            fresh._browse_index("genres")
+            groups, artists = set(), set()
+            for album_id, before in snapshots.items():
+                active = fresh.active_track_ids(album_id)
+                if album_id not in fresh._browse_albums or set(active) != {
+                        number(t["id"]) for t in before["tracks"]}:
+                    raise ConflictError("An album's tracks changed. Reload and review the albums again.")
+                now = fresh.albums[album_id]
+                artist = fresh.artist_name(now.get("artist_id"))
+                if text(now.get("name")) != before.get("name") or artist != before.get("artist") \
+                        or any(fresh.track_view(t)["title"] != wanted[t][1] for t in active):
+                    raise ConflictError("An album or track changed. Reload and review the albums again.")
+                artists.add(artist)
+                groups.add(fresh._browse_albums[album_id])
+            if len(artists) != 1 or len(groups) > 20:
+                raise ApiError("Choose at most 20 displayed albums by one album artist per batch.")
+            if any(album_id not in snapshots for album_id, group in fresh._browse_albums.items()
+                   if group in groups):
+                raise ConflictError("The discs of an album set changed. Review the complete set again.")
+            return self._trash_checked(client, wanted)
+        finally:
+            self.save_lock.release()
+
+    def _trash_checked(self, client, wanted):
+        if client is not self.client:
+            raise NotConnected("The connection changed. Review the selection again.")
+        client._jsonrequest("trash", tracks=list(wanted))
+
+        def result(track_id, status):
+            return {"kind": "track", "id": str(track_id), "label": wanted[track_id][1][:300] or "Track",
+                    "fields": ["trash"], "status": status}
+
+        def check(after):
+            return [result(t, "saved" if t not in after.tracks or after.tracks[t].get("trashed")
+                           else "unverified") for t in wanted]
+
+        job = self._check_later(client, self.downloads, check)
+        return {"results": [result(t, "sent") for t in wanted], "job": job}
 
     # -- playback -------------------------------------------------------------
 

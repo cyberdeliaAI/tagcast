@@ -28,6 +28,8 @@ The application consists of a Python server and a plain JavaScript frontend.
   and a shared response cache.
 - `src/tagcast/cleanup.py`: reviewed semicolon cleanup and exact genre-label replacement drafts, account-scoped local
   reports, bounded track-only batches and explicit stop/resume with fresh checks.
+- `src/tagcast/duplicate_cleanup.py`: explicitly analysed, account-scoped duplicate-copy
+  drafts, reviewed track exclusions and bounded trash batches with persisted intent and read-back.
 - `src/tagcast/updates.py`: public stable-release checks, version comparison and a
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
@@ -106,9 +108,19 @@ and preserve a valid script order in `index.html`.
   dialogs get no history entry, and Back never closes an open editor.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
-- Tracks go to iBroadcast's trash (`trash`) only from the album page, after the
-  trash review; the server first checks that every track is still active on its
-  album. Never delete permanently.
+- Tracks go to iBroadcast's trash (`trash`) from the album page after its trash
+  review, from a reviewed selection of complete albums by one album artist, or
+  through the dedicated reviewed duplicate-copy batch workflow. The server
+  first checks active membership. Never delete permanently.
+- Complete-album selection trash is separate from metadata saves and duplicate suggestions.
+  Load details only for the explicitly selected sets and review all albums/tracks before
+  confirming. Send bounded batches of at most 20 displayed sets / 500 tracks to
+  `/api/trash/albums`; reject stale names/titles, added/missing tracks, changed combine
+  settings, mixed album artists and partial merged sets. Read back each batch before
+  proceeding; stop on request errors, unconfirmed results, close or library replacement.
+  Keep sent/confirmed/blocked/unverified results in trash History without metadata Undo;
+  restarting or reopening never resumes writes automatically. A single set over 500
+  tracks must be handled through reviewed smaller track selections on its album page.
 - The Duplicate tracks filter includes repeated positive track numbers within one
   disc, even when titles differ. Summary `repeated_numbers` counts the extra numbered
   positions, per disc; merging discs sums these counts without comparing across discs.
@@ -131,6 +143,20 @@ and preserve a valid script order in `index.html`.
   Show stored upload dates/times and day/format groups only from loaded album details;
   do not scan audio or fetch tracks to build suggestions. Keep uploaded_on day precision
   for set grouping; uploaded_at preserves validated date/time without inventing a timezone.
+- The cross-album duplicate workflow is a narrow reviewed exception to album-only trash.
+  Opening only reads the saved account-scoped `duplicate-cleanup.json`; explicit analysis
+  compares the server's library metadata using the same rules as `trashSuggestion`
+  (shared Python/JavaScript contract fixtures). It covers the whole library independently
+  of frontend filters/paging, leaves uncertain copies, and allows album/track exclusions.
+  Approval is explicit before processing, including on resume. Keep batches within
+  200 tracks / 20 displayed albums, serialize against other saves, validate all copies
+  and position membership (including keepers) before each batch, and read back afterwards.
+  Stop on conflicts, connection/account/combine-setting changes, request errors or
+  unconfirmed results. Persist intent before each POST; resume checks outstanding
+  intent without resending any unconfirmed request. `trash` transport never retries
+  ambiguous failures. Save/export a separate local report; no automatic metadata Undo.
+  Never fetch audio, send all library tracks to the browser, or execute when opening
+  or analysing. The page-local modal preserves playback, history, focus and scroll.
 - A normal editor metadata save remains limited to one album or one album artist.
   Only changed, supported fields are sent.
 - Compare `before` values with the current library view before writes.
@@ -255,10 +281,11 @@ and preserve a valid script order in `index.html`.
   Opening or closing never restarts audio or adds a history entry. Request native
   fullscreen only on a click; fall back to a window-filling view when unavailable.
   Escape, stopping and library replacement close it; restore focus and inert state.
-- Double-clicking album covers in grids/lists, album details and the player opens
-  a modal lightbox. Mouse clicks on small covers briefly defer their usual action;
-  title and keyboard activation stay immediate. Placeholder covers keep their normal
-  action. Load larger known iBroadcast artwork only when opening, with one fallback
+- Covers in grids/lists open the album immediately; compact-player covers immediately
+  open Now playing. Enlarge covers only from the album detail page: double-click
+  its real cover, or use Enter on its cover button, to open a modal lightbox.
+  Other covers have no enlargement tooltip or action. Load larger known iBroadcast
+  artwork only when opening, with one fallback
   to the existing image. Keep other provider URLs intact. Escape, close and backdrop
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
@@ -267,6 +294,11 @@ and preserve a valid script order in `index.html`.
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play
   and library changes cancel pending random playback; previews cannot play.
+- On the album browser, hide random playback for every cleanup/edition filter and
+  while albums are selected. All albums and browse discovery groups retain it.
+  Compact, aligned Play and + menu buttons on album cards/lists let the user play
+  one chosen complete set without navigation. Load only that set, replace the queue
+  explicitly and cancel pending playback on clear, another Play or library replacement.
 - Player album artist and album title links open their respective pages. Show a
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.

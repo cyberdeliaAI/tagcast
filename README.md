@@ -369,14 +369,16 @@ information. Hiding the quality label does not change the streaming quality.
 
 ### Enlarging album covers
 
-Double-click an album cover in the album grid or list, on the album page, or in
-the player to open a lightbox. Covers in genre, year and decade selections work
-the same way. Close with **Escape**, the **×**, or a click outside the image view.
+Open an album, then double-click its cover to open a lightbox, or focus the cover
+button and press Enter. Close with **Escape**, the **×**, or a click outside the
+image view. Covers in grids and lists open their album immediately. The compact
+player's cover opens Now playing immediately.
 
-A single mouse click on a small cover waits briefly for a second click, then
-keeps its usual action: open the album or Now playing. Album titles and keyboard
-activation keep their immediate action. On the album page and fullscreen Now
-playing, focus the cover and press Enter to enlarge it.
+Album cards and list rows have a small **Play** button beside the compact **+**
+menu. Play starts the complete album/set and replaces the queue without opening
+another page. The + menu keeps its queue actions. **Play random album** remains
+available in All albums and discovery groups; cleanup filters and manual album
+selections hide it.
 
 The viewer contains the full image without cropping. Larger iBroadcast artwork
 loads only when you open it; if unavailable, Tagcast falls back to the existing
@@ -468,8 +470,35 @@ complete steps, exact genre replacement and recovery.
 
 ### Move tracks to trash
 
+On an album artist's page, select albums and choose **Move selected albums to
+trash…** to review and remove those complete albums together. The review lists
+every album and lets you expand its tracks. Confirm once; larger selections use
+batches of up to 20 displayed albums / 500 tracks, checking complete membership
+and reading back each batch before continuing. Stop or close the review to prevent
+later batches. Changed albums or unconfirmed results stop processing. Results go
+to Change history; restarting never resumes the operation automatically. A single
+album/set above 500 tracks requires smaller track selections from its album page.
+
 To find candidate albums, open **Albums** and choose the **Duplicate tracks**
 filter. Open an album to inspect its tracks.
+
+For many albums, choose **Review suggested copies across all albums…** on that
+page. **Analyse all albums** prepares a local draft using the same format/date
+rules as **Select suggested copies**, across the entire library regardless of
+search or pagination. Opening the dialog only reads its saved report.
+
+Expand an album to compare each proposed copy with the retained copies. Uncheck
+an album or an individual proposed track to keep it. Uncertain copies stay out
+of the selection; differing titles have an explicit comparison notice. After
+reviewing, tick the approval checkbox and choose **Move selected copies to trash**.
+Tagcast processes up to 200 tracks from 20 displayed albums per batch, checks
+current metadata and retained copies before writing, and reads the results back.
+**Stop after current request** prevents later batches. Drafts and results survive
+restarts on this computer and belong to the connected account. **Check outstanding
+and continue** checks interrupted requests first; an uncertain request is never
+automatically resent. Export the full report to keep a copy, and use **Refresh album
+list** afterwards to update the displayed counts. A new analysis replaces the old
+report. Batch results use this report separately from metadata Change history.
 
 Remove unwanted duplicate copies from an album in three reviewed steps:
 

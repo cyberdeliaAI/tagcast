@@ -1,5 +1,265 @@
 "use strict";
 
+const selectedAlbumsTrash = {request: 0, details: null, groups: null, busy: false, stop: false, combine: false};
+
+function resetSelectedAlbumTrash() {
+  selectedAlbumsTrash.request += 1; selectedAlbumsTrash.stop = true;
+  selectedAlbumsTrash.groups = null; selectedAlbumsTrash.details = null;
+  if ($("#trash-review").open) $("#trash-review").close();
+}
+
+function selectedAlbumTrashBatches(groups) {
+  const batches = []; let batch = [], tracks = 0;
+  for (const group of groups) {
+    const size = group.discs.reduce((n, d) => n + d.tracks.length, 0);
+    if (size > 500) throw Error("One selected album has more than 500 tracks. Open that album and review smaller track selections.");
+    if (batch.length && (batch.length === 20 || tracks + size > 500)) { batches.push(batch); batch = []; tracks = 0; }
+    batch.push(group); tracks += size;
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
+}
+
+async function reviewSelectedAlbumTrash() {
+  if (!live() || !state.artist || saving || checking || selectedAlbumsTrash.busy) return;
+  const groups = albumShelf().filter(a => a.artist === state.artist && isSelected(a))
+    .map(a => ({id: a.id, name: a.name, artist: a.artist, ids: itemIds(a)}));
+  if (!groups.length) return;
+  const view = selectedAlbumsTrash, request = ++view.request, details = state.details;
+  view.details = details; view.groups = null; view.stop = false; view.combine = Boolean(state.connection.combine_sets);
+  $("#trash-content").innerHTML = '<div class="dialog-heading"><h2>Review selected albums</h2><button class="close" data-close="trash-review" aria-label="Close">×</button></div><p role="status">Loading tracks of the selected albums…</p>';
+  $("#trash-review").showModal();
+  try {
+    const ids = groups.flatMap(g => g.ids);
+    for (let i = 0; i < ids.length; i += 100) {
+      if (request !== view.request || details !== state.details || !live()) return;
+      await albumDetails(ids.slice(i, i + 100));
+    }
+    if (request !== view.request || details !== state.details || !live()) return;
+    for (const group of groups) {
+      group.discs = group.ids.map(id => state.details.get(String(id)));
+      if (group.discs.some(d => !d || !d.tracks.length || d.artist !== group.artist)) throw Error("The selected albums changed. Reload the library and review again.");
+    }
+    selectedAlbumTrashBatches(groups);
+    view.groups = structuredClone(groups);
+    const count = groups.reduce((n, g) => n + g.discs.reduce((sum, d) => sum + d.tracks.length, 0), 0);
+    $("#trash-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">REVIEW COMPLETE ALBUMS</div><h2>${groups.length} ${groups.length === 1 ? "album" : "albums"} · ${count} tracks</h2></div><button class="close" data-close="trash-review" aria-label="Close">×</button></div>
+      <div class="warn-box">All tracks of these albums leave your active library in every iBroadcast app. They go to iBroadcast's trash and can be restored there. Tagcast cannot restore them. Your local files stay unchanged.</div>
+      ${groups.map(g => `<details class="diff-group"><summary><strong>${escapeHtml(g.name)}</strong> · ${escapeHtml(g.artist)} · ${g.discs.reduce((n, d) => n + d.tracks.length, 0)} tracks</summary>${g.discs.map(d => `<h3>Disc ${d.disc || 1}</h3>${d.tracks.map(t => `<p class="trash-row">${t.track || "–"}. ${escapeHtml(t.title)} <span class="muted">· ${escapeHtml(t.artist)} · ${trackDuration(t.length)}${t.format ? ` · ${escapeHtml(t.format)}` : ""}</span></p>`).join("")}`).join("")}</details>`).join("")}
+      <p class="muted">The full album contents are checked before each batch and read back afterwards. Processing stops on changed albums or unconfirmed results. Larger selections use batches of up to 20 albums / 500 tracks.</p>
+      <p id="selected-trash-status" role="status"></p><div class="dialog-footer" id="selected-trash-footer"><button class="button" id="selected-trash-cancel" data-close="trash-review">Keep these albums</button><button class="button danger primary" id="selected-trash-confirm">Move ${groups.length} ${groups.length === 1 ? "album" : "albums"} to the trash</button></div>`;
+    $("#selected-trash-cancel").focus();
+  } catch (error) {
+    if (request === view.request && details === state.details) $("#trash-content").innerHTML = `<div class="dialog-heading"><h2>Cannot prepare this selection</h2><button class="close" data-close="trash-review" aria-label="Close">×</button></div><p class="error-text" role="alert">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function trashSelectedAlbums() {
+  const view = selectedAlbumsTrash, request = view.request;
+  if (!view.groups || view.busy || saving || checking || !live() || view.details !== state.details) return;
+  const batches = selectedAlbumTrashBatches(view.groups);
+  const current = () => request === view.request && view.details === state.details && live();
+  view.busy = true; view.stop = false; saving = true;
+  $("#selected-trash-footer").innerHTML = '<button class="button" id="selected-trash-stop">Stop after current request</button>';
+  $("#selected-trash-stop").focus();
+  let complete = 0, failure = "";
+  try {
+    for (const groups of batches) {
+      if (!current() || view.stop) break;
+      const albums = groups.flatMap(g => g.discs.map(d => ({id: String(d.id), name: d.name, artist: d.artist,
+        tracks: d.tracks.map(t => ({id: String(t.id), title: t.title}))})));
+      const rows = albums.flatMap(a => a.tracks.map(t => ({...t, albumId: a.id})));
+      const entry = {scope: "albums", trash: true, selection: groups.map(g => ({id: g.id, name: g.name, artist: g.artist})),
+        created: new Date().toISOString(), source: "ibroadcast", status: "sent", error: "",
+        changes: rows.map(t => ({kind: "track", id: t.id, albumId: t.albumId, label: t.title, status: "sent",
+          fields: {trash: {before: "In your library", after: "In the trash"}}}))};
+      state.history.unshift(entry); rememberHistory();
+      $("#selected-trash-status").textContent = `Checking batch ${complete + 1} of ${batches.length}…`;
+      let result;
+      try {
+        result = await api("/api/trash/albums", {approved: true, combine_sets: view.combine, albums});
+      } catch (error) {
+        if (!current()) break;
+        entry.status = error.status === 409 ? "blocked" : "unverified"; entry.error = error.message;
+        for (const change of entry.changes) change.status = entry.status;
+        rememberHistory(); throw error;
+      }
+      if (!current()) break;
+      const job = await followJob(result.job, entry, null, current);
+      if (!job || request !== view.request || !live()) break;
+      view.details = state.details; // this batch's checked album index replaced the cache
+      if (job.state !== "done" || entry.status !== "saved") throw Error("The result could not be fully confirmed. Later batches were not sent. Reload the library before reviewing another selection.");
+      for (const group of groups) for (const id of group.ids) state.selected.delete(String(id));
+      complete += 1; render();
+    }
+  } catch (error) { failure = error.message; }
+  finally {
+    view.busy = false; saving = false; updateChrome();
+    if (request === view.request) {
+      $("#selected-trash-status").textContent = failure || (complete === batches.length ? "All selected albums confirmed in iBroadcast's trash." : `Stopped after ${complete} of ${batches.length} batches. Review the remaining selection again to continue.`);
+      $("#selected-trash-footer").innerHTML = '<button class="button" data-close="trash-review">Close</button><button class="button" id="selected-trash-refresh">Reload library</button>';
+      view.groups = null;
+    }
+  }
+}
+
+$("#trash-selection").addEventListener("click", reviewSelectedAlbumTrash);
+$("#trash-review").addEventListener("close", () => {
+  selectedAlbumsTrash.stop = true;
+  if (!selectedAlbumsTrash.busy) { selectedAlbumsTrash.request += 1; selectedAlbumsTrash.groups = null; }
+});
+$("#trash-review").addEventListener("click", event => {
+  if (event.target.closest("#selected-trash-confirm")) return trashSelectedAlbums();
+  if (event.target.closest("#selected-trash-stop")) { selectedAlbumsTrash.stop = true; $("#selected-trash-status").textContent = "Stopping after the current request is checked…"; }
+  if (event.target.closest("#selected-trash-refresh")) { $("#trash-review").close(); return loadLive(); }
+});
+
+// A separate, persisted review; opening it never scans or writes to iBroadcast.
+const duplicateCleanupView = {data: null, offset: 0, excluded: new Set(), request: 0,
+  timer: null, busy: false, approved: false, expanded: new Set(), renderedId: null};
+
+function resetDuplicateCleanup(close = false) {
+  const view = duplicateCleanupView;
+  view.request += 1; clearTimeout(view.timer);
+  view.data = null; view.offset = 0; view.excluded.clear(); view.busy = false; view.approved = false;
+  view.expanded.clear(); view.renderedId = null;
+  $("#duplicate-cleanup-status").textContent = "";
+  if (close && $("#duplicate-cleanup").open) $("#duplicate-cleanup").close();
+}
+
+async function fetchDuplicateCleanup() {
+  const view = duplicateCleanupView, request = ++view.request, details = state.details;
+  clearTimeout(view.timer);
+  try {
+    const data = await api(`/api/duplicate-cleanup?offset=${view.offset}&limit=10`);
+    if (request !== view.request || details !== state.details || !live()) return;
+    if (data.id !== view.data?.id || data.state !== "preview") view.excluded = new Set(data.excluded || []);
+    view.data = data; renderDuplicateCleanup();
+    if (data.state === "running" && $("#duplicate-cleanup").open) view.timer = setTimeout(fetchDuplicateCleanup, 1500);
+  } catch (error) {
+    if (request === view.request && details === state.details) $("#duplicate-cleanup-status").textContent = error.message;
+  }
+}
+
+function duplicateCleanupSelection() {
+  return (duplicateCleanupView.data?.selection || []).filter(t => !duplicateCleanupView.excluded.has(t.id));
+}
+
+function updateDuplicateCleanupSelection() {
+  const view = duplicateCleanupView, selected = duplicateCleanupSelection();
+  const count = $("#duplicate-cleanup-selected");
+  if (count) count.textContent = `${selected.length.toLocaleString("en")} copies from ${new Set(selected.map(t => t.group)).size.toLocaleString("en")} albums selected`;
+  const start = $("#duplicate-cleanup-start");
+  if (start) start.disabled = view.busy || !view.approved || !selected.length;
+}
+
+function renderDuplicateCleanup() {
+  const view = duplicateCleanupView, data = view.data || {state: "empty"};
+  const preview = data.state === "preview", running = data.state === "running", counts = data.counts || {};
+  const dialog = $("#duplicate-cleanup"), scroll = dialog.scrollTop;
+  const focus = dialog.contains?.(document.activeElement) ? document.activeElement : null;
+  const focusId = focus?.id, copyId = focus?.dataset.duplicateCopy, groupId = focus?.dataset.duplicateAlbum;
+  if (view.renderedId !== data.id) {
+    view.expanded = new Set(data.groups?.slice(0, 1).map(g => g.id) || []); view.renderedId = data.id;
+  } else for (const node of dialog.querySelectorAll("[data-duplicate-group]")) {
+    if (node.open) view.expanded.add(node.dataset.duplicateGroup); else view.expanded.delete(node.dataset.duplicateGroup);
+  }
+  const disabled = view.busy ? "disabled" : "";
+  $("#duplicate-cleanup-content").innerHTML = `<p>Apply <strong>Select suggested copies</strong> across <strong>all albums in your library</strong>, regardless of the current search or page. Prefer FLAC over MP3, then the newest upload in the same format. Uncertain copies stay.</p>
+    <p class="muted">This compares metadata, not audio. Differing titles need your comparison. Nothing moves until you review and approve the selection.</p>
+    <button class="button" id="duplicate-cleanup-preview" ${running || view.busy ? "disabled" : ""}>Analyse all albums</button>
+    ${data.id ? `<div class="notice">${data.scanned.toLocaleString("en")} duplicate albums analysed · ${data.tracks.toLocaleString("en")} copies suggested for the trash · ${data.manual.toLocaleString("en")} repeated ${data.manual === 1 ? "position needs" : "positions need"} manual comparison. Batches: up to ${data.batch_tracks} tracks / ${data.batch_albums} albums.</div>
+    ${data.error ? `<p class="warn-box" role="status">${escapeHtml(data.error)}</p>` : ""}
+    ${preview ? '<p>Compare the proposed copies and retained tracks below. Uncheck copies or whole albums to keep them. Albums without suggestions remain available for manual cleanup.</p>' : `<p role="status"><strong>${escapeHtml(data.state)}</strong> · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.excluded || 0} excluded</p>`}
+    ${preview && data.tracks ? `<div class="cleanup-controls"><button class="text-action" id="duplicate-select-all" ${disabled}>Select all suggested copies</button><button class="text-action" id="duplicate-select-none" ${disabled}>Keep all copies</button><strong id="duplicate-cleanup-selected" role="status"></strong></div>` : ""}
+    <div class="cleanup-albums">${data.groups.map(group => {
+      const proposed = data.selection.filter(t => t.group === group.id), selected = proposed.filter(t => !view.excluded.has(t.id));
+      return `<details class="cleanup-album" data-duplicate-group="${escapeHtml(group.id)}" ${view.expanded.has(group.id) ? "open" : ""}><summary><h3>${preview && proposed.length ? `<label><input type="checkbox" data-duplicate-album="${escapeHtml(group.id)}" ${selected.length ? "checked" : ""} ${disabled}> ` : ""}${escapeHtml(group.album)}${preview && proposed.length ? "</label>" : ""}</h3><p class="muted">${escapeHtml(group.artist)} · ${proposed.length} proposed ${proposed.length === 1 ? "copy" : "copies"}</p></summary>
+        ${group.positions.map(position => `<div class="duplicate-position"><h4>Disc ${position.disc || 1} · Track ${position.number}</h4>${position.tracks.map(track => `<div class="duplicate-copy"><div>${preview && track.choice === "trash" ? `<label><input type="checkbox" data-duplicate-copy="${escapeHtml(track.id)}" ${view.excluded.has(track.id) ? "" : "checked"} ${disabled}> <strong>${escapeHtml(track.title)}</strong></label>` : `<strong>${escapeHtml(track.title)}</strong>`}<span class="pill ${track.choice === "trash" ? "missing" : ""}">${escapeHtml(preview ? {trash: "Suggested trash", keep: "Suggested keep", manual: "Compare manually"}[track.choice] : track.status === "retained" ? "Retained" : track.status)}</span></div><p class="muted">${escapeHtml(track.artist)} · ${trackDuration(track.length)}${track.format ? ` · ${escapeHtml(track.format)}` : " · Unknown format"} · ${track.uploaded_at ? `Uploaded ${escapeHtml(track.uploaded_at.replace("T", " "))}` : "Upload date unknown"}</p><p>${escapeHtml(track.reason)}</p></div>`).join("")}</div>`).join("")}</details>`;
+    }).join("") || '<p class="muted">No repeated positions found.</p>'}</div>
+    <div class="pagination"><button class="button small" data-duplicate-page="-10" ${view.offset <= 0 || view.busy ? "disabled" : ""}>← Previous</button><span>${data.albums ? Math.floor(view.offset / 10) + 1 : 0} / ${Math.ceil(data.albums / 10)}</span><button class="button small" data-duplicate-page="10" ${view.offset + 10 >= data.albums || view.busy ? "disabled" : ""}>Next →</button></div>
+    <p class="muted">The draft and results are saved on this computer for this account. Closing this window leaves a running job active. Stop prevents further requests; confirmed changes remain. Refresh the album list afterwards to see updated counts. New analysis replaces this report.</p>
+    ${!running && data.state !== "done" && data.tracks ? `<label class="checkline"><input id="duplicate-cleanup-approved" type="checkbox" ${view.approved ? "checked" : ""} ${disabled}> I compared the copies, including differing titles, and approve moving the selected copies to iBroadcast's trash.</label>` : ""}
+    <div class="dialog-footer"><button class="button" id="duplicate-cleanup-export" ${disabled}>Export full report ↓</button>${running ? '<button class="button danger" id="duplicate-cleanup-stop">Stop after current request</button>' : data.state !== "done" && data.tracks ? `<button class="button danger" id="duplicate-cleanup-start" disabled>${preview ? "Move selected copies to trash" : "Check outstanding and continue"}</button>` : ""}${!running ? `<button class="button" id="duplicate-cleanup-refresh" ${disabled}>Refresh album list</button>` : ""}</div>` : '<p class="muted">Choose Analyse all albums to prepare a read-only preview using stored library metadata. It does not download audio.</p>'}`;
+  dialog.scrollTop = scroll;
+  updateDuplicateCleanupSelection();
+  for (const box of dialog.querySelectorAll("[data-duplicate-album]")) {
+    const tracks = data.selection.filter(t => t.group === box.dataset.duplicateAlbum);
+    const selected = tracks.filter(t => !view.excluded.has(t.id)).length;
+    box.indeterminate = selected > 0 && selected < tracks.length;
+  }
+  if (focusId) $(`#${focusId}`)?.focus();
+  else if (copyId) dialog.querySelector(`[data-duplicate-copy="${CSS.escape(copyId)}"]`)?.focus();
+  else if (groupId) dialog.querySelector(`[data-duplicate-album="${CSS.escape(groupId)}"]`)?.focus();
+}
+
+async function duplicateCleanupAction(action) {
+  const view = duplicateCleanupView;
+  if (view.busy || !live() || action === "start" && (!view.approved || !duplicateCleanupSelection().length)) return;
+  if (action === "preview" && view.data?.id && !confirm("Replace the previous duplicate cleanup draft and report? Export it first to keep a copy.")) return;
+  const details = state.details, request = ++view.request;
+  const body = action === "preview" ? {} : {id: view.data.id, excluded: [...view.excluded], approved: view.approved};
+  view.busy = true; view.approved = false; clearTimeout(view.timer); renderDuplicateCleanup();
+  $("#duplicate-cleanup-status").textContent = action === "preview" ? "Analysing stored album metadata…" : action === "start" ? "Checking the selection and starting…" : "Stopping after the current request…";
+  try {
+    const data = await api(`/api/duplicate-cleanup/${action}`, body);
+    if (request !== view.request || details !== state.details || !live()) return;
+    view.data = data; view.excluded = new Set(data.excluded || []); view.offset = 0;
+    $("#duplicate-cleanup-status").textContent = "";
+    if (data.state === "running" && $("#duplicate-cleanup").open) view.timer = setTimeout(fetchDuplicateCleanup, 1500);
+  } catch (error) {
+    if (request === view.request && details === state.details) $("#duplicate-cleanup-status").textContent = error.message;
+  } finally {
+    if (request === view.request && details === state.details) { view.busy = false; renderDuplicateCleanup(); }
+  }
+}
+
+$("#duplicate-cleanup-open").addEventListener("click", async () => {
+  if (!live()) return;
+  $("#duplicate-cleanup-content").innerHTML = '<p class="muted">Loading the saved report…</p>';
+  $("#duplicate-cleanup-status").textContent = ""; $("#duplicate-cleanup").showModal();
+  await fetchDuplicateCleanup();
+});
+$("#duplicate-cleanup").addEventListener("close", () => clearTimeout(duplicateCleanupView.timer));
+$("#duplicate-cleanup").addEventListener("change", event => {
+  const view = duplicateCleanupView;
+  if (view.busy) return;
+  if (event.target.id === "duplicate-cleanup-approved") {
+    view.approved = event.target.checked; updateDuplicateCleanupSelection(); return;
+  }
+  const copy = event.target.dataset.duplicateCopy, group = event.target.dataset.duplicateAlbum;
+  if (view.data?.state !== "preview" || !copy && !group) return;
+  for (const track of view.data.selection.filter(t => copy ? t.id === copy : t.group === group)) {
+    if (event.target.checked) view.excluded.delete(track.id); else view.excluded.add(track.id);
+  }
+  view.approved = false; renderDuplicateCleanup();
+});
+$("#duplicate-cleanup").addEventListener("click", async event => {
+  const view = duplicateCleanupView;
+  const action = event.target.closest("#duplicate-cleanup-preview, #duplicate-cleanup-start, #duplicate-cleanup-stop");
+  if (action) return duplicateCleanupAction(action.id.replace("duplicate-cleanup-", ""));
+  if (view.busy) return;
+  if (event.target.closest("#duplicate-cleanup-refresh")) return loadLive();
+  if (event.target.closest("#duplicate-cleanup-export")) {
+    const details = state.details, request = view.request;
+    try {
+      const data = await api("/api/duplicate-cleanup/report");
+      if (details !== state.details || request !== view.request || data.id !== view.data?.id || !live()) return;
+      data.excluded = [...view.excluded];
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}));
+      const link = document.createElement("a"); link.href = url; link.download = `tagcast-duplicate-cleanup-${data.id}.json`; link.click(); URL.revokeObjectURL(url);
+    } catch (error) { if (details === state.details && request === view.request) $("#duplicate-cleanup-status").textContent = error.message; }
+    return;
+  }
+  const page = event.target.closest("[data-duplicate-page]");
+  if (page) { view.offset = Math.max(0, view.offset + Number(page.dataset.duplicatePage)); return fetchDuplicateCleanup(); }
+  const selection = event.target.closest("#duplicate-select-all, #duplicate-select-none");
+  if (selection && view.data?.state === "preview") {
+    view.excluded = new Set(selection.id === "duplicate-select-none" ? view.data.selection.map(t => t.id) : []);
+    view.approved = false; renderDuplicateCleanup();
+  }
+});
+
 // Moving tracks to iBroadcast's trash from the album page: choose tracks, review them,
 // then send. iBroadcast keeps them in its trash; Tagcast can't take them back out.
 

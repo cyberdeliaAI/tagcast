@@ -230,6 +230,7 @@ function playTracks(album, startId) {
 function updateRandomControls() {
   const albums = $("#albums-random"), browse = $("#browse-random");
   const unavailable = !live() || state.loading || player.randomLoading;
+  albums.hidden = !["", "all"].includes($("#filter").value) || state.selected.size > 0;
   albums.disabled = unavailable || !filteredAlbums().some(a => a.track_count > 0);
   browse.hidden = browseView.key === null;
   browse.disabled = unavailable || !browseAlbums().some(a => a.track_count > 0);
@@ -271,7 +272,9 @@ async function playRandomAlbum(albums) {
   }
 }
 
-$("#albums-random").addEventListener("click", () => playRandomAlbum(filteredAlbums()));
+$("#albums-random").addEventListener("click", () => {
+  if (!$("#albums-random").hidden) return playRandomAlbum(filteredAlbums());
+});
 $("#browse-random").addEventListener("click", () => playRandomAlbum(browseAlbums()));
 
 // An album of several discs plays as one album, disc after disc.
@@ -338,7 +341,7 @@ function setNowPlaying(open) {
 function renderNowPlaying() {
   if ($("#now-playing-panel").hidden) return;
   const track = player.queue[player.index], album = track?.album;
-  $("#now-playing-current").innerHTML = track ? `<button type="button" class="now-playing-cover album-cover-preview" data-cover-view aria-label="Enlarge cover of ${escapeHtml(album.name)}" ${album.artwork ? "" : "disabled"}>${cover(album)}</button>
+  $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
     <h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
     <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">Add this track to playlist…</button></p>` : '<p class="empty">Play a track or add an album to your queue.</p>';
   $("#now-playing-count").textContent = `${player.queue.length} ${player.queue.length === 1 ? "track" : "tracks"}`;
@@ -386,7 +389,29 @@ function addToQueue(albumId, trackId = null, next = false) {
 
 function queueButton(albumId, track = null, compact = false) {
   const label = track ? `Queue actions for ${track.title}` : "Queue actions for this album";
-  return `<button type="button" class="queue-add ${compact ? "queue-compact" : track ? "" : "button small"} queue-menu-trigger" data-queue-album="${escapeHtml(albumId)}" ${track ? `data-queue-track="${escapeHtml(track.id)}"` : ""} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-haspopup="menu" aria-expanded="false" aria-controls="queue-action-menu" ${!live() || state.loading ? "disabled" : ""}><span aria-hidden="true">${track || compact ? "+" : "+ Queue"}</span><svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="m3 4.5 3 3 3-3"/></svg></button>`;
+  return `<button type="button" class="queue-add ${compact ? "queue-compact" : track ? "" : "button small"} queue-menu-trigger" data-queue-album="${escapeHtml(albumId)}" ${track ? `data-queue-track="${escapeHtml(track.id)}"` : ""} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-haspopup="menu" aria-expanded="false" aria-controls="queue-action-menu" ${!live() || state.loading ? "disabled" : ""}>${compact ? '<svg class="queue-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>' : `<span aria-hidden="true">${track ? "+" : "+ Queue"}</span>`}<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="m3 4.5 3 3 3-3"/></svg></button>`;
+}
+
+function albumCardActions(album) {
+  const label = `Play album ${album.name}`;
+  return `<div class="album-card-actions"><button type="button" class="album-card-play" data-card-play="${escapeHtml(album.id)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" ${!live() || state.loading || !album.track_count ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>${queueButton(album.id, null, true)}</div>`;
+}
+
+async function playCardAlbum(id) {
+  if (!live() || state.loading || !state.albums.some(a => String(a.id) === String(id))) return;
+  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
+  cancelRandomPlay();
+  const details = state.details, epoch = ++player.epoch, ids = shelfIds(id);
+  try {
+    const discs = await albumDetails(ids);
+    if (epoch !== player.epoch || details !== state.details || !live()) return;
+    if (discs.length !== ids.length || !state.albums.some(a => String(a.id) === String(id))) throw Error("This album is no longer available. Reload the library.");
+    const album = joinDiscs(discs);
+    if (!album.tracks.length) throw Error("This album has no playable tracks.");
+    playTracks(album);
+  } catch (error) {
+    if (epoch === player.epoch && details === state.details) toast(`Could not play album: ${error.message}`);
+  }
 }
 
 function closeQueueActions(restoreFocus = false) {
@@ -508,11 +533,7 @@ $("#player-next").addEventListener("click", () => step(1));
 $("#player-close").addEventListener("click", stopPlayer);
 $("#queue-clear").addEventListener("click", stopPlayer);
 $("#player-queue").addEventListener("click", () => setNowPlaying($("#now-playing-panel").hidden));
-$("#player-cover-button").addEventListener("click", event => {
-  const album = player.queue[player.index]?.album;
-  coverClick(event, () => setNowPlaying($("#now-playing-panel").hidden),
-    album?.artwork ? {album, focus: $("#player-cover-button")} : null);
-});
+$("#player-cover-button").addEventListener("click", () => setNowPlaying($("#now-playing-panel").hidden));
 $("#now-playing-close").addEventListener("click", () => { setNowPlaying(false); $("#player-queue").focus(); });
 document.addEventListener("keydown", event => {
   if (!event.defaultPrevented && event.key === "Escape" && !$("#now-playing-panel").hidden && !document.querySelector("dialog[open]")) {
@@ -539,6 +560,8 @@ if ("mediaSession" in navigator) {
 }
 
 document.addEventListener("click", event => {
+  const cardPlay = event.target.closest("[data-card-play]");
+  if (cardPlay) return playCardAlbum(cardPlay.dataset.cardPlay);
   const queued = event.target.closest("[data-queue-album]");
   if (queued) { openQueueActions(queued); return; }
   if (!event.target.closest("#queue-action-menu")) closeQueueActions();

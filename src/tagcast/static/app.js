@@ -116,6 +116,8 @@ function useLocal(albums, mode) {
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetAlbumGuide === "function") resetAlbumGuide();
   if (typeof resetCleanup === "function") resetCleanup(true);
+  if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
+  if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
@@ -152,10 +154,10 @@ function coverPreviewAttrs(album) {
   return album.artwork ? `data-cover-preview data-cover-src="${escapeHtml(album.artwork)}" data-cover-name="${escapeHtml(album.name)}" data-cover-artist="${escapeHtml(album.artist)}" title="Double-click to enlarge the cover"` : "";
 }
 
-function cover(album, small = false) {
+function cover(album, small = false, enlarge = false) {
   const initials = album.artist.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.remove('has-art');this.remove()">` : "";
-  return `<div class="cover ${art ? "has-art" : ""}" ${small ? "" : coverPreviewAttrs(album)} style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
+  return `<div class="cover ${art ? "has-art" : ""}" ${!small && enlarge ? coverPreviewAttrs(album) : ""} style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
 }
 
 const EDITION = /remaster|deluxe|anniversary|re-record|live|edition|expanded/i;
@@ -246,7 +248,7 @@ const joinDiscs = albums => albums.length === 1 ? albums[0]
 
 function thumb(album) {
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-  return `<span class="thumb" ${coverPreviewAttrs(album)} style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
+  return `<span class="thumb" style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
 }
 
 function avatar(name, image) {
@@ -307,17 +309,18 @@ function selectBox(a) {
 }
 
 function gridView(items) {
-  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span>${hasDuplicateTracks(a) ? `<span class="album-duplicate">${duplicateAlbumBadge(a)}</span>` : ""}</button><div class="card-meta"><span>${albumCardMetadata(a)}</span>${badge(a)}${typeof queueButton === "function" ? queueButton(a.id, null, true) : ""}</div></article>`).join("");
+  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span>${hasDuplicateTracks(a) ? `<span class="album-duplicate">${duplicateAlbumBadge(a)}</span>` : ""}</button><div class="card-meta"><div class="album-card-meta-text"><span>${albumCardMetadata(a)}</span>${badge(a)}</div>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</div></article>`).join("");
 }
 
 function listView(items) {
   const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
   const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
-  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Add to queue"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button> ${duplicateAlbumBadge(a)}${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof queueButton === "function" ? queueButton(a.id, null, true) : ""}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="album-table"><thead><tr>${state.artist ? '<th class="col-check"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Play or queue album"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${state.artist ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button> ${duplicateAlbumBadge(a)}${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td><button class="row-artist" data-artist="${escapeHtml(a.artist)}">${avatar(a.artist, a.artist_image)}${escapeHtml(a.artist)}</button></td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
   $("#cleanup-filter").hidden = !live() || $("#filter").value !== "combined";
+  $("#duplicate-cleanup-open").hidden = !live() || $("#filter").value !== "duplicates";
   $("#browse-artist-count").textContent = artistGroups().length.toLocaleString("en");
   $("#total-albums").textContent = $("#album-count").textContent = albumShelf().length.toLocaleString("en");
   const trackCount = state.albums.reduce((sum, a) => sum + a.track_count, 0);
@@ -330,7 +333,7 @@ function render() {
   renderArtistPanel();
   $("#page-subtitle").textContent = $("#filter").value === "duplicates"
     ? "Albums with repeated track numbers on the same disc, including tracks whose titles differ. Open an album to compare the copies."
-    : state.artist ? "Open an album to listen, or select albums by this artist to edit together." : "Browse your collection, play an album, and edit its details when you choose.";
+    : state.artist ? "Open an album to listen, or select albums by this artist to edit or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
   $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : "Open an album to see its tracks and listen";
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   const scope = albumShelf().filter(a => !state.artist || a.artist === state.artist);
@@ -347,6 +350,8 @@ function render() {
   $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
   $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
   $("#selection-bar").hidden = !state.selected.size;
+  $("#trash-selection").hidden = !live();
+  $("#trash-selection").disabled = saving || checking > 0 || !state.artist;
   const chosen = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id))).length;
   $("#selection-count").textContent = `${chosen} ${chosen === 1 ? "album" : "albums"} selected · ${state.artist || ""}`;
   $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
@@ -853,6 +858,8 @@ async function loadLive(refresh = false) {
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetAlbumGuide === "function") resetAlbumGuide();
   if (typeof resetCleanup === "function") resetCleanup();
+  if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
+  if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
@@ -1040,7 +1047,7 @@ async function saveDraft() {
 }
 
 // Poll the background read-back of a save and update its history entry.
-async function followJob(jobId, entry, onDone) {
+async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   const order = ++saveOrder;
   rememberHistory();
   checking += 1; updateChrome();
@@ -1054,10 +1061,11 @@ async function followJob(jobId, entry, onDone) {
   } catch (error) {
     job = {state: "error", error: error.message};
   } finally { checking -= 1; updateChrome(); }
+  if (!stillCurrent()) return null;
   if (job.state === "error") {
     entry.status = "unverified"; entry.error = [entry.error, job.error].filter(Boolean).join(" ");
     for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
-    rememberHistory(); toast(job.error); return;
+    rememberHistory(); toast(job.error); return job;
   }
   const byId = new Map(job.results.map(r => [`${r.kind}:${r.id}`, r.status]));
   for (const c of entry.changes) c.status = byId.get(`${c.kind}:${c.id}`) || c.status;
@@ -1073,6 +1081,7 @@ async function followJob(jobId, entry, onDone) {
   const done = job.results.filter(r => r.status === "saved").length;
   if (entry.status === "saved") toast(`Confirmed by iBroadcast: ${done} ${done === 1 ? "record" : "records"} saved.`);
   else showResults({results: job.results, error: entry.error}, entry.status, entry);
+  return job;
 }
 
 function showResults(result, overall, entry) {
