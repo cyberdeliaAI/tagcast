@@ -873,6 +873,7 @@ class ClientTests(unittest.TestCase):
         for mutate in [lambda b: b.update(approved=False),
                        lambda b: b["albums"][0]["tracks"].pop(),
                        lambda b: b["albums"][0].update(name="Old name"),
+                       lambda b: b["albums"][0].update(artist="Old artist"),
                        lambda b: b["albums"][0]["tracks"][0].update(title="Old title"),
                        lambda b: b["albums"][0]["tracks"].append(b["albums"][0]["tracks"][0]),
                        lambda b: b.update(combine_sets=True)]:
@@ -880,8 +881,6 @@ class ClientTests(unittest.TestCase):
             mutate(changed)
             with self.assertRaises((client.ApiError, ConflictError)):
                 studio.trash_albums(changed)
-        with self.assertRaises(client.ApiError):
-            studio.trash_albums(selection(["72", "74"]))
         self.assertEqual(mock_ibroadcast.STATE["writes"], [])
         original = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
         try:
@@ -892,6 +891,26 @@ class ClientTests(unittest.TestCase):
             self.assertNotIn("72", {a["id"] for a in job["albums"]})
             self.assertNotIn("73", {a["id"] for a in job["albums"]})
             self.assertFalse(mock_ibroadcast.STATE["tracks"][904]["trashed"])
+        finally:
+            mock_ibroadcast.STATE["tracks"] = original
+
+    def test_selected_album_trash_accepts_different_artists_and_keeps_unselected_albums(self):
+        studio = self.connect()
+        body = {"approved": True, "combine_sets": False, "albums": [
+            {"id": a["id"], "name": a["name"], "artist": a["artist"],
+             "tracks": [{"id": t["id"], "title": t["title"]} for t in a["tracks"]]}
+            for a in studio.album_details(["72", "74"])]}
+        self.assertEqual({a["artist"] for a in body["albums"]}, {"Kate Bush", "Pink Floyd"})
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        original = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        try:
+            result = studio.trash_albums(body)
+            self.assertEqual([(w["mode"], w["tracks"]) for w in mock_ibroadcast.STATE["writes"]],
+                             [("trash", [900, 901, 904])])
+            job = self.wait_job(studio, result["job"])
+            self.assertTrue(all(r["status"] == "saved" for r in job["results"]))
+            self.assertEqual({a["id"] for a in job["albums"]}, {"73"})
+            self.assertFalse(mock_ibroadcast.STATE["tracks"][903]["trashed"])
         finally:
             mock_ibroadcast.STATE["tracks"] = original
 

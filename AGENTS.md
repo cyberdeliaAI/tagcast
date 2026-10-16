@@ -109,14 +109,16 @@ and preserve a valid script order in `index.html`.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
 - Tracks go to iBroadcast's trash (`trash`) from the album page after its trash
-  review, from a reviewed selection of complete albums by one album artist, or
+  review, from a reviewed selection of complete albums in the album overview or an artist's page, or
   through the dedicated reviewed duplicate-copy batch workflow. The server
   first checks active membership. Never delete permanently.
 - Complete-album selection trash is separate from metadata saves and duplicate suggestions.
   Load details only for the explicitly selected sets and review all albums/tracks before
   confirming. Send bounded batches of at most 20 displayed sets / 500 tracks to
   `/api/trash/albums`; reject stale names/titles, added/missing tracks, changed combine
-  settings, mixed album artists and partial merged sets. Read back each batch before
+  settings and partial merged sets. Complete-album trash selections can span artists;
+  metadata editing remains limited to one album or one album artist. Selection survives
+  paging/filter changes; flag selected albums outside the current results. Read back each batch before
   proceeding; stop on request errors, unconfirmed results, close or library replacement.
   Keep sent/confirmed/blocked/unverified results in trash History without metadata Undo;
   restarting or reopening never resumes writes automatically. A single set over 500

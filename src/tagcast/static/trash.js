@@ -21,8 +21,8 @@ function selectedAlbumTrashBatches(groups) {
 }
 
 async function reviewSelectedAlbumTrash() {
-  if (!live() || !state.artist || saving || checking || selectedAlbumsTrash.busy) return;
-  const groups = albumShelf().filter(a => a.artist === state.artist && isSelected(a))
+  if (!live() || saving || checking || selectedAlbumsTrash.busy) return;
+  const groups = albumShelf().filter(isSelected)
     .map(a => ({id: a.id, name: a.name, artist: a.artist, ids: itemIds(a)}));
   if (!groups.length) return;
   const view = selectedAlbumsTrash, request = ++view.request, details = state.details;
