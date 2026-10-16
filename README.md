@@ -14,12 +14,12 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 **Development on `main` (unreleased):** native tag management, reviewed album
 selection trash, refreshed branding/sidebar and album pages, clickable browsing
 breadcrumbs and release years, plus audio-output and system playback controls.
-The packaged **0.42.0** downloads are unchanged. Current screenshots are
-being refreshed; see the [capture checklist](docs/screenshot-checklist.md).
+The packaged **0.42.0** downloads are unchanged. The current development interface is shown in the new screenshots below;
+see the [capture checklist](docs/screenshot-checklist.md) for the remaining views.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast) · [Media kit](media/README.md)
 
-![Tagcast 0.40.0: Earth & Fire album details with ratings, playlists, Recently played and separate file/stream quality](docs/screenshots/album-player-0.40.0.png)
+![Current Tagcast album page for Mambo! by Yma Sumac, with context breadcrumb, genre chips, ratings and compact playback actions](docs/screenshots/album-details.png)
 
 > Tagcast is an independent project. It is not made or endorsed by iBroadcast.
 
@@ -223,7 +223,7 @@ Tags remain separate from genres. Writes are checked against current data and
 read back, without automatic retry or metadata Undo. Playback stays unchanged.
 Existing assignments on other albums and untouched labels are preserved.
 
-![Native iBroadcast tags on an album and its tracks, with Manage tags and per-track Tags controls](media/screenshots/album-tags.png)
+![Native Emusic tag on an album and its tracks, with genre chips, + Tag and the browsing breadcrumb](docs/screenshots/album-tags.png)
 
 ### Help and guided tours
 
@@ -294,19 +294,25 @@ present. See [reference cleanup and matching details](docs/1001-albums.md).
 
 **Possible matches:** compare suggested editions before confirming them.
 
-![Possible matches with covers from the user's library](docs/screenshots/1001-albums-possible.png)
+[Earlier-interface example of possible matches](docs/screenshots/1001-albums-possible.png).
+The current capture set has no unresolved possible matches.
 
 **Confirm a match:** check the album and choose **Use this album** to save a local link.
 
-![Album chooser with a suggested Solomon Burke edition and Use this album](docs/screenshots/1001-albums-confirm.png)
+![Local album chooser finding Lady Soul with bonus selections by Aretha Franklin, with Use this album](docs/screenshots/1001-albums-chooser.png)
 
-**Search for your edition:** find an album when automatic matching missed it.
+**Search the reference list:** find entries by artist or title. To choose a local
+edition, use the search field in the chooser shown above.
 
-![Library search finding a Duke Ellington multi-disc edition for a missing entry](docs/screenshots/1001-albums-search.png)
+![1001 Albums reference-list search showing Emmylou Harris and Violent Femmes results](docs/screenshots/1001-albums-reference-search.png)
 
 **Album background:** open a confirmed match to read its locally bundled, attributed text.
 
-![About this album with a local Wikipedia-attributed background text for The Wildest](docs/screenshots/1001-albums-background.png)
+![Violent Femmes album with the narrower About this album text expanded and the compact player running](docs/screenshots/1001-albums-background.png)
+
+Background text: adapted from [Wikipedia contributors, *Violent Femmes (album)*](https://en.wikipedia.org/wiki/Violent_Femmes_(album)),
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The in-app
+attribution is below this capture’s viewport; [text-license notice](src/tagcast/static/1001-album-notes-LICENSE.txt).
 
 </details>
 
@@ -356,7 +362,7 @@ Track rows show the file format (such as FLAC or MP3) below the duration when iB
 
 By default, the queue lives in the current browser page and resets when you reload it. Save it as a playlist to keep its contents, or explicitly connect the optional queue synchronisation described below. Audio goes through Tagcast's local server, keeping the access token out of the page; supported audio formats depend on your browser. **Play reporting is off by default.** Enable **Settings → Playback → Record played tracks in iBroadcast** to send a track ID and UTC timestamp after more than ten seconds of actual listening. Pauses, buffering and seeking do not count toward the threshold. Each playback sends at most one play; replaying the track starts another. Enabling midway starts counting from that moment; earlier plays and skips are not sent. An uncertain request is not automatically retried, so a network failure can leave a play unrecorded. Playback continues, and the error is available in Settings. Tagcast itself does not send Last.fm scrobbles.
 
-![Now playing in Tagcast 0.20.0: a large album cover, the play queue and Clear queue & stop alongside the light-theme album browser](docs/screenshots/now-playing-light.png)
+![Now playing beside the Violent Femmes album, with the queued tracks, playlist action and Clear queue and stop](docs/screenshots/now-playing-queue.png)
 
 ### Streaming quality, album ratings and playlists
 
@@ -587,7 +593,7 @@ Use **Albums → Duplicate tracks** to find albums with repeated track numbers o
 one disc, for example `1, 1, 2, 3, 4, 4`. The filter includes different titles,
 such as a plain title and a copy with added soundtrack information.
 
-1. **Open the album and choose Move to trash…** **Duplicated** appears on album
+1. **Open the album and choose ⋯ → Move to trash…** **Duplicated** appears on album
    cards, list rows and tracks with repeated positive track numbers on the same
    disc, even when titles differ. Hover over a track badge for the matching reason.
    Checkboxes appear beside the tracks; nothing is sent yet.
@@ -604,8 +610,7 @@ such as a plain title and a copy with added soundtrack information.
    and file format where available. **Select all** selects the entire album,
    including tracks without duplicates. The bar shows the selected track count.
 3. **Choose Review → and confirm the list.** Check the titles and count, then
-   choose **Move N tracks to the trash** (for example, **Move 14 tracks to the
-   trash** in the screenshot). Use **Cancel** while selecting or **Keep them**
+   choose **Move N tracks to the trash**. Use **Cancel** while selecting or **Keep them**
    in the review to leave the tracks unchanged.
 
 Tagcast first checks that the selected tracks are still active on their albums,
@@ -636,30 +641,31 @@ keeps unresolved preferred copies; it never chooses an arbitrary winner.
 <details>
 <summary><b>Step-by-step screenshots: remove duplicate tracks</b></summary>
 
-**Compare uploads before selecting copies.** The upload-date/format table and per-track suggestions explain which copies Tagcast proposes keeping. Apply the suggestion, adjust the checkboxes and review the chosen tracks.
+**1. Open ⋯ → Move to trash… on the album.** Opening this menu does not select
+tracks or send a change.
 
-![Duplicate-track selection with upload groups and suggestions on the BOF Anna album](docs/screenshots/duplicate-tracks-upload-suggestions.png)
+![More album actions menu with Move to trash](docs/screenshots/album-more.png)
 
-**1. Open the album and choose Move to trash…**
+**2. Compare repeated track positions.** The Faithless example shows Duplicated
+badges even when title text or artist credits differ.
 
-The arrow points to the album's trash button. Matching track numbers and titles
-are marked **Duplicate**.
+![Faithless tracks with Duplicated badges on repeated track numbers and different title or artist credits](docs/screenshots/duplicate-track-positions.png)
 
-![Album with Duplicate badges on repeated track numbers and titles; an arrow points to Move to trash](docs/screenshots/duplicate-tracks-open.png)
+**3. Check uncertain copies manually.** Upload timestamps and file formats remain
+visible. Different artist credits are marked **Compare manually**; the checked
+rows below were chosen by the user, not by an automatic suggestion.
 
-**2. Select the unwanted copies, then choose Review →.**
+![Manual track selection with upload timestamps, FLAC formats and Compare manually notices for different artist credits](docs/screenshots/duplicate-tracks-manual.png)
 
-Checked tracks are the ones that will move to the trash. In this example,
-14 of 45 tracks are selected; the first copy of each shown pair is unselected.
+**4. Choose Review → before confirming.** Review the exact tracks and count. Only
+**Move N tracks to the trash** sends the change; **Keep them** closes the review.
 
-![Trash selection with 14 of 45 tracks selected, arrows pointing to the extra copies and Review, and a Select extra copies button](docs/screenshots/duplicate-tracks-select.png)
+The current upload-group suggestion and final track-review captures are still
+pending in the [checklist](docs/screenshot-checklist.md). These earlier-interface
+examples retain the same review steps:
 
-**3. Review the list, then confirm Move 14 tracks to the trash.**
-
-This final button sends the change to iBroadcast. **Keep them** closes the review
-without moving the tracks.
-
-![Trash review listing 14 selected tracks, the iBroadcast trash notice and an arrow pointing to the final confirmation button](docs/screenshots/duplicate-tracks-review.png)
+- [Upload groups and suggested copies](docs/screenshots/duplicate-tracks-upload-suggestions.png)
+- [Final selected-track review](docs/screenshots/duplicate-tracks-review.png)
 
 </details>
 
@@ -681,128 +687,152 @@ If you start the new copy while the old server is still running, the launcher op
 
 ## Screenshots
 
-Some screenshots of the features released in **0.30.0** were captured during
-development and still show a 0.20.0 badge. The [duplicate-removal walkthrough](#move-tracks-to-trash)
-shows the released 0.30.0 interface. Earlier 0.20.0 views below also illustrate
-browsing and editing.
-
-<details>
-<summary><b>New in 0.40.0: Recently played and Settings</b></summary>
-
-**Recently played:** iBroadcast's recent tracks playlist, with search, paging and
-play/queue controls. **Change history** keeps metadata saves separate from listening.
-
-![Recently played in the iBroadcast inspired palette, with the native recent tracks list and Change history navigation](docs/screenshots/recently-played-ibroadcast.png)
-
-**Settings:** optionally report plays to iBroadcast and restore the library
-information banner after hiding it. Play reporting is off by default; enabling
-it also shows Recently played.
-
-![Settings showing the hidden library banner, optional iBroadcast play reporting and online source keys](docs/screenshots/settings-playback-ibroadcast.png)
-
-These features are included in the 0.40.0 standalone downloads. The screenshots
-were captured during development and still show a 0.30.0 badge; the current
-version is displayed beside Settings at the bottom of the sidebar.
-
-</details>
+Captured on 16 October 2026 from the local development build. The cassette logo,
+compact sidebar, album breadcrumbs, tags and Sound controls reflect `main`; the
+published 0.42.0 packages retain their earlier interface. All supplied originals
+are indexed in the [capture checklist](docs/screenshot-checklist.md), which also
+lists missing and partially covered views. The older sign-in illustration and
+linked cleanup examples retain their earlier styling.
 
 <details open>
-<summary><b>New in 0.30.0: batch cleanup, formats and fullscreen playback</b></summary>
+<summary><b>Artists, albums and reviewed album selection</b></summary>
 
-**Batch cleanup:** review before/after values, exclude albums and approve the job.
-Genres, track artists and composers keep each track’s own values. Progress shows
-confirmed and outstanding tracks; batches are checked against iBroadcast.
+**Album artists:** searchable artist cards with the refreshed sidebar.
 
-![Track artist cleanup preview with album selection and before/after names](docs/screenshots/cleanup-artists-preview.png)
+![Album artist grid with artist images and collection counts](docs/screenshots/album-artists.png)
 
-![Genre cleanup running in bounded batches with confirmed and pending track counts](docs/screenshots/cleanup-genres-running.png)
+**Albums:** search/filter/sort controls and compact Play / + actions on cards.
 
-Use **Review genre labels** to rename one exact label, replace it with several
-labels (one per line), or explicitly remove it. Slashes are not guessed as
-separators: a label such as `Films/Games` can remain intact.
+![Album collection with Al Green covers, filters and compact Play and queue buttons](docs/screenshots/albums.png)
 
-**File formats and Ocean colours:** known formats appear below each track’s time.
+**Select an artist's albums:** edit together or review complete albums for the trash.
 
-![Ocean palette album page with FLAC beneath the track durations](docs/screenshots/album-formats-ocean.png)
+![Two Aphex Twin albums selected with edit and reviewed trash actions](docs/screenshots/artist-albums-selected.png)
 
-**Fullscreen Now playing:** a large cover and the existing player, without
-restarting playback. Escape returns to the collection.
+![Complete-album trash review for Syro, showing one album and twelve tracks before confirmation](docs/screenshots/albums-trash-review.png)
 
-![Fullscreen Now playing in the Ocean palette with cover and audio controls](docs/screenshots/fullscreen-ocean.png)
+**Multi-disc albums:** tracks stay in disc sections with separate Edit disc actions.
+This capture is scrolled to the boundary between discs.
+
+![10cc multi-disc album track list with Disc 2 and Edit disc 2 visible](docs/screenshots/album-multi-disc.png)
 
 </details>
 
 <details>
-<summary><b>iBroadcast inspired colours, random albums, favourites and disc sets</b></summary>
+<summary><b>Native tags and their reviews</b></summary>
 
-**Play random album:** play a complete album from a genre, artist, composer,
-year or decade, or from your filtered collection, across all pages.
+**Tags:** browse your iBroadcast labels, separate from genres.
 
-![Blues albums in the iBroadcast inspired palette with Play random album and the compact player](docs/screenshots/random-album-ibroadcast.png)
+![Tags overview showing Emusic and Hoorspel with album and track counts](docs/screenshots/tags.png)
 
-![Albums featuring Burt Bacharach with composer browsing and Play random album](docs/screenshots/composer-albums-ibroadcast.png)
+**Manage assignments:** keep existing values or choose explicit add/remove operations.
 
-**Favourites:** use iBroadcast track ratings and browse or queue liked tracks.
+![Album tag manager showing assignment counts and Keep as is choices](docs/screenshots/tag-manager.png)
 
-![Favourites with search, queue and heart controls in the iBroadcast inspired palette](docs/screenshots/favourites-ibroadcast.png)
+**Review:** inspect the label and track count before saving.
 
-**Multi-disc sets:** one album page with disc sections and format labels. Grouping
-also compares album year and upload dates; separate disc records are retained
-for reviewed edits.
-
-![Live In Bratislava shown as a multi-disc album with individual disc editing and FLAC labels](docs/screenshots/multi-disc-ibroadcast.png)
+![Review of adding Hoorspel to twelve tracks, before confirmation](docs/screenshots/tag-review.png)
 
 </details>
 
 <details>
-<summary><b>Albums, an artist's collection and album details</b></summary>
+<summary><b>Metadata drafts, review and artwork</b></summary>
 
-**Albums:** search, filter, sort and add an album to the queue from its card.
+The editor combines album/track fields with source suggestions. Changes still need
+an explicit before/after review.
 
-![The dark-theme album collection with search, filters, page-size controls and Add to queue buttons](docs/screenshots/albums-dark.png)
+![10cc metadata editor with album fields, genres and online source suggestions](docs/screenshots/editor.png)
 
-**An album artist:** browse Billy Preston's albums, change the artist image or select albums by this artist to edit together.
+![Metadata review showing genre changes across 53 tracks, before saving](docs/screenshots/metadata-review.png)
 
-![Billy Preston's albums in the dark theme, with artist artwork, album selection and Add to queue controls](docs/screenshots/artist-albums-dark.png)
+Artwork has its own comparison and save action.
 
-**An album:** play it, add it to the queue, edit metadata or review a trash move. Each track has queue and favourite controls.
+![Violent Femmes artwork comparison with existing cover, selected replacement and online suggestions](docs/screenshots/artwork-compare.png)
 
-![Album details for 16 Year Old Soul!, with track durations, playback, queue, favourite, editing and trash controls](docs/screenshots/album-details-dark.png)
-
-</details>
-
-<details>
-<summary><b>Metadata editing and online suggestions</b></summary>
-
-The editor keeps album and track metadata alongside source suggestions. A suggested edition's release date may differ from the original release year; choose the values you want, then review before saving.
-
-![The dark-theme album editor with title, artist, year, disc, genre and composer fields and online suggestions](docs/screenshots/editor-dark.png)
+[Earlier-interface credit cleanup preview](docs/screenshots/cleanup-artists-preview.png)
+· [Earlier-interface genre cleanup progress](docs/screenshots/cleanup-genres-running.png).
+Updated cleanup captures are still pending.
 
 </details>
 
 <details>
-<summary><b>Genre browsing and decade discoveries</b></summary>
+<summary><b>Playback, queue, fullscreen and Sound</b></summary>
 
-**Genres:** a genre opens matching albums, ready to play, queue or edit.
+The compact player and queue remain active while browsing other pages.
 
-![Albums matching the Classical genre, with search, sorting and Add to queue controls](docs/screenshots/genre-albums-dark.png)
+![Album page with Now playing and its track queue open](docs/screenshots/now-playing-queue.png)
 
-**Decades:** discover a random selection from the 1980s, or choose **Surprise me again** for another selection.
+**Fullscreen Now playing:** a large cover and controls using the same audio element.
 
-![The 1980s discovery page with 24 random albums, Surprise me again and queue controls](docs/screenshots/decades-dark.png)
+![Fullscreen Now playing for Blister In The Sun by Violent Femmes](docs/screenshots/fullscreen.png)
+
+**Sound:** player volume and mute stay separate from the chosen output. This example
+shows Safari's native AirPlay picker; other browsers expose the outputs they support
+or direct you to system sound settings.
+
+![Sound dialog with volume and Mute, and Safari's native AirPlay output picker open](docs/screenshots/sound-output.png)
 
 </details>
 
 <details>
-<summary><b>Overview and the light theme</b></summary>
+<summary><b>Genres, composers and decades</b></summary>
 
-**Overview:** collection totals and metadata health, with links to albums needing attention.
+**Genres:** albums containing matching tracks, with random playback available.
 
-![The dark-theme Overview showing library statistics, metadata health and iBroadcast settings](docs/screenshots/overview-dark.png)
+![Alternative genre albums with random album playback and the compact player](docs/screenshots/genre-albums.png)
 
-**Light theme:** the same browsing, selection and queue controls with light surfaces.
+**Composers:** browse albums with tracks credited to Burt Bacharach.
 
-![Billy Preston's album collection in the light theme, with artist artwork and album selection](docs/screenshots/artist-albums-light.png)
+![Burt Bacharach composer albums with sorting and random playback](docs/screenshots/composer-albums.png)
+
+**Decades:** discover a sample and choose Surprise me again for another selection.
+
+![1980s discovery page with its introduction, sampled albums and Surprise me again](docs/screenshots/decades.png)
+
+</details>
+
+<details>
+<summary><b>Favourites and Recently played</b></summary>
+
+**Favourites:** search native track favourites and play or queue them.
+
+![Track favourites with artist and album details, hearts and playback controls](docs/screenshots/favourites.png)
+
+**Recently played:** native listening history with search and playback controls.
+
+![Recently played list with Yma Sumac tracks and a separate active compact player](docs/screenshots/recently-played.png)
+
+</details>
+
+<details>
+<summary><b>Overview, History, Settings and contextual help</b></summary>
+
+**Overview:** collection totals, metadata health and iBroadcast settings. The account
+fields in this capture were redacted by the contributor.
+
+![Library overview with collection totals, metadata health and redacted account values](docs/screenshots/overview.png)
+
+**Change history:** confirmed saves and unconfirmed outcomes stay distinct.
+
+![Change history showing saved artwork and unconfirmed metadata results](docs/screenshots/history.png)
+
+**Settings:** the library banner, sidebar preferences, stream quality and optional
+play reporting.
+
+![Settings showing interface preferences, sidebar customization and playback options](docs/screenshots/settings.png)
+
+**Help:** the ? tour explains the current context without triggering actions.
+
+![Decades help tour highlighting the decade cards](docs/screenshots/help-tour.png)
+
+</details>
+
+<details>
+<summary><b>Light appearance</b></summary>
+
+The same album controls with light content surfaces and the independent sidebar.
+
+![Odessa by Bee Gees in Light appearance, with album actions and the compact player](docs/screenshots/album-light.png)
 
 </details>
 
