@@ -9,13 +9,10 @@ Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collect
 
 Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
 
-**New in [0.42.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.42.0):** Discover your collection with optional **1001 Albums**, manual matching and offline album background texts. Page-specific **?** tours explain the current screen. Duplicate-track cleanup now compares upload dates and formats, preferring FLAC over MP3 and then the newest upload. Customize the sidebar and explore decades with short music introductions. All features are included in the standalone downloads for macOS, Windows and Linux.
+**New in [0.50.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.50.0):** A refreshed look with the cassette-in-sleeve logo, a quieter sidebar and compact album pages. Browse and manage native iBroadcast **tags**, follow context breadcrumbs and clickable release years, choose an available audio output and use system playback controls. Review complete albums for the trash or analyse suggested duplicate copies across your library. All features are included in the standalone downloads for macOS, Windows and Linux.
 
-**Development on `main` (unreleased):** native tag management, reviewed album
-selection trash, refreshed branding/sidebar and album pages, clickable browsing
-breadcrumbs and release years, plus audio-output and system playback controls.
-The packaged **0.42.0** downloads are unchanged. The current development interface is shown in the new screenshots below;
-see the [capture inventory](docs/screenshot-checklist.md) for current and retained examples.
+The refreshed interface is shown in the screenshots below; see the
+[capture inventory](docs/screenshot-checklist.md) for current and retained examples.
 
 [Install](#install) · [Connect iBroadcast](#connect-ibroadcast) · [Using Tagcast](#using-tagcast) · [Screenshots](#screenshots) · [Update](#updating-tagcast) · [Media kit](media/README.md)
 
@@ -27,14 +24,14 @@ see the [capture inventory](docs/screenshot-checklist.md) for current and retain
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.42.0** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.50.0** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.42.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.42.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.42.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.42.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.42.0/tagcast-0.42.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.42.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.50.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.50.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.50.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.50.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.50.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
 On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
 
@@ -692,12 +689,12 @@ If you start the new copy while the old server is still running, the launcher op
 
 ## Screenshots
 
-Captured on 16 October 2026 from the local development build. The cassette logo,
-compact sidebar, album breadcrumbs, tags and Sound controls reflect `main`; the
-published 0.42.0 packages retain their earlier interface. All supplied originals
+Captured on 16 October 2026 while preparing 0.50.0, with the cassette logo,
+compact sidebar, album breadcrumbs, tags and Sound controls. Some captures still
+show the previous development version beside Settings. All supplied originals
 are indexed in the [capture checklist](docs/screenshot-checklist.md), which also
-records the supplied views and accepted earlier-interface examples. The older sign-in illustration and
-linked cleanup examples retain their earlier styling.
+records the supplied views and accepted earlier-interface examples. The older
+sign-in illustration and linked cleanup examples retain their earlier styling.
 
 <details open>
 <summary><b>Artists, albums and reviewed album selection</b></summary>

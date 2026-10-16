@@ -33,9 +33,10 @@ Available for macOS, Windows and Linux. [Project](https://github.com/cyberdeliaA
 
 PNG logos have transparent corners/backgrounds. SVG wordmarks use Arial with a
 Helvetica/sans-serif fallback; use the PNG when exact lettering is required.
-Screenshots were refreshed from the development interface on **16 October 2026**,
+Screenshots were captured on **16 October 2026** while preparing Tagcast 0.50.0,
 with the cassette icon, compact sidebar, context breadcrumb and inline tag chips.
-The published 0.42.0 downloads retain their earlier interface.
+Some captures still show the previous development version beside Settings;
+the original pixels are preserved.
 
 ## Colours and use
 
