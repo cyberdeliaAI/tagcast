@@ -88,7 +88,7 @@ const HELP_TOPICS = {
   ]},
   overview: {title: "Overview", scope: "#overview-page", steps: [
     ["Your library in numbers", "Overview summarises your collection and account using the loaded library. Album totals use the same displayed sets as the album browser.", ["#overview-page"]],
-    ["Explore metadata", "Metadata health counts highlight missing or combined values. Choose Show albums beside a count to inspect the corresponding albums before deciding whether to edit them.", ["#overview-page [data-health]", "#overview-page"]],
+    ["Explore metadata", "Metadata health counts highlight missing or combined values. Follow a count’s link to inspect the matching albums or album artists before deciding whether to edit them.", ["#overview-page [data-health]", "#overview-page"]],
   ]},
   guide: {title: "1001 Albums", scope: "#album-guide-page", steps: [
     ["Your listening list", "This selection is based on the book edited by Robert Dimery and covers 1955–2007. Compare it with the albums already in your iBroadcast library.", ["#album-guide-page .page-intro"]],

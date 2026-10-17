@@ -2526,6 +2526,64 @@ test('The album overview and track rows mark repeated numbers with the same Dupl
   assert.equal(p.requests.filter(r => r.options?.method === 'POST').length, 0);
 });
 
+test("Overview artist-image health opens only the missing album artists and preserves paging, history and playback", async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"));
+    state.albums = Array.from({length: 273}, (_, i) => ({...state.albums[0], id: String(i + 1000),
+      artist: (i < 72 ? "Missing " : "With image ") + String(i).padStart(3, "0"),
+      artist_image: i < 72 ? "" : "https://example.test/photo"}));
+    state.albums.push({...state.albums[0], id: "2000", artist: "Various Artists", artist_image: ""});
+    $("#artists-search").value = "With image"; $("#artists-filter").value = "all";
+    artistBrowse.page = 8; $("#artists-sort").value = "za";
+    $("#filter").value = "cover"; $("#search").value = "stale album search"; state.artist = "Stale artist"`);
+  const stats = {health: {artist_image: {missing: 72, total: 273}}, formats: [], uploads: [],
+    top_tracks: [], top_albums: [], top_artists: []};
+  p.setFetch(url => {
+    assert.equal(url, '/api/overview');
+    return {ok: true, json: async () => ({account: {preferences: {}, linked: {}}, stats})};
+  });
+  p.run('showScreen("overview")'); await settle();
+  assert.match(p.nodes.get('#overview-page').innerHTML, /72 album artists without an image/);
+  assert.match(p.nodes.get('#overview-page').innerHTML, /data-health="artist_image">Show album artists →/);
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), requests = p.requests.length;
+  await p.click({'[data-health]': {dataset: {health: 'artist_image'}}});
+  assert.equal(p.run('state.screen'), 'artists');
+  assert.equal(p.location.hash, '#/artists');
+  assert.equal(p.nodes.get('#artists-filter').value, 'no_image');
+  assert.equal(p.nodes.get('#artists-search').value, '');
+  assert.equal(p.run('artistBrowse.page'), 0);
+  assert.equal(p.nodes.get('#artists-results').textContent, '72 album artists');
+  assert.equal(p.run('filteredArtistGroups().length'), 72);
+  assert.doesNotMatch(p.nodes.get('#artists-grid').innerHTML, /With image|Various Artists|<img/);
+  assert.equal(p.requests.length, requests, 'Filtering uses existing summaries without fetching tracks');
+  await p.click({'[data-artist-page]': {dataset: {artistPage: '1'}}});
+  await p.click({'[data-browse-artist]': {dataset: {browseArtist: 'Missing 040'}}});
+  assert.equal(p.run('state.artist'), 'Missing 040');
+  assert.equal(p.nodes.get('#filter').value, 'all', 'Opening an artist shows all of their albums');
+  assert.equal(p.nodes.get('#results-count').textContent, '1 album by Missing 040');
+  p.history.back(); await settle();
+  assert.equal(p.location.hash, '#/artists');
+  assert.equal(p.run('artistBrowse.page'), 1);
+  assert.equal(p.nodes.get('#artists-filter').value, 'no_image');
+  assert.equal(p.nodes.get('#artists-results').textContent, '72 album artists');
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.requests.length, requests);
+});
+
+test("other Overview health links keep opening their matching album filters", async () => {
+  const p = page(); await settle();
+  p.run('state.screen = "overview"; state.artist = "Pink Floyd"; state.page = 5; $("#search").value = "stale search"; syncHistory()');
+  await p.click({'[data-health]': {dataset: {health: 'genre'}}});
+  assert.equal(p.run('state.screen'), 'albums');
+  assert.equal(p.location.hash, '#/albums');
+  assert.equal(p.run('state.artist'), null);
+  assert.equal(p.nodes.get('#filter').value, 'genre');
+  assert.equal(p.nodes.get('#search').value, '');
+  assert.equal(p.run('state.page'), 0);
+});
+
 test("Album artists can show only the artists without an image", async () => {
   const p = livePage();
   p.run("showArtistBrowse()");
