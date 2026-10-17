@@ -3561,6 +3561,44 @@ test("fullscreen Now playing reuses audio and queue, updates metadata safely and
   assert.equal(preview.run('visualPlayer.open'), false);
 });
 
+test("fullscreen loads known large artwork only on opening, falls back once and preserves playback", async () => {
+  const p = livePage(); await settle();
+  p.run('const largeArtAlbum = state.details.get("1"); largeArtAlbum.artwork = "https://art.example/artwork/77-300?variant=1"; playTracks(largeArtAlbum)');
+  const art = p.nodes.get('#visual-player-art'), writes = [];
+  let imageSrc;
+  Object.defineProperty(art, 'src', {configurable: true, get() { return imageSrc; }, set(value) { imageSrc = value; writes.push(value); }});
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), requests = p.requests.length;
+  assert.equal(art.src, undefined, 'Compact playback does not load fullscreen artwork');
+  p.run('openVisualPlayer()');
+  assert.equal(art.src, 'https://art.example/artwork/77-1000?variant=1');
+  p.run('markPlaying()');
+  assert.equal(writes.length, 1, 'Repeated playback rendering keeps the same image request');
+  await art.emit('error');
+  assert.equal(art.src, 'https://art.example/artwork/77-300?variant=1');
+  p.run('markPlaying()');
+  assert.equal(writes.length, 2, 'Rendering keeps the original-image fallback');
+  await art.emit('error');
+  p.run('markPlaying()');
+  assert.equal(art.hidden, true);
+  assert.equal(writes.length, 2, 'Neither failed size is retried during playback');
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.requests.length, requests, 'Artwork requires no library or track API request');
+  p.run('player.queue[player.index].album.artwork = "https://art.example/artwork/88-150"; markPlaying()');
+  assert.equal(art.src, 'https://art.example/artwork/88-1000');
+  assert.equal(art.hidden, false, 'Changing artwork recovers from the previous failure');
+  p.run('hideVisualPlayer()');
+  await art.emit('error');
+  assert.equal(art.src, undefined, 'Closing clears the image and ignores late errors');
+  assert.equal(writes.length, 3);
+  p.run('player.queue[player.index].album.artwork = "https://provider.example/image-300.jpg"; openVisualPlayer()');
+  assert.equal(art.src, 'https://provider.example/image-300.jpg', 'Other providers keep their original URLs');
+  p.run('player.queue[player.index].album.artwork = ""; markPlaying()');
+  assert.equal(art.hidden, true);
+  assert.equal(art.src, undefined);
+});
+
 test("native fullscreen handles browser Escape, rejection and a late request after closing", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1")); $("#player-stage").requestFullscreen = () => {document.fullscreenElement = $("#player-stage"); return Promise.resolve()}; document.exitFullscreen = () => {document.fullscreenElement = null; return Promise.resolve()}');

@@ -100,8 +100,7 @@ function openCoverLightbox(preview) {
   $("#cover-lightbox-artist").textContent = album.artist || "";
   $("#cover-lightbox-status").textContent = "Loading cover…";
   image.alt = `Cover of ${album.name || "this album"}`; image.hidden = false;
-  // The iBroadcast web player uses -1000 for large artwork. Other image URLs stay intact.
-  image.src = album.artwork.replace(/(\/artwork\/\d+)-(?:150|300)(?=$|[?#])/, "$1-1000");
+  image.src = largeArtworkUrl(album.artwork);
   $("#cover-lightbox").showModal(); $("#cover-lightbox-close").focus();
 }
 

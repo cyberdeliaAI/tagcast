@@ -5,7 +5,7 @@
 
 const player = {queue: [], index: -1, album: null, epoch: 0, pending: Promise.resolve(), randomRequest: 0, randomLoading: false, repeat: "none", shuffle: false, quality: "128", fallback: false};
 const audio = $("#audio");
-const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: []};
+const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null};
 const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
@@ -125,10 +125,13 @@ function renderVisualPlayer() {
   performer.hidden = !track.artist || track.artist === album.artist;
   $("#visual-player-placeholder").textContent = initials(album.artist);
   const art = $("#visual-player-art");
-  // Reuse the cover URL as provided, without fetching speculative larger sizes.
-  if (art.getAttribute("src") !== (album.artwork || null)) {
-    art.hidden = !album.artwork;
-    if (album.artwork) art.src = album.artwork; else art.removeAttribute("src");
+  // Load large artwork only in this explicit view, once per cover. Playback events
+  // must not retry a failed large image or undo its fallback to the original URL.
+  const artwork = album.artwork || "";
+  if (visualPlayer.artwork !== artwork) {
+    visualPlayer.artwork = artwork;
+    art.hidden = !artwork;
+    if (artwork) art.src = largeArtworkUrl(artwork); else art.removeAttribute("src");
   }
 }
 
@@ -136,6 +139,8 @@ function hideVisualPlayer() {
   if (typeof closeCoverLightbox === "function") closeCoverLightbox();
   if (!visualPlayer.open) return;
   visualPlayer.open = false; visualPlayer.native = false; visualPlayer.request += 1;
+  visualPlayer.artwork = null;
+  $("#visual-player-art").removeAttribute("src");
   $("#visual-player").hidden = true;
   document.body.classList.remove("visual-player-open");
   $("#player-stage").removeAttribute("role");
@@ -188,7 +193,14 @@ function openVisualPlayer() {
 
 $("#player-fullscreen").addEventListener("click", () => visualPlayer.open ? closeVisualPlayer() : openVisualPlayer());
 $("#visual-player-close").addEventListener("click", closeVisualPlayer);
-$("#visual-player-art").addEventListener("error", () => { $("#visual-player-art").hidden = true; });
+$("#visual-player-art").addEventListener("error", () => {
+  if (!visualPlayer.open || !visualPlayer.artwork) return;
+  const art = $("#visual-player-art");
+  if (art.getAttribute("src") !== visualPlayer.artwork) {
+    art.src = visualPlayer.artwork; return;
+  }
+  art.hidden = true;
+});
 document.addEventListener("fullscreenchange", () => {
   if (document.fullscreenElement === $("#player-stage")) {
     visualPlayer.native = true;
