@@ -34,7 +34,7 @@ function albumTagChips(album) {
 
 function trackTagControls(album, track) {
   if (!live()) return "";
-  return `<small class="track-tags">${tagLinks(track.tags)}<button type="button" class="text-action" data-track-tags="${escapeHtml(track.id)}" data-tag-album="${escapeHtml(album.id)}" aria-label="Manage tags for ${escapeHtml(track.title)}">Tags…</button></small>`;
+  return `<button type="button" class="track-tag-action" data-track-tags="${escapeHtml(track.id)}" data-tag-album="${escapeHtml(album.id)}" aria-label="Manage tags for ${escapeHtml(track.title)}" title="Manage track tags"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m10 3-4 18M18 3l-4 18M3 9h18M2 15h18"/></svg></button>`;
 }
 
 function beginTagDialog(action, origin = null) {

@@ -3754,9 +3754,9 @@ test("track format labels use existing metadata in album rows and search, hide u
   const count = p.requests.length;
   await p.run('openAlbum("1")');
   const html = p.nodes.get("#album-page").innerHTML;
-  assert.match(html, /class="track-time">[^<]*<small class="track-format" title="File format">FLAC<\/small>/);
-  assert.match(html, /class="track-format" title="File format">MP3/);
-  assert.equal((html.match(/class="track-format"/g)||[]).length,2,"Missing format data stays blank");
+  assert.match(html, /track-list-summary">5 tracks · FLAC \/ MP3 \(known files\)/);
+  assert.match(html, /track-format-exception"[^>]*>MP3/);
+  assert.equal((html.match(/class="pill missing track-format-exception"/g)||[]).length,2,"Tied formats are both identified; missing data stays blank");
   assert.equal(p.requests.length,count,"Format labels do not fetch more data");
   const result = p.json('localTracks("welcome").tracks[0]');
   assert.equal(result.format,"MP3");
@@ -4332,4 +4332,67 @@ test("local album favourites restore with the library and storage errors leave s
   assert.doesNotMatch(controls, /data-album-rating="1"[^>]*disabled/);
   assert.match(controls, /Local favourites unavailable/);
   assert.equal(p.run('state.albumFavourites.size'), 0);
+});
+
+test("album rows omit their album artist, retain distinct credits and keep plain tracks to one line", async () => {
+  const p = livePage(); await settle();
+  assert.equal(p.run('albumTrackMetadata({artist:"Yma Sumac",artist_id:41},{artist:"Yma Sumac",artist_id:41,format:"FLAC"},{main:"FLAC"})'), '');
+  const credits = p.run(`albumTrackMetadata({artist:"Yma Sumac",artist_id:41},
+    {artist:"Yma Sumac",performers:[{id:"41",name:"Yma Sumac"},{id:"62",name:"Billy May"},{id:"63",name:"Moises Vivanco"},{id:"99",name:"  YMA  SUMAC "},{id:"62",name:"Billy May"}],composers:["Composer <name>"],format:"FLAC"}, {main:"FLAC"})`);
+  assert.doesNotMatch(credits, /Sumac|SUMAC/);
+  assert.equal((credits.match(/>Billy May<\/button>/g)||[]).length,1);
+  assert.match(credits,/data-performer-id="62"/);
+  assert.match(credits,/data-performer-id="63"/);
+  assert.match(credits,/Composer: Composer &lt;name&gt;/);
+  const compilation = p.run('albumTrackMetadata({artist:"Various Artists",artist_id:0},{artist:"Guest Artist",artist_id:42},{main:""})');
+  assert.match(compilation,/data-performer-id="42"[^>]*>Guest Artist/);
+  const count = p.requests.length;
+  await p.run('openAlbum("1")');
+  const row = p.nodes.get('#album-page').innerHTML.match(/<tr data-row="100">([\s\S]*?)<\/tr>/)[1];
+  assert.match(row,/<td><strong>Shine On You Crazy Diamond \(Parts I–V\)<\/strong><\/td>/);
+  assert.doesNotMatch(row,/album-track-meta|>Pink Floyd<|class="track-tags"/);
+  assert.match(row,/data-track-tags="100"/,'Untagged tracks retain tag management in their actions');
+  assert.equal(p.requests.length,count);
+});
+
+test("album format summaries distinguish a common format, ties and missing file metadata", async () => {
+  const p = livePage(); await settle();
+  assert.deepEqual(p.json('albumTrackFormats([{format:"FLAC"},{format:"FLAC"}])'),{main:'FLAC',label:'FLAC'});
+  assert.deepEqual(p.json('albumTrackFormats([{format:"FLAC"},{format:"MP3"},{format:"FLAC"}])'),{main:'FLAC',label:'FLAC · mixed formats'});
+  assert.deepEqual(p.json('albumTrackFormats([{format:"MP3"},{format:"FLAC"}])'),{main:'',label:'FLAC / MP3'});
+  assert.deepEqual(p.json('albumTrackFormats([{format:"FLAC"},{}])'),{main:'FLAC',label:'FLAC (known files)'});
+  assert.deepEqual(p.json('albumTrackFormats([{},{}])'),{main:'',label:''});
+  p.run('state.details.get("1").tracks.forEach((t,i)=>{t.format=i===2?"MP3":"FLAC";t.length=60})');
+  const before = p.requests.length;
+  await p.run('openAlbum("1")');
+  const html=p.nodes.get('#album-page').innerHTML;
+  assert.match(html,/track-list-summary">5 tracks · 5:00 · FLAC · mixed formats/);
+  assert.equal((html.match(/track-format-exception/g)||[]).length,1);
+  assert.match(html,/title="File format: MP3 · album mainly FLAC">MP3/);
+  assert.doesNotMatch(html,/class="track-format"/,'Repeated file labels are absent from ordinary time cells');
+  assert.equal(p.requests.length,before);
+});
+
+test("track tags and unusual formats add metadata without a repeated album artist or an empty row", async () => {
+  const p=livePage(); await settle();
+  const html=p.run('albumTrackMetadata({artist:"A"},{id:"1",artist:"A",tags:[{id:"9",name:"Listen <later>"}],format:"MP3"},{main:"FLAC"})');
+  assert.match(html,/data-browse-kind="tags" data-browse-key="9"/);
+  assert.match(html,/Listen &lt;later&gt;/);
+  assert.match(html,/track-format-exception/);
+  assert.doesNotMatch(html,/>A<|Tags…|data-track-tags/);
+  assert.match(p.run('trackTagControls({id:"1"},{id:"2",title:"Title <unsafe>"})'),/aria-label="Manage tags for Title &lt;unsafe&gt;"/);
+  assert.equal(p.run('albumTrackMetadata({artist:"A"},{artist:"A",tags:[],format:"FLAC"},{main:"FLAC"})'),'');
+});
+
+test("compact rows keep cleanup formats, upload advice and adjustable track selection", async () => {
+  const p=livePage(); await settle();
+  p.run('state.details.get("1").tracks.forEach(t=>{t.format="FLAC";t.uploaded_on="2026-10-01";t.uploaded_at="2026-10-01T12:00:00"})');
+  await p.run('openAlbum("1")'); p.run('startAlbumTrash()');
+  const html=p.nodes.get('#album-page').innerHTML;
+  assert.match(html,/album-tracklist trash-mode/);
+  assert.equal((html.match(/class="track-format" title="File format">FLAC/g)||[]).length,5);
+  assert.match(html,/Uploaded 2026-10-01/);
+  assert.match(html,/data-trash-track="100"/);
+  assert.match(html,/track-row-actions/);
+  assert.equal(p.run('albumView.trash.size'),0);
 });
