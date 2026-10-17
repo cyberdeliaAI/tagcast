@@ -10,6 +10,7 @@ import webbrowser
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
@@ -284,6 +285,12 @@ class Server(ThreadingHTTPServer):
     # On Windows, SO_REUSEADDR lets a second program listen on a port that is in use,
     # so a second Tagcast would start next to the first instead of noticing it.
     allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        # The interface is numeric loopback only. HTTPServer's reverse DNS lookup
+        # is unnecessary here and can stall startup on hosts with slow DNS.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def server_close(self):
         handler = self.RequestHandlerClass
