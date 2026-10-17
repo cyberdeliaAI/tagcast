@@ -27,7 +27,7 @@ local ports and browsers, without changing the report, manual links, filters or 
 link. Missing covers keep their grey appearance.
 
 Missing entries use a grey, softened placeholder cover. Their title, artist and
-matching status remain readable. See the [illustrated walkthrough](../README.md#1001-albums-optional)
+matching status remain readable. See the [illustrated walkthrough](https://github.com/cyberdeliaAI/tagcast/wiki/1001-Albums)
 for found, possible and missing results and the album chooser. The **?** on this page
 starts its six-step 1001 Albums tour; it never starts an analysis or saves a link.
 
