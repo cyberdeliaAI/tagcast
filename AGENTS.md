@@ -484,6 +484,10 @@ and preserve a valid script order in `index.html`.
 
 ## Tests and compatibility
 
+The GitHub Wiki is the full user guide; keep the repository README concise.
+Follow `docs/documentation.md` when updating Wiki pages, navigation or screenshot
+links. Wiki content has its own Git history; it does not need an app release.
+
 Run the relevant checks for changed components. The existing CI checks are:
 
 ```sh
