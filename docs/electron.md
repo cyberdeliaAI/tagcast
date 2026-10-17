@@ -1,9 +1,8 @@
 # Electron desktop and Python/browser use
 
-Development on `main`, not a published release. The existing 0.50.0 downloads keep
-their browser launcher. Upcoming standalone downloads for macOS (Apple Silicon and
-Intel), Windows x64 and Linux x64 use Electron. Source installs and the existing
-Python startscripts continue to open the browser.
+Since 0.60.0, standalone downloads for macOS (Apple Silicon and Intel), Windows x64
+and Linux x64 use Electron 44.9.0. Source installs and the existing Python startscripts
+continue to open the browser. Earlier releases retain their original browser launcher.
 
 ## One application, two ways to open it
 
@@ -65,10 +64,12 @@ uv run --frozen --with-requirements requirements-build.txt python tools/build_el
 ```
 
 Use `--dir` for an unpacked local test app and `--skip-install` only after `npm ci`.
-The build freezes `tagcast.electron_host` without Tk, packages it in Electron and
+The build freezes `tagcast.electron_host` and the browser CLI without Tk, packages them in Electron and
 checks the actual app with disposable settings/profile folders. Complete downloads
 are extracted and checked before their SHA-256 files are written to `dist/packages/`.
 The macOS result is `Tagcast.app`, Windows has `Tagcast.exe`, Linux has `Tagcast`.
+The separate `tagcast-cli` executable in `resources/backend/` (macOS:
+`Tagcast.app/Contents/Resources/backend/`) retains normal browser/terminal use.
 Keep the complete extracted package together.
 
 Builds use ad-hoc macOS integrity signatures, not Developer ID notarization, and no
@@ -98,7 +99,8 @@ python tools/release_info.py
 ```
 
 The shell tests cover protocol/address validation, forbidden navigation/permissions,
-CSP, real child startup/shutdown and a missing interpreter. Python tests cover owned
+CSP, real child startup/shutdown and a missing interpreter. Extracted downloads also
+check the bundled CLI's help and version. Python tests cover owned
 and reused servers, foreign/old servers, parent EOF, HTTP guards and graceful writes.
 Manual playback/output/fullscreen checks are still needed on each platform; an app
 loading successfully does not establish support for every audio device.
