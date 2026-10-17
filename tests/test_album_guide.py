@@ -53,8 +53,8 @@ class GuideTests(unittest.TestCase):
         self.assertEqual(entries[965]["artist"], "Björk")
         self.assertEqual(entries[965]["album"], "Medúlla")
         corrections = json.loads(CATALOGUE.read_text(encoding="utf-8"))["corrections"]
-        self.assertEqual(len(corrections), 195)
-        self.assertEqual(len({c["id"] for c in corrections}), 164)
+        self.assertEqual(len(corrections), 200)
+        self.assertEqual(len({c["id"] for c in corrections}), 168)
         self.assertEqual(len({(c["id"], c["field"]) for c in corrections}), len(corrections))
         for correction in corrections:
             self.assertEqual(entries[correction["id"] - 1][correction["field"]], correction["after"])
@@ -63,9 +63,14 @@ class GuideTests(unittest.TestCase):
     def test_reference_repairs_swapped_columns_and_release_years_at_stable_ids(self):
         entries, _ = guide_catalogue()
         expected = {
+            118: ("The Sounds of India", "Ravi Shankar", 1958),
+            248: ("White Light", "Gene Clark", 1971),
             285: ("Manassas", "Stephen Stills", 1972),
+            402: ("Vento De Maio", "Elis Regina", 1983),
             417: ("Crossing the Red Sea with the Adverts", "The Adverts", 1978),
+            594: ("Spy Vs Spy", "John Zorn", 1989),
             608: ("The New Tango", "Astor Piazzolla & Gary Burton", 1987),
+            693: ("Haut de gamme / Koweït, rive gauche", "Koffi Olomide", 1992),
             753: ("Whatever", "Aimee Mann", 1993),
             895: ("São Paulo Confessions", "Suba", 1999),
         }

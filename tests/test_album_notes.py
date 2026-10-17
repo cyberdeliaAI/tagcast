@@ -6,7 +6,13 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-from import_album_notes import AlbumSummary, SourceIndex, compare, source_url  # noqa: E402
+from import_album_notes import (  # noqa: E402
+    AlbumSummary,
+    SourceIndex,
+    compare,
+    reviewed_note,
+    source_url,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,6 +82,23 @@ class AlbumNoteTests(unittest.TestCase):
             compare(reference, source, {"2": {**reviewed, "note": {**repair,
                     "source_url": "https://example.com/unlicensed"}}})
 
+    def test_reviewed_overrides_allow_explicit_french_sources_only_on_approved_hosts(self):
+        note = {"text": "An English adaptation of the album article.", "reason": "Reviewed translation."}
+        for language in ("en", "fr"):
+            with self.subTest(language=language):
+                source = f"https://{language}.wikipedia.org/wiki/Lam_Toro"
+                self.assertEqual(reviewed_note({**note, "source_url": source})["source_url"], source)
+        for source in ("http://fr.wikipedia.org/wiki/Lam_Toro",
+                       "https://fr.wikipedia.org.evil.test/wiki/Lam_Toro",
+                       "https://de.wikipedia.org/wiki/Lam_Toro",
+                       "https://user@fr.wikipedia.org/wiki/Lam_Toro",
+                       "https://fr.wikipedia.org:8080/wiki/Lam_Toro",
+                       "https://fr.wikipedia.org/wiki/Lam_Toro?other=1",
+                       "https://fr.wikipedia.org/wiki/Lam_Toro#Other",
+                       "https://fr.wikipedia.org/w/index.php"):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                reviewed_note({**note, "source_url": source})
+
     def test_index_preserves_fields_and_bundled_notes_match_stable_reference_ids(self):
         parser = SourceIndex()
         parser.feed('<table><tr data-album="A &amp; B" data-artist="The Band" data-year="1970">'
@@ -94,7 +117,9 @@ class AlbumNoteTests(unittest.TestCase):
             with self.subTest(id=note["id"]):
                 expected = entries[note["id"]]
                 self.assertEqual((note["album"], note["artist"]), (expected["album"], expected["artist"]))
+                self.assertEqual(note["year"], expected["year"])
                 self.assertLessEqual(len(note["text"].split()), 200)
-                self.assertTrue(note["source_url"].startswith("https://en.wikipedia.org/wiki/"))
+                reviewed_note({"text": note["text"], "source_url": note["source_url"],
+                               "reason": "Check the bundled source allowlist."})
                 self.assertEqual(note["license_url"], "https://creativecommons.org/licenses/by-sa/4.0/")
                 self.assertEqual(source_url(note["captured_from"]), note["captured_from"])

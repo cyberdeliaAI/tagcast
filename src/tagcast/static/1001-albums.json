@@ -708,7 +708,7 @@
     },
     {
       "id": 118,
-      "year": 1968,
+      "year": 1958,
       "album": "The Sounds of India",
       "artist": "Ravi Shankar"
     },
@@ -1488,7 +1488,7 @@
     },
     {
       "id": 248,
-      "year": 1972,
+      "year": 1971,
       "album": "White Light",
       "artist": "Gene Clark"
     },
@@ -2412,7 +2412,7 @@
     },
     {
       "id": 402,
-      "year": 1978,
+      "year": 1983,
       "album": "Vento De Maio",
       "artist": "Elis Regina"
     },
@@ -3564,7 +3564,7 @@
     },
     {
       "id": 594,
-      "year": 1987,
+      "year": 1989,
       "album": "Spy Vs Spy",
       "artist": "John Zorn"
     },
@@ -4158,7 +4158,7 @@
     },
     {
       "id": 693,
-      "year": 1991,
+      "year": 1992,
       "album": "Haut de gamme / Koweït, rive gauche",
       "artist": "Koffi Olomide"
     },
@@ -7549,6 +7549,67 @@
       "sources": [
         "https://music.apple.com/us/album/lupe-fiascos-food-liquor/189225199"
       ]
+    },
+    {
+      "id": 118,
+      "field": "year",
+      "before": 1968,
+      "after": 1958,
+      "reviewed": "2026-10-17",
+      "sources": [
+        "https://www.45cat.com/vinyl/album/wl119",
+        "https://musicbrainz.org/release-group/f1d60bab-675d-35e1-9804-a28b28cc96da",
+        "https://www.worldradiohistory.com/Archive-All-Music/Billboard/50s/1958/Billboard%201958-01-06.pdf"
+      ],
+      "reason": "Distinguish the 1957 recording from the original mono issue documented in 1958 and later 1968 editions. The English Wikipedia article gives 1957 as release year, but the WL 119 catalogue and early-1958 Columbia advertisement support 1958; use that best-supported original-issue year, without asserting an exact release day. Remove the unsupported Ali Akbar Khan influence claim."
+    },
+    {
+      "id": 248,
+      "field": "year",
+      "before": 1972,
+      "after": 1971,
+      "reviewed": "2026-10-17",
+      "sources": [
+        "https://interventionrecords.com/products/gene-clark-white-light-cd-sacd",
+        "https://www.universal-music.co.jp/p/UICY-25701/"
+      ],
+      "reason": "Use 1971, confirmed by the reissue label’s original-release metadata, rather than the supplied 1972. Retain album facts and omit quoted critical acclaim and later reissue trivia."
+    },
+    {
+      "id": 402,
+      "field": "year",
+      "before": 1978,
+      "after": 1983,
+      "reviewed": "2026-10-17",
+      "sources": [
+        "https://discografia.discosdobrasil.com.br/discos/elis-vento-de-maio",
+        "https://discografia.discosdobrasil.com.br/discos/vento-de-maiomay-wind",
+        "https://music.apple.com/ro/album/vento-de-maio-may-wind/724385402?l=ro"
+      ],
+      "reason": "Replace the unrelated artist biography with an English adaptation of the French album article’s repertoire information, checked and corrected against the physical-disc catalogue. That article conflates the later international track list with an unsupported 1978 release year. Discografia Brasileira documents the Brazilian compilation in 1983 and the expanded international edition in 1997; EMI’s digital compilation carries 1998. Do not describe this as a 1978 studio album or treat 1998 as the original Brazilian issue."
+    },
+    {
+      "id": 594,
+      "field": "year",
+      "before": 1987,
+      "after": 1989,
+      "reviewed": "2026-10-17",
+      "sources": [
+        "https://www.nonesuch.com/albums/spy-vs-spy"
+      ],
+      "reason": "Nonesuch confirms the 1989 release and 18–19 August 1988 sessions. Correct the supplied 1987 year; omit the extended liner-note acknowledgements and avoid a disputed exact release day."
+    },
+    {
+      "id": 693,
+      "field": "year",
+      "before": 1991,
+      "after": 1992,
+      "reviewed": "2026-10-17",
+      "sources": [
+        "https://catalogue.bnf.fr/ark:/12148/cb382392601",
+        "https://fr.wikipedia.org/wiki/Haut_de_gamme/Kowe%C3%AFt,_rive_gauche"
+      ],
+      "reason": "The Bibliothèque nationale de France’s sound-recording catalogue dates the Sonodisc issue to 1992; the artist and French album articles agree. Keep the complete reference title: Koweït, rive gauche is also a song title, which does not justify truncating the album title. Avoid an uncorroborated exact month, album ordinal or chart superlative."
     }
   ]
 }

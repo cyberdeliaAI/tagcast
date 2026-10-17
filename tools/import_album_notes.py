@@ -57,9 +57,9 @@ def reviewed_note(value):
             or not isinstance(value.get("reason"), str) or not value["reason"]:
         raise ValueError("Editorial notes need bounded text, a Wikipedia source and a review reason")
     url = urlsplit(value.get("source_url", ""))
-    if url.scheme != "https" or url.netloc != "en.wikipedia.org" \
+    if url.scheme != "https" or url.netloc not in {"en.wikipedia.org", "fr.wikipedia.org"} \
             or not url.path.startswith("/wiki/") or url.query or url.fragment:
-        raise ValueError("Editorial notes need an explicit English Wikipedia source")
+        raise ValueError("Editorial notes need an explicit English or French Wikipedia source")
     return value
 
 

@@ -1053,7 +1053,7 @@ test('guide results filter locally, escape text and preserve search on Back with
   assert.equal(p.run('albumGuide.data'), null);
 });
 
-test('album background uses bundled notes for confirmed guide links only, escapes text and keeps playback', async () => {
+test('album background uses bundled French notes for confirmed guide links only, escapes text and keeps playback', async () => {
   const p = livePage(); await settle();
   const report = guideReport(p), ref = report.entries[0];
   p.run(`applyAlbumGuideSettings({album_guide:true}); albumGuide.data = ${JSON.stringify(report)}; albumGuide.details = state.details; playTracks(state.details.get("1"))`);
@@ -1061,12 +1061,13 @@ test('album background uses bundled notes for confirmed guide links only, escape
   p.setNotesFetch(() => ({ok: true, json: async () => ({schema: 1, entries: [
     {id: ref.id, album: ref.album, artist: ref.artist, text: '<script>alert(1)</script> & an album.',
       context: '<b>Reviewed title variant</b>',
-      source_url: 'https://en.wikipedia.org/wiki/An_Album'},
+      source_url: 'https://fr.wikipedia.org/wiki/An_Album'},
     {id: 50, album: 'Bad link', artist: 'Other', text: 'Unsafe', source_url: 'javascript:alert(1)'}]})}));
   await p.run('openAlbum("1")'); await settle();
   const panel = p.nodes.get('#album-guide-notes');
   assert.match(panel.innerHTML, /About this album|&lt;script&gt;alert/);
   assert.match(panel.innerHTML, /Wikipedia contributors|CC BY-SA/);
+  assert.match(panel.innerHTML, /https:\/\/fr\.wikipedia\.org\/wiki\/An_Album/);
   assert.doesNotMatch(panel.innerHTML, /<script>|javascript:/);
   assert.match(panel.innerHTML, /&lt;b&gt;Reviewed title variant&lt;\/b&gt;/);
   assert.equal(panel.hidden, false);
@@ -1080,6 +1081,18 @@ test('album background uses bundled notes for confirmed guide links only, escape
   assert.equal(panel.hidden, false);
   p.run('applyAlbumGuideSettings({album_guide:false})');
   assert.equal(panel.hidden, true);
+});
+
+test('album note sources allow English and French Wikipedia without accepting lookalikes or credentials', async () => {
+  const p = page(); await settle();
+  const sources = ['https://en.wikipedia.org/wiki/Album', 'https://fr.wikipedia.org/wiki/Lam_Toro',
+    'https://fr.wikipedia.org.evil.test/wiki/Album', 'https://user@fr.wikipedia.org/wiki/Album',
+    'https://fr.wikipedia.org:8080/wiki/Album', 'http://fr.wikipedia.org/wiki/Album',
+    'https://fr.wikipedia.org/wiki/Album#Other', 'https://fr.wikipedia.org/wiki/Album?other=1',
+    'https://de.wikipedia.org/wiki/Album'];
+  const data = {schema: 1, entries: sources.map((source_url, i) => ({id: i + 1, album: 'Album',
+    artist: 'Artist', text: 'Reviewed adaptation.', source_url}))};
+  assert.deepEqual(p.json(`Array.from(readGuideNotes(${JSON.stringify(data)}).keys())`), [1, 2]);
 });
 
 test('late album notes never repaint another page and opening an album never analyses the guide', async () => {

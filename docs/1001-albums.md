@@ -90,15 +90,55 @@ albums; the [source index](https://1001albumsgenerator.com/albums) covers 1,101 
 All **1,001** reference entries have a background text. The initial comparison found
 894 exact artist/title pairs; the remaining 107 source links were reviewed individually
 and captured. One further review replaced an unrelated Fats Domino biography.
-The 108 editorial links, their reasons and four album-specific text repairs are
-stored in `docs/1001-album-note-links.json`. Uncertain links are never approved by
+The editorial links and prose overrides are stored in
+`docs/1001-album-note-links.json`. After the October 2026 text review there are 495
+explicit source links and 437 prose overrides. Uncertain links are never approved by
 similarity alone. `1001-album-notes.json` is a separate file: updating
 notes does not invalidate analyses, change reference IDs or affect manual library
 links. Texts are at most 200 words, with whitespace and sentence spacing normalized.
 See `src/tagcast/static/1001-album-notes-LICENSE.txt` for attribution details.
-Two entries have a visible context note: the Mamas and the Papas debut uses an
+Three entries have a visible context note: the Mamas and the Papas debut uses an
 alternative UK title, distinct from the later self-titled album; the paired
-**Shalimar / College Girl** reference has background covering Shalimar only.
+**Shalimar / College Girl** reference has background covering Shalimar only; and
+**Vento De Maio** distinguishes the Brazilian compilation from its expanded
+international edition.
+
+### October 2026 text review
+
+The supplied **1001 Albums Text Review.html** proposed changes to 433 background
+texts. The 17 October review initially applied 425 and held eight for research.
+The approved follow-up resolves all eight: **433 texts applied**, including 23 with
+further editorial amendments. It compared the original texts and stable IDs, checked
+English and explicitly reviewed French Wikipedia articles, and used selected
+artist, label, physical-disc, national-library, chart and Grammy sources to
+check specific claims. This is a source-alignment review, not an independent
+verification of every historical claim. Reference membership, order, IDs, titles
+and artists remain unchanged. Five approved original-release years were corrected
+in the bundled reference and its correction log; user library metadata is unchanged.
+Those year changes require explicit reanalysis of an existing guide report, while
+manual library links remain tied to the original selection.
+
+The review removes long quotations, repairs broken sentences, shortens tangents
+and adds album-specific background. Unsupported biographical additions and an
+unconfirmed anecdote were omitted. Some exact release days were reduced to the
+supported month, and the Tidal singles list is not presented as exhaustive.
+Existing capture dates, attribution, licensing and context notes are retained.
+Re-running the import applies the reviewed overrides again.
+
+`docs/1001-album-text-review.json` records the input hash, accepted IDs, source
+checks, amendments and final-text hashes. Its `resolved_holds` list retains the
+eight original questions, proposals and researched resolutions; `pending` is empty:
+
+| ID | Artist / album | Approved resolution |
+| --- | --- | --- |
+| 118 | Ravi Shankar — The Sounds of India | 1968 → 1958, the best-supported original mono issue (Columbia WL 119); distinguish the 1957 recording and later editions. Wikipedia's 1957 release claim remains a source disagreement, recorded in the review. |
+| 248 | Gene Clark — White Light | 1972 → 1971, corroborated by Intervention Records and Universal Music's original-release metadata. |
+| 402 | Elis Regina — Vento De Maio | 1978 → 1983 for the Brazilian compilation documented by Discografia Brasileira; explain the expanded 1997–1998 international edition. Correct the French article's conflation of editions rather than repeat its 1978 claim. |
+| 594 | John Zorn — Spy Vs Spy | 1987 → 1989; Nonesuch confirms the release year and August 1988 recording sessions. |
+| 693 | Koffi Olomide — Haut de gamme / Koweït, rive gauche | 1991 → 1992, supported by the BnF sound-recording catalogue; retain the complete title. |
+| 710 | Baaba Maal — Lam Toro | Replace the biography with an English adaptation of the reviewed French album article; retain its attribution and source link. |
+| 919 | MJ Cole — Sincere | 7 August 2000 release; Official Charts gives the number-14 peak on 19 August 2000, not 2001. |
+| 930 | Destiny's Child — Survivor | Distinguish Japan's 25 April 2001 release from the US release on 1 May. Retain J. R. Rotem's Fancy credit; separate the title song's Grammy win from the album nomination. |
 
 Tagcast never contacts the source site or Wikipedia to show a note. It reads the
 bundled JSON once per browser page, lazily when a confirmed matching album is opened.
@@ -152,8 +192,11 @@ The bundled notes file is generated. A URL absent
 from the source index needs an explicit `source` object with its album, artist and
 year, plus a review `reason`; this is used for the individually verified Phil Spector
 Christmas album page. All URLs must remain on the approved source host. Reviewed
-`note` overrides require at most 200 words, an English Wikipedia `source_url` and a
-review reason. They repair summaries that describe an artist or film instead of
+`note` overrides require at most 200 words, an English or French Wikipedia
+`source_url` and a review reason. French sources require an explicitly reviewed
+English adaptation; automatic source capture remains English-only. They retain
+reviewed corrections, abridgements and album-specific
+replacements, including repairs to summaries about an artist or film instead of
 the album. Optional `context` text explains title ambiguity or partial coverage.
 This file links reference
 entries to background-text sources, separately from the user's iBroadcast album links.
@@ -175,11 +218,12 @@ underscore substitutions and malformed accented characters. Exceptional undersco
 used for quotation marks, ellipses, separators and year ranges were reviewed
 individually. Clear spelling errors such as `Cindy Lauper`, `Chic Manish` and
 `Fullfillingness` were corrected. The JSON includes the source SHA-256 and a
-field-by-field `corrections` log (195 fields across 164 entries), so each change is
+field-by-field `corrections` log (200 fields across 168 entries), so each change is
 traceable to the original CSV. The follow-up review corrected another 92 fields,
 including swapped artist/title columns, truncated or incorrect titles, artist
 spellings and 20 release years. Two of those fields had already received encoding
 repairs, so their log entries retain the original value and the final correction.
+The text-review follow-up adds the five release-year repairs documented above.
 The reviewed fields include source links. These reference corrections never alter
 the user's library.
 
