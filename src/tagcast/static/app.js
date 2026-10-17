@@ -152,6 +152,11 @@ function toast(text) {
   toastTimer = setTimeout(() => { $("#toast").hidden = true; }, Math.max(6000, text.length * 70));
 }
 
+function largeArtworkUrl(url) {
+  // Known iBroadcast sizes only; keep other providers' URLs intact.
+  return url.replace(/(\/artwork\/\d+)-(?:150|300)(?=$|[?#])/, "$1-1000");
+}
+
 function coverPreviewAttrs(album) {
   return album.artwork ? `data-cover-preview data-cover-src="${escapeHtml(album.artwork)}" data-cover-name="${escapeHtml(album.name)}" data-cover-artist="${escapeHtml(album.artist)}" title="Double-click to enlarge the cover"` : "";
 }
