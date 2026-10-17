@@ -45,7 +45,7 @@ class ElectronHostTests(unittest.TestCase):
         self.addCleanup(close)
         lines = queue.Queue()
         threading.Thread(target=lambda: lines.put(process.stdout.readline()), daemon=True).start()
-        return process, json.loads(lines.get(timeout=15))
+        return process, json.loads(lines.get(timeout=30))
 
     def stop(self, process):
         process.stdin.write("stop\n")

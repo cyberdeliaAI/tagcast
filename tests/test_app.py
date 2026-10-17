@@ -12,6 +12,17 @@ from unittest import mock
 from tagcast import app
 
 
+class LoopbackBindTests(unittest.TestCase):
+    def test_binding_numeric_loopback_never_performs_reverse_dns(self):
+        with mock.patch("socket.getfqdn", side_effect=AssertionError("No DNS for loopback")):
+            server = app.Server(("127.0.0.1", 0), app.Handler)
+        try:
+            self.assertEqual(server.server_name, "127.0.0.1")
+            self.assertGreater(server.server_port, 0)
+        finally:
+            server.server_close()
+
+
 def serve(answer):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
