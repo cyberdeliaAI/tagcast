@@ -23,7 +23,7 @@ function readGuideNotes(data) {
       || note.context !== undefined && (typeof note.context !== "string" || note.context.length > 2000)) continue;
     let source;
     try { source = new URL(note.source_url); } catch { continue; }
-    if (source.protocol !== "https:" || source.host !== "en.wikipedia.org" || !source.pathname.startsWith("/wiki/")
+    if (source.protocol !== "https:" || !["en.wikipedia.org", "fr.wikipedia.org"].includes(source.host) || !source.pathname.startsWith("/wiki/")
       || source.username || source.password || source.search || source.hash) continue;
     notes.set(note.id, {...note, source_url: source.href});
   }
