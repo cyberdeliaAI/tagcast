@@ -14,4 +14,7 @@ analysis = Analysis([str(root / "tools/electron_backend_entry.py")],
 pyz = PYZ(analysis.pure)
 exe = EXE(pyz, analysis.scripts, [], exclude_binaries=True,
           name="tagcast-server", console=True, upx=False)
-collection = COLLECT(exe, analysis.binaries, analysis.datas, name="tagcast-server", upx=False)
+cli = EXE(pyz, analysis.scripts, [], exclude_binaries=True,
+          name="tagcast-cli", console=True, upx=False)
+collection = COLLECT(exe, [(Path(cli.name).name, cli.name, "EXECUTABLE")],
+                     analysis.binaries, analysis.datas, name="tagcast-server", upx=False)

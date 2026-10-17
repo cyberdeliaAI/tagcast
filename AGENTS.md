@@ -59,12 +59,15 @@ The application consists of a Python server and a plain JavaScript frontend.
   `tools/bundle_check.py` verifies extracted downloads with temporary settings.
   `.github/workflows/builds.yml` builds macOS (Apple Silicon and Intel), Windows
   and Linux archives and checksums. See `docs/native-builds.md`.
-- `electron/` is the standalone desktop shell for upcoming downloads; Python/source
+- `electron/` is the standalone desktop shell since 0.60.0; Python/source
   startscripts retain browser use. `tools/build_electron.py` freezes the same server
   with `electron/backend.spec`, packages the shell and verifies extracted apps with
   `tools/check_electron.py`. `src/tagcast/electron_host.py` owns/reuses only a matching
   local server, speaks bounded readiness JSON on stdout and stops on parent EOF.
   Keep the editor/player/static assets shared; never introduce a second frontend.
+  The frozen `tagcast-cli` browser entry point shares the backend runtime and remains
+  available in each download; keep extracted CLI help/version checks and Homebrew's
+  terminal command working when changing the package layout.
 
 The JavaScript files share a single global scope. Keep top-level names unique
 and preserve a valid script order in `index.html`.

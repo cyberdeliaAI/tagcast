@@ -7,17 +7,17 @@
 
 Browse, discover and play your [iBroadcast](https://www.ibroadcast.com/) collection. Fix metadata, find album covers and artist images, review your changes, then save them to iBroadcast.
 
-Tagcast runs on your computer, with its interface in your browser. **Your local music files are never changed.** It listens on `127.0.0.1` only.
+Tagcast runs on your computer as a desktop app, or in your browser through Python.
+**Your local music files are never changed.** Its server listens on `127.0.0.1` only.
 
-**New in [0.50.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.50.0):** A refreshed look with the cassette-in-sleeve logo, a quieter sidebar and compact album pages. Browse and manage native iBroadcast **tags**, follow context breadcrumbs and clickable release years, choose an available audio output and use system playback controls. Review complete albums for the trash or analyse suggested duplicate copies across your library. All features are included in the standalone downloads for macOS, Windows and Linux.
-
-**Development on `main` (unreleased):** album hearts are saved locally per account, independently of stars. Compact album tracklists omit repeated album artists, flag different file formats and show row actions on hover/focus, or always on touch devices. The 0.50.0 downloads retain their earlier hearts and tracklists.
-
-Upcoming standalone downloads use **Electron** on macOS, Windows and Linux: the same
-Tagcast server and interface in one app window. **Python/source installations keep
-the browser interface.** This is development work, not a new published release;
-the 0.50.0 downloads below still use the earlier browser launcher. See
-[Electron development and local builds](docs/electron.md).
+**New in [0.60.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.60.0):**
+Standalone **Electron** apps for macOS, Windows and Linux put the shared Tagcast
+editor and player in their own window. **Python/source installations keep the
+browser interface.** Album hearts are now saved locally per account, independently
+of stars. Compact tracklists omit repeated album artists, flag different file
+formats and show actions on hover/focus, or always on touch devices. Mobile album
+pages place a full-width cover above the details. See the
+[desktop and browser guide](docs/electron.md).
 
 The refreshed interface is shown in the screenshots below; see the
 [capture inventory](docs/screenshot-checklist.md) for current and retained examples.
@@ -32,24 +32,32 @@ The refreshed interface is shown in the screenshots below; see the
 
 ### Standalone downloads — no Python required
 
-Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.50.0** packages:
+Open the [latest release](https://github.com/cyberdeliaAI/tagcast/releases/latest) and download the archive for your computer under **Assets**. These are the **0.60.0** packages:
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [tagcast-0.50.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | [tagcast-0.50.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | [tagcast-0.50.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
-| Linux, x64 | [tagcast-0.50.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.50.0/tagcast-0.50.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.50.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
+| macOS, Apple Silicon | [tagcast-0.60.0-macos-arm64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-macos-arm64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | [tagcast-0.60.0-macos-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-macos-x64.zip) | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | [tagcast-0.60.0-windows-x64.zip](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe` in the extracted folder. |
+| Linux, x64 | [tagcast-0.60.0-linux-x64.tar.gz](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-linux-x64.tar.gz) | Extract with `tar -xzf tagcast-0.60.0-linux-x64.tar.gz`, then run `./Tagcast` inside the extracted `Tagcast` folder. |
 
-On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the Windows/Linux executables and `_internal` folder together; keep the macOS app's Contents intact.
+On a Mac, **About This Mac** tells you whether you have an Apple chip or an Intel processor. Linux needs a graphical desktop and glibc 2.35 or newer. Keep the complete extracted Windows/Linux package together; keep the macOS app's Contents intact.
 
-A small launcher window opens Tagcast in your default browser at <http://127.0.0.1:8912>. If the browser does not open, use **Open Tagcast in browser** in the launcher. **Keep the launcher open while using Tagcast.** Choose **Stop Tagcast and close** or close the launcher to stop the server it started. Closing just the browser tab does not stop Tagcast. If the launcher reused a server that was already running, closing it leaves that server running.
+Tagcast opens in its own desktop window, with the same editor, player and queue
+as the Python/browser route. No separate browser, Python or Node.js installation
+is required. Closing the last window or choosing Quit stops the server it started,
+after accepted writes and read-back checks finish. An existing compatible server
+is reused and left running on Quit. **Stop older Tagcast versions before upgrading.**
 
 The downloads are not Developer ID signed/notarized on macOS or Authenticode signed on Windows. If your operating system blocks opening one, use **System Settings → Privacy & Security → Open Anyway** on macOS, or **More info → Run anyway** on Windows.
 
-The launcher has an **Open browser automatically** checkbox, enabled by default. Untick it when using an app wrapper such as Unite Pro; the server still starts and **Open Tagcast in browser** remains available. The choice is remembered in `~/.tagcast/launcher.json` (or `TAGCAST_HOME`) and also applies when reusing an existing server. It does not change the CLI’s explicit `--open` option.
+Account settings, sign-in tokens, cache and local album favourites retain their
+normal `~/.tagcast/` folder. Electron has a separate Chromium profile: browser-local
+preferences and Change history are not automatically copied from Safari/Chrome/Brave.
+Audio outputs depend on Chromium and the operating system; Electron does not add
+Sonos or Safari's native AirPlay picker.
 
-Each archive has a separate `.sha256` checksum file under Assets. See the [standalone guide](docs/native-builds.md) for checksum verification, the separate CLI and platform requirements. GitHub's **Source code** archives are for the source installation below.
+Each archive has a separate `.sha256` checksum file under Assets. See the [standalone guide](docs/native-builds.md) for checksum verification, the bundled browser CLI and platform requirements. GitHub's **Source code** archives are for the source installation below.
 
 ### Homebrew on macOS
 
@@ -715,11 +723,13 @@ review and confirmation steps remain the same.
 
 Tagcast checks GitHub for a newer **stable release** at startup, at most once a day. A notification links to the release page. Use **Settings → Tagcast updates** to check immediately or disable automatic checks. No account credentials or library data are sent to GitHub. Updates are downloaded and installed manually.
 
-1. **Stop the old Tagcast first.** Close its desktop launcher, or stop its terminal server with Ctrl+C. Closing only the browser tab is not enough.
+1. **Stop the old Tagcast first.** Quit the desktop app/launcher, or stop its terminal server with Ctrl+C. Closing only the browser tab is not enough.
 2. Download and extract the new package for your computer, then replace the old application/folder. Source users should update their checkout or use a freshly extracted source archive.
 3. Start the new version. Your account settings, tokens and cache remain in `~/.tagcast/`, or your configured `TAGCAST_HOME`. Reload the browser page if it still shows the old interface.
 
-If you start the new copy while the old server is still running, the launcher opens that existing server. The small version beside **Settings** at the bottom of the sidebar tells you which version you are using.
+Electron reuses only a matching Tagcast version and host protocol. If an older
+server is still running, close it and retry. The small version beside **Settings**
+at the bottom of the sidebar tells you which version you are using.
 
 ## Screenshots
 

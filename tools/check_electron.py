@@ -21,6 +21,15 @@ def check_app(executable, version):
                    TAGCAST_ELECTRON_SMOKE_REPORT=str(report), TAGCAST_PORT="0")
         for key in ("IBROADCAST_CLIENT_ID", "TAGCAST_IBROADCAST_BASE", "ELECTRON_RUN_AS_NODE"):
             env.pop(key, None)
+        resources = (executable.parent.parent / "Resources" if sys.platform == "darwin"
+                     else executable.parent / "resources")
+        cli = resources / "backend" / ("tagcast-cli.exe" if sys.platform == "win32" else "tagcast-cli")
+        for arguments, expected in ((["--help"], "usage: tagcast"),
+                                    (["--version"], f"Tagcast {version}")):
+            checked = subprocess.run([str(cli), *arguments], check=True, capture_output=True,
+                                     text=True, timeout=30, cwd=root, env=env)
+            if expected not in checked.stdout:
+                raise RuntimeError(f"Bundled CLI check failed: {arguments}")
         process = subprocess.Popen([str(executable)], env=env, cwd=root,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
@@ -41,7 +50,7 @@ def check_app(executable, version):
         reports = Path(__file__).resolve().parent.parent / "build/reports"
         reports.mkdir(parents=True, exist_ok=True)
         (reports / "electron.json").write_text(json.dumps(data, indent=2) + "\n")
-        print(f'Checked Electron {data["electron"]}, Tagcast {data["version"]}, sandbox and server shutdown')
+        print(f'Checked Electron {data["electron"]}, Tagcast {data["version"]}, CLI, sandbox and server shutdown')
 
 
 if __name__ == "__main__":

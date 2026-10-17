@@ -1,6 +1,10 @@
-"""Frozen server entry point: no Tk launcher, browser launch or renderer bridge."""
+"""Frozen Electron host and browser CLI share the same Python runtime."""
 
-from tagcast.electron_host import main
+import sys
+from pathlib import Path
+
+from tagcast import app, electron_host
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main = app.main if Path(sys.executable).stem == "tagcast-cli" else electron_host.main
+    raise SystemExit(main(sys.argv[1:]))
