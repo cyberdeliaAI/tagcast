@@ -1,7 +1,7 @@
 "use strict";
 
 // Overview: your iBroadcast account, the collection in numbers, metadata health (each
-// row opens the matching album filter) and what you play most.
+// row opens the matching album or album artist filter) and what you play most.
 
 const overview = {data: null, loading: false};
 const fmt = n => Number(n || 0).toLocaleString("en");
@@ -109,7 +109,7 @@ function healthCard(s) {
     const h = s.health[key] || {missing: 0, total: 0}, done = h.total ? (h.total - h.missing) / h.total : 1, pct = (done * 100).toFixed(done < 1 && done > 0.995 ? 2 : 1);
     return `<div class="health-row"><div class="health-head"><span>${label}</span><strong>${pct}%</strong></div>
       <div class="meter" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${done * 100}%"></span></div>
-      <div class="health-foot"><span class="muted">${h.missing ? `${fmt(h.missing)} ${noun[h.missing === 1 ? 0 : 1]} ${missing}` : "Nothing missing"}</span>${h.missing ? `<button class="text-action" data-health="${filter}">Show albums →</button>` : ""}</div></div>`;
+      <div class="health-foot"><span class="muted">${h.missing ? `${fmt(h.missing)} ${noun[h.missing === 1 ? 0 : 1]} ${missing}` : "Nothing missing"}</span>${h.missing ? `<button class="text-action" data-health="${filter}">${key === "artist_image" ? "Show album artists" : "Show albums"} →</button>` : ""}</div></div>`;
   }).join("")}</section>`;
 }
 
@@ -200,6 +200,10 @@ document.addEventListener("click", event => {
   if (event.target.closest("#all-albums")) { if (state.screen === "overview") showScreen("albums"); return; }
   const health = event.target.closest("[data-health]");
   if (health) {
+    if (health.dataset.health === "artist_image") {
+      $("#artists-search").value = ""; $("#artists-filter").value = "no_image"; artistBrowse.page = 0;
+      showArtistBrowse(); return;
+    }
     $("#filter").value = health.dataset.health; $("#search").value = ""; state.artist = null; state.page = 0;
     showScreen("albums"); render(); return;
   }
