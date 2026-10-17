@@ -1,7 +1,7 @@
 name: Builds
 
-# Stand-alone Tagcast programs made with PyInstaller (tools/build_binary.py), for people
-# without Python or uv. A release gets them as downloads: a release you publish on GitHub,
+# Electron apps bundle the shared PyInstaller server, for people without Python or uv.
+# Older tags retain their original browser launcher recipe. A release gets downloads:
 # and a "Publish Tagcast ..." commit once its release job in tests.yml has run. Every push
 # goes through native checks too. Run this workflow by hand with a tag to add the
 # verified downloads and checksums to an existing release containing this build recipe.
@@ -59,6 +59,12 @@ jobs:
         with:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        if: hashFiles('electron/package.json') != ''
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
       - name: Check release tag
         shell: bash
         run: |
@@ -73,11 +79,17 @@ jobs:
       - name: Install display support (Linux)
         if: runner.os == 'Linux' && hashFiles('tagcast.spec') != ''
         run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
-      - name: Build and verify extracted downloads (Linux)
-        if: runner.os == 'Linux' && hashFiles('tagcast.spec') != ''
+      - name: Build and verify extracted Electron downloads (Linux)
+        if: runner.os == 'Linux' && hashFiles('electron/package.json') != ''
+        run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py
+      - name: Build and verify extracted Electron downloads
+        if: runner.os != 'Linux' && hashFiles('electron/package.json') != ''
+        run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py
+      - name: Build and verify older browser-launcher downloads (Linux)
+        if: runner.os == 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == ''
         run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
-      - name: Build and verify extracted downloads
-        if: runner.os != 'Linux' && hashFiles('tagcast.spec') != ''
+      - name: Build and verify older browser-launcher downloads
+        if: runner.os != 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == ''
         shell: bash
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
       - uses: actions/upload-artifact@v4

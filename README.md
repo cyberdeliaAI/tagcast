@@ -13,6 +13,12 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 **Development on `main` (unreleased):** album hearts are saved locally per account, independently of stars. Compact album tracklists omit repeated album artists, flag different file formats and show row actions on hover/focus, or always on touch devices. The 0.50.0 downloads retain their earlier hearts and tracklists.
 
+Upcoming standalone downloads use **Electron** on macOS, Windows and Linux: the same
+Tagcast server and interface in one app window. **Python/source installations keep
+the browser interface.** This is development work, not a new published release;
+the 0.50.0 downloads below still use the earlier browser launcher. See
+[Electron development and local builds](docs/electron.md).
+
 The refreshed interface is shown in the screenshots below; see the
 [capture inventory](docs/screenshot-checklist.md) for current and retained examples.
 
@@ -943,6 +949,9 @@ Automated write tests use [the mock iBroadcast server](tests/mock_ibroadcast.py)
 ## Development and tests
 
 The application uses a Python server and plain JavaScript. Standalone packaging and release checks are described in [native builds](docs/native-builds.md).
+The Electron shell shares those files unchanged; its lifecycle and navigation tests
+run with `node --test electron/tests/*.test.cjs`. Node.js is only needed to develop
+or build the desktop shell, not to use a packaged download or the Python/browser route.
 
 `src/tagcast/static/dark.css` is generated from `src/tagcast/static/style.css` by `tools/build_dark_css.py`. After a style change, run the generator and its consistency check; do not edit the generated file by hand.
 

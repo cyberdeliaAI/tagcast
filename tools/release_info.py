@@ -51,6 +51,14 @@ def release_info(root=ROOT):
     locked = [p["version"] for p in lock["package"] if p["name"] == "tagcast"]
     if locked != [version]:
         raise ValueError("uv.lock does not match pyproject.toml")
+    electron = root / "electron/package.json"
+    if electron.is_file():
+        npm_version = tag[1:]
+        if json.loads(electron.read_text(encoding="utf-8"))["version"] != npm_version:
+            raise ValueError("electron/package.json does not match pyproject.toml")
+        npm_lock = json.loads((root / "electron/package-lock.json").read_text(encoding="utf-8"))
+        if npm_lock["version"] != npm_version or npm_lock["packages"][""]["version"] != npm_version:
+            raise ValueError("electron/package-lock.json does not match pyproject.toml")
     return {"version": version, "display": display, "tag": tag,
             "prerelease": bool(beta), "notes": f".github/release-notes/{tag[1:]}.md"}
 
