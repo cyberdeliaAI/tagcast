@@ -33,6 +33,12 @@ jobs:
         run: for f in src/tagcast/static/*.js; do node --check "$f"; done
       - name: Frontend regressions
         run: node --test tests/frontend.test.cjs
+      - name: Electron shell regressions
+        if: hashFiles('electron/package.json') != ''
+        shell: bash
+        env:
+          TAGCAST_PYTHON: ${{ github.workspace }}/.venv/${{ runner.os == 'Windows' && 'Scripts/python.exe' || 'bin/python' }}
+        run: node --test electron/tests/*.test.cjs
 
   start-scripts:
     name: Start scripts · ${{ matrix.os }}

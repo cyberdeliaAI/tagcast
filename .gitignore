@@ -5,6 +5,8 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+node_modules/
+electron/out/
 *.egg-info/
 .DS_Store
 # local settings, tokens and library cache live in ~/.tagcast, never here

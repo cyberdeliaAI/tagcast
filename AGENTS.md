@@ -59,6 +59,12 @@ The application consists of a Python server and a plain JavaScript frontend.
   `tools/bundle_check.py` verifies extracted downloads with temporary settings.
   `.github/workflows/builds.yml` builds macOS (Apple Silicon and Intel), Windows
   and Linux archives and checksums. See `docs/native-builds.md`.
+- `electron/` is the standalone desktop shell for upcoming downloads; Python/source
+  startscripts retain browser use. `tools/build_electron.py` freezes the same server
+  with `electron/backend.spec`, packages the shell and verifies extracted apps with
+  `tools/check_electron.py`. `src/tagcast/electron_host.py` owns/reuses only a matching
+  local server, speaks bounded readiness JSON on stdout and stops on parent EOF.
+  Keep the editor/player/static assets shared; never introduce a second frontend.
 
 The JavaScript files share a single global scope. Keep top-level names unique
 and preserve a valid script order in `index.html`.
@@ -457,6 +463,19 @@ and preserve a valid script order in `index.html`.
   stays available. CLI `--open` remains explicit.
 - Closing the desktop launcher stops only its own server. Reusing an existing
   Tagcast instance must not stop it when the launcher closes.
+- Electron uses the shared loopback server and API guards. `/api/app` is a compact,
+  account-free version/protocol identity, under the same Host/Fetch Metadata checks.
+  Reuse only matching application/version/protocol servers; reject occupied foreign
+  ports and stop only owned servers. Close warns for unsaved state, stops cleanup
+  between batches and waits for accepted writes/read-backs without forced killing.
+  Keep renderer sandbox/context isolation/webSecurity enabled, Node integration and
+  webviews disabled, and no generic preload/IPC bridge. Restrict navigation to the
+  app entry pages, external opening to parsed credential-free HTTPS, and permissions
+  to the app main frame's fullscreen/output/sanitized clipboard; never grant capture.
+  Hash existing inline theme scripts in CSP. No automatic updater or playback restart.
+  Electron profiles/browser-local histories are separate; server credentials/settings
+  and local account favourites retain their normal folder. Fuses disable RunAsNode,
+  Node options/inspect injection and loading unpackaged application code.
 - iBroadcast write and artwork modes partly follow undocumented endpoints.
   Verify assumptions before changing their payloads or behavior.
 
@@ -470,6 +489,7 @@ uv run --frozen ruff check src tests tools
 python3 tools/release_info.py
 for f in src/tagcast/static/*.js; do node --check "$f"; done
 node --test tests/frontend.test.cjs
+node --test electron/tests/*.test.cjs
 ```
 
 After changes to `style.css`:

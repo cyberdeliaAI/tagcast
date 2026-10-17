@@ -57,6 +57,24 @@ class ReleaseInfoTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     release_info(root)
 
+    def test_electron_versions_follow_the_same_stable_and_beta_versions(self):
+        for version, display, npm_version in (("0.10.1", "0.10.1", "0.10.1"),
+                                               ("0.10.1b2", "0.10.1 beta 2", "0.10.1-beta.2")):
+            root = self.fixture(version, display)
+            (root / "electron").mkdir()
+            package = root / "electron/package.json"
+            lock = root / "electron/package-lock.json"
+            package.write_text(json.dumps({"version": npm_version}))
+            lock.write_text(json.dumps({"version": npm_version, "packages": {"": {"version": npm_version}}}))
+            self.assertEqual(release_info(root)["version"], version)
+            package.write_text('{"version":"0.1.0"}')
+            with self.assertRaisesRegex(ValueError, "electron/package.json"):
+                release_info(root)
+            package.write_text(json.dumps({"version": npm_version}))
+            lock.write_text(json.dumps({"version": "0.1.0", "packages": {"": {"version": npm_version}}}))
+            with self.assertRaisesRegex(ValueError, "electron/package-lock.json"):
+                release_info(root)
+
     def test_publication_rejects_wrong_branch_or_commit_without_calling_github(self):
         info = release_info(self.fixture())
         for branch, message in (("refs/heads/other", "Publish Tagcast 0.10.1"),

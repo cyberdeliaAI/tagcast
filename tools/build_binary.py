@@ -54,9 +54,7 @@ def system_name():
     return f"{name}-{arch}"
 
 
-def prepare_assets():
-    import tkinter as tk
-
+def prepare_assets(include_tk=True):
     import resvg_py
     from PIL import Image
 
@@ -76,15 +74,18 @@ def prepare_assets():
         raise RuntimeError("The bundled Python license is missing")
     (licenses / "Python").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(python_license, licenses / "Python/LICENSE.txt")
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        for name, expression in (("Tcl", "info library"), ("Tk", "set tk_library")):
-            library = Path(root.tk.eval(expression))
-            versions[name] = str(root.tk.call("package", "present", name))
-            copy_tk_license(name, library, versions[name], licenses / name)
-    finally:
-        root.destroy()
+    if include_tk:
+        import tkinter as tk
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            for name, expression in (("Tcl", "info library"), ("Tk", "set tk_library")):
+                library = Path(root.tk.eval(expression))
+                versions[name] = str(root.tk.call("package", "present", name))
+                copy_tk_license(name, library, versions[name], licenses / name)
+        finally:
+            root.destroy()
     for name in ("ibroadcast", "websocket-client", "requests", "certifi", "charset-normalizer", "idna", "urllib3", "PyInstaller"):
         dist = metadata.distribution(name)
         versions[name] = dist.version

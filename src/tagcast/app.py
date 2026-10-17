@@ -108,7 +108,10 @@ class Handler(SimpleHTTPRequestHandler):
         if url.path.startswith("/api/stream/"):
             self._stream(url.path.rsplit("/", 1)[1], query.get("quality"))
             return
-        if url.path == "/api/status":
+        if url.path == "/api/app":
+            self._json(200, {"application": "Tagcast", "version": __version__,
+                             "desktop_protocol": 1})
+        elif url.path == "/api/status":
             self._run(self.studio.status)
         elif url.path == "/api/library":
             refresh = parse_qs(url.query).get("refresh") == ["1"]

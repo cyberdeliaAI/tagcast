@@ -1,5 +1,12 @@
 # Standalone downloads and builds
 
+**Development on main:** the next standalone downloads use Electron with the same
+bundled Python server. Python/source installs retain the browser interface. Build
+instructions and the shared-code design are in [Electron](electron.md).
+`tools/build_electron.py` creates the same four archive names, verifies an extracted
+app and writes SHA-256 companions. Existing 0.50.0 downloads described below are
+unchanged; older tags keep their original build recipe.
+
 Tagcast 0.50.0 packages a desktop launcher and a CLI with PyInstaller. Python,
 Tcl/Tk, iBroadcast dependencies and all browser assets are included. The main
 interface remains in your browser; no Python installation is required for a download.
@@ -70,6 +77,12 @@ a path containing spaces. Checks start the real launcher with temporary settings
 verify HTTP assets, MIME types, bundled certificate data and API access guards,
 then stop the test server. They never sign in to a live account. CLI help/version
 and macOS bundle signatures are checked too.
+
+For Electron, the extracted application check starts the actual app window with
+temporary Tagcast settings and an isolated Chromium profile. It verifies shared
+assets, a disconnected account, sandboxing, context isolation and owned-server
+shutdown. macOS archive signatures and all checksums remain checked. No renderer
+Node.js access, live sign-in, browser permission bypass or automatic write is used.
 
 ## Releases
 
