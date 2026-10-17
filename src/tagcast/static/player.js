@@ -320,7 +320,11 @@ function markPlaying() {
   if (typeof syncSystemPlayback === "function") syncSystemPlayback();
   if (typeof scheduleQueuePublish === "function") scheduleQueuePublish();
   const current = player.queue[player.index]?.id;
-  for (const row of document.querySelectorAll("[data-row]")) row.classList.toggle("playing", !audio.paused && row.dataset.row === current);
+  for (const row of document.querySelectorAll("[data-row]")) {
+    const playing = !audio.paused && row.dataset.row === current;
+    row.classList.toggle("playing", playing);
+    if (playing) row.setAttribute?.("aria-current", "true"); else row.removeAttribute?.("aria-current");
+  }
   $("#player-prev").disabled = player.index <= 0;
   $("#player-next").disabled = player.index >= player.queue.length - 1;
   $("#player-queue-count").textContent = String(Math.max(0, player.queue.length - player.index - 1));

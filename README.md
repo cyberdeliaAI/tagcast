@@ -11,7 +11,7 @@ Tagcast runs on your computer, with its interface in your browser. **Your local 
 
 **New in [0.50.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.50.0):** A refreshed look with the cassette-in-sleeve logo, a quieter sidebar and compact album pages. Browse and manage native iBroadcast **tags**, follow context breadcrumbs and clickable release years, choose an available audio output and use system playback controls. Review complete albums for the trash or analyse suggested duplicate copies across your library. All features are included in the standalone downloads for macOS, Windows and Linux.
 
-**Development on `main` (unreleased):** album hearts are now saved locally per account, independently of stars. The 0.50.0 downloads still use the earlier rating-based hearts.
+**Development on `main` (unreleased):** album hearts are saved locally per account, independently of stars. Compact album tracklists omit repeated album artists, flag different file formats and show row actions on hover/focus, or always on touch devices. The 0.50.0 downloads retain their earlier hearts and tracklists.
 
 The refreshed interface is shown in the screenshots below; see the
 [capture inventory](docs/screenshot-checklist.md) for current and retained examples.
@@ -371,6 +371,21 @@ Premium option. The player displays **File: FLAC · Stream: MP3 128 kbps**, for
 example: the uploaded file format and this playback request are different things.
 If Original cannot play in the browser, Tagcast tries MP3 128 kbps once and labels
 the fallback. It does not infer bit depth, sample rate or audio identity.
+
+Album tracklists keep ordinary tracks on one line. A second line shows distinct
+performers, composer credits, assigned tags or a file-format exception; the album
+artist is not repeated as a track performer. The heading reports the track count,
+known duration and most common stored format. Different formats get an amber label;
+ties list all known formats, and incomplete format data is identified as known files.
+These labels describe stored metadata, not the stream's bitrate or audio quality.
+
+On mobile, the cover fills the available width, followed by the album title,
+album artist, metadata and controls. Desktop keeps the cover alongside this information.
+
+The playing row uses a speaker instead of its number and a subtle background.
+On a mouse, hovering or focusing a row reveals Play, track tags, queue and empty
+heart controls. A filled favourite heart stays visible. Touch devices always show
+actions. Cleanup mode retains upload advice, individual format labels and checkboxes.
 
 The album page has native **0–5 star ratings** and a separate **album favourite**
 heart. Stars are saved to iBroadcast. The heart is saved locally per account in

@@ -148,6 +148,7 @@
 :root[data-theme="dark"] .collection-search,:root[data-theme="dark"] #playlist-form input:not([type=checkbox]),:root[data-theme="dark"] #playlist-form textarea,:root[data-theme="dark"] #playlist-form select,:root[data-theme="dark"] #remote-controls input:not([type=range]),:root[data-theme="dark"] #remote-controls select,:root[data-theme="dark"] .playback-settings select{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
 :root[data-theme="dark"] .audio-output-devices select{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .album-action-menu #album-action-trash{color:#f6877d}
+:root[data-theme="dark"] .album-track-meta .track-format-exception{border:1px solid #a37a31}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -311,6 +312,7 @@
 :root:not([data-theme="light"]) .collection-search,:root:not([data-theme="light"]) #playlist-form input:not([type=checkbox]),:root:not([data-theme="light"]) #playlist-form textarea,:root:not([data-theme="light"]) #playlist-form select,:root:not([data-theme="light"]) #remote-controls input:not([type=range]),:root:not([data-theme="light"]) #remote-controls select,:root:not([data-theme="light"]) .playback-settings select{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
 :root:not([data-theme="light"]) .audio-output-devices select{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .album-action-menu #album-action-trash{color:#f6877d}
+:root:not([data-theme="light"]) .album-track-meta .track-format-exception{border:1px solid #a37a31}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

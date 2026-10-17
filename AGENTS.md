@@ -118,6 +118,8 @@ and preserve a valid script order in `index.html`.
   on explicit choice. Menu dismissal/navigation never selects tracks or affects playback.
   A known release year in the hero opens the existing years browse group; unknown
   years stay plain text. Preserve the same displayed set year and existing browse semantics.
+  At mobile widths (760px and below), show the cover at full available width above
+  the album title, album artist, metadata and actions. Keep desktop cover/title alignment.
   Album background prose is limited to 65ch; attribution stays visible.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
@@ -335,6 +337,17 @@ and preserve a valid script order in `index.html`.
   Compact, aligned Play and + menu buttons on album cards/lists let the user play
   one chosen complete set without navigation. Load only that set, replace the queue
   explicitly and cancel pending playback on clear, another Play or library replacement.
+- Album-detail tracklists omit the album artist from performer credits and render no
+  empty metadata line. Keep distinct track artists/additional performers, composer
+  credits, tags and format exceptions; tag management remains in row actions even
+  without tags. Derive a common stored format from loaded tracks only, flag differences
+  in amber and identify ties/incomplete data honestly. Search/favourite tables keep
+  their own format labels. Cleanup mode retains per-track formats and upload advice.
+  Playing rows replace the number with a speaker and a quiet background, without
+  recolouring the title or credits. Mouse hover and focus-within reveal actions;
+  filled/pending favourite hearts and expanded queue triggers remain visible. Never
+  remove keyboard focusability to hide actions. Always show actions with hover:none
+  or coarse pointers; preserve normal playback, queue menus, tag dialogs and trash checks.
 - Player album artist and album title links open their respective pages. Show a
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.
