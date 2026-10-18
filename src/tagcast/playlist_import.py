@@ -15,9 +15,12 @@ from difflib import SequenceMatcher
 from heapq import nlargest
 
 from .library import ConflictError, LibraryError, fold, number, text, title_key
+from .metadata_export import csv_cell
 
 MAX_ROWS = 10000
 MAX_TEXT = 10 * 1024 * 1024
+MAX_EXPORT_TEXT = 12 * 1024 * 1024
+CSV_EXPORT_MARKER = "# Tagcast playlist CSV 1: escaped text"
 PAGE = 50
 FIELDS = ("title", "artist", "album", "album_artist", "duration", "year", "track")
 ALIASES = {
@@ -44,11 +47,16 @@ def parse_csv(content, delimiter="auto", header=True):
         size = len(content.encode("utf-8"))
     except UnicodeEncodeError:
         raise LibraryError("Invalid Unicode in the CSV. Choose its correct text encoding.") from None
-    if size > MAX_TEXT:
-        raise LibraryError("Choose a CSV file up to 5 MB.")
+    content = content.lstrip("\ufeff")
+    first, newline, rest = content.partition("\n")
+    exported = bool(newline) and first.rstrip("\r").rstrip(",;\t|") == CSV_EXPORT_MARKER
+    if size > (MAX_EXPORT_TEXT if exported else MAX_TEXT):
+        raise LibraryError("Choose a CSV file up to 5 MB, or a Tagcast unresolved export up to 12 MB.")
     if "\x00" in content or type(header) is not bool or delimiter not in ("auto", ",", ";", "\t", "|"):
         raise LibraryError("Choose the CSV encoding, separator and header setting.")
-    content = content.lstrip("\ufeff")
+    if exported:
+        content = rest
+    line_offset = int(exported)
     if delimiter == "auto":
         try:
             delimiter = csv.Sniffer().sniff(content[:65536], delimiters=",;\t|").delimiter
@@ -58,11 +66,13 @@ def parse_csv(content, delimiter="auto", header=True):
     try:
         reader = csv.reader(io.StringIO(content, newline=""), delimiter=delimiter, strict=True)
         for row in reader:
+            if exported:
+                row = [cell[1:] if cell.startswith("'") else cell for cell in row]
             if not row or not any(value.strip() for value in row):
                 blank += 1
                 continue
             if len(row) > 100 or any(len(c) > 2000 for c in row):
-                raise LibraryError(f"CSV record ending at line {reader.line_num} exceeds 100 columns or 2,000 characters per cell.")
+                raise LibraryError(f"CSV record ending at line {reader.line_num + line_offset} exceeds 100 columns or 2,000 characters per cell.")
             if columns is None:
                 columns = row if header else [f"Column {i + 1}" for i in range(len(row))]
                 if len(columns) < 2:
@@ -70,12 +80,12 @@ def parse_csv(content, delimiter="auto", header=True):
                 if header:
                     continue
             if len(row) > len(columns):
-                raise LibraryError(f"CSV record ending at line {reader.line_num} has more cells than columns. Check the separator and quotes.")
-            rows.append({"line": reader.line_num, "cells": row + [""] * (len(columns) - len(row))})
+                raise LibraryError(f"CSV record ending at line {reader.line_num + line_offset} has more cells than columns. Check the separator and quotes.")
+            rows.append({"line": reader.line_num + line_offset, "cells": row + [""] * (len(columns) - len(row))})
             if len(rows) > MAX_ROWS:
                 raise LibraryError("Import at most 10,000 CSV records at a time; split a larger file first.")
     except csv.Error as error:
-        raise LibraryError(f"Invalid CSV near line {reader.line_num}: {error}") from None
+        raise LibraryError(f"Invalid CSV near line {reader.line_num + line_offset}: {error}") from None
     if not rows:
         raise LibraryError("The CSV contains no data records.")
     return columns, rows, delimiter, blank
@@ -251,7 +261,7 @@ class PlaylistImport:
             raise ConflictError("The library or account changed. Start a new CSV import.")
         return client, library
 
-    def _draft(self, body, phases=None):
+    def _draft(self, body, phases=None, *, source_only=False):
         for key, draft in list(self.drafts.items()):
             if time.monotonic() - draft["created"] > 3600:
                 del self.drafts[key]
@@ -261,7 +271,7 @@ class PlaylistImport:
         draft = self.drafts.get(key)
         if not draft:
             raise LibraryError("This CSV import expired. Read the file again.")
-        self._context(body, draft)
+        self._context(body, draft, expected_library=self.studio.library if source_only else None)
         if type(body.get("revision")) is not int or body["revision"] != draft["revision"]:
             raise ConflictError("The import changed in another request. Open a fresh overview.")
         if phases and draft["phase"] not in phases:
@@ -372,6 +382,25 @@ class PlaylistImport:
         with self.lock:
             draft = self._draft(body, ("matched", "review", "sent", "uncertain"))
             return self._review_view(draft, body) if body.get("review") else self._view(draft, body)
+
+    def export(self, body):
+        """Export original unresolved CSV records, independently of paging or fresh read-back."""
+        with self.lock:
+            draft = self._draft(body, ("matched", "review", "sent", "uncertain"), source_only=True)
+            positions = [r["position"] for r in draft["rows"] if r["choice"] is None and r["status"] != "skipped"]
+            if not positions:
+                raise LibraryError("There are no unresolved CSV records to export.")
+            output = io.StringIO(newline="")
+            output.write("\ufeff" + CSV_EXPORT_MARKER + "\r\n")
+            writer = csv.writer(output, lineterminator="\r\n")
+            writer.writerow([csv_cell(cell) for cell in draft["columns"]])
+            for position in positions:
+                writer.writerow([csv_cell(cell) for cell in draft["records"][position]["cells"]])
+            content = output.getvalue()
+            if len(content.encode("utf-8")) > MAX_EXPORT_TEXT:
+                raise LibraryError("This unresolved export exceeds 12 MB. Import a smaller source file.")
+            self._context(body, draft, expected_library=self.studio.library)
+            return {"text": content, "count": len(positions), "filename": f"tagcast-unresolved-{len(positions)}.csv"}
 
     def search(self, body):
         with self.lock:

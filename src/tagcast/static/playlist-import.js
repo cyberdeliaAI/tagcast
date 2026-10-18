@@ -2,7 +2,7 @@
 
 // CSV contents stay local. Matching and choices never write music metadata or play audio.
 const csvImport = {request: 0, data: null, details: null, session: "", busy: false,
-  name: "", description: "", fileData: null, mapping: null, durationUnit: "seconds", artistSeparator: "", show: "unresolved", offset: 0, resolving: null, search: null, submitted: false};
+  name: "", description: "", fileData: null, mapping: null, durationUnit: "seconds", artistSeparator: "", show: "unresolved", offset: 0, resolving: null, search: null, submitted: false, createdPlaylist: null};
 const csvFields = {title: "Track title (required)", artist: "Performing artist (required)",
   album: "Album title", album_artist: "Album artist", duration: "Duration", year: "Release year / date", track: "Track number"};
 
@@ -15,6 +15,7 @@ function resetPlaylistImport() {
   csvImport.request += 1; csvImport.data = null; csvImport.busy = false;
   csvImport.resolving = null; csvImport.search = null; csvImport.fileData = null; csvImport.mapping = null;
   csvImport.name = ""; csvImport.description = "";
+  csvImport.createdPlaylist = null;
   $("#playlist-import").close(); $("#csv-import-content").innerHTML = ""; $("#csv-import-status").textContent = "";
 }
 
@@ -22,13 +23,13 @@ function openPlaylistImport() {
   if (!live() || state.loading || collectionsView.busy || saving || checking || document.querySelector("dialog[open]")) return;
   Object.assign(csvImport, {request: csvImport.request + 1, data: null, details: state.details,
     session: state.connection.playback_session, busy: false, name: "", description: "", show: "unresolved", offset: 0,
-    resolving: null, search: null, submitted: false, fileData: null, mapping: null});
+    resolving: null, search: null, submitted: false, fileData: null, mapping: null, createdPlaylist: null});
   $("#csv-import-status").textContent = "";
   $("#csv-import-content").innerHTML = `<p>Choose a CSV and link its columns to track information. Matching uses your loaded library. You will review every selection before creating a new private playlist.</p>
     <form id="csv-file-form"><label>CSV file <input type="file" name="file" accept=".csv,.tsv,text/csv,text/tab-separated-values"></label>
     <div class="csv-import-fields"><label>Separator <select name="delimiter"><option value="auto">Detect automatically</option><option value=",">Comma (,)</option><option value=";">Semicolon (;)</option><option value="&#9;">Tab</option><option value="|">Pipe (|)</option></select></label>
     <label>Text encoding <select name="encoding"><option value="auto">UTF-8 / Unicode BOM</option><option value="windows-1252">Windows-1252</option><option value="utf-16le">UTF-16 little endian</option><option value="utf-16be">UTF-16 big endian</option></select></label></div>
-    <details><summary>Or paste CSV / tab-separated text</summary><label>CSV text <textarea name="pasted" rows="6" placeholder="Title,Artist&#10;Song,Artist"></textarea></label><p class="muted">When filled, this text is used instead of the file.</p></details><label class="checkline"><input type="checkbox" name="header" checked> First record contains column headings</label><p class="muted">Closing cancels this local draft. Drafts expire after one hour. Up to 5 MB, 10,000 data records and 100 columns. Quoted commas and multiline cells are supported. CSV cells are treated as text.</p>
+    <details><summary>Or paste CSV / tab-separated text</summary><label>CSV text <textarea name="pasted" rows="6" placeholder="Title,Artist&#10;Song,Artist"></textarea></label><p class="muted">When filled, this text is used instead of the file.</p></details><label class="checkline"><input type="checkbox" name="header" checked> First record contains column headings</label><p class="muted">Closing cancels this local draft. Drafts expire after one hour. Up to 5 MB, 10,000 data records and 100 columns. Tagcast unresolved CSV exports can be re-imported up to 12 MB. Quoted commas and multiline cells are supported. CSV cells are treated as text.</p>
     <div class="dialog-footer"><button type="button" class="button" data-close="playlist-import">Cancel</button><button class="button primary">Read CSV →</button></div></form>`;
   $("#playlist-import").showModal();
 }
@@ -60,11 +61,11 @@ async function readPlaylistCsv(form) {
   if (!csvImportCurrent() || csvImport.busy) return;
   const pasted = form.elements.pasted?.value || "", file = form.elements.file.files?.[0];
   if (pasted.trim()) {
-    if (new TextEncoder().encode(pasted).length > 5 * 1024 * 1024) { $("#csv-import-status").textContent = "Use CSV text up to 5 MB."; return; }
+    if (new TextEncoder().encode(pasted).length > (csvIsExport(pasted) ? 12 : 5) * 1024 * 1024) { $("#csv-import-status").textContent = "Use CSV text up to 5 MB, or a Tagcast unresolved export up to 12 MB."; return; }
     csvImport.name ||= "Imported playlist";
     return csvImportCall("read", {text: pasted, delimiter: form.elements.delimiter.value, header: form.elements.header.checked}, renderCsvMapping);
   }
-  if (!file || file.size > 5 * 1024 * 1024) { $("#csv-import-status").textContent = "Choose a CSV file up to 5 MB."; return; }
+  if (!file || file.size > 12 * 1024 * 1024 || typeof file.arrayBuffer !== "function") { $("#csv-import-status").textContent = "Choose a CSV file up to 5 MB, or a Tagcast unresolved export up to 12 MB."; return; }
   const request = ++csvImport.request, encoding = form.elements.encoding.value;
   const delimiter = form.elements.delimiter.value, header = form.elements.header.checked;
   csvImportWorking(true, "Reading CSV…");
@@ -76,9 +77,33 @@ async function readPlaylistCsv(form) {
     let content;
     try { content = new TextDecoder(encoding === "auto" ? detected : encoding, {fatal: true}).decode(bytes); }
     catch { throw Error("The text encoding could not be read. Try Windows-1252 or the correct Unicode encoding."); }
+    if (file.size > 5 * 1024 * 1024 && !csvIsExport(content)) throw Error("Choose a CSV file up to 5 MB, or a Tagcast unresolved export up to 12 MB.");
     csvImport.name = file.name.replace(/\.(csv|tsv)$/i, "").slice(0, 200);
     csvImportWorking(false);
     await csvImportCall("read", {text: content, delimiter, header}, renderCsvMapping);
+  } catch (error) { if (csvImportCurrent(request)) csvImportWorking(false, error.message); }
+}
+
+function csvIsExport(content) {
+  return content.replace(/^\ufeff/, "").split(/\r?\n/, 1)[0].replace(/[,;\t|]+$/, "") === "# Tagcast playlist CSV 1: escaped text";
+}
+
+function csvUnresolvedExport(data = csvImport.data) {
+  const count = data?.summary?.unresolved || 0;
+  return count ? `<p><button type="button" class="button small" data-csv-export>Export ${count} unresolved ${count === 1 ? "record" : "records"} as CSV ↓</button></p>` : "";
+}
+
+async function exportUnresolvedCsv() {
+  if (!csvImportCurrent() || csvImport.busy || !csvImport.data?.summary?.unresolved) return;
+  const request = ++csvImport.request, data = csvImport.data;
+  csvImportWorking(true, "Preparing unresolved CSV records…");
+  try {
+    const result = await api("/api/playlist-import/export", {id: data.id, revision: data.revision, session: csvImport.session});
+    if (!csvImportCurrent(request)) return;
+    const url = URL.createObjectURL(new Blob([result.text], {type: "text/csv;charset=utf-8"})), link = document.createElement("a");
+    link.href = url; link.download = result.filename; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    csvImportWorking(false, `Downloaded ${result.count} unresolved CSV ${result.count === 1 ? "record" : "records"}. You can import this file again later.`);
   } catch (error) { if (csvImportCurrent(request)) csvImportWorking(false, error.message); }
 }
 
@@ -125,7 +150,7 @@ function renderCsvMatches(data) {
   const labels = {automatic: "Automatic match", manual: "Manually chosen", skipped: "Skipped", ambiguous: "Choose a track", missing: "No suggested match"};
   const partial = data.summary.unresolved > 0, selected = `${data.summary.unique} matched ${data.summary.unique === 1 ? "track" : "tracks"}`;
   const unresolved = `${data.summary.unresolved} unresolved CSV ${data.summary.unresolved === 1 ? "record" : "records"}`;
-  $("#csv-import-content").innerHTML = `<h3 tabindex="-1">2. Check matches</h3>${csvImportSummary(data.summary)}
+  $("#csv-import-content").innerHTML = `<h3 tabindex="-1">2. Check matches</h3>${csvImportSummary(data.summary)}${csvUnresolvedExport(data)}
     <label>Show <select id="csv-import-filter">${["all", "unresolved", "automatic", "manual", "skipped"].map(key => `<option value="${key}" ${data.show === key ? "selected" : ""}>${{all: "All CSV records", unresolved: "Unresolved records", automatic: "Automatic matches", manual: "Manual choices", skipped: "Skipped records"}[key]}</option>`).join("")}</select></label>
     <div class="csv-import-rows">${data.rows.map(row => `<section class="csv-import-row">${csvSource(row)}<div class="csv-match"><small>${labels[row.status]}</small>${row.choice ? csvTrackDetails(row.choice) : '<p class="muted">No track selected.</p>'}${csvMatchReasons(row)}<div><button type="button" class="button small" data-csv-resolve="${row.position}">${row.choice ? "Change match…" : "Find / choose a track…"}</button>${row.status !== "skipped" ? `<button type="button" class="text-action" data-csv-skip="${row.position}">Skip this CSV record</button>` : ""}</div></div></section>`).join("") || (data.show === "unresolved" && !data.summary.unresolved ? '<p class="muted">No unresolved records. Your matches are ready to review.</p>' : '<p class="muted">No records in this filter.</p>')}</div>${csvImportPagination(data.total, data.offset, "matches")}
     <button type="button" class="text-action" data-csv-columns>Change columns (resets matches)…</button><form id="csv-review-form"><h3 tabindex="-1">3. Prepare playlist review</h3><label>New private playlist name <input name="name" id="csv-playlist-name" maxlength="200" value="${escapeHtml(csvImport.name)}" required></label><label>Description <textarea name="description" id="csv-playlist-description" maxlength="2000">${escapeHtml(csvImport.description)}</textarea></label>
@@ -161,8 +186,8 @@ function renderCsvSearch(data, query) {
 function renderCsvReview(data) {
   csvImport.data = data; csvImport.resolving = null;
   $("#csv-import-content").innerHTML = `<h3 tabindex="-1">3. Review new private playlist</h3><h4>${escapeHtml(data.name)}</h4><p class="csv-description">${escapeHtml(data.description)}</p>${csvImportSummary(data.summary, data.omitted_unresolved)}
-    ${data.omitted_unresolved ? `<p class="warn-box">${data.omitted_unresolved} unresolved CSV ${data.omitted_unresolved === 1 ? "record" : "records"} will be left out. Only the selected matches below will be added to the playlist.</p>` : ""}
-    <p>Create a new private playlist with ${data.total} tracks in this order. Skipped records are omitted. Existing playlists and music metadata stay unchanged.</p><ol class="csv-review-list" start="${data.offset + 1}">${data.tracks.map(track => `<li>${csvTrackDetails(track)}</li>`).join("")}</ol>${csvImportPagination(data.total, data.offset, "review")}
+    ${data.omitted_unresolved ? `<p class="warn-box">${data.omitted_unresolved} unresolved CSV ${data.omitted_unresolved === 1 ? "record" : "records"} will be left out. Only the selected matches below will be added to the playlist.</p>` : ""}${csvUnresolvedExport(data)}
+    <p>Create a new private playlist with ${data.total} ${data.total === 1 ? "track" : "tracks"} in this order. Skipped records are omitted. Existing playlists and music metadata stay unchanged.</p><ol class="csv-review-list" start="${data.offset + 1}">${data.tracks.map(track => `<li>${csvTrackDetails(track)}</li>`).join("")}</ol>${csvImportPagination(data.total, data.offset, "review")}
     <div class="dialog-footer"><button type="button" class="button" data-csv-revise>← Back to matches</button><button type="button" class="button primary" data-csv-save>Create private playlist in iBroadcast</button></div>`;
   $("#playlist-import").scrollTop = 0;
   document.querySelector("#csv-import-content h3")?.focus?.();
@@ -178,12 +203,20 @@ async function saveCsvPlaylist() {
     const result = await collectionJob(response, () => csvImportCurrent(request));
     if (result.results?.length !== 1 || result.results[0].id !== response.id || result.results[0].status !== "saved") throw Error("The playlist was sent, but read-back differs.");
     if (!csvImportCurrent(request)) return;
+    if (data.summary?.unresolved) {
+      csvImport.createdPlaylist = response.id; csvImport.data = {...data, phase: "sent"};
+      csvImportWorking(false);
+      $("#csv-import-content").innerHTML = `<h3 tabindex="-1">Playlist created</h3><p>${data.total} ${data.total === 1 ? "track was" : "tracks were"} confirmed in iBroadcast.</p><p>Save the ${data.summary.unresolved} unresolved CSV ${data.summary.unresolved === 1 ? "record" : "records"} if you want to review or import them later. The file keeps the original columns and row order. Explicitly skipped records are not included.</p>${csvUnresolvedExport(data)}<div class="dialog-footer"><button type="button" class="button primary" data-close="playlist-import">Open imported playlist →</button></div>`;
+      $("#playlist-import").scrollTop = 0; document.querySelector("#csv-import-content h3")?.focus?.();
+      return;
+    }
     $("#playlist-import").close(); toast("Imported playlist confirmed in iBroadcast.");
     showCollections("playlists", response.id);
   } catch (error) {
     if (csvImportCurrent(request)) {
       $("#csv-import-status").textContent = `Check Playlists before importing again: ${error.message}`;
-      $("#csv-import-content").innerHTML = '<p>This import cannot be sent again. Close this window and check Playlists. If the playlist is present, use it rather than creating another copy.</p><button type="button" class="button" data-close="playlist-import">Close</button>';
+      csvImport.busy = false;
+      $("#csv-import-content").innerHTML = `<p>This import cannot be sent again. Close this window and check Playlists. If the playlist is present, use it rather than creating another copy.</p>${csvUnresolvedExport(data)}<button type="button" class="button" data-close="playlist-import">Close</button>`;
     }
   } finally { collectionsView.busy = false; }
 }
@@ -215,6 +248,7 @@ document.addEventListener("change", event => {
 });
 document.addEventListener("click", event => {
   const target = event.target;
+  if (target.closest("[data-csv-export]")) return exportUnresolvedCsv();
   if (target.closest("[data-csv-import]")) return openPlaylistImport();
   if (target.closest("[data-csv-columns]") && csvImportCurrent() && !csvImport.busy && csvImport.fileData) {
     const data = {...csvImport.fileData, id: csvImport.data.id, revision: csvImport.data.revision, mapping: csvImport.mapping, duration_unit: csvImport.durationUnit, artist_separator: csvImport.artistSeparator};
@@ -237,7 +271,8 @@ document.addEventListener("click", event => {
   }
 });
 $("#playlist-import").addEventListener("close", () => {
-  const data = csvImport.data, session = csvImport.session;
+  const data = csvImport.data, session = csvImport.session, created = csvImport.createdPlaylist;
   resetPlaylistImport();
   if (data && live() && session === state.connection.playback_session) api("/api/playlist-import/discard", {id: data.id, session}).catch(() => {});
+  if (created && live() && session === state.connection.playback_session) showCollections("playlists", created);
 });
