@@ -17,6 +17,10 @@ run Tagcast in your browser with **Python**. Both share the same editor and play
 Electron desktop downloads, album favourites independent of stars, compact
 tracklists and a full-width mobile album cover. Python/browser use remains available.
 
+**In development:** artist favourites and ratings, optional biographies and other
+[upcoming changes](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes)
+are available in the current source code, but are not included in the 0.60.0 downloads.
+
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
 ![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/album-details.png)

@@ -43,6 +43,76 @@ class CollectionTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('Read-back did not finish')
 
+    def test_artist_rating_is_native_scalar_read_back_and_independent_of_hearts(self):
+        body = {'artists': ['41'], 'name': 'Kate Bush', 'session': self.studio.playback_session,
+                'before': [0], 'rating': 4}
+        self.studio.collections.favourite_artist({**body, 'before': False, 'favourite': True})
+        response = self.studio.collections.rate_artist(body)
+        checked = self.job(response)
+        self.assertNotIn('albums', checked)
+        self.assertEqual(checked['results'], [{'id': '41', 'rating': 4, 'status': 'saved'}])
+        writes = [w for w in mock_ibroadcast.STATE['writes'] if w['mode'] == 'rateartist']
+        self.assertEqual([(w['artist_id'], w['rating']) for w in writes], [(41, 4)])
+        self.assertEqual(self.studio.collections.artist_favourites()['artists'], ['41'])
+        self.assertEqual(self.studio.library.album_summary(72)['artist_rating'], 4)
+        self.assertEqual(self.studio.library.album_view(73)['artist_rating'], 4)
+        self.assertEqual(self.studio.library.album_summary(72)['rating'], 0)
+        self.assertEqual(self.studio.library.track_view(900)['rating'], 0)
+        self.job(self.studio.collections.rate_artist({**body, 'before': [4], 'rating': 0}))
+        self.assertEqual(self.studio.collections.artist_favourites()['artists'], ['41'])
+        self.assertEqual(self.studio.library.album_summary(72)['artist_rating'], 0)
+
+    def test_artist_ratings_reject_stale_values_names_sessions_and_invalid_inputs(self):
+        body = {'artists': ['41'], 'name': 'Kate Bush', 'session': self.studio.playback_session,
+                'before': [0], 'rating': 3}
+        for changes in [{'rating': True}, {'rating': 6}, {'before': [True]},
+                        {'artists': ['41', '41'], 'before': [0, 0]}, {'artists': []}]:
+            with self.subTest(changes=changes), self.assertRaises(LibraryError):
+                self.studio.collections.rate_artist({**body, **changes})
+        for changes in [{'name': 'Other artist'}, {'session': 'old'}, {'before': [1]},
+                        {'artists': ['43']}]:
+            with self.subTest(changes=changes), self.assertRaises(ConflictError):
+                self.studio.collections.rate_artist({**body, **changes})
+        self.assertEqual(mock_ibroadcast.STATE['writes'], [])
+        self.studio.save_lock.acquire()
+        try:
+            with self.assertRaisesRegex(LibraryError, 'Another save'):
+                self.studio.collections.rate_artist(body)
+        finally:
+            self.studio.save_lock.release()
+
+    def test_artist_rating_stops_a_named_group_after_an_ambiguous_request_error(self):
+        mock_ibroadcast.STATE['artists'].update({42: 'Kate Bush', 43: 'Kate Bush'})
+        mock_ibroadcast.STATE['albums'][75] = {**mock_ibroadcast.STATE['albums'][74],
+                                             'artist_id': 43, 'tracks': [905]}
+        mock_ibroadcast.STATE['tracks'][905] = {**mock_ibroadcast.STATE['tracks'][904], 'album_id': 75}
+        self.studio.load_library(refresh=True)
+        original, attempted = self.studio.client._jsonrequest, []
+
+        def request(mode, **fields):
+            if mode == 'rateartist':
+                attempted.append(fields['artist_id'])
+                if fields['artist_id'] == 42:
+                    raise client.ApiError('Uncertain request')
+            return original(mode, **fields)
+
+        with patch.object(self.studio.client, '_jsonrequest', side_effect=request):
+            response = self.studio.collections.rate_artist({
+                'artists': ['41', '42', '43'], 'name': 'Kate Bush',
+                'session': self.studio.playback_session, 'before': [0, 0, 0], 'rating': 5})
+            checked = self.job(response)
+        self.assertEqual(attempted, [41, 42])
+        self.assertIn('Uncertain request', response['error'])
+        self.assertEqual([r['status'] for r in checked['results']], ['saved', 'unverified', 'not_sent'])
+
+    def test_missing_artist_cannot_confirm_clearing_a_rating(self):
+        with patch.object(self.studio, '_check_later', return_value='read-back') as check_later:
+            self.studio.collections.rate_artist({'artists': ['41'], 'name': 'Kate Bush',
+                'session': self.studio.playback_session, 'before': [0], 'rating': 1})
+        callback = check_later.call_args.args[2]
+        del self.studio.library.artists.rows[41]
+        self.assertEqual(callback(self.studio.library)[0]['status'], 'unverified')
+
     def test_album_rating_is_native_scalar_checked_and_separate_from_track_rating(self):
         before = self.studio.album_details(['73'])[0]['rating']
         response = self.studio.collections.rate_album({'albums': ['73'], 'before': [before], 'rating': 5})
@@ -94,6 +164,33 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(set(self.studio.collections.album_favourites()['albums']), {'73', '74'})
         self.studio.library_user = '7'
         self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
+
+    def test_artist_favourites_load_with_compact_library_and_do_not_block_it_on_file_errors(self):
+        self.studio.collections.favourite_artist({
+            'artists': ['42'], 'name': 'Pink Floyd', 'before': False, 'favourite': True,
+            'session': self.studio.playback_session})
+        self.assertEqual(self.studio.load_library()['artist_favourites']['artists'], ['42'])
+        self.assertFalse((self.studio.home / 'artist-biographies.sqlite3').exists())
+        path = self.studio.home / 'artist-favourites.json'
+        path.write_text('{broken')
+        view = self.studio.load_library()
+        self.assertTrue(view['albums'])
+        self.assertIsNone(view['artist_favourites']['artists'])
+        self.assertIn('Could not read', view['artist_favourites']['error'])
+        self.assertEqual(path.read_text(), '{broken')
+
+    def test_artist_biography_setting_is_boolean_persisted_and_never_fetches_on_enable(self):
+        self.assertFalse(self.studio.settings()['artist_biographies'])
+        with patch.object(self.studio.lookup.http, 'json') as lookup:
+            settings = self.studio.save_settings({'artist_biographies': True})
+            self.assertTrue(settings['artist_biographies'])
+            lookup.assert_not_called()
+        self.assertFalse((self.studio.home / 'artist-biographies.sqlite3').exists())
+        self.assertTrue(client.Studio(self.home.name).settings()['artist_biographies'])
+        for invalid in ('yes', 1, None):
+            with self.assertRaises(client.ApiError):
+                self.studio.save_settings({'artist_biographies': invalid})
+        self.assertFalse(self.studio.save_settings({'artist_biographies': False})['artist_biographies'])
 
     def test_local_album_favourites_reject_stale_account_membership_and_concurrent_changes(self):
         self.favourite()

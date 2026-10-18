@@ -41,6 +41,8 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/queue_sync.py`: opt-in server-side WebSocket bridge; extra OAuth queue
   scopes, sanitized account sessions, five-second reconnect pacing and controller roles.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
+- `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
+  album artist and held in a separate bounded local SQLite cache.
 - `src/tagcast/static/`: HTML, CSS, SVG and twenty-one JavaScript files:
   `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
@@ -129,7 +131,7 @@ and preserve a valid script order in `index.html`.
   years stay plain text. Preserve the same displayed set year and existing browse semantics.
   At mobile widths (760px and below), show the cover at full available width above
   the album title, album artist, metadata and actions. Keep desktop cover/title alignment.
-  Album background prose is limited to 65ch; attribution stays visible.
+  Album background prose and artist biographies are limited to 85ch; attribution stays visible.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
 - Tracks go to iBroadcast's trash (`trash`) from the album page after its trash
@@ -257,7 +259,11 @@ and preserve a valid script order in `index.html`.
   summaries, merging discs and paginating locally. Preserve exact group membership,
   browser history, genre links and stale-response guards across library changes.
   Card album counts match the merged shelf; duplicate disc numbers remain separate.
-- Settings contains online sources/keys, playback recording and update checks. The
+- Settings contains online sources/keys, playback recording, update checks and
+  Export changes under Change history. Export downloads the same browser-local JSON
+  history as the History dialog, never submits settings and is disabled when empty;
+  keep it out of the topbar. Electron's Help menu opens the GitHub Wiki through the
+  existing HTTPS external-link handler. The
   library information banner is dismissible with a browser-local remembered preference
   and can be restored in Settings. Never hide other warnings or errors with it.
 - Help uses a compact **?** button to start only the current page or dialog’s
@@ -361,11 +367,13 @@ and preserve a valid script order in `index.html`.
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.
 - `playback.js` owns optional output selection and Media Session controls for the same
-  audio element. The speaker opens Sound with an accessible volume slider and mute
+  audio element. The speaker cabinet icon opens Sound with an accessible volume slider and mute
   button above output selection on every platform. Keep these synchronized through
   volumechange, use the actual audio volume/muted values and acknowledge rejected
   changes with a system/device fallback. Never restart audio, request permissions or
-  change the queue for volume; keep native controls available. Do not persist volume
+  change the queue for volume; keep native controls available. Tint the native panel from the
+  shell palette where supported, with a dark native fallback; never replace or hide controls
+  for appearance. Do not persist volume
   or change it on opening. Discover permitted output devices only on explicit dialog opening
   or device changes while open; never request microphone access. Feature-detect the
   output picker, sink selection and native AirPlay picker, with system sound settings
@@ -404,6 +412,50 @@ and preserve a valid script order in `index.html`.
   History/Undo. `/api/favourites` searches and paginates on the server; never load
   every favourite into the browser. Invalidate pending frontend results when the
   library/session changes.
+- Artist hearts are local account-scoped favourites in `artist-favourites.json`, keyed
+  by native artist IDs. A named group is a favourite only when all its active album
+  artist IDs are marked. Validate the session, exact name, complete group membership
+  and previous heart before atomic writes and read-back. Preserve inactive IDs and
+  other accounts; malformed files must not be overwritten or prevent library loading.
+  Reuse compact album summaries for the Favourite artists filter and card hearts.
+  Use the shared SVG heart on artist buttons and cards, with a 44px button hit area;
+  do not render platform-dependent heart text glyphs.
+  Never change native ratings, album/track hearts, metadata History or playback.
+- Native artist stars use documented `rateartist` with scalar `artist_id`, 0–5,
+  scoped to one exact displayed artist group and at most 20 native IDs. Validate the
+  account/session, full active group and previous ratings before writing, serialize
+  saves, stop on the first error and never retry ambiguous artist writes. Read back
+  native ratings through the existing compact result job; missing artists cannot
+  confirm a cleared rating. Keep sent/uncertain/not-sent results distinct, suppress
+  late frontend responses, and never toggle local hearts or metadata History.
+  Compact album summaries/details include native `artist_rating` and the latest
+  validated active-track `uploaded_at`. Keep existing day-based `upload_dates` set
+  grouping unchanged and never invent missing timezones or clock precision. Album
+  sorts support rating and Date uploaded in both directions, using all displayed
+  discs, with unknown/unrated entries last and stable name tie-breakers. Artist and
+  favourite-artist sorts use native artist ratings (minimum for mixed named IDs),
+  independently of album stars. Upload-date sorting belongs only to albums.
+  Derive all sorting data from loaded summaries; never fetch details for sorting.
+- One Favourites sidebar shortcut opens a shared heading and accessible Tracks, Albums
+  and Album artists tabs. Retain the existing track/album routes and add
+  `#/artist-favourites`; all three mark the same shortcut active. Preserve each list's
+  search, ordering, page and Back/Forward state independently, including when visiting
+  playlists. Keep track pagination on the server and derive album/artist lists and
+  counts only from loaded compact summaries. Switching tabs never changes hearts,
+  ratings, audio or the queue and never fetches track details or biographies. Migrate
+  the former separate album-favourites shortcut without losing access when either old
+  shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
+- `artist_biographies` is off by default. Enabling does not scan or fetch. Visiting one
+  album artist first reads `artist-biographies.sqlite3`, then looks up only missing or
+  expired text through the shared paced free TheAudioDB adapter. Cache English public
+  text by source, strict artist name and language for 30 days; missing/ambiguous text
+  for one day. Bound cached text to 20 MiB / 5,000 entries and back off on source errors.
+  Never fetch track details or contact iBroadcast for a biography. Use exact name matches;
+  leave multiple matches unresolved. Strip provider HTML, escape display text, preserve
+  attribution and construct the provider link from its numeric ID. Reject late results
+  after settings, account, session or library changes. Cached text and source/cache errors
+  must not block albums or playback. The disclosure adds no history entry and preserves
+  focus and expansion through routine updates and Back. No shared Premium key is bundled.
 - The original Powered by iBroadcast SVG is displayed with its original colours and
   proportions. Keep Tagcast's independent identity explicit; do not imply endorsement.
   The sidebar header shows Tagcast with an accent-coloured dot and the small, muted
@@ -414,8 +466,8 @@ and preserve a valid script order in `index.html`.
   Render the entire version as neutral text without a pill background, including in
   dark mode. The account status uses regular weight. The vendor logo is 78px wide,
   preserving the source SVG, original colours and aspect ratio.
-  Album artists uses a microphone, Genres a label and Tags a hash icon. Album favourites
-  uses a disc with a heart, distinct from the track favourites heart.
+  Album artists uses a microphone, Genres a label and Tags a hash icon. One heart
+  shortcut opens all three favourite lists.
 - Streaming quality is a local server setting (`stream_quality`), default 128. It
   applies on the next track; show it separately from the stored file format. Original
   playback may fall back to 128 once, preserving the listening event and marking the

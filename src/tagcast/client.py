@@ -23,6 +23,7 @@ from ibroadcast import oauth
 
 from . import __version__, artwork, auth
 from .album_guide import AlbumGuide
+from .artist_bios import ArtistBiographies
 from .cleanup import Cleanup
 from .collections import Collections
 from .duplicate_cleanup import DuplicateCleanup
@@ -55,7 +56,7 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
 MAX_TRASH = 500  # tracks per trash request
-NO_RETRY = {"create_artist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token", "trash",
+NO_RETRY = {"create_artist", "rateartist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token", "trash",
             "createtag", "updatetag", "deletetags", "tagtracks"}  # Never repeat ambiguous collection/tag/trash mutations or one-use tokens.
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
@@ -315,6 +316,7 @@ class Studio:
         self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
         self.lookup = Lookup(self.source_keys)
+        self.artist_bios = ArtistBiographies(self)
         self.cleanup = Cleanup(self)
         self.duplicate_cleanup = DuplicateCleanup(self)
         tokens = self._read("tokens.json")
@@ -649,12 +651,19 @@ class Studio:
 
     def load_library(self, refresh=False):
         library, source = self._current(self._require_client(), refresh)
+        albums = library.album_index()
         try:
             favourites = self.collections.album_favourites(library)
         except LibraryError as error:
             favourites = {"albums": None, "error": str(error)}
-        return {"albums": library.album_index(), "artists": library.artist_names(),
+        try:
+            artist_favourites = self.collections.artist_favourites(
+                library, {str(a["artist_id"]) for a in albums})
+        except LibraryError as error:
+            artist_favourites = {"artists": None, "error": str(error)}
+        return {"albums": albums, "artists": library.artist_names(),
                 "album_favourites": favourites,
+                "artist_favourites": artist_favourites,
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": self.combine_sets}
@@ -956,6 +965,8 @@ class Studio:
                 "stream_quality": self.config.get("stream_quality", "128"),
                 "queue_sync": self.config.get("queue_sync") is True,
                 "album_guide": self.config.get("album_guide") is True,
+                "artist_biographies": self.config.get("artist_biographies") is True,
+                "artist_biographies_revision": self.artist_bios.revision,
                 "guide_matching_details": self.config.get("guide_matching_details"),
                 "premium": self.premium}
 
@@ -966,6 +977,8 @@ class Studio:
 
     def save_settings(self, body):
         with self.lock:
+            if "artist_biographies" in body and type(body["artist_biographies"]) is not bool:
+                raise ApiError("Choose whether artist biographies are enabled.")
             if "album_guide" in body and type(body["album_guide"]) is not bool:
                 raise ApiError("Choose whether 1001 Albums is enabled.")
             if "guide_matching_details" in body and type(body["guide_matching_details"]) is not bool:
@@ -999,6 +1012,10 @@ class Studio:
                 self.config["record_plays"] = body["record_plays"]
             if "album_guide" in body:
                 self.config["album_guide"] = body["album_guide"]
+            if "artist_biographies" in body:
+                if body["artist_biographies"] != self.config.get("artist_biographies", False):
+                    self.artist_bios.revision += 1
+                self.config["artist_biographies"] = body["artist_biographies"]
             if "guide_matching_details" in body:
                 self.config["guide_matching_details"] = body["guide_matching_details"]
             self._write("config.json", self.config)

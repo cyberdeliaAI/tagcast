@@ -17,6 +17,7 @@ test("only the shared app's own entry pages are navigable", () => {
 
 test("external links are HTTPS only, without credentials or native protocols", () => {
   assert.equal(externalUrl("https://github.com/cyberdeliaAI/tagcast"), "https://github.com/cyberdeliaAI/tagcast");
+  assert.equal(externalUrl("https://github.com/cyberdeliaAI/tagcast/wiki"), "https://github.com/cyberdeliaAI/tagcast/wiki");
   for (const value of ["file:///Applications/Calculator.app", "javascript:alert(1)", "http://example.com", "https://user:secret@example.com", "ms-settings:test", "not a URL"]) assert.equal(externalUrl(value), null);
 });
 

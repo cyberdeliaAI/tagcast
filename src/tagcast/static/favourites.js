@@ -8,6 +8,50 @@ const favourites = {rows: [], total: 0, count: null, query: "", page: 0,
   epoch: 0, details: null, loading: false, busy: false, error: "", pending: null};
 let favouritesTimer;
 const heartIcon = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>';
+const favouriteViews = {tracks: "favourites", albums: "album-favourites", artists: "artist-favourites"};
+const favouriteHub = {kind: "tracks", albums: {query: "", offset: 0}};
+
+function rememberFavouriteView() {
+  if (state.screen === "album-favourites") favouriteHub.albums = {query: collectionsView.query, offset: collectionsView.offset};
+}
+
+function renderFavouriteHub() {
+  const kind = Object.keys(favouriteViews).find(key => favouriteViews[key] === state.screen);
+  $("#favourites-hub").hidden = !kind;
+  if (!kind) return;
+  favouriteHub.kind = kind;
+  for (const key of Object.keys(favouriteViews)) {
+    const tab = $(`#favourites-tab-${key}`);
+    tab.setAttribute("aria-selected", String(key === kind));
+    tab.setAttribute("tabindex", key === kind ? "0" : "-1");
+  }
+  $("#favourite-albums-count").textContent = live() && !state.loading && !state.albumFavouriteError
+    ? albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))).length.toLocaleString("en") : "";
+  $("#favourite-artists-count").textContent = live() && !state.loading && !state.artistFavouriteError
+    ? artistGroups().filter(([, group]) => favouriteArtistGroup(group)).length.toLocaleString("en") : "";
+  $("#breadcrumb").innerHTML = `Favourites<span class="slash" aria-hidden="true">/</span><span aria-current="page">${{tracks: "Tracks", albums: "Albums", artists: "Album artists"}[kind]}</span>`;
+}
+
+function showFavouriteView(kind = favouriteHub.kind) {
+  if (kind === "tracks") showFavourites();
+  else if (kind === "albums") showCollections("album-favourites", null, favouriteHub.albums);
+  else if (kind === "artists") showFavouriteArtists();
+}
+
+$("#favourites-tabs").addEventListener("click", event => {
+  const tab = event.target.closest("[data-favourite-view]");
+  if (tab && tab.getAttribute("aria-selected") !== "true") showFavouriteView(tab.dataset.favouriteView);
+});
+$("#favourites-tabs").addEventListener("keydown", event => {
+  const tab = event.target.closest("[data-favourite-view]"), keys = Object.keys(favouriteViews);
+  const index = keys.indexOf(tab?.dataset.favouriteView);
+  if (index < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === "Home" ? 0 : event.key === "End" ? keys.length - 1
+    : (index + (event.key === "ArrowRight" ? 1 : -1) + keys.length) % keys.length;
+  if (keys[next] !== favouriteHub.kind) showFavouriteView(keys[next]);
+  $(`#favourites-tab-${keys[next]}`).focus();
+});
 
 function heartButton(track) {
   const pending = favourites.pending?.id === String(track.id) ? favourites.pending : null;
@@ -23,6 +67,7 @@ function resetFavourites() {
 
 function updateFavouriteControls() {
   $("#favourites-count").textContent = live() && favourites.count !== null ? favourites.count.toLocaleString("en") : "";
+  renderFavouriteHub();
   const track = player.queue[player.index];
   const button = $("#player-favourite");
   button.innerHTML = heartIcon;
@@ -161,7 +206,7 @@ function showFavourites(page = favourites.page) {
   favourites.page = page; showScreen("favourites"); loadFavourites(); window.scrollTo?.({top: 0});
 }
 
-$("#show-favourites").addEventListener("click", () => { showFavourites(); $("#favourites-search").focus(); });
+$("#show-favourites").addEventListener("click", () => showFavouriteView());
 $("#favourites-search").addEventListener("input", () => {
   clearTimeout(favouritesTimer);
   favourites.page = 0; favourites.request += 1;

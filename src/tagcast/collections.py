@@ -1,4 +1,4 @@
-"""Local album favourites, native ratings and reviewed private playlists."""
+"""Local album/artist favourites, native ratings and reviewed private playlists."""
 
 from .library import ConflictError, LibraryError, fold, number, text
 
@@ -13,6 +13,123 @@ def track_ids(values, maximum=10000):
 class Collections:
     def __init__(self, studio):
         self.studio = studio
+
+    def _artist_favourites(self, library):
+        """Read under the Studio lock; a damaged file must never become an empty one."""
+        studio = self.studio
+        if library is None or library is not studio.library or not studio.client or not studio.library_user:
+            raise ConflictError("The account or library changed. Reload the library.")
+        filename = "artist-favourites.json"
+        data = studio._read(filename)
+        if data is None and not (studio.home / filename).exists():
+            data = {"version": 1, "accounts": {}}
+        if not isinstance(data, dict) or data.get("version") != 1 \
+                or not isinstance(data.get("accounts"), dict) \
+                or any(not isinstance(ids, list) or any(
+                    not isinstance(i, str) or not i.isascii() or not i.isdigit()
+                    or len(i) > 32 or int(i) <= 0 for i in ids)
+                    for ids in data["accounts"].values()):
+            raise LibraryError("Could not read local artist favourites. Check artist-favourites.json.")
+        return data, str(studio.library_user)
+
+    def artist_favourites(self, library=None, active_ids=None):
+        studio = self.studio
+        with studio.lock:
+            studio._require_client()
+            library = library if library is not None else studio.library
+            data, account = self._artist_favourites(library)
+            if active_ids is None:
+                active_ids = {str(number(library.albums[i].get("artist_id")))
+                              for i in library.album_ids()}
+            return {"artists": sorted(set(data["accounts"].get(account, [])) & active_ids, key=int)}
+
+    def artist_selection(self, body):
+        """Validate the complete named group used by the existing album-artist browser."""
+        ids = track_ids(body.get("artists"), 100)
+        name = body.get("name")
+        studio = self.studio
+        studio._require_client()
+        library = studio.library
+        if not library or body.get("session") != studio.playback_session:
+            raise ConflictError("The account or library changed. Reload the library.")
+        if not ids or len(ids) != len(set(ids)) or not isinstance(name, str) or not name:
+            raise LibraryError("Choose one album artist and its current name.")
+        active = {number(album.get("artist_id")) for i, album in library.albums.items()
+                  if library.artist_name(album.get("artist_id")) == name
+                  and not album.get("trashed") and library.active_track_ids(i)}
+        if set(ids) != active or any(i not in library.artists for i in ids):
+            raise ConflictError("This album artist changed or is no longer available. Reload the library.")
+        return library, {str(i) for i in ids}, name
+
+    def favourite_artist(self, body):
+        before, favourite = body.get("before"), body.get("favourite")
+        if type(before) is not bool or type(favourite) is not bool:
+            raise LibraryError("Choose an artist and its current favourite state.")
+        studio = self.studio
+        with studio.lock:
+            library, ids, _ = self.artist_selection(body)
+            data, account = self._artist_favourites(library)
+            saved = set(data["accounts"].get(account, []))
+            if ids.issubset(saved) != before:
+                raise ConflictError("This artist's favourite changed in another window. Reload the library.")
+            if favourite:
+                saved.update(ids)
+            else:
+                saved.difference_update(ids)
+            data["accounts"][account] = sorted(saved, key=int)
+            try:
+                studio._write("artist-favourites.json", data)
+                checked, _ = self._artist_favourites(library)
+            except OSError as error:
+                raise LibraryError("Could not save local artist favourites. Reload before trying again.") from error
+            saved = set(checked["accounts"].get(account, []))
+            return {"results": [{"id": i, "favourite": i in saved} for i in sorted(ids, key=int)]}
+
+    def rate_artist(self, body):
+        ids = track_ids(body.get("artists"), 20)
+        rating, before = body.get("rating"), body.get("before")
+        if not ids or len(ids) != len(set(ids)) or type(rating) is not int or not 0 <= rating <= 5 \
+                or not isinstance(before, list) or len(before) != len(ids) \
+                or any(type(value) is not int or not 0 <= value <= 5 for value in before):
+            raise LibraryError("Choose one artist and its current ratings from zero to five.")
+        studio = self.studio
+        if not studio.save_lock.acquire(blocking=False):
+            raise LibraryError("Another save is still running.")
+        try:
+            client = studio._require_client()
+            studio._current(client)
+            with studio.lock:
+                library, _, name = self.artist_selection(body)
+                if [number(library.artists[i].get("rating")) for i in ids] != before:
+                    raise ConflictError("This artist's rating changed. Reload before rating it.")
+            attempted, error = set(), ""
+            for artist_id, previous in zip(ids, before):
+                if previous == rating:
+                    continue
+                if client is not studio.client or body["session"] != studio.playback_session:
+                    error = "The iBroadcast connection changed; remaining artists were not sent."
+                    break
+                try:
+                    attempted.add(artist_id)
+                    client._jsonrequest("rateartist", artist_id=artist_id, rating=rating)
+                except Exception as failure:
+                    error = str(failure)
+                    break
+
+            def check(after):
+                results = []
+                for artist_id in ids:
+                    artist = after.artists.get(artist_id, {})
+                    actual = number(artist.get("rating"))
+                    confirmed = bool(artist) and text(artist.get("name")) == name and actual == rating
+                    results.append({"id": str(artist_id), "rating": actual,
+                                    "status": "saved" if confirmed else "unverified"
+                                    if artist_id in attempted else "not_sent"})
+                return results
+
+            return {"job": studio._check_later(client, studio.downloads, check, include_albums=False), "error": error}
+        finally:
+            studio.save_lock.release()
 
     @staticmethod
     def _favourite_members(library, album_id):

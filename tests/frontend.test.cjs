@@ -930,7 +930,7 @@ test('the question mark selects only the current page or dialog help', async () 
   const p = page(); await settle();
   const requests = p.requests.length;
   for (const [screen, context] of [['artists', 'artists'], ['albums', 'albums'], ['album', 'album'],
-    ['tracks', 'tracks'], ['favourites', 'favourites'], ['album-favourites', 'album-favourites'],
+    ['tracks', 'tracks'], ['favourites', 'favourites'], ['album-favourites', 'album-favourites'], ['artist-favourites', 'artist-favourites'],
     ['playlists', 'playlists'], ['recently-played', 'recently-played'], ['overview', 'overview'],
     ['album-guide', 'guide'], ['browse', 'browse']]) {
     p.run(`state.screen = ${JSON.stringify(screen)}`);
@@ -4504,4 +4504,356 @@ test("compact rows keep cleanup formats, upload advice and adjustable track sele
   assert.match(html,/data-trash-track="100"/);
   assert.match(html,/track-row-actions/);
   assert.equal(p.run('albumView.trash.size'),0);
+});
+
+test("artist hearts save locally for the complete native group without stars, history or audio changes", async () => {
+  const p = livePage(); await settle();
+  p.run('state.connection.playback_session="artist-session"; state.albums[1].artist_id=42; setArtist("Pink Floyd"); playTracks(state.details.get("1"))');
+  const ratings = p.json('state.albums.map(a=>a.rating)'), history = p.history.length, src = p.nodes.get('#audio').src;
+  assert.match(p.nodes.get('#page-title').innerHTML, /data-artist-favourite="Pink Floyd"/);
+  let finish;
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/artist-favourite');
+    assert.deepEqual(JSON.parse(options.body), {artists: ['42'], name: 'Pink Floyd', session: 'artist-session', before: false, favourite: true});
+    return new Promise(resolve => { finish = resolve; });
+  });
+  const task = p.run('toggleArtistFavourite("Pink Floyd")'); await settle();
+  assert.match(p.nodes.get('#page-title').innerHTML, /aria-pressed="true" aria-busy="true"/);
+  assert.deepEqual(p.json('[...state.artistFavourites]'), [], 'Pending choices are not confirmed favourites');
+  finish({ok: true, json: async () => ({results: [{id: '42', favourite: true}]})}); await task;
+  assert.deepEqual(p.json('[...state.artistFavourites]'), ['42']);
+  assert.deepEqual(p.json('state.albums.map(a=>a.rating)'), ratings);
+  assert.deepEqual(p.json('[...state.albumFavourites]'), []);
+  assert.equal(p.run('state.history.length'), 0);
+  assert.equal(p.history.length, history);
+  assert.equal(p.nodes.get('#audio').src, src); assert.equal(p.nodes.get('#audio').paused, false);
+  p.run('showArtistBrowse(); $("#artists-filter").value="favourites"; renderArtistBrowse()');
+  assert.equal(p.nodes.get('#artists-results').textContent, '1 album artist');
+  assert.match(p.nodes.get('#artists-grid').innerHTML, /Favourite artist/);
+  assert.doesNotMatch(p.nodes.get('#artists-grid').innerHTML, /data-browse-artist="Kate Bush"/);
+  assert.equal(p.requests.filter(r=>r.url.includes('artist-biography')).length, 0);
+});
+
+test("artist favourites preserve filters, paging and playback on Back and restore from the local server", async () => {
+  const p = livePage(); await settle();
+  const albums = p.json('state.albums');
+  p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/library') ? {albums, artists: [], artist_favourites:{artists:['42']}} : {}}));
+  await p.run('loadLive()');
+  assert.deepEqual(p.json('[...state.artistFavourites]'), ['42']);
+  p.run('state.albums=Array.from({length:60},(_,i)=>({...state.albums[0],id:String(i),artist_id:i+1,artist:"Artist "+String(i).padStart(2,"0")})); state.artistFavourites=new Set(state.albums.map(a=>String(a.artist_id))); showArtistBrowse(); $("#artists-filter").value="favourites"; artistBrowse.page=1; renderArtistBrowse()');
+  const requests = p.requests.length;
+  await p.click({'[data-browse-artist]': {dataset:{browseArtist:'Artist 24'}}});
+  await p.nodes.get('#artist-back').emit('click');
+  assert.equal(p.nodes.get('#artists-filter').value, 'favourites');
+  assert.equal(p.run('artistBrowse.page'), 1);
+  assert.match(p.nodes.get('#artists-grid').innerHTML, /Artist 24/);
+  assert.equal(p.requests.length, requests, 'Filtering and navigation use summaries, not track details');
+});
+
+test("artist favourite failures and late replies cannot change another library", async () => {
+  const p=livePage(); await settle();
+  p.run('setArtist("Pink Floyd")');
+  let finish;
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const task=p.run('toggleArtistFavourite("Pink Floyd")'); await settle();
+  p.run('useLocal(demoLibrary(),"demo")');
+  finish({ok:true,json:async()=>({results:[{id:'42',favourite:true}]})}); await task;
+  assert.deepEqual(p.json('[...state.artistFavourites]'), []);
+  p.run('state.mode="live"; state.albums[0].artist_id=42; setArtist("Pink Floyd")');
+  p.setFetch(()=>({ok:false,status:409,json:async()=>({error:'Favourite changed. Reload the library.'})}));
+  await p.run('toggleArtistFavourite("Pink Floyd")');
+  assert.deepEqual(p.json('[...state.artistFavourites]'), []);
+  assert.match(p.nodes.get('#artist-favourite-status').textContent,/Reload the library/);
+  p.run('state.artistFavouriteError="Could not read artist-favourites.json"; renderArtistProfile()');
+  assert.match(p.nodes.get('#page-title').innerHTML,/disabled/);
+});
+
+test("artist biographies are opt-in, lazy and cached, and provider text is escaped", async () => {
+  const p=livePage(); await settle();
+  p.run('state.connection.playback_session="bio-session"; setArtist("Pink Floyd"); playTracks(state.details.get("1"))');
+  assert.equal(p.nodes.get('#artist-biography').hidden,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/artist-biography').length,0);
+  const src=p.nodes.get('#audio').src, history=p.history.length;
+  let reads=0, lookups=0, finish;
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/artist-biography'); const body=JSON.parse(options.body);
+    assert.equal(body.name,'Pink Floyd');
+    if(!body.lookup){reads++;return {ok:true,json:async()=>({enabled:true,status:'not_cached',needs_lookup:true})};}
+    lookups++; return new Promise(resolve=>{finish=resolve;});
+  });
+  p.run('applyArtistSettings({artist_biographies:true})'); await settle();
+  assert.equal(reads,1); assert.equal(lookups,1);
+  assert.match(p.nodes.get('#artist-biography').innerHTML,/Loading artist biography/);
+  finish({ok:true,json:async()=>({enabled:true,status:'ready',biography:'A <script>bad()<\/script> & B.\n\nSecond paragraph.',url:'https://www.theaudiodb.com/artist/123',needs_lookup:false})}); await settle();
+  const html=p.nodes.get('#artist-biography').innerHTML;
+  assert.match(html,/About this artist/); assert.match(html,/&lt;script&gt;bad\(\)&lt;\/script&gt; &amp; B/);
+  assert.doesNotMatch(html,/<script>/); assert.match(html,/Second paragraph/); assert.match(html,/TheAudioDB ↗/);
+  p.run('showArtistBrowse(); setArtist("Pink Floyd"); render()'); await settle();
+  assert.equal(reads,1); assert.equal(lookups,1);
+  assert.equal(p.nodes.get('#audio').src,src); assert.equal(p.nodes.get('#audio').paused,false);
+  assert.equal(p.run('state.history.length'),0);
+  assert.ok(p.history.length>=history,'Only normal artist navigation adds history');
+});
+
+test("stored biography displays immediately and remains available when its refresh fails", async () => {
+  const p=livePage(); await settle(); p.run('setArtist("Pink Floyd")');
+  let finish;
+  p.setFetch((url,options)=>{
+    const body=JSON.parse(options.body);
+    return body.lookup ? new Promise(resolve=>{finish=resolve;})
+      : {ok:true,json:async()=>({enabled:true,status:'ready',biography:'Stored biography.',url:'https://www.theaudiodb.com/artist/123',needs_lookup:true})};
+  });
+  p.run('applyArtistSettings({artist_biographies:true})'); await settle();
+  assert.match(p.nodes.get('#artist-biography').innerHTML,/Stored biography/);
+  finish({ok:false,status:400,json:async()=>({error:'TheAudioDB is busy. Try later.'})}); await settle();
+  assert.match(p.nodes.get('#artist-biography').innerHTML,/Stored biography/);
+  assert.match(p.nodes.get('#artist-biography').innerHTML,/Try again/);
+  assert.match(p.nodes.get('#artist-biography').innerHTML,/TheAudioDB is busy/);
+});
+
+test("biography reads and lookups cannot repaint after navigation, disable or library replacement", async () => {
+  for(const change of ['navigate','disable','replace']){
+    const p=livePage(); await settle(); p.run('setArtist("Pink Floyd")'); let finish;
+    p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+    p.run('applyArtistSettings({artist_biographies:true})'); await settle();
+    const first = finish;
+    if(change==='navigate')p.run('setArtist("Kate Bush")');
+    else if(change==='disable')p.run('applyArtistSettings({artist_biographies:false})');
+    else p.run('useLocal(demoLibrary(),"demo"); render()');
+    first({ok:true,json:async()=>({enabled:true,status:'ready',biography:'Wrong artist text.',needs_lookup:true})}); await settle();
+    assert.doesNotMatch(p.nodes.get('#artist-biography').innerHTML,/Wrong artist text/);
+    assert.equal(p.requests.filter(r=>r.url==='/api/artist-biography'&&JSON.parse(r.options.body).lookup).length,0);
+  }
+});
+
+test("Settings enables biographies only on saving and missing biographies stay compact", async () => {
+  const p=livePage(); await settle();
+  p.run('lookup.sources=[{name:"theaudiodb",label:"TheAudioDB",enabled:true}]; openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML,/name="artist_biographies" > Show artist biographies/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/artist-biography').length,0);
+  p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/settings' ? {sources:[],auto_lookup:false,...JSON.parse(options.body)}
+    : {enabled:true,status:'ambiguous',needs_lookup:false}}));
+  await p.run('saveSettings({elements:{auto_lookup:{checked:false},auto_updates:{checked:false},artist_biographies:{checked:true}},querySelectorAll:()=>[]})');
+  assert.equal(p.run('artistProfile.enabled'),true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/artist-biography').length,0,'Enabling does not scan artists');
+  p.run('setArtist("Pink Floyd")'); await settle();
+  assert.match(p.nodes.get('#artist-biography').innerHTML,/More than one artist matches/);
+  assert.doesNotMatch(p.nodes.get('#artist-biography').innerHTML,/<details/);
+});
+
+test('one Favourites shortcut switches three independent lists without writes, detail downloads or playback changes', async () => {
+  const p = livePage(); await settle();
+  p.run('state.albumFavourites.add("1"); state.artistFavourites.add("42"); playTracks(state.details.get("1"))');
+  const src = p.nodes.get('#audio').src, queue = p.json('player.queue'), ratings = p.json('state.albums.map(a=>a.rating)');
+  const count = p.requests.length;
+  p.setFetch(url => {
+    assert.match(url, /^\/api\/favourites\?/);
+    return {ok:true,json:async()=>({tracks:[], total:0, count:2})};
+  });
+  p.run('showFavouriteView("albums")');
+  assert.equal(p.location.hash, '#/album-favourites');
+  assert.equal(p.nodes.get('#favourites-hub').hidden, false);
+  assert.equal(p.nodes.get('#show-favourites').classList.contains('active'), true);
+  assert.equal(p.nodes.get('#collections-page').getAttribute('role'), 'tabpanel');
+  assert.equal(p.nodes.get('#favourites-tab-albums').getAttribute('aria-selected'), 'true');
+  assert.equal(p.nodes.get('#favourites-tab-tracks').getAttribute('tabindex'), '-1');
+  assert.match(p.nodes.get('#collections-page').innerHTML, /data-album="1"/);
+  p.run('showFavouriteView("artists")');
+  assert.equal(p.location.hash, '#/artist-favourites');
+  assert.equal(p.nodes.get('#collections-page').hidden, true);
+  assert.equal(p.nodes.get('#artist-favourites-page').hidden, false);
+  assert.match(p.nodes.get('#favourite-artists-grid').innerHTML, /Open albums by Pink Floyd/);
+  assert.equal(p.nodes.get('#favourite-artists-count').textContent, '1');
+  assert.equal(p.requests.length, count, 'Album and artist tabs use only compact summaries');
+  p.run('showFavouriteView("tracks")'); await settle();
+  assert.equal(p.location.hash, '#/favourites');
+  assert.equal(p.nodes.get('#artist-favourites-page').hidden, true);
+  assert.equal(p.nodes.get('#favourites-count').textContent, '2');
+  assert.equal(p.requests.length, count + 1, 'Only one server page of tracks is read');
+  assert.deepEqual(p.json('state.albums.map(a=>a.rating)'), ratings);
+  assert.equal(p.nodes.get('#audio').src, src);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  const html = readFileSync(path.join(staticDir, 'index.html'), 'utf8');
+  assert.doesNotMatch(html, /id="show-album-favourites"/);
+});
+
+test('favourite tabs keep search and pagination on switching, Back and artist visits, independently of playlists', async () => {
+  const p = livePage(); await settle();
+  p.setFetch(url => ({ok:true,json:async()=>url.startsWith('/api/favourites')
+    ? {tracks:[], total:120, count:120, offset:Number(new URL(url, 'http://test').searchParams.get('offset'))}
+    : {playlists:[], total:0}}));
+  p.run('$("#favourites-search").value="wish"; showFavourites(1)'); await settle();
+  p.run('state.albums=Array.from({length:60},(_,i)=>({...state.albums[0],id:String(i+1),name:"Album "+i,artist_id:i+1,artist:"Artist "+String(i).padStart(2,"0")})); state.artistFavourites=new Set(state.albums.map(a=>String(a.artist_id))); state.albumFavourites=new Set(state.albums.map(a=>a.id)); showFavouriteView("albums"); collectionsView.query="Album"; collectionsView.offset=50; renderCollections()');
+  p.run('showFavouriteView("artists"); $("#favourite-artists-search").value="Artist"; $("#favourite-artists-sort").value="za"; favouriteArtists.page=1; renderFavouriteArtists()');
+  assert.match(p.nodes.get('#favourite-artists-pagination').innerHTML, /Page 2 of 3/);
+  const requests = p.requests.length;
+  await p.click({'[data-browse-artist]': {dataset:{browseArtist:'Artist 35'}}});
+  p.history.back(); await settle();
+  assert.equal(p.location.hash, '#/artist-favourites');
+  assert.equal(p.nodes.get('#favourite-artists-search').value, 'Artist');
+  assert.equal(p.nodes.get('#favourite-artists-sort').value, 'za');
+  assert.equal(p.run('favouriteArtists.page'), 1);
+  assert.equal(p.requests.length, requests);
+  p.history.back(); await settle();
+  assert.equal(p.location.hash, '#/album-favourites');
+  assert.equal(p.run('collectionsView.query'), 'Album');
+  assert.equal(p.run('collectionsView.offset'), 50);
+  p.history.back(); await settle();
+  assert.equal(p.location.hash, '#/favourites');
+  assert.equal(p.nodes.get('#favourites-search').value, 'wish');
+  assert.equal(p.run('favourites.page'), 1);
+  p.run('showFavouriteView("albums"); showCollections("playlists")'); await settle();
+  p.run('showFavouriteView("albums")');
+  assert.equal(p.run('collectionsView.query'), 'Album');
+  assert.equal(p.run('collectionsView.offset'), 50);
+  p.run('showFavouriteView("artists"); showScreen("albums")');
+  await p.nodes.get('#show-favourites').emit('click');
+  assert.equal(p.location.hash, '#/artist-favourites', 'Sidebar reopens the last selected favourite type');
+  assert.equal(p.nodes.get('#favourite-artists-search').value, 'Artist');
+});
+
+test('favourite tabs support keyboard selection and direct links, with safe empty and account replacement states', async () => {
+  const p = page({hash:'#/artist-favourites'}); await settle();
+  assert.equal(p.location.hash, '#/artist-favourites');
+  assert.match(p.nodes.get('#favourite-artists-grid').innerHTML, /Connect iBroadcast/);
+  p.run('state.mode="live"; state.artistFavouriteError="Cannot read <file>"; renderFavouriteArtists()');
+  assert.match(p.nodes.get('#favourite-artists-grid').innerHTML, /Cannot read &lt;file&gt;/);
+  p.run('state.artistFavouriteError=""; state.artistFavourites=new Set(["42"]); renderFavouriteArtists()');
+  let prevented = 0;
+  const target = kind => ({closest:()=>({dataset:{favouriteView:kind}})});
+  await p.nodes.get('#favourites-tabs').emit('keydown', {key:'ArrowLeft',target:target('artists'),preventDefault(){prevented++;}});
+  assert.equal(p.location.hash, '#/album-favourites');
+  assert.equal(p.run('document.activeElement === $("#favourites-tab-albums")'), true);
+  await p.nodes.get('#favourites-tabs').emit('keydown', {key:'End',target:target('albums'),preventDefault(){prevented++;}});
+  assert.equal(p.location.hash, '#/artist-favourites');
+  assert.equal(p.nodes.get('#favourites-tab-artists').getAttribute('tabindex'), '0');
+  assert.equal(prevented, 2);
+  p.run('useLocal(demoLibrary(), "demo"); showFavouriteArtists()');
+  assert.match(p.nodes.get('#favourite-artists-grid').innerHTML, /Connect iBroadcast/);
+  assert.doesNotMatch(p.nodes.get('#favourite-artists-grid').innerHTML, /data-browse-artist/);
+  assert.ok(p.requests.every(r=>!r.options?.body), 'Navigation never changes any favourites');
+});
+
+test('legacy album-favourites shortcuts merge without losing the only visible favourite entry', async () => {
+  const saved = {order:['show-album-favourites','show-favourites'],hidden:['show-favourites']};
+  const p = page({storage:{'tagcast-sidebar':JSON.stringify(saved)}}); await settle();
+  assert.equal(p.run('sidebarLayout.order[0]'), 'show-favourites');
+  assert.equal(p.run('sidebarLayout.order.filter(id=>id==="show-favourites").length'), 1);
+  assert.equal(p.run('sidebarLayout.order.includes("show-album-favourites")'), false);
+  assert.equal(p.nodes.get('#show-favourites').hidden, false);
+  saved.hidden.push('show-album-favourites');
+  const hidden = page({storage:{'tagcast-sidebar':JSON.stringify(saved)}}); await settle();
+  assert.equal(hidden.nodes.get('#show-favourites').hidden, true);
+});
+
+test('Settings exports the existing browser history without saving preferences or disturbing playback', async () => {
+  const entry = {created:'2026-10-18T10:00:00Z',source:'ibroadcast',status:'saved',selection:[{id:'1',name:'Album'}],changes:[]};
+  const p = page({storage:{'tagcast-history':JSON.stringify([entry])}}); await settle();
+  p.run('state.mode="live"; playTracks(state.details.get("1")); openSettings()');
+  const count = p.requests.length, queue = p.json('player.queue'), src = p.nodes.get('#audio').src, route = p.location.hash;
+  assert.match(p.nodes.get('#settings-content').innerHTML, /<section class="history-settings">/);
+  assert.match(p.nodes.get('#settings-content').innerHTML, /type="button" class="button small" id="export-button" >Export changes/);
+  await p.click({'#export-button':{}});
+  assert.equal(p.downloads.length, 1);
+  const exported = JSON.parse(await p.downloads[0].blob.text());
+  assert.equal(exported.format, 'tagcast-history');
+  assert.deepEqual(exported.entries, [entry]);
+  assert.equal(p.requests.length, count);
+  assert.equal(p.nodes.get('#settings').open, true);
+  assert.equal(p.location.hash, route);
+  assert.equal(p.nodes.get('#audio').src, src);
+  assert.deepEqual(p.json('player.queue'), queue);
+  p.run('state.history=[]; openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /id="export-button" disabled/);
+  const html = readFileSync(path.join(staticDir, 'index.html'),'utf8');
+  assert.doesNotMatch(html.match(/<header class="topbar">.*?<\/header>/)[0], /export-button|Export changes/);
+});
+
+test('albums sort by native rating and latest upload, with unknown values last and all set discs included', async () => {
+  const p=page(); await settle();
+  p.run(`const sortedAlbums=[
+    {id:'a',artist:'Artist',name:'Older',rating:2,uploaded_at:'2026-10-01T10:00:00'},
+    {id:'b',artist:'Artist',name:'Newer',rating:5,uploaded_at:'2026-10-01T12:00:00'},
+    {id:'c',artist:'Artist',name:'Unknown',rating:0,uploaded_at:''}];`);
+  for (const [sort, expected] of [['rating_high',['b','a','c']],['rating_low',['a','b','c']],
+    ['uploaded_newest',['b','a','c']],['uploaded_oldest',['a','b','c']]]) {
+    assert.deepEqual(p.json(`[...sortedAlbums].sort(SORTS.${sort}).map(a=>a.id)`),expected);
+  }
+  assert.equal(p.run(`mergeDiscs([sortedAlbums[0],sortedAlbums[1]]).uploaded_at`),'2026-10-01T12:00:00');
+  p.run('state.albums=sortedAlbums; $("#sort").value="uploaded_newest"; showScreen("albums"); render()');
+  assert.deepEqual(p.json('filteredAlbums().map(a=>a.id)'),['b','a','c']);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('artist sorting uses native artist ratings instead of album stars and stays available in favourites and on Back', async () => {
+  const p=livePage(); await settle();
+  p.run(`state.albums=[
+    {...state.albums[0],id:'a',artist:'Alpha',artist_id:11,artist_rating:1,rating:5},
+    {...state.albums[0],id:'b',artist:'Beta',artist_id:12,artist_rating:5,rating:1},
+    {...state.albums[0],id:'c',artist:'Unrated',artist_id:13,artist_rating:0,rating:3}];
+    state.artistFavourites=new Set(['11','12','13']); showArtistBrowse(); $("#artists-sort").value='rating_high'; renderArtistBrowse()`);
+  const requests=p.requests.length;
+  assert.deepEqual(p.json('filteredArtistGroups().map(([name])=>name)'),['Beta','Alpha','Unrated']);
+  await p.click({'[data-browse-artist]':{dataset:{browseArtist:'Beta'}}});
+  p.history.back(); await settle();
+  assert.equal(p.nodes.get('#artists-sort').value,'rating_high');
+  p.run('showFavouriteArtists(); $("#favourite-artists-sort").value="rating_low"; renderFavouriteArtists()');
+  const html=p.nodes.get('#favourite-artists-grid').innerHTML;
+  assert.ok(html.indexOf('Open albums by Alpha')<html.indexOf('Open albums by Beta'));
+  assert.ok(html.indexOf('Open albums by Beta')<html.indexOf('Open albums by Unrated'));
+  p.run('showScreen("albums")'); p.history.back(); await settle();
+  assert.equal(p.nodes.get('#favourite-artists-sort').value,'rating_low');
+  assert.equal(p.requests.length,requests,'Rating sorts use compact summaries only');
+  const pageHtml=readFileSync(path.join(staticDir,'index.html'),'utf8');
+  for (const id of ['artists-sort','favourite-artists-sort']) {
+    assert.doesNotMatch(pageHtml.match(new RegExp(`<select id="${id}"[\\s\\S]*?<\\/select>`))[0],/uploaded/);
+  }
+});
+
+test('artist stars save independently of local hearts, album stars, history and playback, and wait for read-back', async () => {
+  const p=livePage(); await settle();
+  p.run('state.connection.playback_session="rating-session"; state.albums[0].artist_rating=3; state.artistFavourites.add("42"); setArtist("Pink Floyd"); playTracks(state.details.get("1"))');
+  const hearts=p.json('[...state.artistFavourites]'), albumStars=p.json('state.albums.map(a=>a.rating)'), history=p.json('state.history'), queue=p.json('player.queue'), src=p.nodes.get('#audio').src;
+  let resolve;
+  p.setFetch((url,options)=>{
+    if(url==='/api/artist-rating') {
+      assert.deepEqual(JSON.parse(options.body),{artists:['42'],name:'Pink Floyd',session:'rating-session',before:[3],rating:5});
+      return new Promise(r=>{resolve=r;});
+    }
+    assert.equal(url,'/api/jobs/artist-rating');
+    return {ok:true,json:async()=>({state:'done',results:[{id:'42',rating:5,status:'saved'}]})};
+  });
+  const pending=p.run('rateArtist(5)'); await settle();
+  assert.equal(p.nodes.get('#artist-rating').getAttribute('aria-busy'),'true');
+  assert.equal((p.nodes.get('#artist-rating').innerHTML.match(/aria-pressed="true"/g)||[]).length,5);
+  assert.equal(p.run('state.albums[0].artist_rating'),3,'Pending stars are not yet confirmed');
+  resolve({ok:true,json:async()=>({job:'artist-rating',error:''})}); await pending;
+  assert.equal(p.run('state.albums[0].artist_rating'),5);
+  assert.equal(p.run('state.details.get("1").artist_rating'),5);
+  assert.equal(p.nodes.get('#artist-rating').getAttribute('aria-busy'),'false');
+  assert.deepEqual(p.json('[...state.artistFavourites]'),hearts);
+  assert.deepEqual(p.json('state.albums.map(a=>a.rating)'),albumStars);
+  assert.deepEqual(p.json('state.history'),history);
+  assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#audio').src,src);
+});
+
+test('refused and late artist ratings never leave optimistic stars in another account or library', async () => {
+  const p=livePage(); await settle();
+  p.run('state.connection.playback_session="rating-session"; state.albums[0].artist_rating=2; setArtist("Pink Floyd")');
+  p.setFetch(()=>({ok:false,status:409,json:async()=>({error:'Artist rating changed elsewhere'})}));
+  await p.run('rateArtist(5)');
+  assert.equal(p.run('state.albums[0].artist_rating'),2);
+  assert.equal((p.nodes.get('#artist-rating').innerHTML.match(/aria-pressed="true"/g)||[]).length,2);
+  assert.match(p.nodes.get('#artist-rating').innerHTML,/changed elsewhere/);
+  let resolve;
+  p.setFetch(()=>new Promise(r=>{resolve=r;}));
+  const pending=p.run('rateArtist(4)'); await settle();
+  p.run('useLocal(demoLibrary(),"demo")');
+  resolve({ok:true,json:async()=>({job:'late'})}); await pending;
+  assert.equal(p.run('artistProfile.rating'),null);
+  assert.equal(p.run('collectionsView.busy'),false);
+  assert.equal(p.nodes.get('#artist-rating').hidden,true);
+  assert.ok(p.json('state.albums.map(a=>a.artist_rating||0)').every(n=>n===0));
 });

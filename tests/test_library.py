@@ -68,6 +68,19 @@ class DecodeTests(unittest.TestCase):
 
 
 class SummaryTests(unittest.TestCase):
+    def test_latest_upload_uses_active_valid_track_timestamps_only(self):
+        data = raw()
+        rows = data['library']['tracks']
+        rows['map'].update({'uploaded_on': 8, 'uploaded_time': 9})
+        rows['100'].extend(['2026-10-01', '10:20:30'])
+        rows['101'].extend(['2026-10-01', '16:40:50'])
+        rows['103'].extend(['2026-12-01', '23:59:59'])  # trashed
+        library = Library(data)
+        self.assertEqual(library.album_summary(10)['uploaded_at'], '2026-10-01T16:40:50')
+        self.assertEqual(library.album_view(10)['uploaded_at'], '2026-10-01T16:40:50')
+        self.assertEqual(Library(library.to_cache()).album_summary(10)['uploaded_at'], '2026-10-01T16:40:50')
+        self.assertNotIn('tracks', library.album_summary(10))
+
     def test_full_upload_timestamp_keeps_stored_precision_and_disc_group_dates(self):
         for day, clock, expected in [
             ("2026-10-15", "09:45:47", "2026-10-15T09:45:47"),
@@ -85,7 +98,7 @@ class SummaryTests(unittest.TestCase):
                 self.assertEqual(library.track_view(100)["uploaded_at"], expected)
                 self.assertEqual(Library(library.to_cache()).track_view(100)["uploaded_at"], expected)
                 self.assertEqual(library.track_view(100)["uploaded_on"], day[:10])
-                self.assertNotIn("uploaded_at", library.album_summary(10))
+                self.assertEqual(library.album_summary(10)["uploaded_at"], expected)
 
     def test_file_formats_reuse_stored_types_in_details_search_favourites_and_cache(self):
         for mime, expected in [("audio/flac", "FLAC"), ("audio/x-flac", "FLAC"),

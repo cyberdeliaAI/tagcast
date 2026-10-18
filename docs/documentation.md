@@ -18,6 +18,11 @@ reference documents and screenshots. `_Sidebar.md` owns the topic navigation;
 `_Footer.md` contains source, release and issue links. Keep its links aligned with
 `Home.md` when adding or renaming a page. Wiki edits do not publish an app release.
 
+Document changes on `main` that are not yet released on the Wiki's **Upcoming
+changes (unreleased)** page. Link to it from affected guide pages and the home/sidebar,
+while keeping the released version's instructions usable. When releasing, move the
+instructions into the relevant guide sections and update/remove the availability notes.
+
 Screenshots stay in `docs/screenshots/` in the main repository. Keep earlier-interface
 examples labelled and preserve attribution for the bundled Wikipedia excerpts.
 

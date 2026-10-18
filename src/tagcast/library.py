@@ -15,7 +15,7 @@ import re
 import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, time
 from threading import Lock
 
 ARTWORK_SERVER = "https://artwork.ibroadcast.com"
@@ -42,18 +42,20 @@ def uploaded_at(track):
     """Stored upload date/time, without inventing a timezone or missing precision."""
     value = text(track.get("uploaded_on")).strip()
     day = value[:10]
-    try:
-        datetime.strptime(day, "%Y-%m-%d")
-    except ValueError:
-        return ""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         return ""
-    clock = text(track.get("uploaded_time")).strip() or value[11:19]
     try:
-        datetime.strptime(clock, "%H:%M:%S")
+        date.fromisoformat(day)
+    except ValueError:
+        return ""
+    clock = text(track.get("uploaded_time")).strip() or value[11:19]
+    if not re.fullmatch(r"\d{2}:\d{2}:\d{2}", clock):
+        return day
+    try:
+        time.fromisoformat(clock)
     except ValueError:
         return day
-    return f"{day}T{clock}" if re.fullmatch(r"\d{2}:\d{2}:\d{2}", clock) else day
+    return f"{day}T{clock}"
 
 
 class LibraryError(ValueError):
@@ -356,6 +358,7 @@ class Library:
             "name": text(album.get("name")) or "Untitled album",
             "artist": self.artist_name(album.get("artist_id")),
             "artist_id": number(album.get("artist_id")),
+            "artist_rating": number(self.artists.get(number(album.get("artist_id")), {}).get("rating")),
             "year": number(album.get("year")),
             "disc": number(album.get("disc")),
             "rating": number(album.get("rating")),
@@ -365,6 +368,7 @@ class Library:
             "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
                                         .get("artwork_id")),
             "tracks": tracks,
+            "uploaded_at": max((t["uploaded_at"] for t in tracks), default=""),
             "tags_loaded": self.tags_loaded,
         }
 
@@ -412,10 +416,12 @@ class Library:
         album = self.albums[album_id]
         genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
         duplicate_keys, positions, upload_dates = [], [], set()
+        latest_upload = ""
         track_ids = self.active_track_ids(album_id)
         for track_id in track_ids:
             track = self.tracks[track_id]
             upload_dates.add(text(track.get("uploaded_on")).strip()[:10])
+            latest_upload = max(latest_upload, uploaded_at(track))
             stored = stored_genres(track)
             if stored:
                 genres.update(g.strip() for genre in stored for g in genre.split(";") if g.strip())
@@ -442,11 +448,13 @@ class Library:
             "rating": number(album.get("rating")),
             "artwork": self.art_url(self.album_artwork(track_ids)),
             "artist_id": number(album.get("artist_id")),
+            "artist_rating": number(self.artists.get(number(album.get("artist_id")), {}).get("rating")),
             "artist_image": self.artist_image(album.get("artist_id")),
             "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
                                         .get("artwork_id")),
             "track_count": len(track_ids),
             "upload_dates": list(self._upload_dates[album_id]),
+            "uploaded_at": latest_upload,
             "genres": sorted(genres),
             "no_genre": no_genre,
             "no_cover": no_cover,

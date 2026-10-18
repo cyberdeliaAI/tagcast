@@ -69,9 +69,9 @@ def library():
     albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6}}
     for i, a in STATE["albums"].items():
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0)]
-    artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3}}
+    artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3, "rating": 4}}
     for i, name in STATE["artists"].items():
-        artists[str(i)] = [name, [], i in STATE["album_only_artists"], STATE["artist_art"].get(i, 0)]
+        artists[str(i)] = [name, [], i in STATE["album_only_artists"], STATE["artist_art"].get(i, 0), STATE.get("artist_ratings", {}).get(i, 0)]
     return {"result": True, "authenticated": True, "settings": {"artwork_server": "http://127.0.0.1:1"},
             "status": {"lastmodified": lastmodified()},
             "lastfm": {"sessionkey": "secret-lastfm-session"},
@@ -201,7 +201,7 @@ class H(BaseHTTPRequestHandler):
             if mode == "update_album" and STATE["combine_sets"]:
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode in ("update_album", "update_track", "create_artist", "set_artwork",
-                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "createplaylist", "appendplaylist", "updateplaylist", "deleteplaylist",
+                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "appendplaylist", "updateplaylist", "deleteplaylist",
                         "createtag", "updatetag", "deletetags", "tagtracks"):
                 if STATE["busy"]:
                     STATE["busy"] -= 1
@@ -234,6 +234,10 @@ class H(BaseHTTPRequestHandler):
                 tag = STATE["tags"][body["tagid"]]
                 previous = set(tag["tracks"])
                 tag["tracks"] = sorted(previous - set(body["tracks"]) if body["untag"] else previous | set(body["tracks"]))
+                return self.send(200, {"result": True})
+            if mode == "rateartist":
+                assert type(body["artist_id"]) is int
+                STATE.setdefault("artist_ratings", {})[body["artist_id"]] = body["rating"]
                 return self.send(200, {"result": True})
             if mode == "ratealbum":
                 assert type(body["album_id"]) is int

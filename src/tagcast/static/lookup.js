@@ -15,6 +15,7 @@ async function loadSettings() {
     lookup.recordPlays = data.record_plays === true;
     lookup.albumGuideEnabled = data.album_guide === true;
     if (typeof applyAlbumGuideSettings === "function") applyAlbumGuideSettings(data);
+    if (typeof applyArtistSettings === "function") applyArtistSettings(data);
     if (typeof applyPlaybackSettings === "function") applyPlaybackSettings(data);
     applyUpdateSettings(data);
   } catch { /* opened without the Python server: no online sources */ }
@@ -132,6 +133,9 @@ function openSettings() {
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>
     <p class="muted">These choices apply immediately and are remembered in this browser. Track and album pages and fullscreen Now playing keep their information.</p></section>`
     + sidebarSettingsPanel()
+    + `<section class="history-settings"><h3>Change history</h3>
+    <p class="muted">Download the change history saved in this browser as a JSON file for your records.</p>
+    <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
     + (!lookup.sources.length ? '<p class="muted">Playback and source settings need the Tagcast server.</p>' : `
     <form id="settings-form"><section class="playback-settings"><h3>Playback</h3>
     <label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
@@ -147,6 +151,9 @@ function openSettings() {
     <label class="checkline"><input type="checkbox" name="album_guide" ${albumGuide.enabled ? "checked" : ""}> Enable 1001 Albums</label>
     <p class="muted">Off by default. Save to show 1001 Albums in the sidebar, then start an analysis when you choose. Compares the supplied 1955–2007 selection with your loaded album metadata locally. Results are saved on this computer; your iBroadcast library is unchanged.</p>
     <button type="button" class="button small" data-guide-open ${albumGuide.enabled ? "" : "disabled"}>Open 1001 Albums</button></section>
+    <section class="artist-biography-settings"><h3>Artist biographies</h3>
+    <label class="checkline"><input type="checkbox" name="artist_biographies" ${artistProfile.enabled ? "checked" : ""}> Show artist biographies from TheAudioDB</label>
+    <p class="muted">Off by default. When you visit an album artist, Tagcast sends that artist’s name to TheAudioDB if no current local biography is available. English text is stored separately on this computer for up to 30 days before checking again. No library scan, iBroadcast changes or Last.fm account are needed. Biographies may be unavailable or refer to another artist with the same name; check the source link.</p></section>
     <section class="source-settings"><h3>Online sources &amp; keys</h3>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
@@ -167,6 +174,7 @@ async function saveSettings(form, clear) {
   if (form.elements.queue_sync) body.queue_sync = form.elements.queue_sync.checked;
   if (form.elements.record_plays) body.record_plays = form.elements.record_plays.checked;
   if (form.elements.album_guide) body.album_guide = form.elements.album_guide.checked;
+  if (form.elements.artist_biographies) body.artist_biographies = form.elements.artist_biographies.checked;
   for (const input of form.querySelectorAll("input[type=password]")) if (input.value.trim()) body[input.name] = input.value.trim();
   if (clear) body[clear] = "";
   try {
@@ -175,6 +183,7 @@ async function saveSettings(form, clear) {
     lookup.sources = data.sources; lookup.auto = data.auto_lookup;
     lookup.recordPlays = data.record_plays === true;
     applyAlbumGuideSettings(data);
+    applyArtistSettings(data);
     applyPlaybackSettings(data);
     const wasAutomatic = updateNotice.automatic;
     applyUpdateSettings(data); renderUpdateNotice();

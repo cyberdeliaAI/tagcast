@@ -4,7 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistNames: [], artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 
 function setLibraryNotice(visible) {
@@ -100,9 +100,10 @@ function repeatedTrackPositions(album) {
 function summarize(album) {
   const genres = splitGenres(album.tracks.flatMap(trackGenres)).sort();
   return {id: String(album.id), name: album.name, artist: album.artist, year: album.year, disc: album.disc, rating: album.rating || 0,
-    artist_id: album.artist_id || 0, artist_image: album.artist_image || "", artist_artwork_id: album.artist_artwork_id || 0,
+    artist_id: album.artist_id || 0, artist_rating: album.artist_rating || 0, artist_image: album.artist_image || "", artist_artwork_id: album.artist_artwork_id || 0,
     artwork: album.artwork || "", color: album.color, track_count: album.tracks.length, genres,
     upload_dates: [...new Set(album.tracks.map(t => String(t.uploaded_on || "").trim().slice(0, 10)))].sort(),
+    uploaded_at: album.tracks.map(t => t.uploaded_at || "").sort().at(-1) || "",
     no_genre: album.tracks.filter(t => !trackGenres(t).length).length,
     combined_genres: album.tracks.filter(t => hasCombined(trackGenres(t))).length,
     no_composer: album.tracks.filter(t => !(t.composers || []).length).length,
@@ -128,6 +129,7 @@ function useLocal(albums, mode) {
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
   state.mode = mode; state.artistNames = [];
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
+  state.artistFavourites = new Set(); state.artistFavouriteError = "";
   state.details = new Map(albums.map(a => [String(a.id), a]));
   state.albums = albums.map(summarize);
 }
@@ -181,6 +183,15 @@ const FILTERS = {
   duplicates: ["Duplicate tracks", hasDuplicateTracks],
   edition: ["Named editions", a => EDITION.test(a.name)],
 };
+function compareRating(a, b, descending = true) {
+  return !a !== !b ? (a ? -1 : 1) : descending ? b - a : a - b;
+}
+
+function compareUpload(a, b, descending = true) {
+  const first = a.uploaded_at || "", second = b.uploaded_at || "";
+  return !first !== !second ? (first ? -1 : 1) : descending ? second.localeCompare(first) : first.localeCompare(second);
+}
+
 const SORTS = {
   artist: (a, b) => a.artist.localeCompare(b.artist) || a.name.localeCompare(b.name),
   artist_za: (a, b) => b.artist.localeCompare(a.artist) || a.name.localeCompare(b.name),
@@ -188,6 +199,10 @@ const SORTS = {
   title_za: (a, b) => b.name.localeCompare(a.name),
   year: (a, b) => (a.year || 9999) - (b.year || 9999) || a.name.localeCompare(b.name),
   newest: (a, b) => b.year - a.year || a.name.localeCompare(b.name),
+  rating_high: (a, b) => compareRating(a.rating || 0, b.rating || 0) || SORTS.artist(a, b),
+  rating_low: (a, b) => compareRating(a.rating || 0, b.rating || 0, false) || SORTS.artist(a, b),
+  uploaded_newest: (a, b) => compareUpload(a, b) || SORTS.artist(a, b),
+  uploaded_oldest: (a, b) => compareUpload(a, b, false) || SORTS.artist(a, b),
   no_genre: (a, b) => b.no_genre - a.no_genre || SORTS.artist(a, b),
   fewest: (a, b) => a.track_count - b.track_count || SORTS.artist(a, b),
   most: (a, b) => b.track_count - a.track_count || SORTS.artist(a, b),
@@ -236,6 +251,7 @@ function albumShelf() {
 function mergeDiscs(set) {
   const sum = key => set.reduce((n, a) => n + (a[key] || 0), 0), years = set.map(a => a.year || 0);
   return {...set[0], rating: Math.min(...set.map(a => a.rating || 0)), ratingMixed: new Set(set.map(a => a.rating || 0)).size > 1, discs: set, year: years.includes(0) ? 0 : Math.min(...years),
+    uploaded_at: set.map(a => a.uploaded_at || "").sort().at(-1) || "",
     artwork: set.find(a => a.artwork)?.artwork || "", genres: [...new Set(set.flatMap(a => a.genres))].sort(),
     track_count: sum("track_count"), no_genre: sum("no_genre"), combined_genres: sum("combined_genres"),
     no_composer: sum("no_composer"), track_gaps: sum("track_gaps"), no_cover: sum("no_cover"), duplicates: sum("duplicates"),
@@ -266,11 +282,15 @@ function avatar(name, image) {
 function artistGroups() {
   const groups = new Map();
   for (const a of albumShelf()) {
-    const group = groups.get(a.artist) || {count: 0, image: a.artist_image || ""};
+    const group = groups.get(a.artist) || {count: 0, image: a.artist_image || "", ids: new Set()};
     group.image ||= a.artist_image || "";
     group.count += 1; groups.set(a.artist, group);
   }
-  return [...groups].sort((a, b) => a[0].localeCompare(b[0]));
+  // Keep every native artist ID, including when displayed discs share the same name.
+  for (const a of state.albums) if (Number.isInteger(Number(a.artist_id)) && Number(a.artist_id) > 0) groups.get(a.artist)?.ids.add(String(a.artist_id));
+  const ratings = new Map(state.albums.map(a => [String(a.artist_id), a.artist_rating || 0]));
+  return [...groups].map(([name, group]) => [name, {...group, ids: [...group.ids].sort((a, b) => Number(a) - Number(b)),
+    rating: group.ids.size ? Math.min(...[...group.ids].map(id => ratings.get(id) || 0)) : 0}]).sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 function setArtist(artist) {
@@ -367,8 +387,10 @@ function render() {
   $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
   if (typeof renderAlbumView === "function") renderAlbumView();
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();
+  if (typeof renderArtistProfile === "function") renderArtistProfile();
   if (typeof renderTrackSearch === "function") renderTrackSearch();
   if (typeof renderFavourites === "function") renderFavourites();
+  if (typeof renderFavouriteArtists === "function") renderFavouriteArtists();
   if (typeof renderRecentlyPlayed === "function") renderRecentlyPlayed();
   if (typeof renderAlbumGuide === "function") renderAlbumGuide();
   if (typeof renderCollections === "function" && collectionsView.details !== state.details) renderCollections();
@@ -756,11 +778,16 @@ function exportHistory() {
   const url = URL.createObjectURL(blob), link = document.createElement("a");
   link.href = url; link.download = `tagcast-history-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-for (const id of ["#export-button", "#history-export"]) $(id).addEventListener("click", exportHistory);
+$("#history-export").addEventListener("click", exportHistory);
+document.addEventListener("click", event => {
+  if (event.target.closest("#export-button")) exportHistory();
+});
 
 function updateHistoryControls() {
   const busy = saving || checking > 0;
   $("#history-export").disabled = !state.history.length;
+  const settingsExport = $("#export-button");
+  if (settingsExport) settingsExport.disabled = !state.history.length;
   for (const id of ["#history-clear", "#history-clear-confirm"]) {
     $(id).disabled = !state.history.length || busy;
     $(id).title = busy ? "Wait until saves and their checks have finished." : "";
@@ -878,12 +905,15 @@ async function loadLive(refresh = false) {
   if (typeof resetAlbumView === "function") resetAlbumView();
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear();
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
+  state.artistFavourites = new Set(); state.artistFavouriteError = "";
   updateChrome(); render();
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
     state.albumFavourites = new Set(data.album_favourites?.albums || []);
     state.albumFavouriteError = data.album_favourites?.error || "";
+    state.artistFavourites = new Set(data.artist_favourites?.artists || []);
+    state.artistFavouriteError = data.artist_favourites?.error || "";
     state.connection.combine_sets = Boolean(data.combine_sets);
     if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
     if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
