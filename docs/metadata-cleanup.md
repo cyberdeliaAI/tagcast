@@ -49,6 +49,12 @@ counts **disc records**. Batches remain bounded to 200 affected tracks / 20 disp
 albums. A native disc larger than 200 tracks is blocked for individual editing.
 Invalid names or more than 100 additional credits are also visibly blocked.
 
+The following original capture, supplied on 18 October 2026, shows an approved
+cleanup in progress in an unreleased source build. **Sent / checking** records are
+still awaiting read-back; the screenshot does not represent a completed job.
+
+![Running album artist cleanup with primary and additional artists, confirmed discs and pending read-back](screenshots/cleanup-album-artists-running.png)
+
 **Combine Multi-Disc Album Sets must be disabled in iBroadcast.** Tagcast checks
 this setting, exact active track membership, album title/disc/year and artist
 identities before writing. Changes since the preview stop processing. Stop/resume,

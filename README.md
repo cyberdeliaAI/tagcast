@@ -129,9 +129,14 @@ were supplied while preparing 0.50.0; retained earlier-interface examples are
 labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
 
 <details>
-<summary>Metadata editor and fullscreen player</summary>
+<summary>Metadata editor, album artist cleanup and fullscreen player</summary>
 
 ![Metadata editor with album fields, genres and online source suggestions](docs/screenshots/editor.png)
+
+**Album artist cleanup (unreleased):** reviewed semicolon splitting into a primary
+artist and separate additional artists. This capture shows an approved run in progress.
+
+![Album artist cleanup in progress with checked disc counts and primary/additional artist names](docs/screenshots/cleanup-album-artists-running.png)
 
 ![Fullscreen Now playing with cover and playback controls](docs/screenshots/fullscreen.png)
 
