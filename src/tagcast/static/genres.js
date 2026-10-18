@@ -40,7 +40,7 @@ function genreChips(list, ordered = true) {
 
 function genreField(name, label, genres, {bulk = false, hint = "", mixed = false, ordered = true, noun = "genre"} = {}) {
   const head = bulk ? `<label class="field-check"><input type="checkbox" aria-label="Change ${label}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`;
-  return `<div class="field wide">${head}<div class="genre-input ${bulk ? "disabled" : ""}" data-genres="${name}" data-ordered="${ordered ? 1 : 0}" data-noun="${noun}" data-value="${escapeHtml(JSON.stringify(genres))}"><span class="genre-chips">${genreChips(genres, ordered)}</span><input aria-label="Add a ${noun}: ${escapeHtml(label)}" placeholder="${mixed ? `Mixed: the tracks have different ${noun}s` : genres.length ? `Add a ${noun}` : `Add a ${noun}, Enter or ; for the next`}" ${bulk ? "disabled" : ""}><small class="genre-validation error-text" data-genre-error role="alert"></small></div>${hint ? `<small>${hint}</small>` : ""}</div>`;
+  return `<div class="field wide">${head}<div class="genre-input ${bulk ? "disabled" : ""}" data-genres="${name}" data-ordered="${ordered ? 1 : 0}" data-noun="${noun}" data-value="${escapeHtml(JSON.stringify(genres))}"><span class="genre-chips">${genreChips(genres, ordered)}</span>${artistChoiceInput(`aria-label="Add a ${noun}: ${escapeHtml(label)}" placeholder="${mixed ? `Mixed: the tracks have different ${noun}s` : genres.length ? `Add a ${noun}` : `Add a ${noun}, Enter or ; for the next`}" ${bulk ? "disabled" : ""}`, bulk, noun)}<small class="genre-validation error-text" data-genre-error role="alert"></small></div>${hint ? `<small>${hint}</small>` : ""}</div>`;
 }
 
 const getGenres = el => JSON.parse(el.dataset.value || "[]");
@@ -118,8 +118,9 @@ function showTrackGenres() {
 document.addEventListener("keydown", event => {
   const input = event.target.closest?.(".genre-input input");
   if (!input) return;
+  if (editorArtistChoiceKey(event)) return;
   const el = input.closest(".genre-input");
-  if (event.key === "Enter" || event.key === ";") { event.preventDefault(); try { commitTyped(el); showTrackGenres(); } catch (error) { toast(error.message); } }
+  if (event.key === "Enter" || event.key === ";") { event.preventDefault(); try { commitTyped(el); showTrackGenres(); closeEditorArtistChoices(); } catch (error) { toast(error.message); } }
   else if (event.key === "Backspace" && !input.value) { const list = getGenres(el); if (list.length) { setGenres(el, list.slice(0, -1)); showTrackGenres(); } }
 });
 document.addEventListener("focusout", event => {

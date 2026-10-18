@@ -4,7 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 
 function setLibraryNotice(visible) {
@@ -131,7 +131,7 @@ function useLocal(albums, mode) {
   if (typeof stopPlayer === "function") stopPlayer();
   if (typeof resetAlbumView === "function") resetAlbumView();
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
-  state.mode = mode; state.artistNames = [];
+  state.mode = mode; state.artistNames = []; state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
   state.details = new Map(albums.map(a => [String(a.id), a]));
@@ -555,10 +555,17 @@ function albumArtistField(albums, bulk) {
 }
 
 // Reuse already loaded names; only a small matching list enters the DOM.
-const editorArtistChoices = {albums: null, names: null, values: [], input: null, results: [], active: -1, details: null, draft: null};
+const editorArtistChoices = {albums: null, names: null, labels: null, indexes: new Map(), values: [], input: null, results: [], active: -1, details: null, draft: null};
 
-function artistChoiceInput(attributes, disabled = false) {
-  return `<span class="artist-choice"><input ${attributes} role="combobox" aria-autocomplete="list" aria-controls="editor-artist-names" aria-expanded="false" data-artist-suggestions autocomplete="off"><button type="button" class="artist-choice-toggle" data-artist-choices-toggle aria-label="Show existing artists" aria-haspopup="listbox" aria-controls="editor-artist-names" ${disabled ? "disabled" : ""}>▾</button></span>`;
+function artistChoiceInput(attributes, disabled = false, kind = "artist") {
+  const noun = kind === "genre" ? "genres" : kind === "composer" ? "composers" : "artists";
+  return `<span class="artist-choice"><input ${attributes} role="combobox" aria-autocomplete="list" aria-controls="editor-artist-names" aria-expanded="false" data-artist-suggestions data-editor-choice-kind="${kind}" autocomplete="off"><button type="button" class="artist-choice-toggle" data-artist-choices-toggle aria-label="Show existing ${noun}" aria-haspopup="listbox" aria-controls="editor-artist-names" ${disabled ? "disabled" : ""}>▾</button></span>`;
+}
+
+function applyEditorNames(names) {
+  state.editorNames = {genres: Array.isArray(names?.genres) ? names.genres : [],
+    composers: Array.isArray(names?.composers) ? names.composers : []};
+  resetEditorArtistChoices();
 }
 
 function closeEditorArtistChoices() {
@@ -570,7 +577,7 @@ function closeEditorArtistChoices() {
 
 function resetEditorArtistChoices() {
   closeEditorArtistChoices();
-  Object.assign(editorArtistChoices, {albums: null, names: null, values: []});
+  Object.assign(editorArtistChoices, {albums: null, names: null, labels: null, indexes: new Map(), values: []});
   $("#editor-artist-names").innerHTML = "";
 }
 
@@ -578,26 +585,37 @@ function fillEditorArtistChoices(input, all = false) {
   if (!editing || !$("#editor").open || state.loading || input.disabled || input.hidden
       || !input.matches?.("[data-artist-suggestions]") || !input.closest("#metadata-form")) return;
   if (editorArtistChoices.input !== input) closeEditorArtistChoices();
-  if (editorArtistChoices.albums !== state.albums || editorArtistChoices.names !== state.artistNames) {
-    const names = new Set(state.artistNames);
-    for (const album of state.albums) for (const artist of albumArtistEntries(album)) names.add(artist.name);
-    if (!live()) for (const album of state.details.values()) for (const track of album.tracks) {
-      names.add(track.artist);
-      for (const credit of creditValues(track)) names.add(credit.name);
-    }
-    editorArtistChoices.values = [...names].filter(name => typeof name === "string" && name.trim() && name.length <= 1000)
-      .sort((a, b) => a.localeCompare(b)).map(name => ({name, folded: name.toLocaleLowerCase()}));
-    editorArtistChoices.albums = state.albums; editorArtistChoices.names = state.artistNames;
+  const kind = input.dataset?.editorChoiceKind || "artist";
+  if (editorArtistChoices.albums !== state.albums || editorArtistChoices.names !== state.artistNames
+      || editorArtistChoices.labels !== state.editorNames) {
+    editorArtistChoices.indexes.clear(); editorArtistChoices.albums = state.albums;
+    editorArtistChoices.names = state.artistNames; editorArtistChoices.labels = state.editorNames;
   }
+  if (!editorArtistChoices.indexes.has(kind)) {
+    const names = new Set(kind === "genre" ? state.editorNames.genres
+      : kind === "composer" ? state.editorNames.composers : state.artistNames);
+    if (kind === "artist") for (const album of state.albums) for (const artist of albumArtistEntries(album)) names.add(artist.name);
+    // Fully loaded details also support old local servers and the preview; never load more.
+    if (kind !== "artist" || !live()) for (const album of state.details.values()) for (const track of album.tracks) {
+      if (kind === "genre") for (const name of trackGenres(track)) names.add(name);
+      else if (kind === "composer") for (const name of track.composers || []) names.add(name);
+      else { names.add(track.artist); for (const credit of creditValues(track)) names.add(credit.name); }
+    }
+    const maximum = kind === "genre" ? 200 : 1000;
+    editorArtistChoices.indexes.set(kind, [...names].filter(name => typeof name === "string" && name.trim() && [...name].length <= maximum)
+      .sort((a, b) => a.localeCompare(b)).map(name => ({name, folded: name.toLocaleLowerCase()})));
+  }
+  editorArtistChoices.values = editorArtistChoices.indexes.get(kind);
   const query = all ? "" : input.value.trim().toLocaleLowerCase(), matches = [];
   for (const entry of editorArtistChoices.values) {
     if (entry.folded.includes(query)) matches.push(entry.name);
     if (matches.length === 40) break;
   }
   Object.assign(editorArtistChoices, {input, results: matches, active: -1, details: state.details, draft: editing});
-  const menu = $("#editor-artist-names");
+  const menu = $("#editor-artist-names"), noun = kind === "genre" ? "genre" : kind === "composer" ? "composer" : "artist";
+  menu.setAttribute("aria-label", `Existing ${noun}s`);
   menu.innerHTML = matches.map((name, index) => `<button type="button" role="option" aria-selected="false" tabindex="-1" id="editor-artist-choice-${index}" data-artist-choice="${index}">${escapeHtml(name)}</button>`).join("")
-    + `<p class="muted">${matches.length === 40 ? "Showing up to 40 matches. Type more to narrow the list." : matches.length ? "Choose an artist, or type a new name." : "No existing artist matches. You can keep this new name."}</p>`;
+    + `<p class="muted">${matches.length === 40 ? "Showing up to 40 matches. Type more to narrow the list." : matches.length ? `Choose ${noun === "artist" ? "an" : "a"} ${noun}, or type a new name.` : `No existing ${noun} matches. You can keep this new name.`}</p>`;
   input.removeAttribute("aria-activedescendant"); input.setAttribute("aria-expanded", "true");
   const anchor = input.getBoundingClientRect(), width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
   const below = height - anchor.bottom - 8, above = anchor.top - 8, down = below >= Math.min(240, above);
@@ -612,8 +630,18 @@ function chooseEditorArtist(index) {
   const choices = editorArtistChoices, input = choices.input, name = choices.results[index];
   if (!name || !input?.isConnected || input.disabled || input.hidden || state.loading || !$("#editor").open
       || choices.details !== state.details || choices.draft !== editing) { closeEditorArtistChoices(); return; }
-  input.value = name;
-  input.dispatchEvent(new Event("input", {bubbles: true}));
+  const labels = input.closest(".genre-input");
+  if (labels) {
+    try {
+      const values = getGenres(labels);
+      if (!values.some(value => value.toLocaleLowerCase() === name.toLocaleLowerCase())) setGenres(labels, [...values, name]);
+      else genreValidation(labels, "");
+      input.value = ""; showTrackGenres();
+    } catch (error) { toast(error.message); return; }
+  } else {
+    input.value = name;
+    input.dispatchEvent(new Event("input", {bubbles: true}));
+  }
   input.focus(); closeEditorArtistChoices();
 }
 
@@ -622,7 +650,7 @@ for (const type of ["focusin", "input"]) document.addEventListener(type, event =
   else if (type === "focusin" && !event.target.closest?.("#editor-artist-names")) closeEditorArtistChoices();
 });
 document.addEventListener("pointerdown", event => {
-  if (event.target.closest?.("[data-artist-choice]")) event.preventDefault();
+  if (event.target.closest?.("[data-artist-choice], [data-artist-choices-toggle]")) event.preventDefault();
 });
 document.addEventListener("click", event => {
   const toggle = event.target.closest("[data-artist-choices-toggle]"), choice = event.target.closest("[data-artist-choice]");
@@ -630,28 +658,31 @@ document.addEventListener("click", event => {
   else if (choice) chooseEditorArtist(Number(choice.dataset.artistChoice));
   else if (!event.target.closest("[data-artist-suggestions], #editor-artist-names")) closeEditorArtistChoices();
 });
-document.addEventListener("keydown", event => {
+function editorArtistChoiceKey(event) {
+  if (event.defaultPrevented) return true;
   const input = event.target;
   if (!input.matches?.("[data-artist-suggestions]")) return;
   const choices = editorArtistChoices, opened = choices.input === input && !$("#editor-artist-names").hidden;
   if (["Escape", "Tab"].includes(event.key)) {
     if (opened && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); }
-    closeEditorArtistChoices(); return;
+    closeEditorArtistChoices(); return opened && event.key === "Escape";
   }
   if (event.key === "Enter" && opened && choices.active >= 0) {
-    event.preventDefault(); chooseEditorArtist(choices.active); return;
+    event.preventDefault(); chooseEditorArtist(choices.active); return true;
   }
   if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
   event.preventDefault();
   if (!opened) fillEditorArtistChoices(input);
-  if (!choices.results.length) return;
+  if (!choices.results.length) return true;
   choices.active = event.key === "ArrowDown" ? (choices.active + 1) % choices.results.length
     : (choices.active < 0 ? choices.results.length - 1 : (choices.active - 1 + choices.results.length) % choices.results.length);
   const id = `editor-artist-choice-${choices.active}`;
   input.setAttribute("aria-activedescendant", id);
   for (const [index, option] of [...$("#editor-artist-names").querySelectorAll("[data-artist-choice]")].entries()) option.setAttribute("aria-selected", String(index === choices.active));
   $(`#${id}`)?.scrollIntoView({block: "nearest"});
-});
+  return true;
+}
+document.addEventListener("keydown", editorArtistChoiceKey);
 window.addEventListener("scroll", event => { if (!event.target.closest?.("#editor-artist-names, .artist-choice")) closeEditorArtistChoices(); }, true);
 window.addEventListener("resize", closeEditorArtistChoices);
 
@@ -982,7 +1013,7 @@ document.addEventListener("change", event => {
   }
   if (event.target.matches("[data-enable]")) {
     const name = event.target.dataset.enable, labels = document.querySelector(`#metadata-form [data-genres="${name}"]`);
-    if (labels) { labels.classList.toggle("disabled", !event.target.checked); labels.querySelector("input").disabled = !event.target.checked; }
+    if (labels) { labels.classList.toggle("disabled", !event.target.checked); for (const control of labels.querySelectorAll("input, [data-artist-choices-toggle]")) control.disabled = !event.target.checked; }
     else $("#metadata-form").elements.namedItem(name).disabled = !event.target.checked;
     if (name === "artist") syncAlbumArtistControls();
   }
@@ -1144,13 +1175,14 @@ async function loadLive(refresh = false) {
   if (typeof resetFavourites === "function") resetFavourites();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
-  state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear();
+  state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
   updateChrome(); render();
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    applyEditorNames(data.editor_names);
     state.albumFavourites = new Set(data.album_favourites?.albums || []);
     state.albumFavouriteError = data.album_favourites?.error || "";
     state.artistFavourites = new Set(data.artist_favourites?.artists || []);
@@ -1301,7 +1333,7 @@ async function saveDraft() {
       created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
     state.history.unshift(entry);
     pendingAlbums = null; // an older read-back; this save's own read-back follows
-    if (result.albums) { state.albums = colorize(result.albums); state.details = new Map(); }
+    if (result.albums) { state.albums = colorize(result.albums); state.details = new Map(); applyEditorNames(result.editor_names); }
     else applyLocally(pending.changes.filter(c => byId.get(`${c.kind}:${c.id}`) === "sent"));
     pending = null; editing = null; state.selected.clear();
     if (newArtist) state.artist = newArtist;
@@ -1362,10 +1394,11 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   rememberHistory();
   if (order !== saveOrder) { /* a later save's read-back brings newer albums */ }
   else if (!$("#editor").open && !$("#review").open) {
+    applyEditorNames(job.editor_names);
     state.albums = colorize(job.albums); state.details = new Map();
     if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
     render();
-  } else pendingAlbums = job.albums;
+  } else { applyEditorNames(job.editor_names); pendingAlbums = job.albums; }
   onDone?.(job);
   const done = job.results.filter(r => r.status === "saved").length;
   if (entry.status === "saved") toast(`Confirmed by iBroadcast: ${done} ${done === 1 ? "record" : "records"} saved.`);

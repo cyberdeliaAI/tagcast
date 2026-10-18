@@ -1146,7 +1146,10 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [{"file_id": 904, "artists_additional": [
             {"artist_id": 41, "type": "artist"}, {"artist_id": new_id, "type": "composer"},
             {"artist_id": 41, "type": "composer"}]}])
-        self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+        checked = self.wait_job(studio, result["job"])
+        self.assertEqual(checked["results"][0]["status"], "saved")
+        self.assertIn("Roger Waters", checked["editor_names"]["composers"])
+        self.assertIn("Kate Bush", studio.load_library()["editor_names"]["composers"])
         self.assertEqual(studio.album_details(["74"])[0]["tracks"][0]["composers"], ["Roger Waters", "Kate Bush"])
         mock_ibroadcast.STATE["tracks"][904]["additional"] = []
 

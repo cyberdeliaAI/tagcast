@@ -710,6 +710,7 @@ class Studio:
         except LibraryError as error:
             artist_favourites = {"artists": None, "error": str(error)}
         return {"albums": albums, "artists": library.artist_names(),
+                "editor_names": library.editor_names(),
                 "album_favourites": favourites,
                 "artist_favourites": artist_favourites,
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
@@ -897,7 +898,7 @@ class Studio:
         fresh, _ = self._current(client)
         plan = plan_save(fresh, changes)  # raises ConflictError before anything is written
         if not plan["items"]:
-            return {"results": [], "albums": fresh.album_index(), "created_artists": [],
+            return {"results": [], "albums": fresh.album_index(), "editor_names": fresh.editor_names(), "created_artists": [],
                     "error": "", "message": "iBroadcast already has these values."}
 
         failed, error = {}, ""
@@ -967,6 +968,7 @@ class Studio:
                 result = {"state": "done", "results": check(after)}
                 if include_albums:
                     result["albums"] = after.album_index()
+                    result["editor_names"] = after.editor_names()
             except (ApiError, LibraryError) as failure:
                 result = {"state": "error",
                           "error": f"Saved, but the library could not be read back: {failure}"}
