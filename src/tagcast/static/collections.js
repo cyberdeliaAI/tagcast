@@ -141,7 +141,7 @@ async function renderCollections() {
   const page = $("#collections-page");
   if (state.screen === "playlists") $("#breadcrumb").textContent = "Playlists";
   else renderFavouriteHub();
-  if (!live() || state.loading) { page.innerHTML = '<div class="empty">Connect iBroadcast to use playlists and album favourites.</div>'; return; }
+  if (!live() || state.loading) { page.innerHTML = state.loading ? '<div class="empty">Loading your iBroadcast library…</div>' : '<div class="empty">Connect iBroadcast to use playlists and album favourites.</div>'; return; }
   collectionsView.details = state.details;
   if (state.screen === "album-favourites") {
     const albums = albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))), filtered = albums.filter(a => `${a.name} ${albumArtistsText(a)}`.toLowerCase().includes(collectionsView.query.toLowerCase()));

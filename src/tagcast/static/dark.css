@@ -160,6 +160,7 @@
 :root[data-theme="dark"] .browse-options-menu button:hover:not(:disabled),:root[data-theme="dark"] .browse-options-menu button:focus-visible{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] .playlist-placeholder{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] #playlist-folder-form input:not([type=checkbox]),:root[data-theme="dark"] #playlist-folder-form textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root[data-theme="dark"] .library-loading{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .playlist-import-dialog input:not([type=checkbox]),:root[data-theme="dark"] .playlist-import-dialog select,:root[data-theme="dark"] .playlist-import-dialog textarea{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .csv-match-reasons{background:var(--palette-surface,#1b2520)}
 
@@ -337,6 +338,7 @@
 :root:not([data-theme="light"]) .browse-options-menu button:hover:not(:disabled),:root:not([data-theme="light"]) .browse-options-menu button:focus-visible{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) .playlist-placeholder{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) #playlist-folder-form input:not([type=checkbox]),:root:not([data-theme="light"]) #playlist-folder-form textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root:not([data-theme="light"]) .library-loading{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .playlist-import-dialog input:not([type=checkbox]),:root:not([data-theme="light"]) .playlist-import-dialog select,:root:not([data-theme="light"]) .playlist-import-dialog textarea{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .csv-match-reasons{background:var(--palette-surface,#1b2520)}
 

@@ -6,6 +6,7 @@ const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
 const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
+let libraryLoadRequest = 0;
 
 function setLibraryNotice(visible) {
   libraryNotice.visible = visible;
@@ -114,6 +115,8 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  libraryLoadRequest += 1; state.loading = false;
+  $("#library-loading").hidden = true;
   closeBrowseOptions();
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
@@ -1144,6 +1147,7 @@ function updateChrome() {
   $("#data-notice").textContent = live() ? "Live iBroadcast library. Metadata saves are checked against iBroadcast first and read back afterwards. Your music files are never touched."
     : "Demo library with sample records. Connect your iBroadcast account to edit your own collection.";
   $("#library-notice").hidden = !libraryNotice.visible;
+  $("#library-loading").hidden = !state.loading;
   $("#history-note").textContent = live() ? "Saved changes are listed with their read-back status. Export the changes if you want a record of this session." : "Export the changes before closing this tab. Preview drafts are not saved to iBroadcast.";
 }
 
@@ -1165,6 +1169,9 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  const request = ++libraryLoadRequest, session = state.connection.playback_session;
+  const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
+  let completed = false;
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
@@ -1183,9 +1190,12 @@ async function loadLive(refresh = false) {
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
+  $("#library-loading-detail").textContent = refresh ? "Downloading a fresh copy of your collection. Large libraries can take a little while." : "Checking for changes and retrieving your collection. Large libraries can take a little while.";
   updateChrome(); render();
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
+    if (!current()) return;
+    completed = true;
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
     applyEditorNames(data.editor_names);
     state.albumFavourites = new Set(data.album_favourites?.albums || []);
@@ -1198,10 +1208,16 @@ async function loadLive(refresh = false) {
     const count = `${state.albums.length.toLocaleString("en")} albums`;
     toast(data.source === "download" ? `Downloaded ${count} from iBroadcast.` : `Loaded ${count}. Nothing changed in iBroadcast since the last download.`);
   } catch (error) {
+    if (!current()) return;
+    completed = true;
     if (error.status === 401) state.connection.connected = false;
     useLocal(demoLibrary(), "demo");
     toast(`Could not load your library: ${error.message}`);
   } finally {
+    if (!completed && request !== libraryLoadRequest) return;
+    if (!completed && session !== state.connection.playback_session) {
+      state.loading = false; updateChrome(); return;
+    }
     state.loading = false;
     if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
     state.page = 0; updateChrome(); render();

@@ -245,6 +245,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/playlist-import/read": self.studio.playlist_import.read,
             "/api/playlist-import/match": self.studio.playlist_import.match,
             "/api/playlist-import/view": self.studio.playlist_import.view,
+            "/api/playlist-import/export": self.studio.playlist_import.export,
             "/api/playlist-import/search": self.studio.playlist_import.search,
             "/api/playlist-import/choose": self.studio.playlist_import.choose,
             "/api/playlist-import/review": self.studio.playlist_import.review,

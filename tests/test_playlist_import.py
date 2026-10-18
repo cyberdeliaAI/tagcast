@@ -1,6 +1,8 @@
 """CSV text, conservative matching, bounded review and single-use playlist creation."""
 
 import copy
+import csv
+import io
 import tempfile
 import time
 import unittest
@@ -8,7 +10,13 @@ from unittest.mock import Mock, patch
 
 from tagcast.client import Studio
 from tagcast.library import ConflictError, Library, LibraryError
-from tagcast.playlist_import import MAX_ROWS, TrackCatalogue, duration_seconds, parse_csv
+from tagcast.playlist_import import (
+    CSV_EXPORT_MARKER,
+    MAX_ROWS,
+    TrackCatalogue,
+    duration_seconds,
+    parse_csv,
+)
 
 
 def fixture():
@@ -58,6 +66,23 @@ class CsvParsingTests(unittest.TestCase):
         for value in ('nan', 'inf', '-1', '0', '2:99', '1:2:3:4', 'tomorrow'):
             with self.subTest(value=value), self.assertRaises(LibraryError):
                 duration_seconds(value, 'seconds')
+
+    def test_export_marker_decodes_exactly_one_escape_and_preserves_real_line_numbers(self):
+        content = '\ufeff' + CSV_EXPORT_MARKER + '\r\nTitle,Artist\r\n\'\'=literal,\'+Artist\r\n'
+        columns, rows, delimiter, blank = parse_csv(content)
+        self.assertEqual((columns, delimiter, blank), (['Title', 'Artist'], ',', 0))
+        self.assertEqual(rows, [{'line': 3, 'cells': ["'=literal", '+Artist']}])
+        self.assertEqual(parse_csv('Title,Artist\n\'=literal,\'+Artist\n', ',')[1][0]['cells'], ["'=literal", "'+Artist"])
+        self.assertEqual(parse_csv(content.replace(CSV_EXPORT_MARKER, CSV_EXPORT_MARKER + ',,,'))[1], rows)
+        with patch('tagcast.playlist_import.MAX_TEXT', 1), patch('tagcast.playlist_import.MAX_EXPORT_TEXT', 1000):
+            self.assertEqual(parse_csv(content)[1], rows)
+            with self.assertRaisesRegex(LibraryError, '12 MB'):
+                parse_csv('Title,Artist\nA,B\n', ',')
+        long_cell = '=' + 'x' * 1999
+        exported = CSV_EXPORT_MARKER + '\r\nTitle,Artist\r\n\'' + long_cell + ',Unknown\r\n'
+        self.assertEqual(parse_csv(exported)[1][0]['cells'][0], long_cell)
+        with patch('tagcast.playlist_import.MAX_EXPORT_TEXT', 50), self.assertRaisesRegex(LibraryError, '12 MB'):
+            parse_csv(exported)
 
 
 class PlaylistImportTests(unittest.TestCase):
@@ -290,6 +315,70 @@ class PlaylistImportTests(unittest.TestCase):
         with self.assertRaisesRegex(LibraryError, 'at least one track'):
             self.importer.review(self.body(empty, name='Empty', omit_unresolved=True))
         self.studio.client._jsonrequest.assert_not_called()
+
+    def test_unresolved_export_keeps_original_columns_cells_order_and_all_pages_then_reimports(self):
+        columns = ['Title', 'Artist', 'Release Date', 'Album', 'Duration (ms)', 'Notes', 'URL']
+        records = [
+            ['Cloudbusting', 'Kate Bush', '1985', 'Hounds of Love', '310000', 'matched', ''],
+            ['Missing', 'Unknown', '2020-01-02', 'Some, album', '+123000', '=HYPERLINK("https://example.invalid")', 'https://example.invalid'],
+            ['Skip me', 'Unknown', '', '', '', 'skipped', ''],
+            ['Running Up That Hill', 'Kate Bush', '1985', '', '300000', "'literal\nsecond line", '\\N'],
+            ['Cloudbusting', 'Kate Bush', '1985', 'Hounds of Love', '310000', 'matched again', ''],
+        ]
+        content = io.StringIO(newline='')
+        writer = csv.writer(content, delimiter=';')
+        writer.writerow(columns)
+        writer.writerows(records)
+        parsed = self.read(content.getvalue(), delimiter=';')
+        result = self.importer.match(self.body(parsed, mapping=parsed['mapping'], duration_unit='milliseconds', show='automatic'))
+        result = self.importer.choose(self.body(result, position=2, skip=True, show='automatic'))
+        before = copy.deepcopy(self.importer.drafts[result['id']]['rows'])
+        exported = self.importer.export(self.body(result))
+        self.assertEqual((exported['count'], exported['filename']), (2, 'tagcast-unresolved-2.csv'))
+        self.assertTrue(exported['text'].startswith('\ufeff' + CSV_EXPORT_MARKER + '\r\n'))
+        raw = list(csv.reader(io.StringIO(exported['text'].split('\n', 1)[1], newline='')))
+        self.assertTrue(raw[1][5].startswith("'=HYPERLINK"))
+        decoded_columns, decoded, _, _ = parse_csv(exported['text'])
+        self.assertEqual(decoded_columns, columns)
+        self.assertEqual([r['cells'] for r in decoded], [records[1], records[3]])
+        self.assertEqual(self.importer.drafts[result['id']]['rows'], before)
+        reimported = self.read(exported['text'])
+        matches = self.importer.match(self.body(reimported, mapping=reimported['mapping'], duration_unit='milliseconds'))
+        self.assertEqual(matches['summary']['total'], 2)
+        self.assertEqual(matches['rows'][0]['source']['duration'], '+123000')
+        self.assertEqual(matches['rows'][0]['source']['warnings'], [])
+        self.studio.client._jsonrequest.assert_not_called()
+        self.studio._current.assert_not_called()
+
+    def test_export_covers_every_unresolved_page_and_survives_own_save_readback_only_in_same_session(self):
+        result = self.matched('Title,Artist\nCloudbusting,Kate Bush\n' + 'Missing,Unknown\n' * 125)
+        exported = self.importer.export(self.body(result, offset=100, show='automatic'))
+        self.assertEqual(len(parse_csv(exported['text'])[1]), 125)
+        review = self.importer.review(self.body(result, name='Partial', omit_unresolved=True))
+        self.studio.client._jsonrequest.return_value = {'playlist_id': 500}
+        self.importer.save(self.body(review, review_token=review['review_token'], approved=True))
+        self.studio.library = Library(fixture())  # read-back publishes a new library copy
+        self.assertEqual(self.importer.export(self.body(review))['count'], 125)
+        for changed in ('session', 'account', 'client', 'combine'):
+            with self.subTest(changed=changed):
+                original = (self.studio.playback_session, self.studio.library_user, self.studio.client, self.studio.library.combine_sets)
+                if changed == 'session':
+                    self.studio.playback_session = 'other'
+                if changed == 'account':
+                    self.studio.library_user = 'other'
+                if changed == 'client':
+                    self.studio.client = Mock()
+                if changed == 'combine':
+                    self.studio.library.combine_sets = True
+                with self.assertRaises(ConflictError):
+                    self.importer.export(self.body(review))
+                self.studio.playback_session, self.studio.library_user, self.studio.client, self.studio.library.combine_sets = original
+        self.importer.discard(self.body(review))
+        with self.assertRaises(LibraryError):
+            self.importer.export(self.body(review))
+        complete = self.matched()
+        with self.assertRaisesRegex(LibraryError, 'no unresolved'):
+            self.importer.export(self.body(complete))
 
     def test_ambiguous_creation_cannot_be_retried_and_other_steps_cannot_trigger_writes(self):
         review = self.importer.review(self.body(self.matched(), name='Uncertain'))

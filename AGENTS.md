@@ -131,6 +131,12 @@ and preserve a valid script order in `index.html`.
   hold Studio.lock. Persist only the active client's current TokenSet so delayed callbacks
   cannot overwrite newer tokens or restore a disconnected/replaced session.
 - The demo library remains a local preview and is never saved to iBroadcast.
+- Library loading shows a global, accessible indeterminate progress indicator, independent
+  of the dismissible information banner, on startup and explicit reload. Do not invent a
+  percentage for the current whole-response API or add requests just to measure progress.
+  Hide it on success, error, disconnect or local replacement; reject older load responses
+  after a newer request/session so they cannot replace data or hide its indicator. Keep
+  current audio and queue intact during an ordinary live reload.
 - Tagcast starts on Album artists. Back and Forward follow the browser history;
   dialogs get no history entry, and Back never closes an open editor.
   Album details use a clickable breadcrumb for their browsing origin (artist, tag,
@@ -655,6 +661,15 @@ and preserve a valid script order in `index.html`.
   review page. Keep unresolved rows and choices intact on Back, restoring filter/page.
   Retain CSV order and distinguish unresolved omissions, explicit skips, blank records
   and duplicate counts. Keep repeated selected IDs once at their first occurrence.
+  Explicit unresolved CSV export covers all pages, excluding selected and explicitly skipped
+  records, with original columns/cells/order. Use UTF-8 BOM/comma/CRLF and reversible
+  spreadsheet escaping with a Tagcast format line; re-import removes only that escape.
+  Ordinary files remain limited to 5 MB; identified Tagcast exports may be re-imported up
+  to 12 MB (also bounded server-side). Do not persist exports/CSVs on the server. Export is
+  read-only and revision/client/account/session/combine-bound; only this source-file read
+  may survive a newer library copy, including the import's own save/read-back. Never relax
+  matching or write guards. Offer export in matches, review, uncertain results and the
+  completion dialog for a partial import, before Open imported playlist closes/discards it.
   The final review contains ordered native track metadata, name/description and a server-only
   track list behind a single-use review token. Explicit confirmation creates only a new
   private playlist via existing createplaylist, under the shared save lock; recheck current

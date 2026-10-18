@@ -1445,6 +1445,65 @@ test("reloading the library refreshes the current player's rating without restar
   assert.equal(p.nodes.get("#audio").paused, false);
 });
 
+test('library loading has a global indeterminate indicator independent of the dismissible notice and playback', async () => {
+  const p=livePage(); await settle();
+  const albums=p.json('state.albums'), details=p.json('[...state.details.values()]');
+  p.run('playTracks(state.details.get("1")); setLibraryNotice(false)');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
+  let release;
+  p.setFetch(url=>url.startsWith('/api/library')?new Promise(resolve=>{release=resolve;}):{ok:true,json:async()=>url.startsWith('/api/playlists')?{playlists:[],total:0}:{albums:details}});
+  const pending=p.run('loadLive()'); await settle();
+  assert.equal(p.nodes.get('#library-loading').hidden,false);
+  assert.equal(p.nodes.get('#library-notice').hidden,true);
+  assert.match(p.nodes.get('#library-loading-detail').textContent,/Checking for changes/);
+  assert.equal(p.nodes.get('#audio').paused,false);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src})'),before);
+  p.run('showScreen("albums")');
+  assert.equal(p.nodes.get('#library-loading').hidden,false);
+  p.run('showCollections("playlists")');
+  assert.match(p.nodes.get('#collections-page').innerHTML,/Loading your iBroadcast library/);
+  assert.doesNotMatch(p.nodes.get('#collections-page').innerHTML,/Connect iBroadcast/);
+  release({ok:true,json:async()=>({albums,artists:[]})}); await pending; await settle();
+  assert.equal(p.nodes.get('#library-loading').hidden,true);
+  assert.equal(p.run('state.loading'),false);
+  assert.equal(p.nodes.get('#audio').paused,false);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/library')).length,1);
+  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');
+  assert.match(html,/<progress aria-label="Library loading"><\/progress>/);
+});
+
+test('an older library reply cannot hide a newer load or replace its albums', async () => {
+  const p=livePage(); await settle(); const albums=p.json('state.albums');
+  let first,second;
+  p.setFetch(url=>new Promise(resolve=> { if(url.endsWith('refresh=1'))second=resolve;else first=resolve; }));
+  const old=p.run('loadLive()'); await settle();
+  const newer=p.run('loadLive(true)'); await settle();
+  assert.match(p.nodes.get('#library-loading-detail').textContent,/fresh copy/);
+  first({ok:true,json:async()=>({albums:[{...albums[0],name:'Old response'}],artists:[]})}); await old;
+  assert.equal(p.nodes.get('#library-loading').hidden,false);
+  assert.equal(p.run('state.loading'),true);
+  assert.equal(p.run('state.albums.length'),0);
+  second({ok:true,json:async()=>({albums:[{...albums[0],name:'Newest response'}],artists:[]})}); await newer; await settle();
+  assert.equal(p.nodes.get('#library-loading').hidden,true);
+  assert.equal(p.run('state.albums[0].name'),'Newest response');
+});
+
+test('disconnect and load errors retire the indicator and ignore old account data', async () => {
+  const p=livePage(); await settle(); const albums=p.json('state.albums');
+  let release; p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('loadLive()'); await settle();
+  p.run('state.connection.connected=false; useLocal(demoLibrary(),"demo"); updateChrome(); render()');
+  assert.equal(p.nodes.get('#library-loading').hidden,true);
+  release({ok:true,json:async()=>({albums:[{...albums[0],name:'Disconnected account'}],artists:[]})}); await pending;
+  assert.equal(p.run('state.mode'),'demo');
+  assert.equal(p.run('state.albums.some(a=>a.name==="Disconnected account")'),false);
+  p.setFetch(()=>({ok:false,status:401,json:async()=>({error:'Sign-in expired'})}));
+  await p.run('loadLive()'); await settle();
+  assert.equal(p.nodes.get('#library-loading').hidden,true);
+  assert.equal(p.run('state.loading'),false);
+  assert.equal(p.run('state.connection.connected'),false);
+});
+
 test("optimistic metadata updates preserve artist image filters and editing", () => {
   const p = livePage();
   p.run(`applyLocally([{kind: "album", albumId: state.albums[0].id, fields: {year: {after: 2000}}}])`);
@@ -6309,6 +6368,73 @@ test('CSV review remains disabled when no track is selected', async () => {
   const data=csvMatched(); Object.assign(data.summary,{unique:0,resolved:0,automatic:0,unresolved:2});
   p.run(`renderCsvMatches(${JSON.stringify(data)})`);
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/class="button primary" disabled>Review 0 matched tracks/);
+});
+
+test('CSV unresolved export downloads original file text without changing choices, playback or history', async () => {
+  const p=await csvImportPage(); await settle();
+  const data=csvMatched(); p.run(`renderCsvMatches(${JSON.stringify(data)})`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/data-csv-export/);
+  const before=p.run('JSON.stringify({data:csvImport.data,queue:player.queue,src:audio.src,history:state.history})');
+  const content='\ufeff# Tagcast playlist CSV 1: escaped text\r\nTitle,Artist\r\nMissing,Unknown\r\n';
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/export');
+    assert.deepEqual(JSON.parse(options.body),{id:data.id,revision:2,session:'csv-session'});
+    return {ok:true,json:async()=>({text:content,count:1,filename:'tagcast-unresolved-1.csv'})};
+  });
+  await p.click({'[data-csv-export]':{}});
+  assert.equal(p.downloads.length,1);
+  assert.equal(p.downloads[0].name,'tagcast-unresolved-1.csv');
+  assert.equal(p.downloads[0].blob.type,'text/csv;charset=utf-8');
+  assert.equal(await p.downloads[0].blob.text(),content.slice(1));
+  assert.equal(p.run('JSON.stringify({data:csvImport.data,queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+});
+
+test('CSV export errors preserve the draft and late replies after close never download', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())})`);
+  p.setFetch(()=>({ok:false,status:409,json:async()=>({error:'The import changed'})}));
+  await p.run('exportUnresolvedCsv()');
+  assert.equal(p.downloads.length,0);
+  assert.match(p.nodes.get('#csv-import-status').textContent,/import changed/);
+  assert.equal(p.run('csvImport.data.revision'),2);
+  let release;
+  p.setFetch(url=>url.endsWith('/discard')?{ok:true,json:async()=>({})}:new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('exportUnresolvedCsv()'); await settle();
+  p.nodes.get('#playlist-import').close(); await p.nodes.get('#playlist-import').emit('close');
+  release({ok:true,json:async()=>({text:'private CSV',count:1,filename:'unresolved.csv'})}); await pending;
+  assert.equal(p.downloads.length,0);
+  assert.equal(p.run('csvImport.data'),null);
+});
+
+test('a partial import offers unresolved CSV after confirmed creation and opens the playlist on close', async () => {
+  const p=await csvImportPage(); await settle();
+  const data=csvMatched({phase:'review',review_token:'one-use',total:1,tracks:[csvMatched().rows[0].choice],name:'Partial',description:''});
+  p.run(`renderCsvReview(${JSON.stringify(data)})`);
+  p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/save')?{id:'88',job:'check'}:url.startsWith('/api/jobs/')?{state:'done',results:[{id:'88',status:'saved'}]}:url.endsWith('/export')?{text:'Title,Artist\r\nMissing,Unknown\r\n',count:1,filename:'tagcast-unresolved-1.csv'}:{id:'88',name:'Partial',tracks:[101],rows:[],total:1}}));
+  await p.run('saveCsvPlaylist()'); await settle();
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Playlist created/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/data-csv-export/);
+  assert.doesNotMatch(p.nodes.get('#csv-import-content').innerHTML,/data-csv-save/);
+  await p.run('saveCsvPlaylist()');
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,1);
+  await p.run('exportUnresolvedCsv()');
+  assert.equal(p.downloads.length,1);
+  p.nodes.get('#playlist-import').close(); await p.nodes.get('#playlist-import').emit('close'); await settle();
+  assert.equal(p.run('collectionsView.playlist'),'88');
+  assert.equal(p.run('csvImport.createdPlaylist'),null);
+});
+
+test('Tagcast unresolved CSV files can be re-imported above the normal file limit', async () => {
+  const p=await csvImportPage(); await settle();
+  const content='\ufeff# Tagcast playlist CSV 1: escaped text\r\nTitle,Artist\r\nMissing,Unknown\r\n';
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/read'); assert.match(JSON.parse(options.body).text,/# Tagcast playlist CSV 1/);
+    return {ok:true,json:async()=>({id:'a'.repeat(32),revision:1,columns:['Title','Artist'],mapping:{title:0,artist:1},sample:[],total:1,blank_records:0})};
+  });
+  await p.run(`readPlaylistCsv({elements:{file:{files:[{name:'tagcast-unresolved.csv',size:6*1024*1024,arrayBuffer:async()=>new TextEncoder().encode(${JSON.stringify(content)}).buffer}]},encoding:{value:'auto'},delimiter:{value:'auto'},header:{checked:true}}})`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Link columns/);
 });
 
 test('CSV manual resolver shows version, album, format and duration and searches a bounded page', async () => {
