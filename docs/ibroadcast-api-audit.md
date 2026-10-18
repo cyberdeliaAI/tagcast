@@ -54,7 +54,7 @@ are listed below, followed by the library operation and history parameter.
 | `deleteplaylist` | Supported | Reviewed deletion of editable user playlists; tracks remain. |
 | `createplaylist` | Partial | Explicit selected tracks or an empty private playlist. No mood, seed or public creation. |
 | `appendplaylist` | Supported | Reviewed append with duplicate suppression. |
-| `updateplaylist` | Partial | Replace contents, rename and description through the playlist editor. No playlist artwork or dedicated drag-to-reorder UI. |
+| `updateplaylist` | Partial | Replace contents, rename and description through the playlist editor. Development supports a separately reviewed artwork-only update; no dedicated drag-to-reorder UI. |
 | `random_tracks` | No | Tagcast's random-album action chooses a loaded album summary locally. |
 | Library server (`library`) | Supported | Tracks, albums, artists, tags and selected playlist fields; caching and compact browser summaries. |
 | `history` request parameter | Partial, opt-in | Reports a play after more than ten seconds of actual listening. Does not report skips or send Last.fm scrobbles. |
@@ -66,7 +66,8 @@ Code: [client.py](../src/tagcast/client.py),
 The [playlist component guide](https://help.ibroadcast.com/en/developer/components/playlists)
 adds creation by mood or seed and empty-playlist creation. Tagcast supports the
 last of these. Public sharing is described there; the API reference also lists
-an optional playlist artwork field. Tagcast does not expose either option.
+an optional playlist artwork field. Development now supports reviewed playlist
+artwork updates; public sharing remains outside Tagcast.
 
 **Documentation discrepancy:** the API reference describes `playlistorder` as
 ordering playlists, while the component guide describes ordering tracks using
@@ -148,7 +149,8 @@ data, but these are not complete publicly specified API contracts.
 | `artwork-upload.ibroadcast.com` | Supported | Upload file or server-fetched image, then apply separately after comparison. |
 | `set_artwork` | Partial | Full selected album/disc cover and per-track restoration for Undo; no independent track-cover editor. |
 | `set_artist_artwork` | Supported | Selected native artist image. |
-| `playlist_artwork` / playlist `artwork_id` | No | No playlist artwork chooser/save. |
+| Playlist `artwork_id` | Supported in development | Shared file/URL comparison, artwork-only `updateplaylist`, full snapshot checks and read-back. |
+| `createplaylistfolder` / native `type=folder` | Supported in development | Separate reviewed folder creation, rename, add/remove references and empty/unreferenced deletion. Observed official-client protocol; never interpret folder IDs as music tracks. |
 | `gettrackuserdata`, custom metadata and lyrics | No | No lyrics/custom-metadata reader or editor. |
 | `trash` | Supported | Reviewed track, complete-album selection and duplicate-cleanup workflows; never permanent deletion. |
 | `trash_albums` | No direct call | Equivalent reviewed complete-album removal uses validated track IDs through `trash`. |
@@ -280,7 +282,7 @@ support for the native API operation or cross-device account synchronization.
 4. **Improve image feedback after the upload contract is known.** Decode/inspect
    dimensions and show resolution and size before upload. Only resize/reject to a
    service maximum once that maximum has been confirmed. Keep explicit comparison.
-5. **Document the remaining intentional omissions.** Play skips, playlist sharing/mood/seed/artwork and ReplayGain remain distinct
+5. **Document the remaining intentional omissions.** Play skips, playlist sharing/mood/seed and ReplayGain remain distinct
    missing options. Track thumbs-down, multiple album artists and general additional
    credit editing have been added in development. Native restore/empty-trash and account changes have
    a different impact from ordinary editor features and need their own designs.

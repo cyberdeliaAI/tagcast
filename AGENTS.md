@@ -47,9 +47,9 @@ The application consists of a Python server and a plain JavaScript frontend.
   album artist and held in a separate bounded local SQLite cache.
 - `src/tagcast/album_info.py`: opt-in TheAudioDB album background text for a visited
   album, with strict artist/full-title matching and a separate bounded SQLite cache.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty-four JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty-five JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
-  `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
+  `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -591,7 +591,7 @@ and preserve a valid script order in `index.html`.
   cached ratings only after read-back. Rating jobs return only their results, without
   serializing the full album index. Keep playback intact and suppress stale results.
 - Playlists use native create/append/update after an explicit review. Reject stale
-  track/name snapshots, protect system playlists/folders, validate active tracks, keep
+  track/name snapshots, protect system playlists and keep folders out of track writes, validate active tracks, keep
   first occurrence/order, and read back. Never automatically retry creation or append.
   Stored playlists may exceed 10,000 tracks: read only 100 row details per page, returning
   only current-page IDs for large lists. Use account/session/playlist-bound SHA-256
@@ -600,10 +600,32 @@ and preserve a valid script order in `index.html`.
   remain limited to 10,000; large-list playback explicitly queues only the current page.
   Retain only whitelisted playlist cache fields, excluding sharing keys and credentials.
   Playlist deletion requires an explicit review and matching name/track snapshots;
-  use `deleteplaylist` with `playlist`, protect system lists/folders, read back and
+  use `deleteplaylist` with `playlist`, protect system lists and folders from ordinary playlist deletion, read back and
   never retry automatically. Delete only the playlist definition, never its tracks.
   A track's + menu can add that single track to a playlist using bounded metadata;
   never load all album tracks for that action or interrupt the play queue.
+- Native playlist covers use the shared image comparison/file/URL validation, then an
+  explicit separate save via `updateplaylist` with only playlist/artwork IDs. No
+  album/track image writes or metadata History entry. Recheck the bound session,
+  client and full playlist snapshot before uploading/applying; read back artwork plus
+  unchanged definition. No ambiguous retries. Covers appear in compact browse cards
+  and playlist headers; provider image suggestions are not requested for playlists.
+- Playlist folders are native `type=folder` records whose `tracks` field contains
+  playlist/folder IDs, never music track IDs. Browse 100 references at a time, show
+  unavailable references, preserve native order, nesting, browser history and global
+  search. Root views keep legacy cyclic groups reachable without auto-repair. Ordinary
+  track destination choices exclude folders. Create/rename/add/remove/empty-delete use
+  their own explicit review, current session and full definition hashes (including
+  type/system/artwork), selected child snapshots, global save lock and fresh read-back.
+  Use observed `createplaylistfolder`, `updateplaylist`, `deleteplaylist` payloads.
+  Never retry ambiguous folder mutations or resolve folder IDs as tracks. Prevent self/
+  ancestor cycles. Changes select at most 100 references; additions keep at most 10,000,
+  while explicit removals can reduce an existing larger folder. Preserve all unselected
+  references. Removal only unlinks; deletion requires an empty folder with no parents,
+  and never deletes member playlists or music. Schema 2 metadata exports put folders
+  and ordered references in `playlist_folders` / `playlist_folder_items`, separate from
+  ordinary `playlists` / `playlist_tracks`; preserve missing/repeated/cyclic references
+  without traversal or extra provider requests. Keep artwork IDs in both export forms.
 - Play next inserts a FIFO album block; its entries are consumed after playback while
   the base queue remains intact. Repeat none/queue/track retains base album order.
   The shared + dropdown offers Add to queue and Play next for tracks and albums;

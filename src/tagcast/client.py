@@ -60,7 +60,7 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
 MAX_TRASH = 500  # tracks per trash request
-NO_RETRY = {"create_artist", "rateartist", "createplaylist", "appendplaylist", "deleteplaylist", "playqueue_token", "trash",
+NO_RETRY = {"create_artist", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "deleteplaylist", "playqueue_token", "trash",
             "createtag", "updatetag", "deletetags", "tagtracks"}  # Never repeat ambiguous collection/tag/trash mutations or one-use tokens.
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
@@ -188,17 +188,17 @@ class StudioClient(ibroadcast.iBroadcast):
             return data
         raise ApiError("iBroadcast did not answer.")
 
-    def _jsonrequest(self, mode, url=None, **kwargs):
+    def _jsonrequest(self, mode, url=None, _retry=True, **kwargs):
         access_token, generation = self._request_token()
         url = url or f"{API_URL}/{mode}"
         args = self._request_body(mode, **kwargs)
-        data = self._post(url, args, access_token=access_token)
+        data = self._post(url, args, retry=_retry, access_token=access_token)
         if data.get("authenticated") is False:
             if not (self._refresh_token and self._client_id):
                 raise NotConnected("Your iBroadcast session expired. Connect again.")
             self._refresh_or_fail(generation)
             access_token, _ = self._token_snapshot()
-            data = self._post(url, args, access_token=access_token)
+            data = self._post(url, args, retry=_retry, access_token=access_token)
             if data.get("authenticated") is False:
                 raise NotConnected("iBroadcast did not accept the session. Connect again.")
         if data.get("result") is False:

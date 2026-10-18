@@ -155,7 +155,9 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/queue-sync":
             self._run(self.studio.queue_sync.view)
         elif url.path == "/api/playlists":
-            self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0")))
+            self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0"), query.get("browse") == "1"))
+        elif url.path == "/api/playlist-folder/choices":
+            self._run(lambda: self.studio.collections.folder_choices(query.get("q"), query.get("offset", "0")))
         elif url.path == "/api/album-favourites":
             self._run(self.studio.collections.album_favourites)
         elif url.path == "/api/artist-favourites":
@@ -238,6 +240,8 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/artist-biography": self.studio.artist_bios.view,
             "/api/album-information": self.studio.album_info.view,
             "/api/playlist": self.studio.collections.save_playlist,
+            "/api/playlist-folder": self.studio.collections.save_folder,
+            "/api/playlist/artwork": self.studio.collections.playlist_artwork,
             "/api/queue-tracks": self.studio.collections.queue_tracks,
             "/api/queue-sync": self.studio.queue_sync.action,
         }

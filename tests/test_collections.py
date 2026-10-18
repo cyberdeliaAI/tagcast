@@ -491,3 +491,188 @@ class CollectionTests(unittest.TestCase):
         for invalid in ({'volume': float('nan')}, {'tracks': [-1]}, {'data': {'play_index': 3}}, {'data': {'repeat_mode': 'random'}}):
             with self.assertRaises(LibraryError):
                 clean_state(invalid)
+
+    def folder_change(self, action, folder=None, **fields):
+        body = {'action': action, 'session': self.studio.playback_session, 'approved': True, **fields}
+        if folder:
+            body.update(playlist=folder['id'], before_name=folder['name'], before_token=folder['before_token'])
+        return self.studio.collections.save_folder(body)
+
+    def create_folder(self, name='Decades'):
+        response = self.folder_change('create', name=name)
+        self.assertEqual(self.job(response)['results'], [{'id': response['id'], 'status': 'saved'}])
+        return self.studio.collections.playlists(playlist_id=response['id'])
+
+    def test_playlist_folders_create_nest_browse_rename_unlink_and_delete_without_touching_music(self):
+        previous_tracks = copy.deepcopy(mock_ibroadcast.STATE['tracks'])
+        root = self.create_folder()
+        child = self.create_folder('Eighties')
+        created = self.studio.collections.save_playlist({'action': 'create', 'name': 'Top 80', 'tracks': [900, 901]})
+        self.job(created)
+        selected = self.studio.collections.folder_choices()['playlists']
+        leaf = next(p for p in selected if p['id'] == created['id'])
+        nested = next(p for p in selected if p['id'] == child['id'])
+        self.assertEqual(self.job(self.folder_change('add', root, members=[nested]))['results'][0]['status'], 'saved')
+        self.assertEqual(self.job(self.folder_change('add', child, members=[leaf]))['results'][0]['status'], 'saved')
+        roots = self.studio.collections.playlists(browse=True)
+        self.assertEqual([p['id'] for p in roots['playlists']], [root['id']])
+        self.assertEqual(self.studio.collections.playlists(query='Top', browse=True)['playlists'][0]['id'], leaf['id'])
+        self.assertEqual([p['id'] for p in self.studio.collections.playlists()['playlists']], [leaf['id']], 'Track destination choices exclude folders')
+        child = self.studio.collections.playlists(playlist_id=child['id'])
+        self.assertEqual(child['parents'], [{'id': root['id'], 'name': root['name']}])
+        self.assertNotIn('rows', child, 'Folder member IDs must never resolve into track rows')
+        self.assertEqual(self.job(self.folder_change('rename', child, name='1980s', description='Updated'))['results'][0]['status'], 'saved')
+        child = self.studio.collections.playlists(playlist_id=child['id'])
+        self.assertEqual(self.job(self.folder_change('remove', child, members=[leaf]))['results'][0]['status'], 'saved')
+        child = self.studio.collections.playlists(playlist_id=child['id'])
+        with self.assertRaisesRegex(LibraryError, 'parent'):
+            self.folder_change('delete', child, confirm_delete=True)
+        root = self.studio.collections.playlists(playlist_id=root['id'])
+        child_ref = root['playlists'][0]
+        self.job(self.folder_change('remove', root, members=[child_ref]))
+        self.job(self.folder_change('delete', child, confirm_delete=True))
+        self.assertIn(int(leaf['id']), self.studio.library.playlists)
+        self.assertEqual(mock_ibroadcast.STATE['tracks'], previous_tracks)
+        self.assertTrue(all(w['mode'] in ('createplaylist', 'createplaylistfolder', 'updateplaylist', 'deleteplaylist') for w in mock_ibroadcast.STATE['writes']))
+        self.assertFalse(any('_retry' in w for w in mock_ibroadcast.STATE['writes']))
+
+    def test_folder_reviews_block_stale_targets_members_sessions_cycles_and_system_lists(self):
+        root = self.create_folder()
+        child = self.create_folder('Child')
+        choice = next(p for p in self.studio.collections.folder_choices()['playlists'] if p['id'] == child['id'])
+        self.job(self.folder_change('add', root, members=[choice]))
+        root = self.studio.collections.playlists(playlist_id=root['id'])
+        root_choice = next(p for p in self.studio.collections.folder_choices()['playlists'] if p['id'] == root['id'])
+        count = len(mock_ibroadcast.STATE['writes'])
+        for selected in ([root_choice], [choice]):
+            with self.assertRaisesRegex(LibraryError, 'parent|itself'):
+                self.folder_change('add', child, members=selected)
+        with self.assertRaises(ConflictError):
+            self.studio.collections.save_folder({'action': 'create', 'name': 'Wrong account', 'approved': True, 'session': 'old'})
+        with self.assertRaises(LibraryError):
+            self.folder_change('delete', root, confirm_delete=True)
+        with self.assertRaises(LibraryError):
+            self.studio.collections.save_folder({'action': 'create', 'name': 'Unreviewed', 'session': self.studio.playback_session})
+        with self.assertRaises(LibraryError):
+            self.folder_change('rename', {**root, 'id': '777'}, name='System')
+        with self.assertRaises(ConflictError):
+            self.folder_change('add', root, members=[{**choice, 'name': 'Stale child'}])
+        mock_ibroadcast.STATE['playlists'][int(root['id'])]['artwork_id'] = 321
+        mock_ibroadcast.STATE['version'] += 1
+        with self.assertRaises(ConflictError):
+            self.folder_change('rename', root, name='Stale cover')
+        self.assertEqual(len(mock_ibroadcast.STATE['writes']), count)
+
+    def test_large_folder_is_paginated_and_missing_references_can_be_removed_without_track_lookup(self):
+        ids = list(range(2000, 12101))
+        mock_ibroadcast.STATE['playlists'][888] = {'name': 'Large folder', 'type': 'folder', 'tracks': ids}
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        with patch.object(self.studio.library, 'track_row', side_effect=AssertionError('Folder IDs are not tracks')):
+            page = self.studio.collections.playlists(playlist_id='888', offset='10000')
+            self.assertEqual(page['total'], len(ids))
+            self.assertEqual(len(page['playlists']), 100)
+            self.assertEqual(page['playlists'][0]['kind'], 'unavailable')
+        members = page['playlists'][:100]
+        self.job(self.folder_change('remove', page, members=members))
+        self.assertEqual(len(mock_ibroadcast.STATE['playlists'][888]['tracks']), 10001)
+        self.assertEqual(mock_ibroadcast.STATE['writes'][-1]['tracks'], ids[:10000] + ids[10100:])
+        page = self.studio.collections.playlists(playlist_id='888', offset='10000')
+        self.job(self.folder_change('remove', page, members=page['playlists']))
+        self.assertEqual(len(mock_ibroadcast.STATE['playlists'][888]['tracks']), 10000)
+
+    def test_existing_folder_cycles_remain_browsable_without_recursion_or_automatic_repairs(self):
+        mock_ibroadcast.STATE['playlists'].update({800: {'name': 'A', 'type': 'folder', 'tracks': [801]},
+                                                 801: {'name': 'B', 'type': 'folder', 'tracks': [800]}})
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        rows = self.studio.collections.playlists(browse=True)['playlists']
+        self.assertEqual({p['id'] for p in rows}, {'800', '801'})
+        self.assertEqual(mock_ibroadcast.STATE['writes'], [])
+
+    def test_playlist_cover_upload_uses_oauth_and_updates_only_artwork_with_full_read_back(self):
+        import base64
+        created = self.studio.collections.save_playlist({'action': 'create', 'name': 'Artwork', 'description': 'Keep', 'tracks': [900, 901]})
+        self.job(created)
+        view = self.studio.collections.playlists(playlist_id=created['id'])
+        tracks = copy.deepcopy(mock_ibroadcast.STATE['tracks'])
+        response = self.studio.collections.playlist_artwork({'playlist': view['id'], 'before_token': view['before_token'],
+            'before_name': view['name'], 'session': self.studio.playback_session, 'approved': True,
+            'source': {'data': 'data:image/png;base64,' + base64.b64encode(mock_ibroadcast.PNG).decode(), 'name': 'Playlist.png'}})
+        self.assertEqual(self.job(response)['results'], [{'id': view['id'], 'status': 'saved'}])
+        self.assertGreater(response['artwork_id'], 0)
+        update = mock_ibroadcast.STATE['writes'][-1]
+        self.assertEqual(update['mode'], 'updateplaylist')
+        self.assertEqual(update['playlist'], int(view['id']))
+        self.assertNotIn('tracks', update)
+        self.assertNotIn('name', update)
+        self.assertEqual(mock_ibroadcast.STATE['tracks'], tracks)
+        after = self.studio.collections.playlists(playlist_id=view['id'])
+        self.assertIn(str(response['artwork_id']), after['artwork'])
+        self.assertEqual(after['tracks'], view['tracks'])
+        self.assertEqual(self.studio.library.to_cache()['library']['playlists'][view['id']]['artwork_id'], response['artwork_id'])
+        with self.assertRaises(ConflictError):
+            self.studio.collections.playlist_artwork({'playlist': view['id'], 'before_token': view['before_token'], 'before_name': view['name'],
+                'session': self.studio.playback_session, 'approved': True, 'source': {'artwork_id': 55}})
+
+    def test_playlist_cover_rechecks_changes_during_upload_and_preserves_unknown_memberships(self):
+        mock_ibroadcast.STATE['playlists'][888] = {'name': 'Many', 'tracks': [900, 999999, 900]}
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        view = self.studio.collections.playlists(playlist_id='888')
+        body = {'playlist': '888', 'before_token': view['before_token'], 'before_name': view['name'],
+                'session': self.studio.playback_session, 'approved': True, 'source': {'artwork_id': 55}}
+        original = copy.deepcopy(mock_ibroadcast.STATE['playlists'][888]['tracks'])
+        result = self.studio.collections.playlist_artwork(body)
+        self.assertEqual(self.job(result)['results'][0]['status'], 'saved')
+        self.assertEqual(mock_ibroadcast.STATE['playlists'][888]['tracks'], original)
+        view = self.studio.collections.playlists(playlist_id='888')
+
+        def changed(*args):
+            mock_ibroadcast.STATE['playlists'][888]['description'] = 'Changed while uploading'
+            mock_ibroadcast.STATE['version'] += 1
+            return 66
+        count = len(mock_ibroadcast.STATE['writes'])
+        with patch.object(self.studio, '_image', side_effect=changed), self.assertRaises(ConflictError):
+            self.studio.collections.playlist_artwork({**body, 'before_token': view['before_token']})
+        self.assertEqual(len(mock_ibroadcast.STATE['writes']), count)
+        for bad in ({'approved': False}, {'session': 'stale'}, {'playlist': '777'}, {'source': {'data': 'broken'}}):
+            fresh = self.studio.collections.playlists(playlist_id='888')
+            with self.subTest(bad=bad), self.assertRaises((LibraryError, client.artwork.ArtworkError)):
+                self.studio.collections.playlist_artwork({**body, 'before_token': fresh['before_token'], **bad})
+
+    def test_folder_and_cover_ambiguous_mutations_are_not_retried_and_readback_detects_other_changes(self):
+        for mode, fields in [('createplaylistfolder', {'name': 'Folder'}),
+                             ('updateplaylist', {'playlist': 888, 'artwork_id': 99, '_retry': False})]:
+            with patch.object(client.requests, 'post', side_effect=client.requests.Timeout) as post:
+                with self.assertRaises(client.ApiError):
+                    self.studio.client._jsonrequest(mode, **fields)
+                self.assertEqual(post.call_count, 1)
+        created = self.studio.collections.save_playlist({'action': 'create', 'name': 'Readback', 'tracks': [900]})
+        self.job(created)
+        view = self.studio.collections.playlists(playlist_id=created['id'])
+        with patch.object(self.studio, '_check_later', return_value='captured') as later:
+            self.studio.collections.playlist_artwork({'playlist': view['id'], 'before_token': view['before_token'], 'before_name': view['name'],
+                'session': self.studio.playback_session, 'approved': True, 'source': {'artwork_id': 55}})
+        self.studio.load_library(refresh=True)
+        callback = later.call_args.args[2]
+        self.assertEqual(callback(self.studio.library)[0]['status'], 'saved')
+        mock_ibroadcast.STATE['playlists'][int(view['id'])]['tracks'].append(901)
+        self.studio.load_library(refresh=True)
+        self.assertEqual(callback(self.studio.library)[0]['status'], 'unverified')
+
+    def test_folder_can_unlink_protected_references_without_editing_their_playlist(self):
+        mock_ibroadcast.STATE['playlists'].update({
+            800: {'name': 'Folder', 'type': 'folder', 'tracks': [801]},
+            801: {'name': 'Managed list', 'system_created': True, 'tracks': [900]}})
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        folder = self.studio.collections.playlists(playlist_id='800')
+        member = folder['playlists'][0]
+        self.assertEqual(member['kind'], 'unavailable')
+        self.assertEqual(member['name'], 'Managed list')
+        self.assertTrue(member['before_token'])
+        self.job(self.folder_change('remove', folder, members=[member]))
+        self.assertEqual(mock_ibroadcast.STATE['playlists'][800]['tracks'], [])
+        self.assertEqual(mock_ibroadcast.STATE['playlists'][801]['tracks'], [900])
+        self.assertEqual(mock_ibroadcast.STATE['writes'][-1]['playlist'], 800)

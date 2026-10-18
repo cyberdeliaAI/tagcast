@@ -233,7 +233,8 @@ class Collections:
     def playlist_snapshot(self, row, playlist_id):
         payload = [str(playlist_id), self.studio.library_user, self.studio.playback_session,
                    self.studio.library.combine_sets, text(row.get("name")),
-                   text(row.get("description")), row.get("tracks") or []]
+                   text(row.get("description")), row.get("tracks") or [],
+                   row.get("type"), bool(row.get("system_created")), row.get("artwork_id")]
         return hashlib.sha256(json.dumps(payload, ensure_ascii=True).encode()).hexdigest()
 
     def check_playlist_before(self, row, body):
@@ -245,7 +246,7 @@ class Collections:
         if not matches or text(row.get("name")) != body.get("before_name"):
             raise ConflictError("This playlist changed in iBroadcast. Open a new review.")
 
-    def playlists(self, query="", playlist_id=None, offset="0"):
+    def playlists(self, query="", playlist_id=None, offset="0", browse=False):
         _, library = self.library()
         try:
             offset = int(offset)
@@ -255,6 +256,8 @@ class Collections:
             raise LibraryError("Choose a valid playlist page or shorter search.")
         if playlist_id is not None:
             row = library.playlists.get(number(playlist_id))
+            if row and self.folder(row):
+                return self.folder_view(library, number(playlist_id), offset)
             if not row or not self.editable(row):
                 raise LibraryError("This playlist is unavailable or managed by iBroadcast.")
             ids = [i for i in track_ids(row.get("tracks") or [], maximum=None)
@@ -269,18 +272,239 @@ class Collections:
                     continue
             return {"id": str(number(playlist_id)), "name": text(row.get("name")),
                     "description": text(row.get("description")),
+                    **self.playlist_image(library, row),
                     "tracks": ids[offset:offset + 100] if large else ids,
                     "before": [] if large else row.get("tracks") or [],
                     "before_token": self.playlist_snapshot(row, playlist_id), "large": large,
                     "stored_total": len(row.get("tracks") or []),
                     "rows": rows, "offset": offset, "total": len(ids)}
+        if browse:
+            return self.playlist_catalogue(library, query, offset)
         words = fold(query).split()
         rows = [{"id": str(i), "name": text(p.get("name")),
-                 "description": text(p.get("description")), "count": len(p.get("tracks") or [])}
+                 "description": text(p.get("description")), "count": len(p.get("tracks") or []),
+                 **self.playlist_image(library, p)}
                 for i, p in library.playlists.items() if self.editable(p)
                 and all(w in fold(text(p.get("name"))) for w in words)]
         rows.sort(key=lambda p: fold(p["name"]))
         return {"playlists": rows[offset:offset + 100], "total": len(rows), "offset": offset}
+
+    @staticmethod
+    def folder(row):
+        return not row.get("system_created") and row.get("type") == "folder"
+
+    @staticmethod
+    def playlist_image(library, row):
+        artwork_id = number(row.get("artwork_id"))
+        return {"artwork_id": artwork_id, "artwork": library.art_url(artwork_id) if artwork_id else ""}
+
+    def playlist_summary(self, library, playlist_id):
+        row = library.playlists.get(playlist_id)
+        available = row and (self.editable(row) or self.folder(row))
+        if not available:
+            return {"id": str(playlist_id), "name": text(row.get("name")) if row else "Unavailable playlist",
+                    "kind": "unavailable", "count": 0,
+                    **({"before_token": self.playlist_snapshot(row, playlist_id)} if row else {})}
+        return {"id": str(playlist_id), "name": text(row.get("name")),
+                "kind": "folder" if self.folder(row) else "playlist",
+                "count": len(row.get("tracks") or []), "description": text(row.get("description")),
+                "before_token": self.playlist_snapshot(row, playlist_id),
+                **self.playlist_image(library, row)}
+
+    def playlist_catalogue(self, library, query, offset):
+        eligible = {i for i, row in library.playlists.items() if self.editable(row) or self.folder(row)}
+        if not query:
+            contained = {i for row in library.playlists.values() if self.folder(row)
+                         for i in track_ids(row.get("tracks") or [], maximum=None)}
+            roots = eligible - contained
+            # Malformed legacy cycles must not make an entire group unreachable.
+            reached, pending = set(), list(roots)
+            while pending:
+                i = pending.pop()
+                if i in reached or i not in eligible:
+                    continue
+                reached.add(i)
+                row = library.playlists[i]
+                if self.folder(row):
+                    pending.extend(track_ids(row.get("tracks") or [], maximum=None))
+            eligible = roots | (eligible - reached)
+        words = fold(query).split()
+        ids = [i for i in eligible if all(w in fold(library.playlists[i].get("name")) for w in words)]
+        ids.sort(key=lambda i: (not self.folder(library.playlists[i]), fold(library.playlists[i].get("name")), i))
+        return {"playlists": [self.playlist_summary(library, i) for i in ids[offset:offset + 100]],
+                "total": len(ids), "offset": offset, "search_all": bool(query)}
+
+    def folder_view(self, library, playlist_id, offset):
+        row = library.playlists[playlist_id]
+        ids = track_ids(row.get("tracks") or [], maximum=None)
+        parents = [{"id": str(i), "name": text(p.get("name"))} for i, p in library.playlists.items()
+                   if self.folder(p) and playlist_id in track_ids(p.get("tracks") or [], maximum=None)]
+        return {"id": str(playlist_id), "name": text(row.get("name")),
+                "description": text(row.get("description")), "is_folder": True,
+                "before_token": self.playlist_snapshot(row, playlist_id),
+                "playlists": [self.playlist_summary(library, i) for i in ids[offset:offset + 100]],
+                "total": len(ids), "offset": offset, "parents": parents[:100],
+                "parent_count": len(parents)}
+
+    def folder_choices(self, query="", offset="0"):
+        _, library = self.library()
+        try:
+            offset = int(offset)
+        except (TypeError, ValueError):
+            raise LibraryError("Choose a valid playlist page.") from None
+        if offset < 0 or len(text(query)) > 200:
+            raise LibraryError("Choose a shorter search or valid page.")
+        words = fold(query).split()
+        ids = [i for i, row in library.playlists.items() if (self.editable(row) or self.folder(row))
+               and all(w in fold(row.get("name")) for w in words)]
+        ids.sort(key=lambda i: (fold(library.playlists[i].get("name")), i))
+        return {"playlists": [self.playlist_summary(library, i) for i in ids[offset:offset + 100]],
+                "total": len(ids), "offset": offset}
+
+    def _playlist_session(self, body, client):
+        studio = self.studio
+        if body.get("session") != studio.playback_session or not body.get("session") \
+                or client is not studio.client or not studio.library_user:
+            raise ConflictError("The iBroadcast connection changed. Prepare a new review.")
+
+    def _folder_record(self, library, body):
+        playlist_id = track_ids([body.get("playlist")], 1)[0]
+        row = library.playlists.get(playlist_id)
+        if not row or not self.folder(row):
+            raise LibraryError("Choose a user playlist folder.")
+        if not isinstance(body.get("before_token"), str):
+            raise LibraryError("Review the current playlist folder first.")
+        self.check_playlist_before(row, body)
+        return playlist_id, row
+
+    def _folder_cycle(self, library, folder_id, child_id):
+        visited, pending = set(), [child_id]
+        while pending:
+            current = pending.pop()
+            if current == folder_id:
+                return True
+            if current in visited:
+                continue
+            visited.add(current)
+            row = library.playlists.get(current, {})
+            if self.folder(row):
+                pending.extend(track_ids(row.get("tracks") or [], maximum=None))
+        return False
+
+    def save_folder(self, body):
+        action = body.get("action")
+        if action not in ("create", "rename", "add", "remove", "delete") or body.get("approved") is not True:
+            raise LibraryError("Review and approve the playlist folder change first.")
+        name, description = text(body.get("name")).strip(), text(body.get("description")).strip()
+        if action in ("create", "rename") and (not name or len(name) > 200 or len(description) > 2000):
+            raise LibraryError("Use a folder name of 1–200 characters and description up to 2,000.")
+        studio = self.studio
+        if not studio.save_lock.acquire(blocking=False):
+            raise LibraryError("Another save is still running.")
+        try:
+            client, library = self.library()
+            self._playlist_session(body, client)
+            if action == "create":
+                if description:
+                    raise LibraryError("Create the folder with a name first; add a description through Rename folder.")
+                response = client._jsonrequest("createplaylistfolder", name=name)
+                playlist_id = number(response.get("playlist_id"))
+                if playlist_id <= 0 or playlist_id in library.playlists:
+                    raise LibraryError("The folder ID could not be confirmed. Check Playlists before creating again.")
+                expected = {"type": "folder", "name": name, "description": description, "tracks": [], "artwork_id": 0}
+            else:
+                playlist_id, row = self._folder_record(library, body)
+                previous = track_ids(row.get("tracks") or [], maximum=None)
+                expected = {"type": "folder", "name": text(row.get("name")),
+                            "description": text(row.get("description")), "tracks": previous,
+                            "artwork_id": number(row.get("artwork_id"))}
+                fields = {"playlist": playlist_id}
+                if action == "rename":
+                    fields.update(name=name, description=description)
+                    expected.update(name=name, description=description)
+                elif action in ("add", "remove"):
+                    members = body.get("members")
+                    if not isinstance(members, list) or not members or len(members) > 100 or any(not isinstance(m, dict) for m in members):
+                        raise LibraryError("Review 1–100 playlist references at a time.")
+                    ids = track_ids([m.get("id") for m in members], 100)
+                    if len(set(ids)) != len(ids):
+                        raise LibraryError("Choose each playlist reference once.")
+                    if action == "add":
+                        for i, selected in zip(ids, members):
+                            child = library.playlists.get(i)
+                            if not child or not (self.editable(child) or self.folder(child)):
+                                raise ConflictError("A selected playlist is no longer available.")
+                            if selected.get("before_token") != self.playlist_snapshot(child, i) or selected.get("name") != text(child.get("name")):
+                                raise ConflictError("A selected playlist changed. Prepare a new folder review.")
+                            if self._folder_cycle(library, playlist_id, i):
+                                raise LibraryError("A folder cannot contain itself or one of its parent folders.")
+                        wanted = [*previous, *(i for i in ids if i not in previous)]
+                    else:
+                        for i, selected in zip(ids, members):
+                            child = library.playlists.get(i)
+                            if child and (selected.get("before_token") != self.playlist_snapshot(child, i) or selected.get("name") != text(child.get("name"))):
+                                raise ConflictError("A selected playlist changed. Review its reference again.")
+                            if not child and selected.get("kind") != "unavailable":
+                                raise ConflictError("A selected playlist disappeared. Review its reference again.")
+                        if any(i not in previous for i in ids):
+                            raise ConflictError("The folder membership changed. Prepare a new review.")
+                        wanted = [i for i in previous if i not in ids]
+                    if action == "add" and len(wanted) > 10000:
+                        raise LibraryError("Folder membership writes are limited to 10,000 references.")
+                    fields["tracks"] = wanted
+                    expected["tracks"] = wanted
+                else:
+                    if body.get("confirm_delete") is not True or previous:
+                        raise LibraryError("Only an explicitly reviewed empty folder can be deleted. Its playlists are never deleted.")
+                    if any(self.folder(p) and playlist_id in track_ids(p.get("tracks") or [], maximum=None) for p in library.playlists.values()):
+                        raise LibraryError("Remove this folder from its parent folders first.")
+                client._jsonrequest("deleteplaylist" if action == "delete" else "updateplaylist", _retry=False, **fields)
+
+            def check(after):
+                got = after.playlists.get(playlist_id)
+                confirmed = playlist_id not in after.playlists if action == "delete" else bool(got) and self.folder(got) and all(
+                    (number(got.get(key)) if key == "artwork_id" else text(got.get(key)) if key in ("name", "description") else got.get(key)) == value
+                    for key, value in expected.items())
+                return [{"id": str(playlist_id), "status": "saved" if confirmed else "unverified"}]
+            return {"id": str(playlist_id), "job": studio._check_later(client, studio.downloads, check, include_albums=False)}
+        finally:
+            studio.save_lock.release()
+
+    def playlist_artwork(self, body):
+        studio = self.studio
+        if body.get("approved") is not True or not isinstance(body.get("source"), dict):
+            raise LibraryError("Compare and approve the new playlist cover first.")
+        playlist_id = track_ids([body.get("playlist")], 1)[0]
+        if not studio.save_lock.acquire(blocking=False):
+            raise LibraryError("Another save is still running.")
+        try:
+            client, library = self.library()
+            self._playlist_session(body, client)
+            row = library.playlists.get(playlist_id)
+            if not row or not self.editable(row) or not isinstance(body.get("before_token"), str):
+                raise LibraryError("Review an editable playlist before changing its cover.")
+            self.check_playlist_before(row, body)
+            before = {key: row.get(key) for key in ("name", "description", "type", "system_created", "tracks")}
+            new_id = studio._image(client, body["source"], studio.library_user)
+            if new_id <= 0:
+                raise LibraryError("Choose a valid playlist image.")
+            # A file/URL upload can take time; recheck the connection and definition.
+            _, fresh = self.library()
+            self._playlist_session(body, client)
+            current = fresh.playlists.get(playlist_id)
+            if not current or not self.editable(current):
+                raise ConflictError("The playlist is no longer editable.")
+            self.check_playlist_before(current, body)
+            client._jsonrequest("updateplaylist", playlist=playlist_id, artwork_id=new_id, _retry=False)
+
+            def check(after):
+                got = after.playlists.get(playlist_id, {})
+                confirmed = self.editable(got) and number(got.get("artwork_id")) == new_id and all(got.get(key) == value for key, value in before.items())
+                return [{"id": str(playlist_id), "status": "saved" if confirmed else "unverified"}]
+            return {"artwork_id": new_id, "image": fresh.art_url(new_id),
+                    "job": studio._check_later(client, studio.downloads, check, include_albums=False)}
+        finally:
+            studio.save_lock.release()
 
     def queue_tracks(self, body):
         ids = track_ids(body.get("tracks"), 1000)
