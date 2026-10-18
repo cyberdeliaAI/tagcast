@@ -121,7 +121,7 @@ class Collections:
                 for artist_id in ids:
                     artist = after.artists.get(artist_id, {})
                     actual = number(artist.get("rating"))
-                    confirmed = bool(artist) and text(artist.get("name")) == name and actual == rating
+                    confirmed = bool(artist) and after.artist_name(artist_id) == name and actual == rating
                     results.append({"id": str(artist_id), "rating": actual,
                                     "status": "saved" if confirmed else "unverified"
                                     if artist_id in attempted else "not_sent"})

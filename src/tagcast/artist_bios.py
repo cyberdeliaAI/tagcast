@@ -1,6 +1,7 @@
 """Opt-in, lazy public artist biographies in a separate bounded local SQLite cache."""
 
 import json
+import math
 import os
 import re
 import sqlite3
@@ -9,7 +10,7 @@ import time
 from contextlib import closing
 from html.parser import HTMLParser
 
-from .library import ConflictError, LibraryError
+from .library import ConflictError, LibraryError, text
 from .sources import SourceError, TheAudioDB, artist_name_key
 
 BIO_TTL = 30 * 86400
@@ -17,6 +18,14 @@ MISSING_TTL = 86400
 RETRY_DELAY = 60
 MAX_ENTRIES = 5000
 MAX_BYTES = 20 * 1024 * 1024
+
+
+class BiographyRetryError(SourceError):
+    """A provider failure with the remaining local backoff, without retrying it."""
+
+    def __init__(self, message, retry_after):
+        super().__init__(message)
+        self.retry_after = max(1, min(RETRY_DELAY, math.ceil(retry_after)))
 
 
 class _BiographyText(HTMLParser):
@@ -121,7 +130,11 @@ class ArtistBiographies:
         with studio.lock:
             if studio.config.get("artist_biographies") is not True:
                 return {"enabled": False}
-            library, _, name = studio.collections.artist_selection(body)
+            library, ids, name = studio.collections.artist_selection(body)
+            if not all(text(library.artists[int(i)].get("name")).strip() for i in ids):
+                # Display fallbacks are not actual artist names and must never leave this server.
+                return {"enabled": True, "status": "unavailable", "reason": "missing_name",
+                        "needs_lookup": False}
             if len(name) > 200:
                 raise LibraryError("The artist name is too long for a biography lookup.")
             client, account, revision = studio.client, studio.library_user, self.revision
@@ -143,7 +156,7 @@ class ArtistBiographies:
                     cached = self._read(key)
                     failure = self.failures.get(key)
                     if failure and failure[0] > time.time():
-                        raise SourceError(failure[1])
+                        raise BiographyRetryError(failure[1], failure[0] - time.time())
                     if not cached or cached["needs_lookup"]:
                         try:
                             data = TheAudioDB(studio.lookup.http, {}).biography(name)
@@ -153,7 +166,7 @@ class ArtistBiographies:
                             # Limit failed-name memory as well as successful disk records.
                             while len(self.failures) > 100:
                                 self.failures.pop(next(iter(self.failures)))
-                            raise SourceError(message) from None
+                            raise BiographyRetryError(message, RETRY_DELAY) from None
                         data["biography"] = biography_text(data["biography"])
                         if data["status"] == "ready" and not data["biography"]:
                             data["status"] = "unavailable"

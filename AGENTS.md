@@ -421,6 +421,8 @@ and preserve a valid script order in `index.html`.
   Use the shared SVG heart on artist buttons and cards, with a 44px button hit area;
   do not render platform-dependent heart text glyphs.
   Never change native ratings, album/track hearts, metadata History or playback.
+  Metadata/tag detail-cache replacement alone must not discard a confirmed local
+  heart reply for the same account/generation; always retire its pending state.
 - Native artist stars use documented `rateartist` with scalar `artist_id`, 0–5,
   scoped to one exact displayed artist group and at most 20 native IDs. Validate the
   account/session, full active group and previous ratings before writing, serialize
@@ -436,6 +438,9 @@ and preserve a valid script order in `index.html`.
   favourite-artist sorts use native artist ratings (minimum for mixed named IDs),
   independently of album stars. Upload-date sorting belongs only to albums.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
+  Album-rating read-back invalidates copied multi-disc shelf ratings (including
+  partial results) and refreshes visible album ordering. Confirm unnamed native
+  artists by their displayed identity while still rejecting missing records.
 - One Favourites sidebar shortcut opens a shared heading and accessible Tracks, Albums
   and Album artists tabs. Retain the existing track/album routes and add
   `#/artist-favourites`; all three mark the same shortcut active. Preserve each list's
@@ -456,6 +461,11 @@ and preserve a valid script order in `index.html`.
   after settings, account, session or library changes. Cached text and source/cache errors
   must not block albums or playback. The disclosure adds no history entry and preserves
   focus and expansion through routine updates and Back. No shared Premium key is bundled.
+  Retire stale biography entries after metadata/tag detail-cache replacement;
+  recover only the visible unchanged artist, leaving hidden artists lazy. Never
+  look up empty stored names via display placeholders. Provider failure backoff
+  exposes a bounded retry_after; disable retry until it expires without fetching
+  automatically or bypassing shared pacing.
 - The original Powered by iBroadcast SVG is displayed with its original colours and
   proportions. Keep Tagcast's independent identity explicit; do not imply endorsement.
   The sidebar header shows Tagcast with an accent-coloured dot and the small, muted

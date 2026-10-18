@@ -113,6 +113,18 @@ class CollectionTests(unittest.TestCase):
         del self.studio.library.artists.rows[41]
         self.assertEqual(callback(self.studio.library)[0]['status'], 'unverified')
 
+    def test_unnamed_artist_rating_is_confirmed_by_its_displayed_identity(self):
+        mock_ibroadcast.STATE['artists'][41] = ''
+        self.studio.load_library(refresh=True)
+        response = self.studio.collections.rate_artist({
+            'artists': ['41'], 'name': 'Unknown artist',
+            'session': self.studio.playback_session, 'before': [0], 'rating': 4})
+        self.assertEqual(self.job(response)['results'],
+                         [{'id': '41', 'rating': 4, 'status': 'saved'}])
+        writes = [w for w in mock_ibroadcast.STATE['writes'] if w['mode'] == 'rateartist']
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(self.studio.library.artist_name(41), 'Unknown artist')
+
     def test_album_rating_is_native_scalar_checked_and_separate_from_track_rating(self):
         before = self.studio.album_details(['73'])[0]['rating']
         response = self.studio.collections.rate_album({'albums': ['73'], 'before': [before], 'rating': 5})

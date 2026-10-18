@@ -10,6 +10,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
 from tagcast import app
+from tagcast.artist_bios import BiographyRetryError
+from tagcast.sources import SourceError
+
+
+class BiographyResponseTests(unittest.TestCase):
+    def test_biography_backoff_has_a_bounded_retry_delay_without_changing_other_errors(self):
+        handler = mock.Mock()
+        for delay, expected in ((60, 60), (19.8, 20), (0, 1), (600, 60)):
+            with self.subTest(delay=delay):
+                action = mock.Mock(side_effect=BiographyRetryError('TheAudioDB is busy.', delay))
+                app.Handler._run(handler, action)
+                handler._json.assert_called_with(429, {'error': 'TheAudioDB is busy.',
+                                                       'retry_after': expected})
+        app.Handler._run(handler, mock.Mock(side_effect=SourceError('Another source failed.')))
+        handler._json.assert_called_with(400, {'error': 'Another source failed.'})
 
 
 class LoopbackBindTests(unittest.TestCase):

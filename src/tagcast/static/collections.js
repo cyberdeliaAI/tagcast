@@ -87,13 +87,19 @@ async function rateAlbum(ids, rating) {
       if (summary) summary.rating = r.rating;
       if (detail) detail.rating = r.rating;
     }
+    // Merged sets copy their disc ratings; refresh that derived shelf after read-back.
+    shelfCache.albums = null;
     if (response.error || !ids.every(id => job.results?.some(r => String(r.id) === String(id) && r.status === "saved" && Number(r.rating) === rating))) throw Error(response.error || "One or more discs were not confirmed. Reload before trying again.");
     update.message = "Rating saved and confirmed in iBroadcast.";
     toast("Album rating saved in iBroadcast.");
   } catch (error) { if (current()) { update.error = true; update.message = error.message; toast(error.message); } }
   finally {
     update.pending = false; collectionsView.busy = false;
-    if (current()) { renderAlbumView(); if (state.screen === "album-favourites") renderCollections(); }
+    if (current()) {
+      renderAlbumView();
+      if (state.screen === "albums") render();
+      if (state.screen === "album-favourites") renderCollections();
+    }
   }
 }
 
