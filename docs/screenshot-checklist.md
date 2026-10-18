@@ -9,6 +9,9 @@ Pictures/Screenshots remain untouched. The capture round is complete: checked ro
 retained earlier-interface examples. Text-only rows have no image in this set.
 No further captures are requested. Reuse one image wherever it illustrates the same screen.
 
+Later development captures are listed separately below and are labelled as
+unreleased where their features are not in the published desktop downloads.
+
 ## Capture setup for future updates
 
 - Use one consistent desktop window size, ideally around 1440 × 900, at 100% browser zoom.
@@ -50,6 +53,7 @@ No further captures are requested. Reuse one image wherever it illustrates the s
 | Text only | — | Library-wide duplicate cleanup is documented without a new capture; the contributor has completed the cleanup. |
 | [x] | `cleanup-artists-preview.png` | Retained earlier-interface credit cleanup preview with before/after names and album exclusions. |
 | [x] | `cleanup-genres-running.png` | Retained earlier-interface genre cleanup progress. No replacement capture is available. |
+| [x] | `cleanup-album-artists-running.png` | Unreleased album artist cleanup, captured during an approved run on 18 October 2026, with primary/additional names and disc progress. |
 
 ## 1001 Albums
 
@@ -151,6 +155,12 @@ Overview account fields is preserved.
 | 19.23.04 | [release-years.png](screenshots/release-years.png) | Release-year overview |
 | 19.23.47 | [album-artists-mobile.png](screenshots/album-artists-mobile.png) | Narrow Album artists page |
 | 19.25.04 | [1001-albums-background.png](screenshots/1001-albums-background.png) | Sinatra note with Wikipedia and CC BY-SA links visible |
+
+## Later development captures
+
+| Capture time | Imported file | Content |
+|---|---|---|
+| 18 October 2026, 15.38.33 | [cleanup-album-artists-running.png](screenshots/cleanup-album-artists-running.png) | Original approved album artist cleanup in progress; unreleased source build. Imported byte-for-byte from the supplied PNG without resizing or image changes. |
 
 ## Documentation and media kit updates
 
