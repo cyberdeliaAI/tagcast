@@ -30,19 +30,33 @@ function readGuideNotes(data) {
   return notes;
 }
 
-function renderGuideAlbumNotes() {
-  const panel = $("#album-guide-notes");
-  if (!panel || state.screen !== "album") return;
-  const entries = guideNoteEntries();
-  const rows = entries.flatMap(entry => {
+function guideAlbumNoteRows() {
+  return guideNoteEntries().flatMap(entry => {
     const note = guideNotes.data?.get(entry.id);
     // A reference correction cannot attach a previously captured text to a new identity.
     return note && foldText(note.album) === foldText(entry.album) && foldText(note.artist) === foldText(entry.artist)
       ? [{entry, note}] : [];
   });
+}
+
+function albumBackgroundSource() {
+  if (!albumGuide.enabled) return "theaudiodb";
+  // Read the saved report and bundled notes before starting an external lookup.
+  // This never analyses the library or contacts iBroadcast.
+  if (albumGuide.details !== state.details || albumGuide.loading) return "pending";
+  if (!guideNoteEntries().length) return "theaudiodb";
+  if (guideNotes.pending || !guideNotes.data && !guideNotes.error) return "pending";
+  return guideAlbumNoteRows().length ? "guide" : "theaudiodb";
+}
+
+function renderGuideAlbumNotes() {
+  const panel = $("#album-guide-notes");
+  if (!panel || state.screen !== "album") return;
+  const entries = guideNoteEntries(), rows = guideAlbumNoteRows();
   panel.innerHTML = rows.map(({entry, note}) => `<details class="album-guide-note" data-guide-note="${entry.id}" ${guideNotes.open.has(entry.id) ? "open" : ""}><summary>About this album <span>1001 Albums${rows.length > 1 ? ` · ${escapeHtml(entry.album)}` : ""}</span></summary><div class="album-guide-note-copy">${note.context ? `<p class="muted">${escapeHtml(note.context)}</p>` : ""}<p>${escapeHtml(note.text)}</p><p class="muted">Adapted excerpt · <a href="${escapeHtml(note.source_url)}" target="_blank" rel="noopener noreferrer">Wikipedia contributors ↗</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a></p></div></details>`).join("")
     || (entries.length && guideNotes.error ? '<p class="muted">Album background could not be loaded. Refresh Tagcast to try again.</p>' : "");
   panel.hidden = !panel.innerHTML;
+  if (typeof renderAlbumInformation === "function") renderAlbumInformation();
 }
 
 function loadGuideAlbumNotes() {
@@ -129,6 +143,7 @@ async function loadAlbumGuide(analyse = false) {
     if (request === albumGuide.request) {
       albumGuide.loading = false; albumGuide.analysing = false; renderAlbumGuide();
       if (state.screen === "album") loadGuideAlbumNotes();
+      if (typeof renderAlbumInformation === "function") renderAlbumInformation();
     }
   }
 }

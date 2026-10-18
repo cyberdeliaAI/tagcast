@@ -521,7 +521,10 @@ and preserve a valid script order in `index.html`.
   provider links, preserve source attribution and 85ch prose. Reject late results across
   settings, account, library, session or identity changes; recover only the visible same
   album after detail-cache replacement. Preserve disclosure/focus on routine updates and
-  Back. Keep 1001 Albums texts and their licenses separate and unchanged. No metadata or
+  Back. Available confirmed 1001 Albums texts take priority with their licenses unchanged:
+  wait for the enabled guide's saved report and bundled notes before reading/requesting
+  TheAudioDB text, without starting analysis. Fall back only when no valid note is available.
+  Hide cached/late TheAudioDB results and disallow retry while a guide text has priority. No metadata or
   artwork writes, bulk prefetch, new API keys or Premium integration follow from enabling.
 - The original Powered by iBroadcast SVG is displayed with its original colours and
   proportions. Keep Tagcast's independent identity explicit; do not imply endorsement.
