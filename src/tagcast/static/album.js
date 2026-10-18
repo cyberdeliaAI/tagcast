@@ -237,6 +237,7 @@ function renderAlbumView() {
   const ids = shelfIds(albumView.id), discs = ids.map(i => state.details.get(i));
   if (ids[0] !== albumView.id || !discs.every(Boolean)) { openAlbum(albumView.id); return; }
   const album = joinDiscs(discs), several = discs.length > 1, year = albumYear(discs);
+  const informationFocus = typeof albumInformationFocus === "function" ? albumInformationFocus() : "";
   const formats = albumTrackFormats(album.tracks);
   const id = escapeHtml(album.id), canPlay = live() && album.tracks.length > 0;
   const total = album.tracks.length && album.tracks.every(t => Number(t.length) > 0)
@@ -257,6 +258,7 @@ function renderAlbumView() {
         ${queueButton(album.id, null, false, true)}${playlistAlbumButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">Edit</button>${live() ? `<button type="button" class="button album-more" data-album-more aria-label="More album actions" aria-haspopup="menu" aria-controls="album-action-menu" aria-expanded="false" ${albumView.trash || saving || checking ? "disabled" : ""}>⋯</button>` : ""}</div>
       ${live() ? "" : '<p class="muted">Connect iBroadcast to listen. You can edit this local preview.</p>'}</div></div>
     <section id="album-guide-notes" aria-label="Album background" hidden></section>
+    <section id="album-information" class="album-information artist-biography" aria-label="TheAudioDB album information" hidden></section>
     <div class="tracks-heading"><h2>Tracks</h2><span class="muted track-list-summary">${album.tracks.length} ${album.tracks.length === 1 ? "track" : "tracks"}${total}${formats.label ? ` · ${escapeHtml(formats.label)}` : ""}${canPlay ? "" : " · Local preview"}</span></div>
     ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks album-tracklist ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title</th><th class="track-time">Time</th><th class="track-heart" aria-label="Track actions"></th></tr></thead><tbody>
       ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>Disc ${d.disc || "?"}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">Edit disc ${d.disc || "?"}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}${albumTrackNumber(t, album.id, canPlay)}</td>
@@ -265,6 +267,7 @@ function renderAlbumView() {
   if (typeof syncHistory === "function") syncHistory();
   markPlaying();
   if (typeof loadGuideAlbumNotes === "function") loadGuideAlbumNotes();
+  if (typeof renderAlbumInformation === "function") renderAlbumInformation(informationFocus);
 }
 
 document.addEventListener("click", event => {

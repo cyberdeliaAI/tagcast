@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
 from . import __version__
+from .album_info import AlbumInformationRetryError
 from .artist_bios import BiographyRetryError
 from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio
@@ -80,7 +81,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(409, {"error": str(error), "conflict": True})
         except NotConnected as error:
             self._json(401, {"error": str(error), "connected": False})
-        except BiographyRetryError as error:
+        except (BiographyRetryError, AlbumInformationRetryError) as error:
             self._json(429, {"error": str(error), "retry_after": error.retry_after})
         except (ApiError, LibraryError, ArtworkError, SourceError) as error:
             self._json(400, {"error": str(error)})
@@ -226,6 +227,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/album-favourite": self.studio.collections.favourite_album,
             "/api/artist-favourite": self.studio.collections.favourite_artist,
             "/api/artist-biography": self.studio.artist_bios.view,
+            "/api/album-information": self.studio.album_info.view,
             "/api/playlist": self.studio.collections.save_playlist,
             "/api/queue-tracks": self.studio.collections.queue_tracks,
             "/api/queue-sync": self.studio.queue_sync.action,
