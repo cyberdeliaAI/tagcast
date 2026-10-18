@@ -132,6 +132,71 @@ class PlaylistImportTests(unittest.TestCase):
         catalogue = TrackCatalogue(self.studio.library)
         self.assertFalse({105, 301, 401} & catalogue.members.keys())
 
+    def test_artist_name_difference_explains_fire_without_changing_matching_or_duration_tolerance(self):
+        raw = fixture()
+        raw['library']['artists']['1']['name'] = 'Arthur Brown'
+        raw['library']['albums']['10']['name'] = 'The Crazy World Of Arthur Brown'
+        raw['library']['tracks']['102'].update(title='Fire', length=175)
+        self.studio.library = Library(raw)
+        result = self.matched('Title,Artist,Album,Duration\nFire,The Crazy World Of Arthur Brown,The Crazy World Of Arthur Brown,02:54\n')
+        row = result['rows'][0]
+        self.assertIsNone(row['choice'])
+        self.assertEqual(row['eligible'], 0)
+        self.assertEqual(row['reasons'], ['Compared with the first suggestion: Performing artist name differs.'])
+        self.assertEqual(row['candidates'][0]['id'], '102')
+        self.assertEqual(row['candidates'][0]['differences'], ['Performing artist name differs'])
+        chosen = self.importer.choose(self.body(result, position=0, track_id=102))
+        self.assertEqual(chosen['rows'][0]['reasons'], row['reasons'])
+        exact = self.matched('Title,Artist,Album,Duration\nFire,Arthur Brown,The Crazy World Of Arthur Brown,02:54\n')
+        self.assertEqual(exact['rows'][0]['choice']['id'], '102')
+        self.assertEqual(exact['rows'][0]['reasons'], [])
+        self.assertEqual(exact['rows'][0]['candidates'][0]['differences'], [])
+        self.studio._current.assert_not_called()
+        self.studio.client._jsonrequest.assert_not_called()
+
+    def test_match_explanations_cover_versions_optional_fields_and_missing_library_values(self):
+        for field, value, difference in [
+                ('Title', 'Cloudbusting (Remastered 2008)', 'Track title differs (including version text)'),
+                ('Album', 'Other album', 'Album title differs'),
+                ('Album artist', 'Guest', 'Album artist name differs'),
+                ('Year', '2000', 'Release year differs'),
+                ('Track number', '9', 'Track number differs'),
+                ('Duration', '05:14', 'Duration differs by more than 3 seconds')]:
+            columns = ['Title', 'Artist'] + ([] if field == 'Title' else [field])
+            values = [value if field == 'Title' else 'Cloudbusting', 'Kate Bush'] + ([] if field == 'Title' else [value])
+            row = self.matched(','.join(columns) + '\n' + ','.join(values) + '\n')['rows'][0]
+            with self.subTest(field=field):
+                self.assertIsNone(row['choice'])
+                candidate = next(c for c in row['candidates'] if c['id'] == '102')
+                self.assertEqual(candidate['differences'], [difference])
+                self.assertIn(difference, row['reasons'][0])
+        for length, automatic in [(307, True), (313, True), (314, False)]:
+            row = self.matched(f'Title,Artist,Duration\nCloudbusting,Kate Bush,{length}\n')['rows'][0]
+            self.assertEqual(row['choice'] is not None, automatic)
+        self.studio.library.tracks.rows[102].update(length=0, track=0)
+        self.studio.library.albums.rows[10]['year'] = 0
+        row = self.matched('Title,Artist,Duration,Year,Track number\nCloudbusting,Kate Bush,310,1985,2\n')['rows'][0]
+        self.assertEqual(row['candidates'][0]['differences'], [
+            'Library track has no release year', 'Library track has no track number', 'Library track has no duration'])
+
+    def test_multiple_copies_invalid_csv_and_no_suggestions_have_honest_explanations(self):
+        result = self.matched('Title,Artist\nRunning Up That Hill,Kate Bush\n')
+        row = result['rows'][0]
+        self.assertEqual(row['reasons'], ['2 library tracks match all mapped fields. Choose a copy.'])
+        self.assertTrue(all(c['differences'] == [] for c in row['candidates']))
+        skipped = self.importer.choose(self.body(result, position=0, skip=True))
+        self.assertEqual(skipped['rows'][0]['reasons'], row['reasons'])
+        row = self.matched('Title,Artist,Duration\nCloudbusting,Kate Bush,wrong\n')['rows'][0]
+        self.assertEqual(row['reasons'], ['CSV fields need attention; check the warnings.'])
+        self.assertTrue(row['source']['warnings'])
+        self.assertEqual(row['candidates'][0]['differences'], [])
+        row = self.matched('Title,Artist\nCloudbusting,\n')['rows'][0]
+        self.assertEqual(row['reasons'][0], 'CSV fields need attention; check the warnings.')
+        self.assertIn('No matching suggestion', row['reasons'][1])
+        row = self.matched('Title,Artist\nNo such song,Unknown\n')['rows'][0]
+        self.assertEqual(row['candidates'], [])
+        self.assertEqual(row['reasons'], ['No matching suggestion was found in the loaded library. Search manually or check the CSV columns.'])
+
     def test_bad_mapping_and_missing_or_invalid_optional_cells_remain_visible(self):
         parsed = self.read()
         for mapping in ({'artist': 1}, {'title': 0, 'artist': 0}, {'title': True, 'artist': 1}, {'title': 4, 'artist': 1}, {'title': 0, 'artist': 1, 'surprise': 2}):
