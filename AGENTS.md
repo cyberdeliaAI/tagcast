@@ -648,8 +648,13 @@ and preserve a valid script order in `index.html`.
   and combine setting. Revision checks reject concurrent choices; close clears/discards,
   library changes invalidate, late replies cannot restore a closed/replaced draft. Never
   persist CSVs, choices, credentials or source URLs to disk/history. Playback/history stay intact.
-  Resolve or explicitly skip every row before review; retain CSV order and show skipped,
-  blank and duplicate counts. Keep repeated selected IDs once at their first occurrence.
+  Matching initially shows Unresolved records, using a server-filtered bounded page.
+  Users may resolve/skip more rows or explicitly review only their selected automatic/manual
+  matches, leaving unresolved rows out. Require a boolean omit_unresolved choice for a
+  partial review and at least one selected track; show the omitted count in every final
+  review page. Keep unresolved rows and choices intact on Back, restoring filter/page.
+  Retain CSV order and distinguish unresolved omissions, explicit skips, blank records
+  and duplicate counts. Keep repeated selected IDs once at their first occurrence.
   The final review contains ordered native track metadata, name/description and a server-only
   track list behind a single-use review token. Explicit confirmation creates only a new
   private playlist via existing createplaylist, under the shared save lock; recheck current

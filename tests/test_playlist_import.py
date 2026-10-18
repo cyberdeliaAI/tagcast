@@ -245,6 +245,52 @@ class PlaylistImportTests(unittest.TestCase):
             self.importer.save(body)
         self.assertEqual(self.studio.client._jsonrequest.call_count, 1)
 
+    def test_thousand_row_import_can_review_and_save_one_hundred_matches_omitting_the_rest(self):
+        raw = fixture()
+        ids = list(range(1000, 1100))
+        raw['library']['albums']['10']['tracks'] = ids
+        for track_id in ids:
+            raw['library']['tracks'][str(track_id)] = {'title': f'Imported {track_id}', 'artist_id': 1, 'album_id': 10}
+        self.studio.library = Library(raw)
+        self.studio._current.return_value = (self.studio.library, 'memory')
+        parsed = self.read('Title,Artist\n' + ''.join(f'Imported {i},Kate Bush\n' for i in ids) + 'Missing,Unknown\n' * 900)
+        matched = self.importer.match(self.body(parsed, mapping=parsed['mapping'], show='unresolved', offset=0))
+        self.assertEqual((matched['show'], matched['total'], len(matched['rows'])), ('unresolved', 900, 50))
+        self.assertEqual(matched['rows'][0]['position'], 100)
+        self.assertEqual((matched['summary']['automatic'], matched['summary']['unresolved']), (100, 900))
+        with self.assertRaisesRegex(LibraryError, 'explicitly continue'):
+            self.importer.review(self.body(matched, name='Partial'))
+        for invalid in ('true', 1, None):
+            with self.subTest(value=invalid), self.assertRaises(LibraryError):
+                self.importer.review(self.body(matched, name='Partial', omit_unresolved=invalid))
+        review = self.importer.review(self.body(matched, name='Partial', omit_unresolved=True))
+        self.assertEqual((review['total'], review['omitted_unresolved'], len(review['tracks'])), (100, 900, 50))
+        self.assertEqual(review['summary']['skipped'], 0, 'Omission does not silently skip or mutate unresolved rows')
+        page = self.importer.view(self.body(review, review=True, offset=50))
+        self.assertEqual(page['omitted_unresolved'], 900)
+        self.assertEqual([t['id'] for t in page['tracks']], [str(i) for i in ids[50:]])
+        self.studio.client._jsonrequest.assert_not_called()
+        revised = self.importer.revise(self.body(review, show='unresolved', offset=850))
+        self.assertEqual((revised['show'], revised['offset'], revised['summary']['unresolved']), ('unresolved', 850, 900))
+        self.assertEqual(revised['rows'][0]['position'], 950)
+        review = self.importer.review(self.body(revised, name='Partial', omit_unresolved=True))
+        self.studio.client._jsonrequest.return_value = {'playlist_id': 500}
+        self.importer.save(self.body(review, review_token=review['review_token'], approved=True))
+        self.assertEqual(self.studio.client._jsonrequest.call_args.kwargs['tracks'], ids)
+
+    def test_partial_review_keeps_manual_choices_skips_duplicates_and_csv_order_distinct(self):
+        result = self.matched('Title,Artist\nCloudbusting,Kate Bush\nRunning Up That Hill,Kate Bush\nMissing,Unknown\nCloudbusting,Kate Bush\nSkip me,Unknown\n')
+        result = self.importer.choose(self.body(result, position=1, track_id=201))
+        result = self.importer.choose(self.body(result, position=4, skip=True))
+        review = self.importer.review(self.body(result, name='Mixed', omit_unresolved=True))
+        self.assertEqual([t['id'] for t in review['tracks']], ['102', '201'])
+        self.assertEqual(review['omitted_unresolved'], 1)
+        self.assertEqual((review['summary']['automatic'], review['summary']['manual'], review['summary']['duplicates'], review['summary']['skipped']), (2, 1, 1, 1))
+        empty = self.matched('Title,Artist\nMissing,Unknown\n')
+        with self.assertRaisesRegex(LibraryError, 'at least one track'):
+            self.importer.review(self.body(empty, name='Empty', omit_unresolved=True))
+        self.studio.client._jsonrequest.assert_not_called()
+
     def test_ambiguous_creation_cannot_be_retried_and_other_steps_cannot_trigger_writes(self):
         review = self.importer.review(self.body(self.matched(), name='Uncertain'))
         body = self.body(review, review_token=review['review_token'], approved=True)
@@ -395,13 +441,14 @@ class PlaylistImportProtocolTests(unittest.TestCase):
             studio.load_library()
             before = copy.deepcopy(mock_ibroadcast.STATE['tracks'])
             track = studio.library.track_view(900)
-            content = f'Title,Artist\n"{track["title"]}","{track["artist"]}"\n'
+            content = f'Title,Artist\n"{track["title"]}","{track["artist"]}"\nMissing CSV song,Unknown performer\n'
             parsed = studio.playlist_import.read({'session': studio.playback_session, 'text': content, 'delimiter': ','})
             def body(data, **fields):
                 return {'session': studio.playback_session, 'id': data['id'], 'revision': data['revision'], **fields}
             matched = studio.playlist_import.match(body(parsed, mapping=parsed['mapping']))
             chosen = studio.playlist_import.choose(body(matched, position=0, track_id=900))
-            review = studio.playlist_import.review(body(chosen, name='Imported CSV', description='Local review'))
+            review = studio.playlist_import.review(body(chosen, name='Imported CSV', description='Local review', omit_unresolved=True))
+            self.assertEqual(review['omitted_unresolved'], 1)
             self.assertEqual(mock_ibroadcast.STATE['writes'], [])
             saved = studio.playlist_import.save(body(review, approved=True, review_token=review['review_token']))
             for _ in range(200):
