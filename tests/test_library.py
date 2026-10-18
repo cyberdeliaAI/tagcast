@@ -369,7 +369,7 @@ class GenreTests(unittest.TestCase):
                          {"file_id": 1, "genre": "", "genres_additional": []})
 
     def test_bad_genre_lists_are_refused(self):
-        for bad in ("Rock", ["x" * 101], ["a"] * 21, [1]):
+        for bad in ("Rock", ["x" * 201], ["a"] * 21, [1]):
             with self.assertRaises(LibraryError):
                 plan_save(self.library(), [change("track", 1, 10, genres=(["Rock", "Metal"], bad))])
 

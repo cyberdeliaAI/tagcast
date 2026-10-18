@@ -43,8 +43,8 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty-one JavaScript files:
-  `app.js`, `genres.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty-two JavaScript files:
+  `app.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
@@ -197,7 +197,20 @@ and preserve a valid script order in `index.html`.
 - Album year edits change track years only when the user chooses that option.
   Individual track edits take precedence over album-wide edits.
 - Genres: the first label goes to `genre`, the rest to `genres_additional`.
+  Editor, legacy single-genre writes and cleanup accept at most 200 Unicode code points per
+  label, 20 labels per track. Reject oversized input visibly and retain it; never truncate.
   Split existing combined labels only on request.
+- `credits.js` edits separate native album artists and track additional credits. Keep
+  primary artist fields separate; never infer separators in names. Preserve native IDs,
+  order, unknown existing roles and optional phrases until explicitly changed. Track roles
+  are artist, band, composer, lyricist, conductor, publisher, involved_person,
+  original_lyricist and original_artist; album additions allow artist/band. Validate
+  at most 100 additional credits and 1000-character names/phrases. Full track credits
+  override the album-wide composer shortcut only for that track. Review before writing
+  artists_additional, create missing names only for unblocked reviewed records, and
+  read back IDs/roles/phrases. Combined-set restrictions still block album changes.
+  Compact summaries include every album artist for browsing, native stars, local hearts
+  and images; distinct additional album-artist IDs keep disc sets separate.
 - Cleanup is a dedicated reviewed exception to normal save scope: semicolon
   splitting for genres, track artists and composer credits, plus explicitly reviewed
   exact genre-label replacements/removals across the active library. Never infer
@@ -405,8 +418,9 @@ and preserve a valid script order in `index.html`.
   check on page opening and explicit refresh, never on each playback. Hide/reset
   the page when disabled, guard late responses across library/session changes,
   and keep audio unchanged. Metadata saves use Change history separately.
-- Track favourites use native ratings (`ratetrack`, `track_id` array): 5 to add,
-  0 to remove. Ratings >= 5 appear as favourites; lower nonzero ratings require
+- Track favourites use native ratings (`ratetrack`, `track_id` array): 5 to like,
+  1 for thumbs-down, 0 to clear either control. Dislikes neither skip nor trash tracks.
+  Active/pending thumbs-down controls remain visible alongside active hearts. Ratings >= 5 appear as favourites; lower nonzero ratings require
   frontend confirmation before replacement. Compare the displayed rating before
   writing and read back afterwards. These writes are separate from metadata
   History/Undo. `/api/favourites` searches and paginates on the server; never load
@@ -501,6 +515,11 @@ and preserve a valid script order in `index.html`.
 - Playlists use native create/append/update after an explicit review. Reject stale
   track/name snapshots, protect system playlists/folders, validate active tracks, keep
   first occurrence/order, and read back. Never automatically retry creation or append.
+  Stored playlists may exceed 10,000 tracks: read only 100 row details per page, returning
+  only current-page IDs for large lists. Use account/session/playlist-bound SHA-256
+  snapshots of the full stored definition for reviewed append/deletion, rejecting stale
+  membership/name/description or account changes. Submitted lists and full replacement
+  remain limited to 10,000; large-list playback explicitly queues only the current page.
   Retain only whitelisted playlist cache fields, excluding sharing keys and credentials.
   Playlist deletion requires an explicit review and matching name/track snapshots;
   use `deleteplaylist` with `playlist`, protect system lists/folders, read back and

@@ -219,7 +219,7 @@ document.addEventListener("click", event => {
   const artist = event.target.closest("[data-overview-artist]");
   if (artist) {
     const name = artist.dataset.overviewArtist;
-    if (!state.albums.some(a => a.artist === name)) { toast(`${name} appears only as a track artist; the album list is ordered by album artist.`); return; }
+    if (!state.albums.some(a => albumHasArtist(a, name))) { toast(`${name} appears only as a track artist; the album list is ordered by album artist.`); return; }
     setArtist(name);
   }
 });

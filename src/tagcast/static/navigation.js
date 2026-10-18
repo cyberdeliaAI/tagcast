@@ -328,7 +328,7 @@ function showRoute(route, saved = {}) {
   } else if (route.screen === "album" && state.albums.some(a => String(a.id) === route.album)) {
     openAlbum(route.album);
   } else {
-    const artist = route.artist && state.albums.some(a => a.artist === route.artist) ? route.artist : null;
+    const artist = route.artist && state.albums.some(a => albumHasArtist(a, route.artist)) ? route.artist : null;
     if (artist !== state.artist) state.selected.clear();
     state.artist = artist;
     if (saved.search !== undefined) $("#search").value = saved.search;

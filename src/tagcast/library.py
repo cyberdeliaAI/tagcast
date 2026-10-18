@@ -26,10 +26,14 @@ FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "a
            "audio/aiff": "AIFF", "audio/x-aiff": "AIFF", "audio/x-ape": "APE", "audio/ape": "APE"}
 
 VIEW_FIELDS = {
-    "album": ("name", "artist", "artist_id", "year", "disc"),
-    "track": ("title", "artist", "year", "genre", "genres", "composers", "track"),
+    "album": ("name", "artist", "artist_id", "year", "disc", "credits"),
+    "track": ("title", "artist", "year", "genre", "genres", "composers", "track", "credits"),
 }
 MAX_GENRES = 20
+MAX_GENRE_LENGTH = 200
+MAX_CREDITS = 100
+CREDIT_ROLES = {"artist", "band", "composer", "lyricist", "conductor", "publisher",
+                "involved_person", "original_lyricist", "original_artist"}
 NUMBER_FIELDS = {"year", "disc", "track"}
 REQUIRED_TEXT = {"name", "title", "artist"}
 MAX_CHANGES = 2000
@@ -320,6 +324,20 @@ class Library:
     def extra_artists(self, track):
         return additional_artists(track, self.tracks.nested.get("artists_additional_map"))
 
+    def credits_view(self, record, table):
+        return [{"artist_id": entry["artist_id"], "name": self.artist_name(entry["artist_id"]),
+                 "type": entry.get("type"), "phrase": entry.get("phrase")}
+                for entry in additional_artists(record, table.nested.get("artists_additional_map"))]
+
+    def album_artist_ids(self, album):
+        return list(dict.fromkeys([number(album.get("artist_id")), *(
+            e["artist_id"] for e in additional_artists(album, self.albums.nested.get("artists_additional_map")))]))
+
+    def album_artist_view(self, album):
+        return [{"id": str(i), "name": self.artist_name(i), "rating": number(self.artists.get(i, {}).get("rating")),
+                 "image": self.artist_image(i), "artwork_id": number(self.artists.get(i, {}).get("artwork_id"))}
+                for i in self.album_artist_ids(album)]
+
     def performer_entries(self, track):
         return [e for e in self.extra_artists(track) if e.get("type") in (None, "", "artist", "band")]
 
@@ -358,6 +376,8 @@ class Library:
             "name": text(album.get("name")) or "Untitled album",
             "artist": self.artist_name(album.get("artist_id")),
             "artist_id": number(album.get("artist_id")),
+            "album_artists": self.album_artist_view(album),
+            "credits": self.credits_view(album, self.albums),
             "artist_rating": number(self.artists.get(number(album.get("artist_id")), {}).get("rating")),
             "year": number(album.get("year")),
             "disc": number(album.get("disc")),
@@ -383,6 +403,7 @@ class Library:
             "artist": self.artist_name(track.get("artist_id")),
             "artist_id": number(track.get("artist_id")),
             "performers": self.performer_view(track),
+            "credits": self.credits_view(track, self.tracks),
             "year": number(track.get("year")),
             "genre": text(track.get("genre")),
             "genres": stored_genres(track),
@@ -448,6 +469,7 @@ class Library:
             "rating": number(album.get("rating")),
             "artwork": self.art_url(self.album_artwork(track_ids)),
             "artist_id": number(album.get("artist_id")),
+            "album_artists": self.album_artist_view(album),
             "artist_rating": number(self.artists.get(number(album.get("artist_id")), {}).get("rating")),
             "artist_image": self.artist_image(album.get("artist_id")),
             "artist_artwork_id": number(self.artists.get(number(album.get("artist_id")), {})
@@ -480,7 +502,7 @@ class Library:
                 for i in self.active_track_ids(album_id)}))
         return ((text(album.get("name")) or "Untitled album").strip().lower(),
                 self.artist_name(album.get("artist_id")), number(album.get("year")),
-                self._upload_dates[album_id])
+                self._upload_dates[album_id], tuple(self.album_artist_ids(album)[1:]))
 
     def genre_labels(self):
         """Exact stored labels for manual review, without loading tracks into the browser."""
@@ -523,7 +545,8 @@ class Library:
                 track = self.tracks[track_id]
                 track_title = fold(track.get("title"))
                 words = " ".join([track_title, name(number(track.get("artist_id"))), title, album_artist,
-                                  *(name(e["artist_id"]) for e in [*self.performer_entries(track), *self.composer_entries(track)])])
+                                  *(name(i) for i in self.album_artist_ids(album)),
+                                  *(name(e["artist_id"]) for e in self.extra_artists(track))])
                 rows.append((order + (number(track.get("track")) or 9999, track_title, track_id),
                              words, track_id, album_id))
         rows.sort(key=lambda row: row[0])
@@ -723,7 +746,7 @@ class Library:
                 artist = number(track.get("artist_id"))
                 artist_plays[artist] = artist_plays.get(artist, 0) + count
 
-        album_artists = {number(self.albums[a].get("artist_id")) for a in album_ids} - {0}
+        album_artists = {i for a in album_ids for i in self.album_artist_ids(self.albums[a])} - {0}
         no_year = sum(1 for a in album_ids if not number(self.albums[a].get("year")))
         no_image = sum(1 for a in album_artists if not number(self.artists.get(a, {}).get("artwork_id")))
 
@@ -830,6 +853,30 @@ def _clean_id(value):
 
 
 def _clean_value(key, value):
+    if key == "credits":
+        if not isinstance(value, list) or len(value) > MAX_CREDITS:
+            raise LibraryError(f"Use at most {MAX_CREDITS} additional artist credits per record.")
+        out = []
+        for entry in value:
+            if not isinstance(entry, dict) or set(entry) - {"artist_id", "name", "type", "phrase"}:
+                raise LibraryError("Each credit needs an artist name, role and optional phrase.")
+            artist_id, name = entry.get("artist_id"), entry.get("name")
+            role, phrase = entry.get("type"), entry.get("phrase")
+            if artist_id is not None and (type(artist_id) is not int or artist_id <= 0):
+                raise LibraryError("Choose a valid artist ID or enter a new artist name.")
+            if not isinstance(name, str) or not name.strip() or len(name.strip()) > 1000:
+                raise LibraryError("Credit artist names must contain 1–1,000 characters.")
+            if role is not None and (not isinstance(role, str) or len(role) > 100):
+                raise LibraryError("Choose a valid credit role.")
+            if phrase is not None and (not isinstance(phrase, str) or len(phrase) > 1000):
+                raise LibraryError("Credit phrases can contain at most 1,000 characters.")
+            if any(ord(c) < 32 or ord(c) == 127 for c in name + (role or "") + (phrase or "")):
+                raise LibraryError("Credit names, roles and phrases cannot contain control characters.")
+            cleaned = {"artist_id": artist_id, "name": name.strip(), "type": role, "phrase": phrase}
+            if cleaned in out:
+                raise LibraryError("The same artist, role and phrase was included twice.")
+            out.append(cleaned)
+        return out
     if key == "year":
         if isinstance(value, bool) or not isinstance(value, int) \
                 or (value != 0 and not 1800 <= value <= 2050):
@@ -847,13 +894,18 @@ def _clean_value(key, value):
         if not isinstance(value, list) or len(value) > MAX_GENRES:
             raise LibraryError(f"{key.title()} must be a list of at most {MAX_GENRES}.")
         out = []
+        maximum = MAX_GENRE_LENGTH if key == "genres" else 1000
         for genre in value:
-            if not isinstance(genre, str) or len(genre.strip()) > 100:
-                raise LibraryError(f"Each of the {key} must be text of at most 100 characters.")
+            if not isinstance(genre, str) or len(genre.strip()) > maximum:
+                raise LibraryError(f"Each of the {key} must be text of at most {maximum} characters.")
             genre = genre.strip()
             if genre and genre.casefold() not in {g.casefold() for g in out}:
                 out.append(genre)
         return out
+    if key == "genre":
+        if not isinstance(value, str) or len(value.strip()) > MAX_GENRE_LENGTH:
+            raise LibraryError(f"Genres must be text of at most {MAX_GENRE_LENGTH} characters.")
+        return value.strip()
     if not isinstance(value, str) or len(value) > 1000:
         raise LibraryError(f"{key} must be text of at most 1,000 characters.")
     value = value.strip()
@@ -874,7 +926,7 @@ def plan_save(library, changes):
     if len(changes) > MAX_CHANGES:
         raise LibraryError(f"Save at most {MAX_CHANGES:,} records at a time.")
 
-    items, seen, album_artists, conflicts = [], set(), set(), []
+    items, seen, album_artists, conflicts = [], set(), None, []
     for change in changes:
         if not isinstance(change, dict):
             raise LibraryError("Invalid change.")
@@ -892,6 +944,8 @@ def plan_save(library, changes):
             raise LibraryError("Only supported metadata fields can be saved.")
         if "artist_id" in fields and "artist" in fields:
             raise LibraryError("Choose an album artist name or Various Artists, not both.")
+        if "credits" in fields and "composers" in fields:
+            raise LibraryError("Change full credits or composers on a track, not both at once.")
 
         try:
             now = library.current(kind, item_id)
@@ -903,13 +957,26 @@ def plan_save(library, changes):
                 and _clean_id(change.get("albumId")) != album_id:
             raise ConflictError(f"Track “{now['title']}” moved to another album. "
                                 "Reload and review again.")
-        album_artists.add(number(library.albums.get(album_id, {}).get("artist_id")))
+        names = {library.artist_name(i) for i in library.album_artist_ids(library.albums[album_id])}
+        album_artists = names if album_artists is None else album_artists.intersection(names)
 
         patch = {}
         for key, values in fields.items():
             if not isinstance(values, dict) or "after" not in values or "before" not in values:
                 raise LibraryError("Every field needs a before and after value.")
             after = _clean_value(key, values["after"])
+            if key == "credits":
+                for entry in after:
+                    artist_id = entry["artist_id"]
+                    if artist_id is None and library.find_artist(entry["name"]) == 0:
+                        raise LibraryError("Various Artists is a primary album choice, not an additional credit.")
+                    if artist_id is not None and (artist_id not in library.artists
+                            or library.artist_name(artist_id) != entry["name"]):
+                        raise ConflictError("A credited artist changed. Reload and review again.")
+                    allowed = {"artist", "band"} if kind == "album" else CREDIT_ROLES
+                    if entry["type"] and entry["type"] not in allowed and not any(
+                            e["artist_id"] == artist_id and e["type"] == entry["type"] for e in now["credits"]):
+                        raise LibraryError("Choose a supported credit role; existing unknown roles can be preserved.")
             before = values["before"]
             if now[key] == after:
                 continue  # already has this value
@@ -919,6 +986,16 @@ def plan_save(library, changes):
                 continue
             patch[key] = after
         if patch:
+            if kind == "album" and {"credits", "artist", "artist_id"}.intersection(patch):
+                primary_id = library.find_artist(patch["artist"]) if "artist" in patch else patch.get("artist_id", now["artist_id"])
+                primary_name = patch.get("artist", library.artist_name(primary_id))
+                credits = patch.get("credits", now["credits"])
+                if primary_id == 0 and credits:
+                    raise LibraryError("Choose a primary album artist before adding other album artists.")
+                if any((e["artist_id"] is not None and e["artist_id"] == primary_id)
+                       or (e["artist_id"] is None and e["name"] == primary_name)
+                       for e in credits):
+                    raise LibraryError("An album artist cannot also appear in the additional album artists.")
             item = {"kind": kind, "id": item_id, "album_id": album_id,
                     "label": now.get("name") or now.get("title"), "patch": patch}
             if "composers" in patch:  # other extra artists (featured, ...) stay as they are
@@ -926,7 +1003,7 @@ def plan_save(library, changes):
                                 if e.get("type") != "composer"]
             items.append(item)
 
-    if len(album_artists) > 1:
+    if not album_artists:
         raise LibraryError("A save must stay within one album or one album artist.")
     if conflicts:
         shown = "; ".join(conflicts[:3]) + (" …" if len(conflicts) > 3 else "")
@@ -935,14 +1012,23 @@ def plan_save(library, changes):
 
     names = OrderedDict()
     for item in items:
-        for name in ([item["patch"]["artist"]] if "artist" in item["patch"] else []) \
-                + item["patch"].get("composers", []):
+        for name in patch_artist_names(item["patch"]):
             names.setdefault(name, library.find_artist(name))
     return {
         "items": items,
         "artists": {name: artist_id for name, artist_id in names.items() if artist_id is not None},
         "new_artists": [name for name, artist_id in names.items() if artist_id is None],
     }
+
+
+def patch_artist_names(patch):
+    return ([patch["artist"]] if "artist" in patch else []) + patch.get("composers", []) + [
+        e["name"] for e in patch.get("credits", []) if e["artist_id"] is None]
+
+
+def wire_credits(credits, artist_ids):
+    return [{"artist_id": e["artist_id"] if e["artist_id"] is not None else artist_ids[e["name"]],
+             **{k: e[k] for k in ("type", "phrase") if e[k] is not None}} for e in credits]
 
 
 def _wire(kind, patch, artist_ids, keep=None):
@@ -964,6 +1050,8 @@ def _wire(kind, patch, artist_ids, keep=None):
             kept = [{k: v for k, v in e.items() if v is not None} for e in keep or []]
             out["artists_additional"] = kept + [{"artist_id": artist_ids[n], "type": "composer"}
                                                 for n in value]
+        elif key == "credits":
+            out["artists_additional"] = wire_credits(value, artist_ids)
         elif key == "genres":  # the main genre, then the rest, as the web editor sends them
             out["genre"] = value[0] if value else ""
             out["genres_additional"] = list(value[1:])
@@ -990,6 +1078,10 @@ def write_requests(plan, artist_ids):
 
 
 def _matches(now, key, value, artist_ids):
+    if key == "credits":
+        def identity(entries):
+            return [(e["artist_id"], e.get("type") or "artist", e.get("phrase") or None) for e in entries]
+        return identity(now["credits"]) == identity(wire_credits(value, artist_ids))
     if key == "artist" and value in artist_ids:
         return now["artist_id"] == artist_ids[value]
     if key == "composers":
@@ -1014,6 +1106,8 @@ def verify(library, plan, artist_ids, failed=None):
                 now = library.current(item["kind"], item["id"])
                 ok = all(_matches(now, k, v, artist_ids) for k, v in item["patch"].items())
                 entry["status"] = "saved" if ok else "unverified"
+                if ok and "credits" in item["patch"]:
+                    entry["credits"] = now["credits"]
             except LibraryError:
                 entry["status"] = "unverified"
         results.append(entry)

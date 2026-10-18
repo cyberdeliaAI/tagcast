@@ -1,10 +1,13 @@
 """Local album/artist favourites, native ratings and reviewed private playlists."""
 
+import hashlib
+import json
+
 from .library import ConflictError, LibraryError, fold, number, text
 
 
 def track_ids(values, maximum=10000):
-    if not isinstance(values, list) or len(values) > maximum or any(
+    if not isinstance(values, list) or (maximum is not None and len(values) > maximum) or any(
             type(i) not in (int, str) or not str(i).isdigit() or int(i) <= 0 for i in values):
         raise LibraryError(f"Choose up to {maximum} valid tracks.")
     return [int(i) for i in values]
@@ -39,8 +42,8 @@ class Collections:
             library = library if library is not None else studio.library
             data, account = self._artist_favourites(library)
             if active_ids is None:
-                active_ids = {str(number(library.albums[i].get("artist_id")))
-                              for i in library.album_ids()}
+                active_ids = {str(a) for i in library.album_ids()
+                              for a in library.album_artist_ids(library.albums[i]) if a > 0}
             return {"artists": sorted(set(data["accounts"].get(account, [])) & active_ids, key=int)}
 
     def artist_selection(self, body):
@@ -54,9 +57,8 @@ class Collections:
             raise ConflictError("The account or library changed. Reload the library.")
         if not ids or len(ids) != len(set(ids)) or not isinstance(name, str) or not name:
             raise LibraryError("Choose one album artist and its current name.")
-        active = {number(album.get("artist_id")) for i, album in library.albums.items()
-                  if library.artist_name(album.get("artist_id")) == name
-                  and not album.get("trashed") and library.active_track_ids(i)}
+        active = {a for i in library.album_ids() for a in library.album_artist_ids(library.albums[i])
+                  if a > 0 and library.artist_name(a) == name}
         if set(ids) != active or any(i not in library.artists for i in ids):
             raise ConflictError("This album artist changed or is no longer available. Reload the library.")
         return library, {str(i) for i in ids}, name
@@ -228,6 +230,21 @@ class Collections:
     def editable(row):
         return not row.get("system_created") and row.get("type") in (None, "", "playlist")
 
+    def playlist_snapshot(self, row, playlist_id):
+        payload = [str(playlist_id), self.studio.library_user, self.studio.playback_session,
+                   self.studio.library.combine_sets, text(row.get("name")),
+                   text(row.get("description")), row.get("tracks") or []]
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=True).encode()).hexdigest()
+
+    def check_playlist_before(self, row, body):
+        if body.get("before_token") is not None:
+            matches = body["before_token"] == self.playlist_snapshot(row, body.get("playlist"))
+        else:
+            track_ids(body.get("before"))
+            matches = row.get("tracks", []) == body.get("before")
+        if not matches or text(row.get("name")) != body.get("before_name"):
+            raise ConflictError("This playlist changed in iBroadcast. Open a new review.")
+
     def playlists(self, query="", playlist_id=None, offset="0"):
         _, library = self.library()
         try:
@@ -240,8 +257,9 @@ class Collections:
             row = library.playlists.get(number(playlist_id))
             if not row or not self.editable(row):
                 raise LibraryError("This playlist is unavailable or managed by iBroadcast.")
-            ids = [i for i in track_ids(row.get("tracks") or [])
+            ids = [i for i in track_ids(row.get("tracks") or [], maximum=None)
                    if i in library.tracks and not library.tracks[i].get("trashed")]
+            large = len(row.get("tracks") or []) > 10000
             rows = []
             for index, i in enumerate(ids[offset:offset + 100], offset):
                 try:
@@ -250,8 +268,11 @@ class Collections:
                 except LibraryError:
                     continue
             return {"id": str(number(playlist_id)), "name": text(row.get("name")),
-                    "description": text(row.get("description")), "tracks": ids,
-                    "before": row.get("tracks") or [],
+                    "description": text(row.get("description")),
+                    "tracks": ids[offset:offset + 100] if large else ids,
+                    "before": [] if large else row.get("tracks") or [],
+                    "before_token": self.playlist_snapshot(row, playlist_id), "large": large,
+                    "stored_total": len(row.get("tracks") or []),
                     "rows": rows, "offset": offset, "total": len(ids)}
         words = fold(query).split()
         rows = [{"id": str(i), "name": text(p.get("name")),
@@ -274,6 +295,7 @@ class Collections:
                          "rating": t["rating"], "format": t["format"], "length": t["length"],
                          "album": {"id": str(album_id), "name": text(a.get("name")),
                                    "artist": library.artist_name(a.get("artist_id")),
+                                   "artist_id": number(a.get("artist_id")), "album_artists": library.album_artist_view(a),
                                    "artwork": library.art_url(t["artwork_id"])}})
         return {"tracks": rows}
 
@@ -292,8 +314,7 @@ class Collections:
             library, _ = studio._current(client)
             views = [library.album_view(i) for i in ids]
             # Only one displayed set: same identity, distinct disc numbers.
-            keys = [(v["name"], v["artist_id"], v["year"],
-                     tuple(sorted({t["uploaded_on"] for t in v["tracks"]}))) for v in views]
+            keys = [library.album_set_key(i) for i in ids]
             if len(set(keys)) > 1 or (len(ids) > 1 and
                     (any(v["disc"] <= 0 for v in views) or len({v["disc"] for v in views}) != len(ids))):
                 raise LibraryError("Rate one album or one multi-disc set at a time.")
@@ -352,8 +373,9 @@ class Collections:
                 row = library.playlists.get(playlist_id)
                 if not row or not self.editable(row):
                     raise LibraryError("Choose a user playlist; system playlists cannot be changed.")
-                if row.get("tracks", []) != body.get("before") or text(row.get("name")) != body.get("before_name"):
-                    raise ConflictError("This playlist changed in iBroadcast. Open a new preview.")
+                self.check_playlist_before(row, body)
+                if action == "replace" and len(row.get("tracks") or []) > 10000:
+                    raise LibraryError("Full playlist replacement is limited to 10,000 tracks. Append or manage this playlist in iBroadcast.")
                 expected = list(dict.fromkeys([*(row.get("tracks") or []), *ids])) if action == "append" else ids
                 payload = {"playlist": playlist_id, "tracks": ids}
                 if action == "replace":
@@ -373,7 +395,6 @@ class Collections:
         playlist_id = track_ids([body.get("playlist")], 1)[0]
         if body.get("confirm_delete") is not True:
             raise LibraryError("Review and confirm deleting this playlist first.")
-        track_ids(body.get("before"))
         studio = self.studio
         if not studio.save_lock.acquire(blocking=False):
             raise LibraryError("Another save is still running.")
@@ -382,8 +403,7 @@ class Collections:
             row = library.playlists.get(playlist_id)
             if not row or not self.editable(row):
                 raise LibraryError("Choose a user playlist; system playlists cannot be deleted.")
-            if row.get("tracks", []) != body.get("before") or text(row.get("name")) != body.get("before_name"):
-                raise ConflictError("This playlist changed in iBroadcast. Open a new review.")
+            self.check_playlist_before(row, body)
             if client is not studio.client:
                 raise LibraryError("The iBroadcast connection changed. Prepare a new review.")
             # Delete only the playlist definition; never send track trash requests.

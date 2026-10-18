@@ -159,16 +159,17 @@ function albumTrackMetadata(album, track, formats) {
   const people = track.performers?.length ? track.performers : [{id: track.artist_id || track.artistId, name: track.artist}];
   const seen = new Set(), extra = people.filter(person => {
     const name = nameKey(person.name);
-    if (!name || name === nameKey(album.artist)
-        || (Number(album.artist_id) > 0 && String(person.id) === String(album.artist_id)) || seen.has(name)) return false;
+    if (!name || albumArtistEntries(album).some(a => name === nameKey(a.name) || (Number(a.id) > 0 && String(person.id) === String(a.id))) || seen.has(name)) return false;
     seen.add(name); return true;
   });
   const credits = extra.length ? `<span>${performerLinks({...track, performers: extra})}</span>` : "";
   const composers = track.composers?.length ? `<span>Composer${track.composers.length > 1 ? "s" : ""}: ${escapeHtml(track.composers.join(", "))}</span>` : "";
+  const otherCredits = (track.credits || []).filter(e => ![null, "", "artist", "band", "composer"].includes(e.type));
+  const other = otherCredits.map(e => `<span>${escapeHtml(creditRoleLabels[e.type] || e.type)}: ${escapeHtml(e.name)}${e.phrase ? ` · ${escapeHtml(e.phrase)}` : ""}</span>`).join("");
   const tags = live() && typeof tagLinks === "function" ? tagLinks(track.tags) : "";
   const format = !albumView.trash && track.format && track.format !== formats.main
     ? `<span class="pill missing track-format-exception" title="File format: ${escapeHtml(track.format)}${formats.main ? ` · album mainly ${escapeHtml(formats.main)}` : " · mixed-format album"}">${escapeHtml(track.format)}</span>` : "";
-  return credits || composers || tags || format ? `<div class="album-track-meta">${credits}${composers}${tags}${format}</div>` : "";
+  return credits || composers || other || tags || format ? `<div class="album-track-meta">${credits}${composers}${other}${tags}${format}</div>` : "";
 }
 
 function albumTrackNumber(track, albumId, canPlay) {
@@ -248,7 +249,7 @@ function renderAlbumView() {
   $("#breadcrumb").textContent = album.name;
   $("#album-page").innerHTML = `
     <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="Enlarge cover of ${escapeHtml(album.name)}" ${album.artwork ? "" : "disabled"}>${cover(album, false, true)}</button><div class="album-detail-info">
-      <h1>${escapeHtml(album.name)}</h1><button class="text-action" data-artist="${escapeHtml(album.artist)}">${escapeHtml(album.artist)}</button>
+      <h1>${escapeHtml(album.name)}</h1><div class="album-artist-links">${albumArtistLinks(album)}</div>
       <p class="muted album-detail-meta">${year ? `<button type="button" class="album-year-link" data-browse-kind="years" data-browse-key="${escapeHtml(year)}" data-browse-label="${escapeHtml(year)}" aria-label="Browse releases from ${escapeHtml(year)}">${escapeHtml(year)}</button>` : "Year unknown"} · ${album.tracks.length} tracks${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · Disc ${album.disc}` : ""}${total}</p>
       <div class="album-labels" aria-label="Genres and tags">${genres.map(g => `<button type="button" class="album-genre-chip" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}" title="Genre: ${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}${typeof albumTagChips === "function" ? albumTagChips(album) : ""}</div>
       ${albumRatingControls(discs)}

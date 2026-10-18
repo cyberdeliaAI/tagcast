@@ -28,7 +28,7 @@ function renderPlayerDisplay() {
   const track = player.queue[player.index];
   $("#player-quality").hidden = !playerDisplay.quality;
   $("#player-track-line").hidden = !playerDisplay.trackArtists || !track
-    || ((!track.artist || track.artist === track.album.artist) && !(track.performers?.length > 1));
+    || ((!track.artist || albumHasArtist(track.album, track.artist)) && !(track.performers?.length > 1));
 }
 
 document.addEventListener("change", event => {
@@ -118,11 +118,11 @@ function renderVisualPlayer() {
   const track = player.queue[player.index], album = track?.album;
   if (!track) return;
   $("#visual-player-title").textContent = track.title;
-  $("#visual-player-artist").textContent = album.artist;
+  $("#visual-player-artist").textContent = albumArtistsText(album);
   $("#visual-player-album").textContent = album.name;
   const performer = $("#visual-player-track-artist");
   performer.textContent = `Track artist: ${track.artist}`;
-  performer.hidden = !track.artist || track.artist === album.artist;
+  performer.hidden = !track.artist || albumHasArtist(album, track.artist);
   $("#visual-player-placeholder").textContent = initials(album.artist);
   const art = $("#visual-player-art");
   // Load large artwork only in this explicit view, once per cover. Playback events
@@ -223,7 +223,7 @@ function performerLinks(track, additionalOnly = false) {
 }
 
 function queueTracks(album, tracks = album.tracks) {
-  const source = {id: album.id, name: album.name, artist: album.artist, artwork: album.artwork, color: album.color || "#839e8d"};
+  const source = {id: album.id, name: album.name, artist: album.artist, artist_id: album.artist_id || 0, album_artists: albumArtistEntries(album), artwork: album.artwork, color: album.color || "#839e8d"};
   return tracks.map(t => ({id: String(t.id), title: t.title, artist: t.artist, artistId: t.artist_id, performers: t.performers || [],
     format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source}));
 }
@@ -312,6 +312,7 @@ function playCurrent(autoPlay = true) {
   $("#player-title").textContent = track.title;
   const artist = $("#player-artist"), album = $("#player-album");
   artist.textContent = player.album.artist; artist.title = player.album.artist;
+  $("#player-additional-album-artists").innerHTML = albumArtistEntries(player.album).slice(1).map(a => ` · <button type="button" data-artist="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join("");
   artist.setAttribute("aria-label", `Open albums by ${player.album.artist}`);
   const performer = $("#player-track-artist");
   performer.textContent = track.artist; performer.title = track.artist;
