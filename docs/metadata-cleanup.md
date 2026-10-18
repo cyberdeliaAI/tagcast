@@ -5,7 +5,7 @@ Available since Tagcast 0.30.0, including standalone downloads.
 Open **Overview → Metadata health → Clean up metadata…**. The Albums page also
 shows **Split combined genres…** when the **Combined genres** filter is selected.
 
-1. Choose **Genres**, **Track artists** or **Composers** and click **Prepare preview**.
+1. Choose **Genres**, **Album artists**, **Track artists** or **Composers** and click **Prepare preview**.
    Preparing a draft does not write to iBroadcast.
 2. Review the before/after examples. The preview covers the whole active library,
    independently of the current album filter or page. Uncheck albums to exclude them;
@@ -25,6 +25,45 @@ The latest draft and report are stored in `cleanup.json` in the Tagcast settings
 folder, separately from browser History. Export the report before making a new
 preview, which replaces it. A server restart stops execution; resume is explicit.
 There is no batch Undo button. The report includes each track's original values.
+
+## Split album artists (unreleased)
+
+The **Album artists** category is available in current source/test builds, not in
+the published 0.60.0 downloads. It reads native library records, never a CSV export.
+For example, `Caetano Veloso;Gal Costa` becomes primary album artist **Caetano
+Veloso**, with **Gal Costa** as an additional album artist. Both then have the
+album in their own artist view. This does not rename the old artist throughout
+iBroadcast, or change track artists, track credits, titles, ratings or favourites.
+
+Prepare a preview to see **every affected disc**, its previous names, proposed
+**Primary** artist and **Additional** artists. Existing separate credits retain
+their IDs, roles and phrases. Additional performer names containing semicolons
+can also be split while keeping an unchanged primary artist. Other credit roles
+stay intact. Duplicate generated names are avoided, and existing separate credits
+take precedence over a generated duplicate.
+
+Uncheck albums to exclude their complete displayed sets, then explicitly approve
+and start. Each write uses the original native disc's album ID and is read back.
+The report's affected-track totals count all active tracks on those discs; progress
+counts **disc records**. Batches remain bounded to 200 affected tracks / 20 displayed
+albums. A native disc larger than 200 tracks is blocked for individual editing.
+Invalid names or more than 100 additional credits are also visibly blocked.
+
+**Combine Multi-Disc Album Sets must be disabled in iBroadcast.** Tagcast checks
+this setting, exact active track membership, album title/disc/year and artist
+identities before writing. Changes since the preview stop processing. Stop/resume,
+account protection, request-error handling and separate local reports work as with
+the other cleanup categories. Missing artist names are created only for a selected,
+checked batch; an ambiguous creation reply stops processing until explicit resume
+checks the fresh library. Nothing is written by opening Cleanup or preparing a preview.
+
+**Show Additional Artists and Composers** is a separate iBroadcast display option;
+it does not have to be enabled for Tagcast cleanup. Existing links stay stored and
+Tagcast reads them independently. New names split from the primary field use the
+**Artist** role. iBroadcast treats this role as another main artist, visible even
+when additional roles are hidden. Other roles such as Composer can be hidden in
+iBroadcast while remaining available in Tagcast. See the
+[official iBroadcast explanation](https://news.ibroadcast.com/?page=1).
 
 ## Review genre labels
 
@@ -65,18 +104,23 @@ Slashes, commas and ampersands remain part of a name: `Films/Games`, `R&B` and
   primary name stays primary; the rest become additional artist credits. Existing
   artists are reused by ID where possible; missing artists are created. Other roles
   and credit phrases are preserved. Album artists stay unchanged.
+- **Album artists (unreleased):** split the primary and additional performer names
+  of each native album, preserving existing separate credits. The first primary
+  name stays primary; remaining names become additional album artists. Track
+  metadata stays unchanged. See the review and restrictions above.
 - **Composers:** split only credits with the composer role, preserving the primary
   performer, guest artists and all other roles.
 
-Separate artists and genres already stored correctly are not cleanup candidates,
-although a CSV export may join those values with semicolons again. The current
-server library determines the draft; an export is not used as a write source.
+Separate artists and genres already stored correctly are not cleanup candidates.
+The CSV album_artist column contains only the primary album artist, without a
+separate field for additional album artists. The current server library determines
+the draft; an export is not used as a write source.
 Additional performers appear in Track artists, track search and individual links
 on album pages and in the player.
 
 The usual metadata editor remains limited to one album or one album artist. Cleanup
-is a dedicated track-only operation: it cannot change titles, years, album artists,
-artwork or track numbers. It checks the account, active album membership and the
+is a dedicated reviewed operation: only the selected genre/artist fields can change,
+never titles, years, artwork or track numbers. It checks the account, active album membership and the
 reviewed original values before writing. A conflicting edit, request error or
 unconfirmed result stops further batches. A failed artist creation is not retried
 in the background; explicit resume first checks the fresh library for that name.

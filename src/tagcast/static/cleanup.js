@@ -4,7 +4,7 @@
 const cleanupView = {data: null, offset: 0, excluded: new Set(), request: 0, timer: null, busy: false,
   category: "", ruleLabel: "", ruleText: "", removeLabel: false, labelQuery: "", labelOffset: 0,
   labels: null, labelRequest: 0, labelsBusy: false, draftChanged: false};
-const cleanupLabels = {genres: "Genres", "track-artists": "Track artists", composers: "Composers", "genre-labels": "Review genre labels"};
+const cleanupLabels = {genres: "Genres", "album-artists": "Album artists", "track-artists": "Track artists", composers: "Composers", "genre-labels": "Review genre labels"};
 
 function resetCleanup(close = false) {
   cleanupView.request += 1;
@@ -57,19 +57,31 @@ function renderCleanup() {
   const category = cleanupView.category || data.category || "genres";
   const picker = `<label class="cleanup-category">Category <select id="cleanup-category" ${running || cleanupView.busy ? "disabled" : ""}>${Object.entries(cleanupLabels).map(([key, label]) => `<option value="${key}" ${key === category ? "selected" : ""}>${label}</option>`).join("")}</select></label><button class="button" id="cleanup-preview" ${running || cleanupView.busy ? "disabled" : ""}>Prepare preview</button>`;
   const counts = data.counts || {};
-  $("#cleanup-content").innerHTML = `<p class="muted">${category === "genre-labels" ? "Review an exact genre label and choose its replacements." : "Split names or genre labels containing a semicolon (;). Slashes, commas and ampersands are kept."} Album artists and other metadata stay unchanged. <strong>After you approve and start, changes are saved to iBroadcast.</strong></p><div class="cleanup-controls">${picker}</div>
+  const albumArtists = data.category === "album-artists";
+  const explanation = category === "album-artists"
+    ? "Split album artist names only on semicolons (;). The first name becomes the primary album artist; the rest become additional album artists. Existing separate credits are preserved. Track artists and other metadata stay unchanged."
+    : `${category === "genre-labels" ? "Review an exact genre label and choose its replacements." : "Split names or genre labels containing a semicolon (;). Slashes, commas and ampersands are kept."} Album artists and other metadata stay unchanged.`;
+  $("#cleanup-content").innerHTML = `<p class="muted">${explanation} <strong>After you approve and start, changes are saved to iBroadcast.</strong></p><div class="cleanup-controls">${picker}</div>
     ${category === "genre-labels" ? genreLabelControls(running || cleanupView.busy) : ""}
     ${data.id ? `<div class="notice">${escapeHtml(cleanupLabels[data.category])}: ${data.albums.toLocaleString("en")} albums · ${data.tracks.toLocaleString("en")} affected tracks. Batches contain up to ${data.batch_tracks} tracks from ${data.batch_albums} albums.</div>
     ${data.mapping ? `<p class="cleanup-rule-summary"><strong>Reviewed rule:</strong> ${escapeHtml(data.mapping.label)} → ${escapeHtml(data.mapping.remove ? "Remove this label" : data.mapping.replacements.join(" · "))}</p>` : ""}
-    ${preview ? '<p>Review the examples below. Export the full report to inspect every track. Uncheck an album to exclude all its discs and tracks.</p><div class="cleanup-controls"><button class="text-action" id="cleanup-select-all">Select all albums</button><button class="text-action" id="cleanup-select-none">Exclude all albums</button><span id="cleanup-selected" role="status"></span></div>' : `<p role="status"><strong>${escapeHtml(data.state)}</strong> · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.excluded || 0} excluded</p>`}
+    ${preview ? `<p>${albumArtists ? "Review every proposed disc below, including its primary and additional album artists." : "Review the examples below. Export the full report to inspect every track."} Uncheck an album to exclude all its discs and tracks.</p><div class="cleanup-controls"><button class="text-action" id="cleanup-select-all">Select all albums</button><button class="text-action" id="cleanup-select-none">Exclude all albums</button><span id="cleanup-selected" role="status"></span></div>` : `<p role="status"><strong>${escapeHtml(data.state)}</strong>${albumArtists ? " · Disc records:" : ""} · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.blocked || 0} blocked · ${counts.excluded || 0} excluded</p>`}
     ${data.error ? `<p class="warn-box" role="status">${escapeHtml(data.error)}</p>` : ""}
-    <div class="cleanup-albums">${data.groups.map(g => `<section class="cleanup-album"><h3>${preview ? `<label><input type="checkbox" data-cleanup-album="${escapeHtml(g.id)}" ${cleanupView.excluded.has(g.id) ? "" : "checked"}> ` : ""}${escapeHtml(g.album)}${preview ? "</label>" : ""}</h3><p class="muted">${escapeHtml(g.artist)} · ${g.tracks} affected tracks</p>${g.examples.map(e => `<div class="cleanup-example"><strong>${escapeHtml(e.title)}</strong><div><span>Before</span><span>${escapeHtml(e.before.join(" · "))}</span></div><div><span>After</span><span>${escapeHtml(e.after.length ? e.after.join(" · ") : "No genres")}</span></div></div>`).join("")}</section>`).join("") || '<p class="muted">No changes found for this preview.</p>'}</div>
+    <div class="cleanup-albums">${data.groups.map(g => `<section class="cleanup-album"><h3>${preview ? `<label><input type="checkbox" data-cleanup-album="${escapeHtml(g.id)}" ${cleanupView.excluded.has(g.id) ? "" : "checked"}> ` : ""}${escapeHtml(g.album)}${preview ? "</label>" : ""}</h3><p class="muted">${escapeHtml(g.artist)} · ${g.tracks} affected tracks</p>${g.examples.map(cleanupExample).join("")}</section>`).join("") || '<p class="muted">No changes found for this preview.</p>'}</div>
     <div class="pagination"><button class="button small" data-cleanup-page="-25" ${cleanupView.offset <= 0 ? "disabled" : ""}>← Previous</button><span>${data.albums ? Math.floor(cleanupView.offset / 25) + 1 : 0} / ${Math.ceil(data.albums / 25)}</span><button class="button small" data-cleanup-page="25" ${cleanupView.offset + 25 >= data.albums ? "disabled" : ""}>Next →</button></div>
     <p class="muted">The latest draft and report are saved on this computer. Stop prevents further writes; saved changes remain. Resume checks outstanding writes before continuing. A new preview replaces the previous report.</p>
     ${preview && data.tracks ? '<label class="checkline"><input id="cleanup-approved" type="checkbox"> I reviewed this draft and approve changing the selected albums.</label>' : ""}
     <div class="dialog-footer"><button class="button" id="cleanup-export">Export full report ↓</button>${running ? '<button class="button danger" id="cleanup-stop">Stop after current request</button>' : data.tracks && data.state !== "done" ? `<button class="button primary" id="cleanup-start" ${preview || cleanupView.busy || cleanupView.draftChanged ? "disabled" : ""}>${preview ? "Start selected albums" : "Resume after checking"}</button>` : ""}<button class="button" id="cleanup-refresh">${running ? "Refresh progress" : "Refresh library"}</button></div>` : '<p class="muted">Choose a category and prepare a preview. Nothing is written until you review and start it.</p>'}`;
   $("#cleanup").scrollTop = scroll;
   updateCleanupSelection();
+}
+
+function cleanupExample(example) {
+  return `<div class="cleanup-example${example.primary !== undefined ? " cleanup-album-artists" : ""}"><strong>${escapeHtml(example.title)}</strong><div><span>Before</span><span>${escapeHtml(example.before.join(" · "))}</span></div>${example.blocked
+    ? `<p class="error-text">Blocked: ${escapeHtml(example.blocked)}</p>`
+    : example.primary !== undefined
+      ? `<div><span>Primary</span><span>${escapeHtml(example.primary)}</span></div><div><span>Additional</span><span>${escapeHtml(example.additional.join(" · ") || "None")}</span></div>`
+      : `<div><span>After</span><span>${escapeHtml(example.after.length ? example.after.join(" · ") : "No genres")}</span></div>`}</div>`;
 }
 
 function updateCleanupSelection() {
