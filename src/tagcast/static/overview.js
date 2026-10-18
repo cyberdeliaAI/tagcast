@@ -19,6 +19,7 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  closeBrowseOptions();
   if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();
   if (!["playlists", "album-favourites"].includes(name) && typeof rememberFavouriteView === "function") rememberFavouriteView();
   if (typeof closeHelp === "function") closeHelp(false);

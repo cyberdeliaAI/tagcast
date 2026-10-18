@@ -292,14 +292,17 @@ $("#favourite-artists-per-page").addEventListener("change", event => {
 
 function renderArtistBrowse() {
   if (state.screen !== "artists") return;
-  const all = artistGroups(), groups = filteredArtistGroups(all), size = artistBrowse.pageSize;
+  const all = artistGroups();
+  syncBrowseChoices("artists", [
+    {value: "all", label: "All album artists", count: all.length},
+    {value: "no_image", label: "Without image", count: all.filter(noArtistImage).length},
+    {value: "favourites", label: "Favourite artists", count: all.filter(([, group]) => favouriteArtistGroup(group)).length,
+      disabled: !live() || Boolean(state.artistFavouriteError)},
+  ], artistSortLabels, "az");
+  const groups = filteredArtistGroups(all), size = artistBrowse.pageSize;
   const maxPage = Math.max(0, Math.ceil(groups.length / size) - 1);
   artistBrowse.page = Math.max(0, Math.min(artistBrowse.page, maxPage));
   $("#artists-per-page").value = String(size);
-  const bareOption = $("#artists-filter").options[1];
-  if (bareOption) bareOption.textContent = `Without image · ${all.filter(noArtistImage).length.toLocaleString("en")}`;
-  const favouriteOption = $("#artists-filter").options[2];
-  if (favouriteOption) { favouriteOption.textContent = `Favourite artists · ${all.filter(([, group]) => favouriteArtistGroup(group)).length.toLocaleString("en")}`; favouriteOption.disabled = !live() || Boolean(state.artistFavouriteError); }
   $("#artist-favourites-error").hidden = !state.artistFavouriteError;
   $("#artist-favourites-error").textContent = state.artistFavouriteError;
   $("#artists-results").textContent = `${groups.length.toLocaleString("en")} ${groups.length === 1 ? "album artist" : "album artists"}`;

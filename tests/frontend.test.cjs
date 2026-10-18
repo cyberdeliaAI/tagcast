@@ -1943,7 +1943,7 @@ test("Random album artists keeps one complete order across pages, filters and Ba
   assert.equal(p.requests.length, requests, "Sorting uses existing album summaries only");
   assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
-  assert.match(readFileSync(path.join(staticDir, "index.html"), "utf8"), /<option value="random">Random<\/option>/);
+  assert.equal(p.run('browseChoices.views.get("artists").find(option=>option.key==="sort:random").label'), "Random");
 });
 
 test("Random artists can reshuffle, follow metadata edits and discard an old library's remembered order", async () => {
@@ -2192,9 +2192,6 @@ test("album sorting keeps sets together, missing years last and restores the cho
     title_za: ["1", "71", "4", "2", "5", "3", "6"],
     year: ["1", "4", "6", "5", "2", "3", "71"],
     newest: ["2", "5", "6", "4", "1", "3", "71"],
-    no_genre: ["3", "6", "4", "5", "2", "71", "1"],
-    fewest: ["1", "71", "6", "4", "2", "5", "3"],
-    most: ["3", "5", "4", "2", "6", "71", "1"],
   };
   for (const [sort, ids] of Object.entries(orders)) {
     p.nodes.get("#sort").value = sort;
@@ -2207,8 +2204,8 @@ test("album sorting keeps sets together, missing years last and restores the cho
   await p.click({"[data-album]": {dataset: {album: "71"}}});
   p.nodes.get("#sort").value = "artist";
   p.history.back();
-  assert.equal(p.nodes.get("#sort").value, "most");
-  assert.deepEqual(p.json("filteredAlbums().map(a => a.id)"), orders.most);
+  assert.equal(p.nodes.get("#sort").value, "newest");
+  assert.deepEqual(p.json("filteredAlbums().map(a => a.id)"), orders.newest);
 });
 
 test("the discs of a set are one album in the lists, with their numbers added up", async () => {
@@ -4806,9 +4803,8 @@ test('artist sorting uses native artist ratings instead of album stars and stays
   assert.equal(p.nodes.get('#favourite-artists-sort').value,'rating_low');
   assert.equal(p.requests.length,requests,'Rating sorts use compact summaries only');
   const pageHtml=readFileSync(path.join(staticDir,'index.html'),'utf8');
-  for (const id of ['artists-sort','favourite-artists-sort']) {
-    assert.doesNotMatch(pageHtml.match(new RegExp(`<select id="${id}"[\\s\\S]*?<\\/select>`))[0],/uploaded/);
-  }
+  assert.ok(p.json('Object.keys(artistSortLabels)').every(key=>!key.startsWith('uploaded')));
+  assert.doesNotMatch(pageHtml.match(/<select id="favourite-artists-sort"[\s\S]*?<\/select>/)[0],/uploaded/);
 });
 
 test('artist stars save independently of local hearts, album stars, history and playback, and wait for read-back', async () => {
@@ -5233,4 +5229,91 @@ test('bulk editing accepts albums sharing an additional album artist and keeps m
   assert.equal(p.run('editing.originals.length'),2);
   assert.match(p.nodes.get('#editor-content').innerHTML,/Change additional album artists/);
   assert.match(p.nodes.get('#editor-content').innerHTML,/credit-editor disabled/);
+});
+
+test('the artist menu combines independent filter and sort choices and omits empty filters without library reads', async () => {
+  const p=livePage(); await settle();
+  p.run(`state.albums=[
+    {...state.albums[0],id:'a',artist:'Alpha',artist_id:11,artist_image:'https://example.test/a'},
+    {...state.albums[0],id:'b',artist:'Beta',artist_id:12,artist_image:''}];
+    state.artistFavourites=new Set(); showArtistBrowse();
+    $('#artists-browse-options').dataset.browseOptions='artists';`);
+  const requests=p.requests.length, entries=p.history.length;
+  p.run('openBrowseOptions($("#artists-browse-options"))');
+  let html=p.nodes.get('#browse-options-menu').innerHTML;
+  assert.match(html,/role="group" aria-label="Sort"/);
+  assert.match(html,/role="group" aria-label="Show"/);
+  assert.match(html,/data-browse-choice="filter:no_image"[^>]*>[\s\S]*?Without image · 1/);
+  assert.doesNotMatch(html,/filter:favourites/);
+  assert.equal(p.history.length,entries,'Opening does not add a history entry');
+  p.run('chooseBrowseOption("filter:no_image")');
+  assert.equal(p.nodes.get('#artists-filter').value,'no_image');
+  p.run('openBrowseOptions($("#artists-browse-options")); chooseBrowseOption("sort:za")');
+  assert.equal(p.nodes.get('#artists-sort').value,'za');
+  assert.equal(p.nodes.get('#artists-filter').value,'no_image');
+  assert.deepEqual(p.json('filteredArtistGroups().map(([name])=>name)'),['Beta']);
+  p.run('openBrowseOptions($("#artists-browse-options"))');
+  html=p.nodes.get('#browse-options-menu').innerHTML;
+  assert.match(html,/aria-checked="true" data-browse-choice="sort:za"/);
+  assert.match(html,/aria-checked="true" data-browse-choice="filter:no_image"/);
+  assert.equal(p.requests.length,requests);
+});
+
+test('album menu counts merged albums in the current artist scope and keeps search separate from zero filters', async () => {
+  const p=setPage(); await settle();
+  p.run(`setArtist('Pink Floyd'); $('#search').value='no matches'; render();
+    $('#albums-browse-options').dataset.browseOptions='albums'; openBrowseOptions($('#albums-browse-options'));`);
+  const count=p.run('albumShelf().filter(a=>albumHasArtist(a,"Pink Floyd")).length');
+  assert.match(p.nodes.get('#browse-options-menu').innerHTML,new RegExp(`All albums · ${count}`));
+  assert.deepEqual(p.json('browseChoices.views.get("albums").filter(o=>o.key.startsWith("sort:")).map(o=>o.key)'),
+    ['sort:artist','sort:artist_za','sort:title','sort:title_za','sort:year','sort:newest','sort:rating_high','sort:rating_low','sort:uploaded_newest','sort:uploaded_oldest']);
+  p.run(`chooseBrowseOption('sort:title_za'); $('#filter').value='cover';
+    state.albums=state.albums.map(a=>({...a,no_cover:0})); render(); openBrowseOptions($('#albums-browse-options'));`);
+  assert.doesNotMatch(p.nodes.get('#browse-options-menu').innerHTML,/filter:cover/);
+  assert.equal(p.nodes.get('#filter').value,'cover','A selected filter survives results disappearing');
+  assert.equal(p.nodes.get('#search').value,'no matches');
+  p.run('chooseBrowseOption("filter:all")');
+  assert.equal(p.nodes.get('#sort').value,'title_za');
+  assert.equal(p.nodes.get('#filter').value,'all');
+});
+
+test('browse menus support keyboard focus, dismissal, navigation and stale-library guards without changing playback', async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1')); showArtistBrowse();
+    const menuTrigger=$('#artists-browse-options'); menuTrigger.dataset.browseOptions='artists';
+    const keyboardOptions=['sort:az','sort:za','filter:all'].map(key=>({dataset:{browseChoice:key},focus(){document.activeElement=this;},getAttribute:name=>name==='data-browse-choice'?key:null}));
+    $('#browse-options-menu').querySelectorAll=()=>keyboardOptions;
+    $('#browse-options-menu').querySelector=()=>keyboardOptions[0]; openBrowseOptions(menuTrigger);`);
+  const source=p.nodes.get('#audio').src, queue=p.json('player.queue'), entries=p.history.length;
+  let prevented=false;
+  const keyEvent=key=>({key,target:{closest:selector=>selector==='#browse-options-menu'?{}:null},preventDefault(){prevented=true;this.defaultPrevented=true;}});
+  await p.emitDocument('keydown',keyEvent('End'));
+  assert.equal(p.run('document.activeElement.dataset.browseChoice'),'filter:all');
+  await p.emitDocument('keydown',keyEvent('ArrowDown'));
+  assert.equal(p.run('document.activeElement.dataset.browseChoice'),'sort:az');
+  await p.emitDocument('keydown',keyEvent('Escape'));
+  assert.equal(prevented,true); assert.equal(p.nodes.get('#browse-options-menu').hidden,true);
+  assert.equal(p.run('document.activeElement===menuTrigger'),true);
+  p.run('openBrowseOptions(menuTrigger)'); await p.click({});
+  assert.equal(p.nodes.get('#browse-options-menu').hidden,true);
+  assert.equal(p.history.length,entries);
+  p.run('openBrowseOptions(menuTrigger); showScreen("albums")');
+  assert.equal(p.nodes.get('#browse-options-menu').hidden,true);
+  p.run('showArtistBrowse(); openBrowseOptions(menuTrigger); state.details=new Map(state.details); chooseBrowseOption("sort:za")');
+  assert.equal(p.nodes.get('#artists-sort').value,'az');
+  assert.equal(p.nodes.get('#audio').src,source); assert.deepEqual(p.json('player.queue'),queue);
+});
+
+test('removed metadata sorting falls back on history restore while combined artist choices survive Back', async () => {
+  const p=livePage(); await settle();
+  p.run(`showScreen('albums'); showRoute({screen:'albums'},{sort:'fewest'});`);
+  assert.equal(p.nodes.get('#sort').value,'artist');
+  p.run(`showArtistBrowse(); $('#artists-browse-options').dataset.browseOptions='artists';
+    openBrowseOptions($('#artists-browse-options')); chooseBrowseOption('sort:rating_high');
+    openBrowseOptions($('#artists-browse-options')); chooseBrowseOption('filter:no_image');`);
+  const filter=p.nodes.get('#artists-filter').value;
+  p.run('showScreen("albums")'); p.history.back(); await settle();
+  assert.equal(p.nodes.get('#artists-filter').value,filter);
+  assert.equal(p.nodes.get('#artists-sort').value,'rating_high');
+  assert.match(p.nodes.get('#artists-browse-options').innerHTML,/Without image/);
 });
