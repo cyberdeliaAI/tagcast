@@ -746,3 +746,19 @@ body.help-open{overflow:hidden}
 #playlist-folder-form textarea{min-height:80px;resize:vertical}
 
 .playlist-placeholder svg{width:36px;height:36px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}
+
+/* Local CSV playlist wizard, with bounded match and review pages. */
+.playlist-import-dialog{width:min(1120px,94vw);max-width:94vw}
+.csv-import-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.playlist-import-dialog label:not(.checkline){display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.playlist-import-dialog input:not([type=checkbox]),.playlist-import-dialog select,.playlist-import-dialog textarea{font:inherit;color:var(--ink);background:var(--palette-surface,#fff);border:1px solid var(--line);border-radius:6px;padding:10px;min-width:0;max-width:100%}
+.playlist-import-dialog .table-scroll{overflow:auto;max-height:240px;margin:18px 0}.playlist-import-dialog td,.playlist-import-dialog th{min-width:140px;white-space:pre-wrap;overflow-wrap:anywhere}
+.csv-import-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:24px;padding:18px 0;border-top:1px solid var(--line)}
+.csv-source,.csv-match,.csv-candidate>div{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}
+.csv-import-row small,.csv-candidate small,.csv-review-list small{color:var(--muted)}
+.csv-match>div{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.csv-candidate{display:flex;justify-content:space-between;align-items:center;gap:18px;border-top:1px solid var(--line);padding:14px 0}.csv-candidate>button{flex-shrink:0}
+.csv-review-list{padding-left:32px}.csv-review-list li{padding:12px 4px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.csv-review-list li>*{display:block}.csv-description{white-space:pre-wrap}
+@media(max-width:600px){.csv-import-row{grid-template-columns:1fr;gap:12px}.csv-candidate{align-items:flex-start;flex-direction:column}.csv-import-fields{grid-template-columns:minmax(0,1fr)}}
+
+.playlist-import-dialog table{width:100%;border-collapse:collapse}.playlist-import-dialog td,.playlist-import-dialog th{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line)}

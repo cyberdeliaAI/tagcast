@@ -52,7 +52,7 @@ are listed below, followed by the library operation and history parameter.
 | `ratetrack` | Supported | Heart (5), thumbs-down (1) and clear (0), with current-value checks and read-back. |
 | `playlistorder` | No | No persisted ordering of the playlist catalogue. See the documentation discrepancy below. |
 | `deleteplaylist` | Supported | Reviewed deletion of editable user playlists; tracks remain. |
-| `createplaylist` | Partial | Explicit selected tracks or an empty private playlist. No mood, seed or public creation. |
+| `createplaylist` | Partial | Explicit selected tracks or an empty private playlist; development also creates new private playlists from reviewed CSV matches. No mood, seed or public creation. |
 | `appendplaylist` | Supported | Reviewed append with duplicate suppression. |
 | `updateplaylist` | Partial | Replace contents, rename and description through the playlist editor. Development supports a separately reviewed artwork-only update; no dedicated drag-to-reorder UI. |
 | `random_tracks` | No | Tagcast's random-album action chooses a loaded album summary locally. |

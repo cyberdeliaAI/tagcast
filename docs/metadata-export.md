@@ -99,4 +99,4 @@ invalidates the old export; prepare a new one. Restarting never resumes preparat
 This is a metadata archive, not an audio/image backup or a restore feature. It does
 not include OAuth credentials, source API keys, signed streaming/file URLs, account
 settings, playlist share keys, change history, third-party biography/album prose or
-other local caches. Import/restore requires a separate reviewed design.
+other local caches. The separate CSV playlist importer matches track lists to the loaded library; it does not restore this metadata archive. Metadata import/restore requires a separate reviewed design.

@@ -127,6 +127,7 @@ function useLocal(albums, mode) {
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
+  if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof stopPlayer === "function") stopPlayer();
   if (typeof resetAlbumView === "function") resetAlbumView();
@@ -1120,6 +1121,7 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof csvImportCurrent === "function" && $("#playlist-import").open && !csvImportCurrent()) resetPlaylistImport();
   if (typeof syncMetadataExport === "function") syncMetadataExport();
   if (typeof updateAlbumGuideControls === "function") updateAlbumGuideControls();
   if (typeof updateRecentlyPlayedControls === "function") updateRecentlyPlayedControls();
@@ -1175,6 +1177,7 @@ async function loadLive(refresh = false) {
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
+  if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};

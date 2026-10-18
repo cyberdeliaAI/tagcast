@@ -60,7 +60,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
@@ -73,7 +73,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
       static revokeObjectURL(url) { blobs.delete(url); }
-    }, URLSearchParams, Blob,
+    }, URLSearchParams, Blob, TextDecoder, TextEncoder,
     setTimeout(callback, delay) { const id = nextTimer++; timers.set(id, {callback, delay}); return id; },
     clearTimeout(id) { timers.delete(id); }, setInterval() { return 1; }, clearInterval() {},
     fetch: async (url, options) => {
@@ -6197,4 +6197,193 @@ test('folder rename review shows the exact new name and escaped description', as
   assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/Description: &lt;New notes&gt;/);
   assert.equal(p.json('folderDraft.body').description,'<New notes>');
   assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+async function csvImportPage() {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="csv-session"; playTracks(state.details.get("1")); openPlaylistImport()');
+  return p;
+}
+function csvMatched(overrides={}) {
+  const track={id:'101',album_id:'1',title:'Song',artist:'Artist',performers:[{name:'Artist'}],album:'Album',album_artist:'Artist',disc:1,track:1,year:1985,length:180,format:'FLAC'};
+  return {id:'a'.repeat(32),revision:2,phase:'matched',summary:{total:2,resolved:1,unresolved:1,skipped:0,duplicates:0,unique:1,automatic:1,manual:0,blank_records:0},
+    rows:[{position:0,line:2,status:'automatic',eligible:1,source:{title:'Song',artist:'Artist',album:'Album',duration:'3:00',year:1985,warnings:[]},choice:track,candidates:[track]},
+      {position:1,line:3,status:'missing',eligible:0,source:{title:'<Unknown>',artist:'Artist',album:'',duration:'',year:0,warnings:[]},choice:null,candidates:[]}],
+    offset:0,total:2,show:'all',...overrides};
+}
+
+test('CSV import opens only for a connected loaded library and starts no lookup or playback changes', async () => {
+  const p=page(); await settle();
+  p.run('openPlaylistImport()'); assert.equal(Boolean(p.nodes.get('#playlist-import').open),false);
+  p.run('state.mode="live"; state.connection.playback_session="csv-session"; playTracks(state.details.get("1"))');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'), requests=p.requests.length;
+  p.run('openPlaylistImport()');
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/First record contains column headings/);
+  assert.equal(p.requests.length,requests);
+  p.run('openHelp()'); assert.equal(p.run('helpTour.topic'),'playlist-import'); p.run('closeHelp()');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test('CSV reader handles Unicode BOM, explicit Windows encoding and CSV column preview without following URLs', async () => {
+  const p=await csvImportPage(); await settle();
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/read'); const body=JSON.parse(options.body);
+    assert.match(body.text,/Björk/); assert.equal(body.delimiter,';'); assert.equal(body.header,true);
+    return {ok:true,json:async()=>({id:'a'.repeat(32),revision:1,phase:'mapping',columns:['Title','Artist','Duration (ms)','Cover URL'],mapping:{title:0,artist:1,duration:2},total:1,blank_records:0,
+      sample:[{line:2,cells:['<Title>','Björk','180000','https://example.invalid/do-not-fetch']} ]})};
+  });
+  await p.run(`readPlaylistCsv({elements:{file:{files:[{name:'My list.csv',size:60,arrayBuffer:async()=>new TextEncoder().encode('Title;Artist\\nSong;Björk').buffer}]},encoding:{value:'auto'},delimiter:{value:';'},header:{checked:true}}})`);
+  assert.equal(p.run('csvImport.name'),'My list');
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/&lt;Title&gt;/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="milliseconds" selected/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('https:')).length,0);
+  p.run('csvImport.data=null');
+  await p.run(`readPlaylistCsv({elements:{file:{files:[{name:'Windows.csv',size:3,arrayBuffer:async()=>new Uint8Array([66,106,246,114,107]).buffer}]},encoding:{value:'windows-1252'},delimiter:{value:';'},header:{checked:true}}})`);
+  assert.equal(p.run('csvImport.name'),'Windows');
+});
+
+test('CSV file errors retain the file step and do not send truncated or undecodable contents', async () => {
+  const p=await csvImportPage(); await settle(); const requests=p.requests.length;
+  await p.run(`readPlaylistCsv({elements:{file:{files:[{name:'Too big.csv',size:6*1024*1024}]}}})`);
+  assert.match(p.nodes.get('#csv-import-status').textContent,/5 MB/);
+  await p.run(`readPlaylistCsv({elements:{file:{files:[{name:'Bad.csv',size:1,arrayBuffer:async()=>new Uint8Array([255]).buffer}]},encoding:{value:'auto'},delimiter:{value:'auto'},header:{checked:true}}})`);
+  assert.match(p.nodes.get('#csv-import-status').textContent,/Windows-1252/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/csv-file-form/);
+  assert.equal(p.requests.length,requests);
+});
+
+test('CSV mapping submits zero-based column choices and units only after the match button', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:1}');
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/match'); const body=JSON.parse(options.body);
+    assert.deepEqual(body.mapping,{title:0,artist:1,album:null,album_artist:null,duration:2,year:null,track:null});
+    assert.equal(body.duration_unit,'milliseconds'); assert.equal(body.artist_separator,';');
+    return {ok:true,json:async()=>csvMatched()};
+  });
+  await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-map-form',elements:{map_title:{value:'0'},map_artist:{value:'1'},map_album:{value:''},map_album_artist:{value:''},map_duration:{value:'2'},map_year:{value:''},map_track:{value:''},duration_unit:{value:'milliseconds'},artist_separator:{value:';'}}}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/1 unresolved/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/&lt;Unknown&gt;/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+});
+
+test('CSV manual resolver shows version, album, format and duration and searches a bounded page', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); renderCsvResolver(0)`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Suggestions are alternatives/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/FLAC/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Disc 1, track 1/);
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/search');
+    assert.deepEqual(JSON.parse(options.body),{id:'a'.repeat(32),revision:2,session:'csv-session',query:'song',offset:0});
+    return {ok:true,json:async()=>({tracks:[csvMatched().rows[0].choice],total:80,offset:0})};
+  });
+  await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-search-form',elements:{query:{value:'song'}}}});
+  assert.match(p.nodes.get('#csv-search-results').innerHTML,/80 library matches/);
+  assert.match(p.nodes.get('#csv-search-results').innerHTML,/data-csv-choose="101"/);
+  assert.match(p.nodes.get('#csv-search-results').innerHTML,/data-offset="50"/);
+});
+
+test('CSV choice and explicit skip retain row identity, filter and input-order review counts', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); renderCsvResolver(1)`);
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/choose'); const body=JSON.parse(options.body);
+    assert.equal(body.position,1); assert.equal(body.track_id,'101'); assert.equal(body.skip,undefined);
+    return {ok:true,json:async()=>csvMatched({revision:3,summary:{total:2,resolved:2,unresolved:0,skipped:0,duplicates:1,unique:1,automatic:1,manual:1,blank_records:0}})};
+  });
+  await p.click({'[data-csv-choose]':{dataset:{csvChoose:'101'}}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/1 repeated selections/);
+  p.setFetch((url,options)=> {
+    const body=JSON.parse(options.body); assert.equal(body.skip,true); assert.equal(body.position,1); assert.equal(body.revision,3);
+    return {ok:true,json:async()=>csvMatched({revision:4})};
+  });
+  await p.click({'[data-csv-skip]':{dataset:{csvSkip:'1'}}});
+  assert.equal(p.run('csvImport.data.revision'),4);
+});
+
+test('CSV match pages and filters retain the playlist name and never touch playback or browser history', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())})`);
+  await p.emitDocument('input',{target:{id:'csv-playlist-name',value:'My import'}});
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'); const entries=p.history.length;
+  p.setFetch((url,options)=> {
+    const body=JSON.parse(options.body); assert.equal(url,'/api/playlist-import/view'); assert.equal(body.show,'unresolved');
+    return {ok:true,json:async()=>csvMatched({show:'unresolved',offset:0,total:1})};
+  });
+  await p.change({id:'csv-import-filter',value:'unresolved',matches:()=>false,closest:()=>null});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="My import"/);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.history.length,entries);
+});
+
+test('CSV final review has a separate save and uses only its server token to create the playlist', async () => {
+  const p=await csvImportPage(); await settle(); const track=csvMatched().rows[0].choice;
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())})`);
+  const summary={total:2,resolved:1,unresolved:0,skipped:1,duplicates:0,unique:1,automatic:1,manual:0,blank_records:0};
+  const review={id:'a'.repeat(32),revision:3,phase:'review',review_token:'review-token',name:'Chosen',description:'Notes',summary,total:1,offset:0,tracks:[track]};
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  p.setFetch((url,options)=> {
+    if(url==='/api/playlist-import/review') return {ok:true,json:async()=>review};
+    if(url==='/api/playlist-import/save') {
+      assert.deepEqual(JSON.parse(options.body),{id:review.id,revision:3,session:'csv-session',review_token:'review-token',approved:true});
+      return {ok:true,json:async()=>({id:'88',job:'csv-check'})};
+    }
+    if(url==='/api/jobs/csv-check') return {ok:true,json:async()=>({state:'done',results:[{id:'88',status:'saved'}]})};
+    return {ok:true,json:async()=>({id:'88',name:'Chosen',tracks:[101],rows:[],total:1,offset:0})};
+  });
+  await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-review-form',elements:{name:{value:'Chosen'},description:{value:'Notes'}}}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/1 skipped/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Create private playlist in iBroadcast/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+  await p.run('saveCsvPlaylist()'); await settle();
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,1);
+});
+
+test('CSV close and account replacement ignore late match results and prevent saved choices crossing sessions', async () => {
+  const p=await csvImportPage(); await settle(); let release;
+  p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:1}');
+  p.setFetch(url=>url.endsWith("/discard") ? {ok:true,json:async()=>({discarded:true})} : new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('csvImportCall("match",{mapping:{title:0,artist:1}})');
+  p.nodes.get('#playlist-import').close(); await p.nodes.get('#playlist-import').emit('close');
+  release({ok:true,json:async()=>csvMatched()}); await pending;
+  assert.equal(p.run('csvImport.data'),null);
+  assert.doesNotMatch(p.nodes.get('#csv-import-content').innerHTML,/Cloudbusting|Check matches/);
+  p.run('openPlaylistImport(); state.connection.playback_session="new-account"');
+  await p.run('saveCsvPlaylist()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+});
+
+test('an uncertain CSV playlist creation can never be sent again from the same review', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:3,phase:"review",review_token:"one-use"}');
+  p.setFetch(()=>({ok:false,status:503,json:async()=>({error:'Connection lost'})}));
+  await p.run('saveCsvPlaylist()'); await p.run('saveCsvPlaylist()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,1);
+  assert.match(p.nodes.get('#csv-import-status').textContent,/Check Playlists before importing again/);
+  assert.doesNotMatch(p.nodes.get('#csv-import-content').innerHTML,/data-csv-save/);
+});
+
+test('pasted CSV bypasses file decoding and remains plain text in a separate mapping draft', async () => {
+  const p=await csvImportPage();
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/read'); const body=JSON.parse(options.body);
+    assert.equal(body.text,'Title;Artist\nSong;Björk'); assert.equal(body.header,true); assert.equal(body.delimiter,';');
+    return {ok:true,json:async()=>({id:'b'.repeat(32),revision:1,columns:['Title','Artist'],mapping:{title:0,artist:1},sample:[],total:1,blank_records:0})};
+  });
+  await p.run(`readPlaylistCsv({elements:{pasted:{value:'Title;Artist\\nSong;Björk'},file:{files:[]},delimiter:{value:';'},header:{checked:true}}})`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Link columns/);
+  assert.equal(p.run('csvImport.name'),'Imported playlist');
+});
+
+test('a CSV draft closes and clears its displayed data when the active session changes', async () => {
+  const p=await csvImportPage();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); state.connection.playback_session='another-session'; updateChrome()`);
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(p.nodes.get('#csv-import-content').innerHTML,'');
+  assert.equal(p.run('csvImport.data'),null);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
 });
