@@ -117,7 +117,8 @@ function useLocal(albums, mode) {
   closeBrowseOptions();
   if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
-  if (typeof resetAlbumGuide === "function") resetAlbumGuide();
+  if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
+  if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
   if (typeof resetCleanup === "function") resetCleanup(true);
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
@@ -1022,7 +1023,8 @@ async function boot() {
 async function loadLive(refresh = false) {
   if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
-  if (typeof resetAlbumGuide === "function") resetAlbumGuide();
+  if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
+  if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
   if (typeof resetCleanup === "function") resetCleanup();
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();

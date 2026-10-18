@@ -326,7 +326,8 @@ and preserve a valid script order in `index.html`.
   years, use full decade labels (1980s, 2020s), sample merged album summaries locally
   without duplicates, and preserve the random order on Back. Surprise me again
   reshuffles without downloading tracks or writing to iBroadcast.
-- 1001 Albums is off by default (`album_guide` in Settings). Enabling or opening only
+- The 1001 Albums discovery page is off by default (`album_guide` in Settings); this
+  preference controls its page/shortcut, not offline album background text. Enabling or opening only
   reads the saved report; analysis requires an explicit button. Compare loaded album
   metadata locally, never audio, external sources or individual track details.
   Preserve meaningful title/version text; fuzzy results remain possible matches and
@@ -362,10 +363,16 @@ and preserve a valid script order in `index.html`.
   unique normalized artist/title pairs may import automatically, fuzzy/ambiguous
   candidates require reviewed source links and an unresolved report. Runtime never
   contacts external sites for notes. Lazily load the local file once and show an
-  escaped, collapsible About this album above tracks only for confirmed entries in
-  the current account/library's saved guide report. Reading that report is allowed;
-  never auto-analyse, display text on possible/stale matches, or change playback or
-  history. Preserve source/license links and suppress late DOM updates after changes.
+  escaped, collapsible About this album above tracks independently of the discovery
+  setting. `/api/album-guide/album` validates the visited active album/session/identity
+  and checks only that album against a lazily indexed local catalogue using existing
+  exact title/artist normalization (including safe edition suffixes), never fuzzy matching.
+  Honour account/selection-scoped explicit manual links only while all linked discs
+  remain active; a manual copy choice overrides the automatic identity. This per-album
+  read never scans the library, reads/writes the full report, starts analysis, downloads
+  track details or contacts iBroadcast/external sites. Preserve independent explicit
+  analysis/counts semantics and source/license links; cache visited identities only in
+  bounded browser memory and reject late results across identity/session/library changes.
 - By default the play queue stays in browser memory. Explicit Play replaces it; Add to queue
   appends a single track or all discs of an album, preserving click order. Store
   each queued track's album metadata for covers and navigation across albums.
@@ -522,8 +529,10 @@ and preserve a valid script order in `index.html`.
   settings, account, library, session or identity changes; recover only the visible same
   album after detail-cache replacement. Preserve disclosure/focus on routine updates and
   Back. Available confirmed 1001 Albums texts take priority with their licenses unchanged:
-  wait for the enabled guide's saved report and bundled notes before reading/requesting
-  TheAudioDB text, without starting analysis. Fall back only when no valid note is available.
+  wait for the independent local visited-album identity check and bundled notes before
+  reading/requesting TheAudioDB text, even when discovery is disabled or has never been
+  analysed. Fall back only when no valid note is available. A matched TheAudioDB album
+  without English text is distinct from a missing album and keeps its numeric source link.
   Hide cached/late TheAudioDB results and disallow retry while a guide text has priority. No metadata or
   artwork writes, bulk prefetch, new API keys or Premium integration follow from enabling.
 - The original Powered by iBroadcast SVG is displayed with its original colours and

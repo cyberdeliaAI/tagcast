@@ -25,6 +25,15 @@ class AlbumInformationSourceTests(unittest.TestCase):
         http = FakeHttp([('searchalbum.php', {'album': rows})])
         return TheAudioDB(http, {}), http
 
+    def test_mambo_punctuation_is_preserved_when_an_album_has_no_english_description(self):
+        source, http = self.source([{'idAlbum': '2309687', 'strArtist': 'Yma Sumac',
+                                    'strAlbum': 'Mambo!', 'strDescription': None}])
+        result = source.album_information('Yma Sumac', 'Mambo!')
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertEqual(result['url'], 'https://www.theaudiodb.com/album/2309687')
+        self.assertEqual(result['description'], '')
+        self.assertEqual(http.calls[0][1], {'s': 'Yma Sumac', 'a': 'Mambo!'})
+
     def test_exact_artist_and_full_title_are_required_and_only_public_text_is_returned(self):
         row = {'idAlbum': '2117780', 'strArtist': 'Camel', 'strAlbum': 'Mirage',
                'strDescription': 'An English album description.', 'strDescriptionES': 'Spanish text.',

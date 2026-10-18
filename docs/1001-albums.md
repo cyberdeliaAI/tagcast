@@ -76,13 +76,19 @@ does not load new Python server code.
   and the original reference selection. They survive spelling repairs to that
   selection. Concurrent changes to a link are rejected; reopen the page to read the
   current choice. Another account cannot view or overwrite your links.
-- Disable the feature in Settings to hide it. The saved report remains local and
+- Disable the discovery feature in Settings to hide its page/shortcut. Album
+  background texts remain available independently. The saved report remains local and
   can be reused if enabled again while the same library revision is still loaded.
 
 ## Offline album background
 
-For confirmed reference matches, the album page offers **About this album** above
-the track list. Expand it to read a locally bundled excerpt, with its Wikipedia
+The album page offers **About this album** above the track list for a unique exact
+local reference match or an active, explicitly chosen manual link. This works even
+when the discovery setting is off or no full analysis has ever been run. Opening
+an album checks only that album against the local reference; it never starts an
+analysis, updates counts/reports or scans the library. Ambiguous/fuzzy identities
+are not automatically accepted. Background text takes priority over optional
+TheAudioDB text. Expand it to read a locally bundled excerpt, with its Wikipedia
 attribution and CC BY-SA 4.0 link. The texts are independent of the book's authorship.
 They are not book excerpts or user reviews. The reference selection remains 1,001
 albums; the [source index](https://1001albumsgenerator.com/albums) covers 1,101 across different editions.

@@ -129,6 +129,9 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.settings)
         elif url.path == "/api/album-guide":
             self._run(self.studio.album_guide.view)
+        elif url.path == "/api/album-guide/album":
+            self._run(lambda: self.studio.album_guide.notes_for_album(
+                query.get("album_id"), query.get("session"), query.get("album"), query.get("artist")))
         elif url.path == "/api/updates":
             self._run(self.studio.check_updates)
         elif url.path == "/api/lookup/album":
