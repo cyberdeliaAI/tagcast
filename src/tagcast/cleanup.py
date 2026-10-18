@@ -1,7 +1,7 @@
 """Reviewed, resumable splitting and exact genre replacement, outside the scoped editor.
 
-Only track genres and artist credits are writable here. Credit payloads follow the
-public web player's iBroadcastLibraryEditor.js, inspected on 2026-10-11.
+Track genres/credits and explicitly reviewed album artists are writable here.
+Credit payloads match the shared metadata editor's native update requests.
 """
 
 import copy
@@ -10,10 +10,18 @@ import secrets
 import threading
 from collections import Counter
 
-from .library import MAX_GENRE_LENGTH, MAX_GENRES, LibraryError, number, stored_genres, text
+from .library import (
+    MAX_GENRE_LENGTH,
+    MAX_GENRES,
+    LibraryError,
+    additional_artists,
+    number,
+    stored_genres,
+    text,
+)
 
 log = logging.getLogger("tagcast")
-CATEGORIES = {"genres", "track-artists", "composers", "genre-labels"}
+CATEGORIES = {"genres", "track-artists", "album-artists", "composers", "genre-labels"}
 BATCH_TRACKS = 200
 BATCH_ALBUMS = 20
 
@@ -29,9 +37,11 @@ def split_labels(values):
     return out
 
 
-def credit_state(library, track):
+def credit_state(library, track, category=None):
+    entries = (additional_artists(track, library.albums.nested.get("artists_additional_map"))
+               if category == "album-artists" else library.extra_artists(track))
     return [{"artist_id": e["artist_id"], "phrase": e.get("phrase"), "type": e.get("type")}
-            for e in library.extra_artists(track)]
+            for e in entries]
 
 
 def snapshot(library, track, category):
@@ -39,12 +49,12 @@ def snapshot(library, track, category):
         return {"genre": text(track.get("genre")),
                 "genres_additional": list(track.get("genres_additional") or [])}
     return {"artist_id": number(track.get("artist_id")),
-            "artists_additional": credit_state(library, track)}
+            "artists_additional": credit_state(library, track, category)}
 
 
 def candidate(library, track_id, category, mapping=None):
     """Build a named draft, preserving unrelated credits and per-track values."""
-    track = library.tracks[track_id]
+    track = (library.albums if category == "album-artists" else library.tracks)[track_id]
     before = snapshot(library, track, category)
     if category in ("genres", "genre-labels"):
         values = stored_genres(track)
@@ -71,22 +81,24 @@ def candidate(library, track_id, category, mapping=None):
                 "display_after": after}
     primary = library.artist_name(track.get("artist_id"))
     credits = before["artists_additional"]
-    split_primary = category == "track-artists" and ";" in primary
+    performers = category in ("track-artists", "album-artists")
+    split_primary = performers and ";" in primary
     changed = split_primary
     primary_names = split_labels([primary]) if split_primary else [primary]
     if not primary_names:
-        raise LibraryError("A split track artist must have a name.")
+        raise LibraryError("A split primary artist must have a name.")
     after = [{"name": n, "type": "artist", "phrase": None} for n in primary_names[1:]]
-    display_before = [primary] if category == "track-artists" else []
-    display_after = list(primary_names) if category == "track-artists" else []
+    display_before = [primary] if performers else []
+    display_after = list(primary_names) if performers else []
     for entry in credits:
         name = library.artist_name(entry["artist_id"])
         targeted = (entry["type"] == "composer" if category == "composers"
                     else entry["type"] in (None, "", "artist", "band"))
         names = split_labels([name]) if targeted and ";" in name else [name]
         changed |= targeted and ";" in name
-        if targeted:
+        if targeted or category == "album-artists":
             display_before.append(name)
+        if targeted:
             display_after.extend(names)
         if targeted and ";" in name:
             if not names:
@@ -99,10 +111,56 @@ def candidate(library, track_id, category, mapping=None):
         return None
     if any(not n or len(n) > 1000 for n in display_after):
         raise LibraryError("Artist names must contain 1–1,000 characters.")
+    if category == "album-artists":
+        # Prefer an existing separate credit (including its ID, role and phrase)
+        # over a new duplicate generated from the combined primary name.
+        existing = {library.artist_name(e["artist_id"]).casefold() for e in after
+                    if e.get("artist_id") and e.get("type") in (None, "", "artist", "band")}
+        after = [e for index, e in enumerate(after) if index >= len(primary_names) - 1
+                 or e.get("artist_id") or e["name"].casefold() not in existing]
+        unique = []
+        seen = {(library.artist_name(e["artist_id"]).casefold(), e.get("type") or "artist", e.get("phrase") or None)
+                for e in after if e.get("artist_id")}
+        for entry in after:
+            name = library.artist_name(entry["artist_id"]) if entry.get("artist_id") else entry["name"]
+            if name.casefold() == primary_names[0].casefold():
+                raise LibraryError("A primary album artist also appears in the additional credits. Edit this album individually.")
+            identity = (name.casefold(), entry.get("type") or "artist", entry.get("phrase") or None)
+            if entry.get("artist_id") or identity not in seen:
+                seen.add(identity)
+                unique.append(entry)
+            if not entry.get("artist_id") and library.find_artist(name) == 0:
+                raise LibraryError("Various Artists cannot be a split album artist.")
+        if library.find_artist(primary_names[0]) == 0 or len(unique) > 100:
+            raise LibraryError("Choose a named primary artist and at most 100 additional album artists.")
+        after = unique
+        display_after = [primary_names[0], *(
+            library.artist_name(e["artist_id"]) if e.get("artist_id") else e["name"] for e in after)]
     return {"before": before, "after": {"primary": primary_names[0],
                                        "primary_id": None if split_primary else before["artist_id"],
                                        "credits": after},
             "display_before": display_before, "display_after": display_after}
+
+
+def album_context(library, album_id):
+    album = library.albums.get(album_id)
+    if not album or album.get("trashed"):
+        return None
+    return {"name": text(album.get("name")), "disc": number(album.get("disc")),
+            "year": number(album.get("year")), "tracks": sorted(library.active_track_ids(album_id))}
+
+
+def artist_names(library, value):
+    ids = [value["artist_id"], *(e["artist_id"] for e in value["artists_additional"])]
+    return {str(i): library.artist_name(i) for i in ids}
+
+
+def same_artists(left, right):
+    """The service may omit empty phrases or normalize an absent performer role."""
+    def identity(value):
+        return (value["artist_id"], [(e["artist_id"], e.get("type") or "artist", e.get("phrase") or None)
+                                     for e in value["artists_additional"]])
+    return identity(left) == identity(right)
 
 
 class Cleanup:
@@ -142,7 +200,7 @@ class Cleanup:
 
     def prepare(self, category, label=None, replacements=None, remove=False):
         if not isinstance(category, str) or category not in CATEGORIES:
-            raise LibraryError("Choose genres, track artists, composers or review genre labels.")
+            raise LibraryError("Choose genres, album artists, track artists, composers or review genre labels.")
         if not isinstance(remove, bool) or (remove and category != "genre-labels"):
             raise LibraryError("Label removal requires the review genre labels category.")
         mapping = None
@@ -169,6 +227,8 @@ class Cleanup:
             raise LibraryError("Another save is still running.")
         try:
             library, _ = self.studio._current(client)
+            if category == "album-artists" and library.combine_sets:
+                raise LibraryError("Disable Combine Multi-Disc Album Sets in iBroadcast before changing album artists.")
             library._browse_index("genres")  # displayed, merged album membership
             with self.lock:
                 if self.running:
@@ -176,24 +236,33 @@ class Cleanup:
                 items = []
                 for album_id in library.album_ids():
                     album = library.albums[album_id]
-                    for track_id in library.active_track_ids(album_id):
+                    album_artists = category == "album-artists"
+                    for track_id in [album_id] if album_artists else library.active_track_ids(album_id):
+                        record = album if album_artists else library.tracks[track_id]
                         try:
                             draft = candidate(library, track_id, category, mapping)
+                            if draft and album_artists and len(library.active_track_ids(album_id)) > BATCH_TRACKS:
+                                raise LibraryError(f"This album exceeds the {BATCH_TRACKS}-track cleanup batch limit. Edit its album artists individually.")
                         except LibraryError as error:
-                            draft = {"before": snapshot(library, library.tracks[track_id], category),
+                            draft = {"before": snapshot(library, record, category),
                                      "after": None, "display_before": [str(error)],
                                      "display_after": [], "blocked": str(error)}
                         if draft:
                             items.append({**draft, "id": track_id, "album_id": album_id,
-                                          "original_album_id": number(library.tracks[track_id].get("album_id")),
+                                          "original_album_id": number(record.get("album_id")),
                                           "group": str(library._browse_albums[album_id]),
                                           "album": text(album.get("name")),
                                           "album_artist": library.artist_name(album.get("artist_id")),
-                                          "title": text(library.tracks[track_id].get("title")),
+                                          "title": (f"Disc {number(album.get('disc')) or 1}" if album_artists else text(record.get("title"))),
+                                          **({"context": album_context(library, album_id),
+                                              "before_names": artist_names(library, draft["before"]),
+                                              "tracks": len(library.active_track_ids(album_id))} if album_artists else {}),
                                           "status": "blocked" if draft.get("blocked") else "pending"})
                 self.task = {"id": secrets.token_urlsafe(16), "owner": self.studio.library_user,
                              "category": category, "state": "preview", "items": items,
                              "artists": {}, "error": "", "excluded": []}
+                if category == "album-artists":
+                    self.task["combine_sets"] = bool(library.combine_sets)
                 if mapping:
                     self.task["mapping"] = mapping
                 self._persist()
@@ -220,18 +289,23 @@ class Cleanup:
             for item in task["items"]:
                 g = groups.setdefault(item["group"], {"id": item["group"], "album": item["album"],
                     "artist": item["album_artist"], "tracks": 0, "examples": []})
-                g["tracks"] += 1
-                if len(g["examples"]) < 2:
+                g["tracks"] += item.get("tracks", 1)
+                if task["category"] == "album-artists" or len(g["examples"]) < 2:
                     g["examples"].append({"title": item["title"], "before": item["display_before"],
-                                          "after": item["display_after"]})
+                                          "after": item["display_after"],
+                                          **({"primary": item["after"]["primary"],
+                                              "additional": item["display_after"][1:]} if task["category"] == "album-artists" and item["after"] else {}),
+                                          **({"blocked": item["blocked"]} if item.get("blocked") else {})})
             result = {k: copy.deepcopy(task[k]) for k in ("id", "category", "state", "error", "excluded")}
             if "mapping" in task:
                 result["mapping"] = copy.deepcopy(task["mapping"])
-            result.update(tracks=len(task["items"]), albums=len(groups), offset=offset,
+            result.update(tracks=sum(i.get("tracks", 1) for i in task["items"]), albums=len(groups), offset=offset,
                           counts=dict(Counter(i["status"] for i in task["items"])),
                           batch_tracks=BATCH_TRACKS, batch_albums=BATCH_ALBUMS,
                           groups=list(groups.values())[offset:offset + limit],
                           selection=[{"id": g["id"], "tracks": g["tracks"]} for g in groups.values()])
+            if task["category"] == "album-artists":
+                result["records"] = len(task["items"])
             if report:
                 result["items"] = copy.deepcopy(task["items"])
             return result
@@ -241,13 +315,14 @@ class Cleanup:
         if not self.studio.save_lock.acquire(blocking=False):
             raise LibraryError("Another save is still running.")
         try:
-            self.studio._current(client)
+            library, _ = self.studio._current(client)
             with self.lock:
                 self._owner(client)
                 if not self.task or self.task["id"] != task_id or self.running:
                     raise LibraryError("This preview is no longer available.")
                 if self.task["state"] == "done":
                     raise LibraryError("This cleanup has already finished.")
+                self._settings(library)
                 if self.task["state"] == "preview":
                     if not isinstance(excluded, list) or any(not isinstance(i, str) for i in excluded):
                         raise LibraryError("Choose which albums to exclude.")
@@ -255,13 +330,13 @@ class Cleanup:
                     if not set(excluded) <= groups:
                         raise LibraryError("An excluded album is not in this preview.")
                     if any(i.get("blocked") and i["group"] not in excluded for i in self.task["items"]):
-                        raise LibraryError("Some split labels are invalid. Exclude their albums or correct them individually.")
+                        raise LibraryError("Some split names or genre labels are invalid. Exclude their albums or correct them individually.")
                     self.task["excluded"] = excluded
                     for item in self.task["items"]:
                         if item["group"] in excluded:
                             item["status"] = "excluded"
                 if any(i["status"] == "blocked" for i in self.task["items"]):
-                    raise LibraryError("Some split labels are invalid. Exclude their albums or correct them individually.")
+                    raise LibraryError("Some split names or genre labels are invalid. Exclude their albums or correct them individually.")
                 self.stop.clear()
                 self.task["state"], self.task["error"] = "running", ""
                 self._persist()
@@ -308,10 +383,32 @@ class Cleanup:
         for credit in item["after"]["credits"]:
             wire["artists_additional"].append({"artist_id": credit.get("artist_id") or resolve(credit["name"]),
                                                "phrase": credit.get("phrase"), "type": credit.get("type")})
-        # The official editor uses this exact shape for update_track credits.
+        if self.task["category"] == "album-artists":
+            item["wire_names"] = {str(wire["artist_id"]): library.artist_name(wire["artist_id"])
+                if wire["artist_id"] in library.artists else item["after"]["primary"]}
+            for credit, resolved in zip(item["after"]["credits"], wire["artists_additional"]):
+                item["wire_names"][str(resolved["artist_id"])] = (library.artist_name(resolved["artist_id"])
+                    if resolved["artist_id"] in library.artists else credit["name"])
         return wire
 
+    def _settings(self, library):
+        if self.task["category"] == "album-artists" and (library.combine_sets
+                or bool(library.combine_sets) != self.task.get("combine_sets", False)):
+            raise LibraryError("Combine Multi-Disc Album Sets changed or is enabled. Prepare a new album artist preview.")
+
     def _check(self, library, item):
+        if self.task["category"] == "album-artists":
+            self._settings(library)
+            if album_context(library, item["id"]) != item["context"]:
+                return "conflict"
+            now = snapshot(library, library.albums[item["id"]], "album-artists")
+            names = artist_names(library, now)
+            if item.get("wire") and same_artists(item["wire"], now) and names == item["wire_names"]:
+                return "confirmed"
+            if item.get("wire") and any(number(i) not in library.artists or library.artist_name(i) != name
+                                        for i, name in item["wire_names"].items()):
+                return "conflict"
+            return "pending" if now == item["before"] and names == item["before_names"] else "conflict"
         try:
             album_id = library.active_track_album(item["id"])
         except LibraryError:
@@ -331,7 +428,8 @@ class Cleanup:
                 fresh, _ = self.studio._current(client, refresh=first)
                 first = False
                 self._owner(client)
-                batch, albums = [], set()
+                self._settings(fresh)
+                batch, albums, tracks = [], set(), 0
                 with self.lock:
                     for item in self.task["items"]:
                         if item["status"] in ("confirmed", "excluded"):
@@ -343,11 +441,15 @@ class Cleanup:
                         if checked == "conflict":
                             item["status"] = "conflict"
                             raise LibraryError(f"“{item['title']}” changed since the preview. Prepare a new preview.")
-                        if len(batch) >= BATCH_TRACKS or (item["group"] not in albums and len(albums) >= BATCH_ALBUMS):
+                        weight = item.get("tracks", 1)
+                        if weight > BATCH_TRACKS:
+                            raise LibraryError("An album exceeds the cleanup batch limit. Edit its album artists individually.")
+                        if tracks + weight > BATCH_TRACKS or (item["group"] not in albums and len(albums) >= BATCH_ALBUMS):
                             break
                         item["status"] = "pending"
                         albums.add(item["group"])
                         batch.append(item)
+                        tracks += weight
                     self._persist()
                 if not batch:
                     with self.lock:
@@ -360,15 +462,16 @@ class Cleanup:
                     wire = self._wire(fresh, client, item)
                     with self.lock:
                         item["wire"] = wire
-                    rows.append({"file_id": item["id"], **wire})
+                    rows.append({"album_id" if self.task["category"] == "album-artists" else "file_id": item["id"], **wire})
                 if self.stop.is_set():
                     break
                 # Creating missing names may take time. Compare once more immediately
                 # before writing; a changed timestamp triggers a fresh download.
                 current, _ = self.studio._current(client)
                 self._owner(client)
+                self._settings(current)
                 if any(self._check(current, item) not in ("pending", "confirmed") for item in batch):
-                    raise LibraryError("Track metadata changed while preparing the batch. Prepare a new preview.")
+                    raise LibraryError("Metadata changed while preparing the batch. Prepare a new preview.")
                 if self.stop.is_set():
                     break
                 with self.lock:
@@ -377,7 +480,10 @@ class Cleanup:
                     self._persist()  # persist intent before a possibly interrupted request
                 error = None
                 try:
-                    client._jsonrequest("update_track", tracks=rows)
+                    if self.task["category"] == "album-artists":
+                        client._jsonrequest("update_album", albums=rows)
+                    else:
+                        client._jsonrequest("update_track", tracks=rows)
                 except Exception as failure:
                     error = failure
                 try:

@@ -26,8 +26,8 @@ The application consists of a Python server and a plain JavaScript frontend.
   `plan_save()`, `write_requests()` and `verify()` handle save planning.
 - `src/tagcast/sources.py`: external source adapters, matching, request pacing
   and a shared response cache.
-- `src/tagcast/cleanup.py`: reviewed semicolon cleanup and exact genre-label replacement drafts, account-scoped local
-  reports, bounded track-only batches and explicit stop/resume with fresh checks.
+- `src/tagcast/cleanup.py`: reviewed semicolon cleanup (including native album artists) and exact genre-label replacement drafts,
+  account-scoped reports, bounded batches and explicit stop/resume with fresh checks.
 - `src/tagcast/duplicate_cleanup.py`: explicitly analysed, account-scoped duplicate-copy
   drafts, reviewed track exclusions and bounded trash batches with persisted intent and read-back.
 - `src/tagcast/updates.py`: public stable-release checks, version comparison and a
@@ -212,13 +212,20 @@ and preserve a valid script order in `index.html`.
   Compact summaries include every album artist for browsing, native stars, local hearts
   and images; distinct additional album-artist IDs keep disc sets separate.
 - Cleanup is a dedicated reviewed exception to normal save scope: semicolon
-  splitting for genres, track artists and composer credits, plus explicitly reviewed
+  splitting for genres, album artists, track artists and composer credits, plus explicitly reviewed
   exact genre-label replacements/removals across the active library. Never infer
   slash/comma boundaries or remove ambiguous text automatically. Empty replacements
   require explicit removal mode; preserve other labels and promote the next label
   to main, or clear both genre fields if no labels remain.
   Preserve per-track values, credit roles/phrases and primary IDs when unchanged.
-  Never split album artists or infer separators other than semicolons. Persist the
+  Album artist cleanup writes one native album/disc at a time through update_album:
+  first primary name stays primary, remaining names become additional artist credits.
+  Preserve existing separate credit IDs, roles and phrases; split only performer roles.
+  Review every proposed disc with explicit primary/additional labels, keeping merged-disc
+  exclusions together. Validate complete active disc membership, album identity, native
+  artist names/IDs and combine_sets before writes; combined sets block album cleanup.
+  Count affected tracks toward batch limits; block a native disc over 200 tracks for
+  individual editing. Track metadata stays unchanged. Never infer other separators. Persist the
   account-scoped draft/report in cleanup.json; never send it to another account.
   Limit batches to 200 tracks / 20 displayed albums, check before writes and read
   back after every batch. Stop on conflicts, request errors or unconfirmed writes.

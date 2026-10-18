@@ -482,6 +482,7 @@ body.has-player .now-playing-panel{bottom:76px}
 .cleanup-example{font-size:12px;margin:12px 0;overflow-wrap:anywhere}
 .cleanup-example>div{display:grid;grid-template-columns:55px minmax(0,1fr);gap:10px;margin-top:5px}
 .cleanup-example>div>span:first-child{color:var(--muted)}
+.cleanup-example.cleanup-album-artists>div{grid-template-columns:75px minmax(0,1fr)}
 .genre-label-review{border:1px solid var(--line);border-radius:8px;padding:18px;margin:20px 0}
 .genre-label-review h3{font-size:15px;margin:0 0 12px}
 .genre-label-review .cleanup-controls .field{flex:1;min-width:160px}

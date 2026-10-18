@@ -156,6 +156,32 @@ class ClientTests(unittest.TestCase):
         studio._connect(client.oauth.TokenSet(mock_ibroadcast.TOKEN, "refresh-1", 0))
         return studio
 
+    def test_album_artist_cleanup_round_trips_native_album_credits_over_http(self):
+        with patch.dict(mock_ibroadcast.STATE, copy.deepcopy(mock_ibroadcast.STATE)):
+            remote = mock_ibroadcast.STATE
+            remote["artists"][44] = "Kate Bush;Pink Floyd"
+            remote["albums"][73].update(artist_id=44, additional=[[43, "with", "band"]])
+            before_tracks = copy.deepcopy(remote["tracks"])
+            studio = self.connect()
+            preview = studio.cleanup.prepare("album-artists")
+            self.assertEqual((preview["albums"], preview["tracks"]), (1, 1))
+            self.assertEqual(remote["writes"], [])
+            studio.cleanup.start(preview["id"], [])
+            for _ in range(500):
+                if not studio.cleanup.running:
+                    break
+                time.sleep(.01)
+            self.assertFalse(studio.cleanup.running)
+            self.assertEqual(studio.cleanup.view()["counts"], {"confirmed": 1})
+            self.assertEqual([w["mode"] for w in remote["writes"]], ["update_album"])
+            self.assertEqual(remote["writes"][0]["albums"], [{
+                "album_id": 73, "artist_id": 41, "artists_additional": [
+                    {"artist_id": 43, "type": "band", "phrase": "with"}]}])
+            self.assertEqual(remote["tracks"], before_tracks)
+            details = studio.album_details(["73"])[0]
+            self.assertEqual([a["id"] for a in details["album_artists"]], ["41", "43"])
+            self.assertPrivate(Path(self.home, "cleanup.json"))
+
     def test_cleanup_uses_checked_native_genres_and_credits_over_http(self):
         original = copy.deepcopy(mock_ibroadcast.STATE)
         try:

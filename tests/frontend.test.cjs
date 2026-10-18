@@ -3489,6 +3489,38 @@ test("cleanup previews require explicit approval, preserve exclusions and reject
   assert.equal(p.run("cleanupView.data.id"), "draft");
 });
 
+test("album artist cleanup reviews primary/additional names, every disc and blocked entries before approval", async () => {
+  const p = livePage(); await settle();
+  const preview = {id:"album-draft", state:"preview", category:"album-artists", tracks:36, records:3,
+    albums:1, counts:{pending:3}, excluded:[], batch_tracks:200, batch_albums:20,
+    selection:[{id:"1",tracks:36}], groups:[{id:"1",album:"Joint album",artist:"A;B",tracks:36,
+      examples:[1,2,3].map(disc => ({title:`Disc ${disc}`,before:["A < B;C"],after:["A < B","C"],primary:"A < B",additional:["C"]}))}]};
+  p.setFetch(async url => ({ok:true,json:async () => url.endsWith("/preview") ? preview : {state:"empty"}}));
+  await p.run("openCleanup()");
+  await p.nodes.get("#cleanup").emit("change", {target:{id:"cleanup-category",value:"album-artists"}});
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /first name becomes the primary album artist/);
+  const audio = p.nodes.get("#audio");
+  await p.run('cleanupAction("preview")');
+  assert.deepEqual(JSON.parse(p.requests.at(-1).options.body), {category:"album-artists"});
+  const html = p.nodes.get("#cleanup-content").innerHTML;
+  assert.match(html, /<span>Primary<\/span><span>A &lt; B/);
+  assert.match(html, /<span>Additional<\/span><span>C/);
+  assert.match(html, /Disc 3/);
+  assert.doesNotMatch(html, /Album artists and other metadata stay unchanged/);
+  assert.equal(p.nodes.get("#cleanup-start").disabled, true);
+  const count = p.requests.length;
+  await p.run('cleanupAction("start")');
+  assert.equal(p.requests.length, count);
+  p.run('$("#cleanup-approved").checked=true; updateCleanupSelection()');
+  assert.equal(p.nodes.get("#cleanup-start").disabled, false);
+  p.run('cleanupView.excluded.add("1"); updateCleanupSelection()');
+  assert.equal(p.nodes.get("#cleanup-start").disabled, true);
+  p.run('cleanupView.data.groups[0].examples=[{title:"Disc 1",before:["Bad; name"],after:[],blocked:"Fix <name> individually"}]; renderCleanup()');
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /Blocked: Fix &lt;name&gt; individually/);
+  assert.doesNotMatch(p.nodes.get("#cleanup-content").innerHTML, /No genres/);
+  assert.equal(p.nodes.get("#audio"), audio);
+});
+
 test("random album respects library filters across pages, plays full disc sets and avoids the current album", async () => {
   const p = livePage(); await settle();
   p.run(`useLocal([
