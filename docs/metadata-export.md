@@ -1,6 +1,6 @@
 # Library metadata export
 
-Available in current source/test builds; not in the published 0.60.0 downloads.
+Available in Tagcast 0.70.0, including desktop downloads.
 
 Open **Settings → Export library metadata**, choose the optional data to include,
 then **Prepare JSON export** or **Prepare CSV ZIP**. When preparation finishes,

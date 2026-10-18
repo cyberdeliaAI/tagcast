@@ -13,13 +13,10 @@ run Tagcast in your browser with **Python**. Both share the same editor and play
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [0.60.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.60.0):**
-Electron desktop downloads, album favourites independent of stars, compact
-tracklists and a full-width mobile album cover. Python/browser use remains available.
-
-**In development:** artist favourites and ratings, optional artist/album background texts and other
-[upcoming changes](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes)
-are available in the current source code, but are not included in the 0.60.0 downloads.
+**New in [0.70.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.0):**
+CSV playlist import with reviewed matching, complete JSON/CSV metadata exports,
+playlist covers and folders, additional artist credits, artist favourites and
+ratings, and optional locally cached album information and artist biographies.
 
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
@@ -31,12 +28,14 @@ are available in the current source code, but are not included in the 0.60.0 dow
   and the optional 1001 Albums guide.
 - **Listen:** album playback, a play queue, playlists, fullscreen Now playing,
   volume and available audio outputs, with supported system media controls.
-- **Edit metadata:** album/track details, genres, composers and artwork, assisted
+- **Edit metadata:** album/track details, separate artists and credit roles, genres,
+  composers and artwork, assisted
   by online sources and a before/after review.
-- **Organise:** native iBroadcast tags, independent local album favourites,
-  star ratings and private playlists.
+- **Organise:** native iBroadcast tags, independent local album and artist favourites,
+  native star ratings, private playlists, folders, covers and CSV import.
 - **Clean up:** find missing metadata, review duplicate suggestions or select
   complete albums for iBroadcast's trash. Nothing is permanently deleted.
+- **Export:** full loaded-library metadata as JSON or linked CSVs in a ZIP.
 - **Keep track:** read-back checks distinguish confirmed saves from uncertain
   results; Change history records metadata outcomes and available artwork Undo.
 
@@ -45,14 +44,14 @@ are available in the current source code, but are not included in the 0.60.0 dow
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 0.60.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.60.0):
+[Tagcast 0.70.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.60.0/tagcast-0.60.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
@@ -133,7 +132,7 @@ labelled. The [capture inventory](docs/screenshot-checklist.md) records the orig
 
 ![Metadata editor with album fields, genres and online source suggestions](docs/screenshots/editor.png)
 
-**Album artist cleanup (unreleased):** reviewed semicolon splitting into a primary
+**Album artist cleanup:** reviewed semicolon splitting into a primary
 artist and separate additional artists. This capture shows an approved run in progress.
 
 ![Album artist cleanup in progress with checked disc counts and primary/additional artist names](docs/screenshots/cleanup-album-artists-running.png)
