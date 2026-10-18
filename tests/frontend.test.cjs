@@ -5320,6 +5320,86 @@ test('large playlist playback uses the selected row within the current page', as
   assert.equal(p.nodes.get('#audio').src,'/api/stream/102?quality=128');
 });
 
+test('playlist rows follow playback when opened, paused, advanced and stopped without replacing the queue', async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"));
+    const playlistMarkerRows = [$("#playlist-marker-first"), $("#playlist-marker-second")];
+    playlistMarkerRows.forEach((row, i) => row.dataset.row = player.queue[i].id);
+    document.querySelectorAll = selector => selector === "[data-row]" ? playlistMarkerRows : [];
+    state.screen = "playlists"; collectionsView.playlist = "88"; audio.currentTime = 37;`);
+  const tracks = p.json('player.queue.slice(0, 2)');
+  p.setFetch(url => {
+    assert.match(url, /^\/api\/playlists\?id=88&offset=0$/);
+    return {ok: true, json: async () => ({id: '88', name: 'Playlist', description: '',
+      tracks: tracks.map(t => Number(t.id)), total: 2,
+      rows: tracks.map((t, position) => ({...t, position, album_id: t.album.id, album: t.album.name}))})};
+  });
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src, requests = p.requests.length;
+  await p.run('renderCollections()');
+  const history = p.history.length;
+  const first = p.nodes.get('#playlist-marker-first'), second = p.nodes.get('#playlist-marker-second');
+  const html = p.nodes.get('#collections-page').innerHTML;
+  assert.match(html, /class="album-tracks album-tracklist track-results"/);
+  assert.match(html, new RegExp(`<tr data-row="${tracks[0].id}">`));
+  assert.match(html, /data-playlist-position="0"[^>]*>[\s\S]*?class="track-playing-icon"/);
+  assert.equal(first.classList.contains('playing'), true);
+  assert.equal(first.getAttribute('aria-current'), 'true');
+  assert.equal(second.classList.contains('playing'), false);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 37);
+  p.nodes.get('#audio').pause();
+  assert.equal(first.classList.contains('playing'), false);
+  assert.equal(first.getAttribute('aria-current'), undefined);
+  await p.nodes.get('#audio').play();
+  assert.equal(first.classList.contains('playing'), true);
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(first.classList.contains('playing'), false);
+  assert.equal(second.classList.contains('playing'), true);
+  assert.equal(second.getAttribute('aria-current'), 'true');
+  p.run('stopPlayer()');
+  assert.equal(second.classList.contains('playing'), false);
+  assert.equal(second.getAttribute('aria-current'), undefined);
+  assert.equal(p.history.length, history);
+  assert.equal(p.requests.length - requests, 1,
+    'Displaying and updating playback markers needs only the normal playlist read');
+});
+
+test('a large playlist page shows its playlist positions and applies the latest playback state after loading', async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"));
+    const pagedPlaylistRows = [$("#playlist-page-first"), $("#playlist-page-second")];
+    pagedPlaylistRows.forEach((row, i) => row.dataset.row = player.queue[i].id);
+    document.querySelectorAll = selector => selector === "[data-row]" ? pagedPlaylistRows : [];
+    state.screen = "playlists"; collectionsView.playlist = "99"; collectionsView.offset = 10000;`);
+  const tracks = p.json('player.queue.slice(0, 2)');
+  let finish;
+  p.setFetch(url => {
+    assert.equal(url, '/api/playlists?id=99&offset=10000');
+    return new Promise(resolve => { finish = resolve; });
+  });
+  const read = p.run('renderCollections()'); await settle();
+  p.run('step(1)');
+  p.nodes.get('#playlist-page-second').classList.remove('playing');
+  finish({ok: true, json: async () => ({id: '99', name: 'Large', description: '', large: true,
+    offset: 10000, total: 10002, tracks: tracks.map(t => Number(t.id)),
+    rows: tracks.map((t, i) => ({...t, track: 9 - i, position: 10000 + i,
+      album_id: t.album.id, album: t.album.name}))})});
+  await read;
+  const html = p.nodes.get('#collections-page').innerHTML;
+  assert.match(html, /data-playlist-position="10000"[^>]*><span class="track-position" aria-hidden="true">10001<\/span>/);
+  assert.match(html, /data-playlist-position="10001"[^>]*><span class="track-position" aria-hidden="true">10002<\/span>/);
+  assert.equal(p.nodes.get('#playlist-page-first').classList.contains('playing'), false);
+  assert.equal(p.nodes.get('#playlist-page-second').classList.contains('playing'), true);
+  assert.equal(p.run('player.index'), 1);
+  p.nodes.get('#audio').pause();
+  p.setFetch(() => ({ok: true, json: async () => ({id: '99', name: 'Other page', description: '',
+    large: true, offset: 0, total: 10002, tracks: [], rows: []})}));
+  await p.run('renderCollections()');
+  assert.equal(p.nodes.get('#playlist-page-second').classList.contains('playing'), false);
+  assert.equal(p.nodes.get('#audio').paused, true);
+});
+
 test('bulk editing accepts albums sharing an additional album artist and keeps mixed credits opt-in', async () => {
   const p=livePage(); await settle();
   p.run(`const sharedIds=[state.albums[0].id,state.albums[2].id];

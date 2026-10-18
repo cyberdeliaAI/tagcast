@@ -172,8 +172,13 @@ function albumTrackMetadata(album, track, formats) {
   return credits || composers || other || tags || format ? `<div class="album-track-meta">${credits}${composers}${other}${tags}${format}</div>` : "";
 }
 
+function trackNumberControl(track, position, action, canPlay) {
+  return `<button class="album-track-play" ${action} aria-label="Play ${escapeHtml(track.title)}" ${canPlay ? "" : "disabled"}><span class="track-position" aria-hidden="true">${escapeHtml(position)}</span><span class="track-play-icon" aria-hidden="true">▶</span><svg class="track-playing-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m11 5-6 4H2v6h3l6 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg></button>`;
+}
+
 function albumTrackNumber(track, albumId, canPlay) {
-  return `<button class="album-track-play" data-play="${escapeHtml(track.id)}" data-play-album-id="${escapeHtml(albumId)}" aria-label="Play ${escapeHtml(track.title)}" ${canPlay ? "" : "disabled"}><span class="track-position" aria-hidden="true">${track.track || "–"}</span><span class="track-play-icon" aria-hidden="true">▶</span><svg class="track-playing-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m11 5-6 4H2v6h3l6 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg></button>`;
+  return trackNumberControl(track, track.track || "–",
+    `data-play="${escapeHtml(track.id)}" data-play-album-id="${escapeHtml(albumId)}"`, canPlay);
 }
 
 function resetAlbumView() {
