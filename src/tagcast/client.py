@@ -41,6 +41,7 @@ from .library import (
     write_requests,
 )
 from .metadata_export import MetadataExport
+from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
@@ -347,6 +348,7 @@ class Studio:
         self.library_user = None
         self.premium = False
         self.collections = Collections(self)
+        self.playlist_import = PlaylistImport(self)
         self.metadata_export = MetadataExport(self)
         self.tags = Tags(self)
         self.queue_sync = QueueSync(self)

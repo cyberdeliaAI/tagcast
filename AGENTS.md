@@ -36,6 +36,8 @@ The application consists of a Python server and a plain JavaScript frontend.
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
 - `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
+- `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
+  loaded-library track matching, manual choices and reviewed single-use private playlist creation.
 - `src/tagcast/metadata_export.py`: explicit, read-only JSON / linked CSV ZIP snapshots of the loaded library,
   account/session/library-bound background preparation and private temporary streamed downloads.
 - `src/tagcast/tags.py`: native tag browsing and reviewed creation, rename, deletion
@@ -47,9 +49,9 @@ The application consists of a Python server and a plain JavaScript frontend.
   album artist and held in a separate bounded local SQLite cache.
 - `src/tagcast/album_info.py`: opt-in TheAudioDB album background text for a visited
   album, with strict artist/full-title matching and a separate bounded SQLite cache.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty-five JavaScript files:
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty-six JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
-  `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
+  `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -626,6 +628,29 @@ and preserve a valid script order in `index.html`.
   and ordered references in `playlist_folders` / `playlist_folder_items`, separate from
   ordinary `playlists` / `playlist_tracks`; preserve missing/repeated/cyclic references
   without traversal or extra provider requests. Keep artwork IDs in both export forms.
+- CSV playlist import is a page-local modal under Playlists. Read a file up to 5 MB
+  or pasted CSV/TSV text, choose encoding/separator/header and map distinct title/performer
+  columns plus optional album, album artist, duration (seconds/ms/mm:ss), year and track
+  number. Never evaluate cells or follow CSV URLs/Spotify/ISRCs. No metadata/audio/provider
+  fetches for parsing, matching or manual search; use one lazy server-side active-membership
+  catalogue and return only 50 CSV rows / 10 suggestions or 50 manual search results.
+  Full title/performer exact matching preserves version text and requires a unique copy
+  consistent with all mapped optional fields; invalid cells, duplicate copies and fuzzy/version
+  alternatives remain unresolved. Native additional performers count, composers do not.
+  Split artist names only on an explicitly chosen semicolon option. Alternative generation
+  is bounded, while automatic matching and explicit paginated search cover the full index.
+  Bind at most two in-memory drafts (one-hour expiry) to client/account/session/library copy
+  and combine setting. Revision checks reject concurrent choices; close clears/discards,
+  library changes invalidate, late replies cannot restore a closed/replaced draft. Never
+  persist CSVs, choices, credentials or source URLs to disk/history. Playback/history stay intact.
+  Resolve or explicitly skip every row before review; retain CSV order and show skipped,
+  blank and duplicate counts. Keep repeated selected IDs once at their first occurrence.
+  The final review contains ordered native track metadata, name/description and a server-only
+  track list behind a single-use review token. Explicit confirmation creates only a new
+  private playlist via existing createplaylist, under the shared save lock; recheck current
+  library, active selected memberships and identities, then read back its complete definition.
+  Consume the draft before sending; never retry an ambiguous creation, overwrite an existing
+  playlist, edit music metadata, follow CSV links, fetch audio or enqueue anything.
 - Play next inserts a FIFO album block; its entries are consumed after playback while
   the base queue remains intact. Repeat none/queue/track retains base album order.
   The shared + dropdown offers Add to queue and Play next for tracks and albums;

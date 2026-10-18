@@ -104,6 +104,11 @@ const HELP_TOPICS = {
     ["Review the change", "Check the name, destination and selected contents before confirming. Folder reviews add or remove playlist references; ordinary playlist reviews operate on tracks. Closing cancels an unsent draft.", ["#playlist-dialog-content"]],
     ["Confirm and wait", "Confirm once, then wait for a fresh read-back. An uncertain request is not repeated automatically. System playlists stay protected; music files are never deleted by folder or playlist-definition operations.", ["#playlist-dialog-content .dialog-footer"]],
   ]},
+  "playlist-import": {title: "CSV playlist import", scope: "#playlist-import", steps: [
+    ["Read and link columns", "Choose a CSV, separator, encoding and header setting. Confirm track title and performing artist columns. Album, album artist, duration, year and track number are optional. Numeric durations need seconds or milliseconds; mm:ss also works.", ["#csv-file-form", "#csv-map-form"], "Linking columns comes before matching. CSV cells are plain text."],
+    ["Check every choice", "Only a unique full-title and performer match is chosen automatically. Other versions and duplicate copies need your choice. Search the loaded library or explicitly skip a record. Change match also lets you correct automatic choices. No online lookup or playback starts here.", [".csv-import-rows", ".csv-candidates", "#csv-search-form"], "Match the CSV first to see candidates and library search."],
+    ["Review and create", "Resolve or skip all records, enter a name and prepare the review. Chosen tracks follow CSV order, with repeated IDs kept once at their first position. Confirm to create a new private playlist. Wait for read-back; an uncertain creation is never repeated automatically.", ["#csv-review-form", ".csv-review-list", "[data-csv-save]"], "The final review becomes available after matching. Existing playlists and music metadata stay unchanged."],
+  ]},
   "playlist-cover": {title: "Playlist cover", scope: "#artwork", steps: [
     ["Compare covers", "Choose a JPEG, PNG, WebP or GIF file up to 15 MB, or an image URL. Compare Now and New before saving. This is a playlist cover; it does not replace the covers of its tracks or albums.", ["#artwork .art-compare", "#artwork .art-own"]],
     ["Save and check", "Save explicitly and wait for iBroadcast read-back. If the playlist or account changed during upload, the image is not applied. An uncertain save needs a fresh review before retrying.", ["#art-save", "#art-status"]],
@@ -133,6 +138,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
+  if ($("#playlist-import").open) return "playlist-import";
   if ($("#audio-output-dialog").open) return "audio-output";
   if ($("#tag-dialog").open) return "tags";
   if ($("#playlist-dialog").open) return "playlist-review";

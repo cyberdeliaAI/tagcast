@@ -94,6 +94,8 @@ class StartTests(unittest.TestCase):
         studio.collections.playlists.return_value = {"playlists": []}
         studio.collections.save_playlist.return_value = {"job": "check"}
         studio.collections.save_folder.return_value = {"job": "check"}
+        for action in ("read", "match", "view", "search", "choose", "review", "revise", "save", "discard"):
+            getattr(studio.playlist_import, action).return_value = {}
         studio.collections.playlist_artwork.return_value = {"job": "check"}
         studio.collections.folder_choices.return_value = {"playlists": []}
         studio.collections.rate_album.return_value = {"job": "check"}
@@ -146,6 +148,8 @@ class StartTests(unittest.TestCase):
         try:
             for path, action in [("/api/playlist", studio.collections.save_playlist),
                                  ("/api/playlist-folder", studio.collections.save_folder),
+                                 *(("/api/playlist-import/" + action, getattr(studio.playlist_import, action))
+                                   for action in ("read", "match", "view", "search", "choose", "review", "revise", "save", "discard")),
                                  ("/api/playlist/artwork", studio.collections.playlist_artwork),
                                  ("/api/tags/save", studio.tags.save),
                                  ("/api/album-rating", studio.collections.rate_album),
