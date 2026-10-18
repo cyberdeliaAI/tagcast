@@ -5349,3 +5349,165 @@ test('removed metadata sorting falls back on history restore while combined arti
   assert.equal(p.nodes.get('#artists-sort').value,'rating_high');
   assert.match(p.nodes.get('#artists-browse-options').innerHTML,/Without image/);
 });
+
+function albumInformationReply(overrides = {}) {
+  return {enabled:true, status:'ready', artist:'Pink Floyd', album:'Wish You Were Here',
+    description:'Album background.', url:'https://www.theaudiodb.com/album/123',
+    needs_lookup:false, ...overrides};
+}
+
+test('album information is off by default, lazy, escaped and cached without changing playback or history', async () => {
+  const p = livePage(); await settle();
+  p.run('state.connection.playback_session="album-info-session"');
+  await p.run('openAlbum("1")');
+  assert.equal(p.nodes.get('#album-information').hidden, true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length, 0);
+  p.run('playTracks(state.details.get("1"))');
+  const src=p.nodes.get('#audio').src, queue=p.json('player.queue'), history=p.history.length;
+  let reads=0, lookups=0, finish;
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/album-information');
+    const body=JSON.parse(options.body);
+    assert.equal(body.album_id,'1'); assert.equal(body.artist,'Pink Floyd');
+    assert.equal(body.album,p.run('state.albums[0].name'));
+    assert.equal(body.session,'album-info-session');
+    if(!body.lookup){reads++;return {ok:true,json:async()=>({enabled:true,status:'not_cached',needs_lookup:true})};}
+    lookups++; return new Promise(resolve=>{finish=resolve;});
+  });
+  p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+  assert.equal(reads,1); assert.equal(lookups,1);
+  assert.match(p.nodes.get('#album-information').innerHTML,/Loading album information/);
+  finish({ok:true,json:async()=>albumInformationReply({description:'A <script>bad()<\/script> & B.\n\nSecond paragraph.'})}); await settle();
+  const html=p.nodes.get('#album-information').innerHTML;
+  assert.match(html,/About this album/); assert.match(html,/TheAudioDB/);
+  assert.match(html,/&lt;script&gt;bad\(\)&lt;\/script&gt; &amp; B/);
+  assert.doesNotMatch(html,/<script>/); assert.match(html,/Second paragraph/); assert.match(html,/Saved on this computer/);
+  p.run('render(); renderAlbumInformation()'); await settle();
+  assert.equal(reads,1); assert.equal(lookups,1);
+  assert.equal(p.nodes.get('#audio').src,src); assert.equal(p.nodes.get('#audio').paused,false);
+  assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.history.length,history); assert.equal(p.run('state.history.length'),0);
+});
+
+test('album text keeps its disclosure and source through refresh failures and explicit retries', async () => {
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  let finish, lookups=0;
+  p.setFetch((url,options)=>{
+    const body=JSON.parse(options.body);
+    if (!body.lookup) return {ok:true,json:async()=>albumInformationReply({description:'Stored album text.',needs_lookup:true})};
+    lookups++; return new Promise(resolve=>{finish=resolve;});
+  });
+  p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+  const panel=p.nodes.get('#album-information');
+  assert.match(panel.innerHTML,/Stored album text/);
+  await p.emitDocument('toggle',{target:{isConnected:true,open:true,matches:s=>s==='#album-information details'}});
+  finish({ok:false,status:429,json:async()=>({error:'TheAudioDB is busy.',retry_after:60})}); await settle();
+  assert.match(panel.innerHTML,/<details open/);
+  assert.match(panel.innerHTML,/Stored album text/);
+  assert.match(panel.innerHTML,/data-album-information-retry disabled/);
+  const requests=p.requests.length;
+  await p.click({'[data-album-information-retry]':{}});
+  assert.equal(p.requests.length,requests);
+  p.run('albumInformation.entries.values().next().value.retryAt=Date.now()-1; renderAlbumInformation()');
+  assert.match(panel.innerHTML,/data-album-information-retry>Try again/);
+  await p.click({'[data-album-information-retry]':{}}); await settle();
+  assert.equal(lookups,2); assert.match(panel.innerHTML,/Stored album text/);
+  finish({ok:true,json:async()=>albumInformationReply({description:'Updated album text.'})}); await settle();
+  assert.match(panel.innerHTML,/<details open/); assert.match(panel.innerHTML,/Updated album text/);
+  assert.doesNotMatch(panel.innerHTML,/Try again|is busy/);
+});
+
+test('album information never starts provider lookups after leaving, disabling or replacing its session', async () => {
+  for(const change of ['navigate','disable','replace','session','identity']) {
+    const p=livePage(); await settle(); await p.run('openAlbum("1")'); let finish;
+    p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+    p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+    if(change==='navigate') p.run('showScreen("albums")');
+    else if(change==='disable') p.run('applyAlbumInformationSettings({album_information:false})');
+    else if(change==='replace') p.run('useLocal(demoLibrary(),"demo"); render()');
+    else if(change==='session') p.run('state.connection.playback_session="changed"');
+    else p.run('state.albums[0].name="Renamed album"');
+    finish({ok:true,json:async()=>albumInformationReply({description:'Wrong album text.',needs_lookup:true})}); await settle();
+    assert.doesNotMatch(p.nodes.get('#album-information').innerHTML,/Wrong album text/);
+    assert.equal(p.requests.filter(r=>r.url==='/api/album-information'&&JSON.parse(r.options.body).lookup).length,0);
+  }
+});
+
+test('a late provider response cannot repaint a different album and Back reuses valid stored text', async () => {
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  let finish;
+  p.setFetch((url,options)=>{
+    const body=JSON.parse(options.body);
+    if(body.album_id!=='1') return {ok:true,json:async()=>albumInformationReply({status:'missing',description:''})};
+    if(!body.lookup) return {ok:true,json:async()=>({enabled:true,needs_lookup:true})};
+    return new Promise(resolve=>{finish=resolve;});
+  });
+  p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+  await p.run('openAlbum(state.albums[2].id)'); await settle();
+  finish({ok:true,json:async()=>albumInformationReply({description:'First album text.'})}); await settle();
+  assert.doesNotMatch(p.nodes.get('#album-information').innerHTML,/First album text/);
+  const requests=p.requests.length;
+  p.history.back(); await settle();
+  assert.match(p.nodes.get('#album-information').innerHTML,/First album text/);
+  assert.equal(p.requests.length,requests);
+});
+
+test('album information recovers only the visible same album after a metadata cache replacement', async () => {
+  for (const visible of [true,false]) {
+    const p=livePage(); await settle(); await p.run('openAlbum("1")');
+    let finish, reads=0;
+    p.setFetch(()=>{
+      reads++;
+      if(reads===1) return new Promise(resolve=>{finish=resolve;});
+      return {ok:true,json:async()=>albumInformationReply({description:'Fresh cached text.'})};
+    });
+    p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+    p.run('state.details=new Map(state.details)');
+    if (!visible) p.run('showScreen("albums")');
+    finish({ok:true,json:async()=>albumInformationReply({description:'Stale reply.'})}); await settle();
+    assert.equal(reads,visible?2:1);
+    assert.doesNotMatch(p.nodes.get('#album-information').innerHTML,/Stale reply/);
+    if(visible) assert.match(p.nodes.get('#album-information').innerHTML,/Fresh cached text/);
+  }
+});
+
+test('Settings saves album information independently without scanning or enabling biographies or 1001 Albums', async () => {
+  const p=livePage(); await settle();
+  p.run('lookup.sources=[{name:"theaudiodb",label:"TheAudioDB",enabled:true}]; openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML,/name="album_information" > Show album information/);
+  p.setFetch((url,options)=>({ok:true,json:async()=>({sources:[],auto_lookup:false,...JSON.parse(options.body)})}));
+  await p.run('saveSettings({elements:{auto_lookup:{checked:false},auto_updates:{checked:false},album_information:{checked:true}},querySelectorAll:()=>[]})');
+  assert.equal(p.run('albumInformation.enabled'),true);
+  assert.equal(p.run('artistProfile.enabled'),false);
+  assert.equal(p.run('albumGuide.enabled'),false);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
+});
+
+test('missing album text stays compact, uncertain matches stay unresolved and unsafe links are excluded', async () => {
+  for (const status of ['missing','unavailable','ambiguous','ready']) {
+    const p=livePage(); await settle(); await p.run('openAlbum("1")');
+    p.setFetch(()=>({ok:true,json:async()=>albumInformationReply({status,url:'javascript:bad()'})}));
+    p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+    const html=p.nodes.get('#album-information').innerHTML;
+    assert.doesNotMatch(html,/javascript:/);
+    if(status==='ready') assert.match(html,/href="https:\/\/www.theaudiodb.com\/"/);
+    else {assert.doesNotMatch(html,/<details/);assert.match(html,/No English album information|More than one album/);}
+  }
+});
+
+test('album information and existing 1001 Albums text keep their separate source and license', async () => {
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  p.run(`albumGuide.enabled=true; albumGuide.details=state.details;
+    albumGuide.data={state:'ready',entries:[{id:1,status:'found',album_ids:['1'],album:'Reference album',artist:'Reference artist'}]};
+    guideNotes.data=new Map([[1,{album:'Reference album',artist:'Reference artist',text:'Existing Wikipedia text.',source_url:'https://en.wikipedia.org/wiki/Example'}]]);`);
+  p.setFetch(()=>({ok:true,json:async()=>albumInformationReply()}));
+  p.run('applyAlbumInformationSettings({album_information:true}); renderAlbumView()'); await settle();
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Existing Wikipedia text/);
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/CC BY-SA 4.0/);
+  assert.match(p.nodes.get('#album-information').innerHTML,/Album background/);
+  assert.match(p.nodes.get('#album-information').innerHTML,/TheAudioDB/);
+  p.run('applyAlbumInformationSettings({album_information:false})');
+  assert.equal(p.nodes.get('#album-information').hidden,true);
+  assert.equal(p.nodes.get('#album-guide-notes').hidden,false);
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Existing Wikipedia text/);
+});

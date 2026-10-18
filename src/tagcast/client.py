@@ -24,6 +24,7 @@ from ibroadcast import oauth
 
 from . import __version__, artwork, auth
 from .album_guide import AlbumGuide
+from .album_info import AlbumInformation
 from .artist_bios import ArtistBiographies
 from .cleanup import Cleanup
 from .collections import Collections
@@ -363,6 +364,7 @@ class Studio:
         self.updates = UpdateChecker(self._read, self._write)
         self.lookup = Lookup(self.source_keys)
         self.artist_bios = ArtistBiographies(self)
+        self.album_info = AlbumInformation(self)
         self.cleanup = Cleanup(self)
         self.duplicate_cleanup = DuplicateCleanup(self)
         tokens = self._read("tokens.json")
@@ -1012,6 +1014,8 @@ class Studio:
                 "album_guide": self.config.get("album_guide") is True,
                 "artist_biographies": self.config.get("artist_biographies") is True,
                 "artist_biographies_revision": self.artist_bios.revision,
+                "album_information": self.config.get("album_information") is True,
+                "album_information_revision": self.album_info.revision,
                 "guide_matching_details": self.config.get("guide_matching_details"),
                 "premium": self.premium}
 
@@ -1022,6 +1026,8 @@ class Studio:
 
     def save_settings(self, body):
         with self.lock:
+            if "album_information" in body and type(body["album_information"]) is not bool:
+                raise ApiError("Choose whether album information is enabled.")
             if "artist_biographies" in body and type(body["artist_biographies"]) is not bool:
                 raise ApiError("Choose whether artist biographies are enabled.")
             if "album_guide" in body and type(body["album_guide"]) is not bool:
@@ -1061,6 +1067,10 @@ class Studio:
                 if body["artist_biographies"] != self.config.get("artist_biographies", False):
                     self.artist_bios.revision += 1
                 self.config["artist_biographies"] = body["artist_biographies"]
+            if "album_information" in body:
+                if body["album_information"] != self.config.get("album_information", False):
+                    self.album_info.revision += 1
+                self.config["album_information"] = body["album_information"]
             if "guide_matching_details" in body:
                 self.config["guide_matching_details"] = body["guide_matching_details"]
             self._write("config.json", self.config)

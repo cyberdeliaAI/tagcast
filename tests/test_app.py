@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
 from tagcast import app
+from tagcast.album_info import AlbumInformationRetryError
 from tagcast.artist_bios import BiographyRetryError
 from tagcast.sources import SourceError
 
@@ -25,6 +26,8 @@ class BiographyResponseTests(unittest.TestCase):
                                                        'retry_after': expected})
         app.Handler._run(handler, mock.Mock(side_effect=SourceError('Another source failed.')))
         handler._json.assert_called_with(400, {'error': 'Another source failed.'})
+        app.Handler._run(handler, mock.Mock(side_effect=AlbumInformationRetryError('TheAudioDB is busy.', 19.8)))
+        handler._json.assert_called_with(429, {'error': 'TheAudioDB is busy.', 'retry_after': 20})
 
 
 class LoopbackBindTests(unittest.TestCase):
@@ -116,6 +119,7 @@ class StartTests(unittest.TestCase):
         studio.collections.favourite_artist.return_value = {"results": []}
         studio.collections.artist_favourites.return_value = {"artists": []}
         studio.artist_bios.view.return_value = {"enabled": False}
+        studio.album_info.view.return_value = {"enabled": False}
         studio.status.return_value = {"configured": True, "using_default_client": True}
         handler = type("TestHandler", (app.Handler,), {"studio": studio, "port": 0})
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -143,6 +147,7 @@ class StartTests(unittest.TestCase):
                                  ("/api/album-favourite", studio.collections.favourite_album),
                                  ("/api/artist-favourite", studio.collections.favourite_artist),
                                  ("/api/artist-biography", studio.artist_bios.view),
+                                 ("/api/album-information", studio.album_info.view),
                                  ("/api/queue-tracks", studio.collections.queue_tracks),
                                  ("/api/config/default", studio.use_default_client),
                                  ("/api/album-guide/analyse", studio.album_guide.analyse),

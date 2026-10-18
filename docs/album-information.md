@@ -1,0 +1,69 @@
+# Optional album information
+
+Available in current development/source builds; not yet in a desktop release.
+User instructions are in the Wiki's [upcoming changes](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes#optional-album-information).
+
+Enable **Settings → Album information → Show album information from TheAudioDB**
+and save. When visiting an album, **About this album · TheAudioDB** shows available
+English background text in a collapsible panel above the tracks. It is independent
+of artist biographies and 1001 Albums; existing reference texts and their Wikipedia
+license links retain their own panel. The common prose style stays limited to 85ch.
+
+The option is off by default. Enabling alone does not scan or fetch. A visited
+album first reads a separate local cache. Only missing or expired text starts a
+background provider request. Album controls and playback remain usable while it
+loads or if a request fails. A merged multi-disc page makes one lookup for its
+displayed primary disc's identity, not one for every track or disc.
+
+## Matching and requests
+
+The server validates the active album ID, displayed artist/title and playback
+session against the loaded library. It uses stored primary artist and album names,
+never the Unknown artist/Untitled album placeholders. The public v1 endpoint is:
+
+`https://www.theaudiodb.com/api/v1/json/123/searchalbum.php?s=ARTIST&a=ALBUM`
+
+Only that artist and full title leave Tagcast. Matching allows case, Unicode NFC
+and whitespace differences, but retains punctuation, accents, numbered volumes
+and edition/live/version text. Exactly one matching result is required. Multiple
+matches remain unresolved; a missing English description stays unavailable. A
+same-name result can still describe another release, so the source link remains
+visible. Current `strDescription` and earlier `strDescriptionEN` fields are supported.
+
+The adapter returns a whitelist of public identity/text fields and a source link
+constructed from the numeric album ID. Provider HTML is stripped and frontend text
+is escaped. The shared source HTTP client keeps artist biographies, album text and
+suggestions at least 2.1 seconds apart; there is no new key or Premium integration.
+
+## Local cache and failures
+
+`album-information.sqlite3` in the normal Tagcast settings folder holds public
+English text by source, strict artist/title identity and language. It contains no
+account credentials, library IDs, tracks or artwork. Text can be reused across
+albums/accounts with the same public identity, but each request still validates
+the current session and active album. Successful text lasts 30 days; missing,
+ambiguous and unavailable results last one day. Refresh occurs only on a visit.
+The cache is limited to 5,000 records and 20 MiB of stored JSON, plus SQLite overhead.
+Disabling retains the file and prevents new reads/lookups through the feature.
+
+Simultaneous visits share one lookup. No session lock is held during the provider
+request. Source errors preserve old text and impose a one-minute backoff. The API
+returns HTTP 429 with a bounded `retry_after`; the UI enables **Try again** after
+the delay without fetching automatically. The disclosure stays open during retry.
+Cache errors are local messages and do not overwrite damaged files.
+
+Settings, session, account, library or album identity changes invalidate pending
+responses. Navigating away before a cache-only response never starts a hidden
+provider lookup. Metadata/tag cache replacement retires an outdated in-flight read
+and recovers only the visible unchanged album. Ready text and disclosure state are
+reused on Back. The feature never writes to iBroadcast, History, the queue or audio.
+
+## Validation
+
+`tests/test_album_info.py` covers exact/ambiguous matching, response fields, expiry,
+negative caching, bounded/corrupt storage, HTML stripping, parallel visits, backoff,
+independent settings and late-result rejection. The route joins HTTP security-guard
+tests in `tests/test_app.py`. Frontend regressions cover lazy visits, escaping,
+playback/history preservation, navigation/Back, disclosure/retry, cache replacement,
+settings and coexistence with 1001 Albums texts. Full browser checks complement the
+simulated-DOM suite using a local fixture with temporary settings and canned data.

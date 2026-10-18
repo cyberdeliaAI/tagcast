@@ -43,9 +43,11 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty-two JavaScript files:
+- `src/tagcast/album_info.py`: opt-in TheAudioDB album background text for a visited
+  album, with strict artist/full-title matching and a separate bounded SQLite cache.
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty-three JavaScript files:
   `app.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
-  `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
+  `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -506,6 +508,21 @@ and preserve a valid script order in `index.html`.
   look up empty stored names via display placeholders. Provider failure backoff
   exposes a bounded retry_after; disable retry until it expires without fetching
   automatically or bypassing shared pacing.
+- `album_information` is independently off by default. Enabling alone never scans or
+  fetches. A visited album reads `album-information.sqlite3` first; only missing/expired
+  text starts a provider request. Send only its stored primary artist and full album
+  title, never display placeholders, credentials or tracks. Preserve accents, punctuation,
+  numbered volumes and version text when matching; require one exact artist/title result.
+  Cache public English text by source, strict identity and language for 30 days, negative
+  matches for one day; bound to 5,000 records / 20 MiB plus SQLite overhead. Share source
+  pacing with artist biographies and suggestions, coalesce simultaneous lookups and back
+  off for one minute on failures. Keep cached text visible during refresh and explicit
+  retry; errors never block albums/playback. Strip HTML and escape text, construct numeric
+  provider links, preserve source attribution and 85ch prose. Reject late results across
+  settings, account, library, session or identity changes; recover only the visible same
+  album after detail-cache replacement. Preserve disclosure/focus on routine updates and
+  Back. Keep 1001 Albums texts and their licenses separate and unchanged. No metadata or
+  artwork writes, bulk prefetch, new API keys or Premium integration follow from enabling.
 - The original Powered by iBroadcast SVG is displayed with its original colours and
   proportions. Keep Tagcast's independent identity explicit; do not imply endorsement.
   The sidebar header shows Tagcast with an accent-coloured dot and the small, muted

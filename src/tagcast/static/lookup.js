@@ -16,6 +16,7 @@ async function loadSettings() {
     lookup.albumGuideEnabled = data.album_guide === true;
     if (typeof applyAlbumGuideSettings === "function") applyAlbumGuideSettings(data);
     if (typeof applyArtistSettings === "function") applyArtistSettings(data);
+    if (typeof applyAlbumInformationSettings === "function") applyAlbumInformationSettings(data);
     if (typeof applyPlaybackSettings === "function") applyPlaybackSettings(data);
     applyUpdateSettings(data);
   } catch { /* opened without the Python server: no online sources */ }
@@ -154,6 +155,9 @@ function openSettings() {
     <section class="artist-biography-settings"><h3>Artist biographies</h3>
     <label class="checkline"><input type="checkbox" name="artist_biographies" ${artistProfile.enabled ? "checked" : ""}> Show artist biographies from TheAudioDB</label>
     <p class="muted">Off by default. When you visit an album artist, Tagcast sends that artist’s name to TheAudioDB if no current local biography is available. English text is stored separately on this computer for up to 30 days before checking again. No library scan, iBroadcast changes or Last.fm account are needed. Biographies may be unavailable or refer to another artist with the same name; check the source link.</p></section>
+    <section class="album-information-settings"><h3>Album information</h3>
+    <label class="checkline"><input type="checkbox" name="album_information" ${albumInformation.enabled ? "checked" : ""}> Show album information from TheAudioDB</label>
+    <p class="muted">Off by default. When you visit an album, Tagcast sends its album artist and full title to TheAudioDB if no current local text is available. English text is saved on this computer and checked again after 30 days, when revisited. Only one exact artist/title match is used; information is not available for every album or edition. Existing 1001 Albums texts stay available separately.</p></section>
     <section class="source-settings"><h3>Online sources &amp; keys</h3>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
@@ -175,6 +179,7 @@ async function saveSettings(form, clear) {
   if (form.elements.record_plays) body.record_plays = form.elements.record_plays.checked;
   if (form.elements.album_guide) body.album_guide = form.elements.album_guide.checked;
   if (form.elements.artist_biographies) body.artist_biographies = form.elements.artist_biographies.checked;
+  if (form.elements.album_information) body.album_information = form.elements.album_information.checked;
   for (const input of form.querySelectorAll("input[type=password]")) if (input.value.trim()) body[input.name] = input.value.trim();
   if (clear) body[clear] = "";
   try {
@@ -184,6 +189,7 @@ async function saveSettings(form, clear) {
     lookup.recordPlays = data.record_plays === true;
     applyAlbumGuideSettings(data);
     applyArtistSettings(data);
+    applyAlbumInformationSettings(data);
     applyPlaybackSettings(data);
     const wasAutomatic = updateNotice.automatic;
     applyUpdateSettings(data); renderUpdateNotice();

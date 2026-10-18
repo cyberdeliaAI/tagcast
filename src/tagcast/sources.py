@@ -397,6 +397,30 @@ class TheAudioDB(Source):
     artists = True
     API = "https://www.theaudiodb.com/api/v1/json/123"
 
+    def album_information(self, artist, album):
+        """Public background text needs one exact identity, never a suggestion score."""
+        data = self.http.json(f"{self.API}/searchalbum.php", {"s": artist, "a": album}, ttl=0) or {}
+        if not isinstance(data, dict) or not isinstance(data.get("album") or [], list):
+            raise SourceError("returned an invalid album response")
+        matches = [row for row in data.get("album") or [] if isinstance(row, dict)
+                   and artist_name_key(row.get("strArtist")) == artist_name_key(artist)
+                   and artist_name_key(row.get("strAlbum")) == artist_name_key(album)]
+        empty = {"source": self.name, "language": "en", "artist": artist, "album": album,
+                 "description": "", "url": ""}
+        if not matches:
+            return {**empty, "status": "missing"}
+        if len(matches) != 1:
+            return {**empty, "status": "ambiguous"}
+        row = matches[0]
+        album_id = str(row.get("idAlbum") or "")
+        if not album_id.isascii() or not album_id.isdigit() or len(album_id) > 20:
+            raise SourceError("returned an invalid album ID")
+        description = row.get("strDescriptionEN") or row.get("strDescription")
+        return {**empty, "status": "ready" if isinstance(description, str) and description.strip() else "unavailable",
+                "artist": row["strArtist"], "album": row["strAlbum"],
+                "description": description if isinstance(description, str) else "",
+                "url": f"https://www.theaudiodb.com/album/{album_id}"}
+
     def biography(self, name):
         # Only an exact named artist is eligible. Never silently use a fuzzy biography.
         data = self.http.json(f"{self.API}/search.php", {"s": name}, ttl=0) or {}
