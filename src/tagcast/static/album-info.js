@@ -39,8 +39,15 @@ function renderAlbumInformation(restoreFocus = "") {
   const box = $("#album-information");
   if (!box) return;
   const selection = albumInformationSelection();
-  box.hidden = !albumInformation.enabled || !selection;
-  if (box.hidden) return;
+  const source = albumBackgroundSource();
+  box.hidden = !albumInformation.enabled || !selection || source !== "theaudiodb";
+  if (box.hidden) {
+    box.innerHTML = "";
+    // A metadata-only cache replacement can reach this renderer without an album repaint.
+    if (albumInformation.enabled && selection && source === "pending"
+        && !albumGuide.loading && !guideNotes.pending) loadGuideAlbumNotes();
+    return;
+  }
   const key = albumInformationKey(selection);
   let entry = albumInformation.entries.get(key);
   if (!entry) {
@@ -85,7 +92,7 @@ async function loadAlbumInformation(selection, key, entry) {
     && selection.session === state.connection.playback_session && revision === albumInformation.revision
     && albumInformation.enabled && albumInformation.entries.get(key) === entry;
   const visible = () => current() && albumInformationSelection()
-    && albumInformationKey(albumInformationSelection()) === key;
+    && albumInformationKey(albumInformationSelection()) === key && albumBackgroundSource() === "theaudiodb";
   try {
     const cached = await api("/api/album-information", selection);
     if (!current()) return;
@@ -129,7 +136,7 @@ document.addEventListener("toggle", event => {
 document.addEventListener("click", event => {
   if (!event.target.closest("[data-album-information-retry]")) return;
   const selection = albumInformationSelection();
-  if (!selection || !albumInformation.enabled) return;
+  if (!selection || !albumInformation.enabled || albumBackgroundSource() !== "theaudiodb") return;
   const key = albumInformationKey(selection), entry = albumInformation.entries.get(key);
   if (!entry || entry.loading || entry.retryAt > Date.now()) return;
   entry.error = ""; entry.retryAt = 0; entry.loading = true;

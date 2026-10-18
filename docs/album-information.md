@@ -6,11 +6,17 @@ User instructions are in the Wiki's [upcoming changes](https://github.com/cyberd
 Enable **Settings → Album information → Show album information from TheAudioDB**
 and save. When visiting an album, **About this album · TheAudioDB** shows available
 English background text in a collapsible panel above the tracks. It is independent
-of artist biographies and 1001 Albums; existing reference texts and their Wikipedia
-license links retain their own panel. The common prose style stays limited to 85ch.
+of artist biographies. When 1001 Albums is enabled and a confirmed album has an
+available reference text, that text takes priority with its existing Wikipedia
+license links. TheAudioDB text is neither read nor requested for that album. The
+common prose style stays limited to 85ch.
 
 The option is off by default. Enabling alone does not scan or fetch. A visited
-album first reads a separate local cache. Only missing or expired text starts a
+album first resolves the saved 1001 Albums report and bundled text, if enabled.
+This only reads local data and never starts analysis. While that check is pending,
+TheAudioDB waits. If no valid reference text is available (including unavailable,
+stale or unconfirmed matches, or a local read failure), the album reads its separate
+TheAudioDB cache. Only missing or expired text starts a
 background provider request. Album controls and playback remain usable while it
 loads or if a request fails. A merged multi-disc page makes one lookup for its
 displayed primary disc's identity, not one for every track or disc.
@@ -65,5 +71,6 @@ negative caching, bounded/corrupt storage, HTML stripping, parallel visits, back
 independent settings and late-result rejection. The route joins HTTP security-guard
 tests in `tests/test_app.py`. Frontend regressions cover lazy visits, escaping,
 playback/history preservation, navigation/Back, disclosure/retry, cache replacement,
-settings and coexistence with 1001 Albums texts. Full browser checks complement the
+settings and 1001 Albums text priority, including delayed local checks, fallback
+and suppression of late TheAudioDB responses. Full browser checks complement the
 simulated-DOM suite using a local fixture with temporary settings and canned data.
