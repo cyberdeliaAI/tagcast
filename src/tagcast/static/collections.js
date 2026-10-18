@@ -133,13 +133,15 @@ function replaceCollections(html) {
 async function renderCollections() {
   if (!["playlists", "album-favourites"].includes(state.screen)) return;
   const page = $("#collections-page");
-  $("#breadcrumb").textContent = state.screen === "playlists" ? "Playlists" : "Album favourites";
+  if (state.screen === "playlists") $("#breadcrumb").textContent = "Playlists";
+  else renderFavouriteHub();
   if (!live() || state.loading) { page.innerHTML = '<div class="empty">Connect iBroadcast to use playlists and album favourites.</div>'; return; }
   collectionsView.details = state.details;
   if (state.screen === "album-favourites") {
     const albums = albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))), filtered = albums.filter(a => `${a.name} ${a.artist}`.toLowerCase().includes(collectionsView.query.toLowerCase()));
     if (state.albumFavouriteError) { page.innerHTML = `<p class="error-box">${escapeHtml(state.albumFavouriteError)}</p>`; return; }
-    replaceCollections(`<div class="page-intro"><div><h1>Album favourites<span>.</span></h1><p>Albums marked with a heart in Tagcast. Saved on this computer for your account, independently of star ratings. Multi-disc sets appear once when every disc is a favourite.</p></div></div><input class="collection-search" id="collection-search" placeholder="Search favourite albums" value="${escapeHtml(collectionsView.query)}" aria-label="Search favourite albums"><p>${filtered.length} ${filtered.length === 1 ? "album" : "albums"}</p><div class="album-grid">${gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50))}</div>${collectionPages(filtered.length, 50)}`);
+    collectionsView.offset = Math.min(collectionsView.offset, Math.max(0, Math.ceil(filtered.length / 50) - 1) * 50);
+    replaceCollections(`<p class="muted">Albums marked with a heart in Tagcast. Saved on this computer for your account, independently of star ratings. Multi-disc sets appear once when every disc is a favourite.</p><input class="collection-search" id="collection-search" placeholder="Search favourite albums" value="${escapeHtml(collectionsView.query)}" aria-label="Search favourite albums"><p>${filtered.length} ${filtered.length === 1 ? "album" : "albums"}</p><div class="album-grid">${gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50)) || '<div class="empty">No favourite albums match. Use the heart on an album page to add one.</div>'}</div>${collectionPages(filtered.length, 50)}`);
     if (typeof syncHistory === "function") syncHistory();
     return;
   }
@@ -168,6 +170,7 @@ function collectionPages(total, size) {
 }
 
 function showCollections(screen, id = null, saved = {}) {
+  rememberFavouriteView();
   collectionsView.request += 1; collectionsView.query = saved.query || ""; collectionsView.offset = saved.offset || 0; collectionsView.playlist = id;
   collectionsView.data = null;
   showScreen(screen);
@@ -249,7 +252,6 @@ async function savePlaylistDraft() {
 }
 
 $("#show-playlists").addEventListener("click", () => showCollections("playlists"));
-$("#show-album-favourites").addEventListener("click", () => showCollections("album-favourites"));
 $("#queue-save").addEventListener("click", () => openPlaylistSave(player.queue));
 document.addEventListener("input", event => {
   if (event.target.id === "collection-search") {

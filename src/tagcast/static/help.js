@@ -21,13 +21,15 @@ const HELP_TOPICS = {
   ]},
   artists: {title: "Album artists", scope: "#artists-page", steps: [
     ["Browse your album artists", "Each card groups the albums credited to one album artist. The totals refer to albums in your library.", ["#artists-page .page-intro"]],
-    ["Find an artist", "Search by name, filter artists without an image, or change the order. Random gives you a different way to explore the list.", ["#artists-page .toolbar"]],
-    ["Open their albums", "Choose an artist card to see their albums. Back returns to this list with your search, order and page preserved.", ["#artists-grid .artist-card", "#artists-grid"]],
+    ["Find an artist", "Search by name, filter artists without an image, or sort by name or iBroadcast artist rating. Unrated artists stay last. Random gives you another way to explore the list.", ["#artists-page .toolbar"]],
+    ["Open their albums", "Choose an artist card to see their albums. Back returns to this list with your search, order and page preserved. A filled heart identifies an artist favourite; choose Favourite artists in the filter to show only these artists.", ["#artists-grid .artist-card", "#artists-grid"]],
     ["Browse more artists", "Choose how many artists to show per page, then use Previous and Next to move through the results.", ["#artists-pagination", "#artists-per-page"]],
   ]},
   albums: {title: "Albums", scope: "#albums-page", steps: [
     ["Your album collection", "These cards show your albums, or the albums by the artist you opened. Discs belonging to the same set are displayed together.", ["#albums-page .page-intro"]],
-    ["Search, filter and sort", "Search titles, artists or genres. Filters can help you find missing metadata or duplicate candidates. Choose the order, page size and cover or list view here.", ["#albums-page .toolbar"]],
+    ["Artist favourites and biographies", "On an album artist's page, the heart beside the name saves a local favourite for your account, independently of album hearts and stars. Artist biographies are optional in Settings. When enabled, only visited artists are looked up on TheAudioDB; text is cached locally and can be expanded in About this artist. Check the source when artists share a name.", ["#albums-page [data-artist-favourite]", "#artist-biography"], "Open an album artist to use artist favourites. Enable optional biographies in Settings."],
+    ["Artist rating", "The stars below an artist's name are their native iBroadcast rating, separate from the local heart and all album or track ratings. Choose one to save it; Clear removes it. Saving checks the previous value and reads the result back. Different artist ratings means this displayed name groups multiple native artists.", ["#artist-rating"], "Open an album artist to rate them."],
+    ["Search, filter and sort", "Search titles, artists or genres. Filters find missing metadata or duplicate candidates. Sort by album rating or Date uploaded as well as name or release year. Date uploaded uses the latest known active-track upload, including every disc in a set. Unknown dates and unrated albums stay last. Sorting never downloads tracks.", ["#albums-page .toolbar"]],
     ["Open, play or queue", "Click a cover or title to open the album. Its small Play button starts the full album and replaces the queue. The + menu adds it to the queue or plays it next. Enlarge covers on the album page.", ["#albums-page .album-card"]],
     ["Select or discover", "With a connected account, tick albums in the grid or list, including filtered results such as 1–2 tracks. Move selected albums to trash reviews all chosen albums and their tracks before confirmation, including selections on other pages or outside the current results. On an artist's page, you can also edit their selected albums together. Play random album is available in All albums when no albums are selected; cleanup filters hide it.", ["#albums-page .album-select", "#albums-page .selection-bar", "#albums-random"]],
   ]},
@@ -54,8 +56,10 @@ const HELP_TOPICS = {
   settings: {title: "Settings", scope: "#settings", steps: [
     ["Interface", "Restore the library information banner or choose which details to show in the compact player. These display choices apply immediately in this browser.", ["#settings .interface-settings"]],
     ["Sidebar", "Show, hide and reorder optional shortcuts. Album artists, Albums, Change history and connection controls remain available. Restore default sidebar resets the layout.", ["#settings .sidebar-layout-settings"]],
+    ["Export changes", "Download the change history saved in this browser as a JSON file. Export is available after a change has been recorded, and does not save pending settings. You can also export from Change history.", ["#settings .history-settings"]],
     ["Playback and devices", "Choose streaming quality separately from the stored file format. Optional play reporting and queue synchronisation are independent and off by default. Save server preferences with the Save button.", ["#settings .playback-settings"], "Playback preferences need the local Tagcast server."],
     ["Discovery", "Enable 1001 Albums here and save to show its shortcut. Analysis starts only when you choose it on that page; enabling the feature does not scan your library.", ["#settings [name=album_guide]"], "Discovery preferences need the local Tagcast server."],
+    ["Artist biographies", "Optional English biographies from TheAudioDB are off by default. After enabling and saving, visiting an album artist checks the local cache first. Only missing or outdated text needs an external lookup of that artist's name. Biographies do not edit your music metadata.", ["#settings .artist-biography-settings"], "Artist biographies need the local Tagcast server."],
     ["Sources and updates", "Online source keys stay on this computer. Automatic lookup sends album and artist names to the chosen sources. Update settings control release checks; updates are installed manually.", ["#settings .source-settings", "#settings #check-updates"], "Source and update preferences need the local Tagcast server."],
   ]},
   tracks: {title: "Tracks", scope: "#tracks-page", steps: [
@@ -63,14 +67,21 @@ const HELP_TOPICS = {
     ["Open or play a result", "Play a result to listen, or open its album to see the full track list and editor. Artist links open albums featuring that performer.", ["#tracks-list"]],
     ["Track actions", "A track's + menu offers queue, play next and playlist actions. The heart adds or removes its iBroadcast favourite. A format label describes the stored file, not the selected streaming quality.", ["#tracks-list .queue-menu-trigger", "#tracks-list"]],
   ]},
-  favourites: {title: "Favourites", scope: "#favourites-page", steps: [
-    ["Your favourite tracks", "This list uses iBroadcast track ratings of 5. It includes existing five-star tracks and changes made in other iBroadcast apps after reloading the library.", ["#favourites-page .page-intro"]],
+  favourites: {title: "Favourite tracks", scope: "main", steps: [
+    ["Choose your favourites", "The tabs switch between Tracks, Albums and Album artists. Searches and pages stay separate, and playback continues when switching.", ["#favourites-tabs"]],
+    ["Your favourite tracks", "This list uses iBroadcast track ratings of 5. It includes existing five-star tracks and changes made in other iBroadcast apps after reloading the library.", ["#favourites-page"]],
     ["Find and play", "Search this list, choose the page size, then play a track or open its album. The + menu offers queue and playlist actions.", ["#favourites-page .toolbar", "#favourites-list"]],
     ["Remove a favourite", "The filled heart removes a favourite by setting its rating to 0. The track remains in your library. Rating changes are checked afterwards.", ["#favourites-list"]],
   ]},
-  "album-favourites": {title: "Album favourites", scope: "#collections-page", steps: [
-    ["Your favourite albums", "Albums marked with a heart appear here, independently of their stars. These favourites are saved on this computer for your account. A multi-disc set appears once when all its discs are favourites.", ["#collections-page .page-intro", "#collections-page"]],
+  "album-favourites": {title: "Album favourites", scope: "main", steps: [
+    ["Choose your favourites", "Favourites in the sidebar opens this shared page. Use Tracks, Albums or Album artists to switch lists without changing playback.", ["#favourites-tabs"]],
+    ["Your favourite albums", "Albums marked with a heart appear here, independently of their stars. These favourites are saved on this computer for your account. A multi-disc set appears once when all its discs are favourites.", ["#collections-page"]],
     ["Find an album", "Search favourite albums by title or artist. Open a card to listen, change its stars or toggle its separate heart. Removing a favourite keeps its star rating and music.", ["#collection-search", "#collections-page .album-card"]],
+  ]},
+  "artist-favourites": {title: "Favourite album artists", scope: "main", steps: [
+    ["Choose your favourites", "Use the tabs to switch between favourite tracks, albums and album artists. Searches and pages stay separate; Back and Forward return to the previous list.", ["#favourites-tabs"]],
+    ["Your favourite album artists", "Artist hearts are saved on this computer for your account, independently of album hearts and stars. Open a card to see that artist’s albums. The heart beside their name adds or removes the artist favourite.", ["#favourite-artists-grid"]],
+    ["Find an artist", "Search names, change their order or choose a page size. This list uses loaded album summaries and never downloads all track details.", ["#artist-favourites-page .toolbar"]],
   ]},
   playlists: {title: "Playlists", scope: "#collections-page", steps: [
     ["Your playlists", "Browse and search your iBroadcast playlists, then open one to see its tracks in order. System playlists and folders are protected.", ["#collections-page .page-intro", "#collections-page"]],

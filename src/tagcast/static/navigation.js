@@ -13,7 +13,7 @@ const SIDEBAR_ITEMS = [
   ["show-track-artists", "Track artists"], ["show-composers", "Composers"],
   ["show-genres", "Genres"], ["show-tags", "Tags"], ["show-years", "Release year"], ["show-decades", "Decades"],
   ["show-tracks", "Tracks"], ["show-favourites", "Favourites"], ["show-playlists", "Playlists"],
-  ["show-album-favourites", "Album favourites"], ["show-recently-played", "Recently played"],
+  ["show-recently-played", "Recently played"],
   ["show-album-guide", "1001 Albums"], ["show-overview", "Overview"], ["show-history", "Change history", true],
 ];
 const sidebarLayout = readSidebarLayout();
@@ -22,8 +22,11 @@ function readSidebarLayout() {
   const defaults = SIDEBAR_ITEMS.map(([id]) => id), optional = new Set(SIDEBAR_ITEMS.filter(i => !i[2]).map(i => i[0]));
   try {
     const saved = JSON.parse(localStorage.getItem("tagcast-sidebar") || "{}");
-    const order = Array.isArray(saved?.order) ? saved.order.filter(id => defaults.includes(id)) : [];
-    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(id => optional.has(id)) : [];
+    const legacy = Array.isArray(saved?.order) && saved.order.includes("show-album-favourites");
+    const order = Array.isArray(saved?.order) ? saved.order.map(id => id === "show-album-favourites" ? "show-favourites" : id).filter(id => defaults.includes(id)) : [];
+    let hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(id => optional.has(id)) : [];
+    // Keep the combined shortcut available if either of the old shortcuts was visible.
+    if (legacy && !saved.hidden?.includes?.("show-album-favourites")) hidden = hidden.filter(id => id !== "show-favourites");
     return {order: [...new Set([...order, ...defaults])], hidden: [...new Set(hidden)]};
   } catch { return {order: defaults, hidden: []}; }
 }
@@ -121,7 +124,7 @@ function currentRoute() {
   if (state.screen === "browse") return `${browseView.kind}${browseView.key === null ? "" : `/${encodeURIComponent(browseView.key)}`}`;
   if (state.screen === "playlists" && collectionsView.playlist) return `playlist/${encodeURIComponent(collectionsView.playlist)}`;
   if (state.screen === "album" && albumView.id) return `album/${encodeURIComponent(albumView.id)}`;
-  if (["overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
+  if (["overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
   return state.artist ? `artist/${encodeURIComponent(state.artist)}` : "albums";
 }
 
@@ -130,7 +133,7 @@ function parseRoute(hash) {
   let value = "";
   try { value = decodeURIComponent(rest.join("/")); } catch { return null; }
   if (Object.hasOwn(browseKinds, kind)) return {screen: "browse", kind, key: rest.length ? value : null};
-  if (["artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
+  if (["artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
   if (kind === "playlist" && /^\d+$/.test(value)) return {screen: "playlists", playlist: value};
   if (kind === "artist" && value) return {screen: "albums", artist: value};
   if (kind === "album" && value) return {screen: "album", album: value};
@@ -144,7 +147,7 @@ function routeLabel(hash, saved = history.state) {
   if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : saved?.browse?.label || browseKinds[route.kind].label;
   if (route.playlist) return saved?.label || (String(collectionsView.data?.id) === route.playlist ? collectionsView.data.name : "Playlist");
   if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || "the album";
-  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourites", playlists: "Playlists", "album-favourites": "Album favourites", "recently-played": "Recently played", overview: "Overview"}[route.screen];
+  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourite tracks", playlists: "Playlists", "album-favourites": "Album favourites", "artist-favourites": "Favourite album artists", "recently-played": "Recently played", overview: "Overview"}[route.screen];
 }
 
 function viewState(index, from) {
@@ -155,6 +158,7 @@ function viewState(index, from) {
     artistsRandomNames: $("#artists-sort").value === "random" ? artistBrowse.randomNames : [], artistsLibrary: artistBrowse.library,
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
     collections: {query: collectionsView.query, offset: collectionsView.offset},
+    favouriteArtists: {query: $("#favourite-artists-search").value, sort: $("#favourite-artists-sort").value, page: favouriteArtists.page},
     recentSearch: $("#recently-played-search").value, recentPage: recentlyPlayed.page,
     guide: {query: albumGuide.query, filter: albumGuide.filter, decade: albumGuide.decade, sort: albumGuide.sort, page: albumGuide.page},
     browse: {query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
@@ -310,6 +314,10 @@ function showRoute(route, saved = {}) {
   } else if (route.screen === "favourites") {
     if (saved.favouritesSearch !== undefined) $("#favourites-search").value = saved.favouritesSearch;
     showFavourites(saved.favouritesPage || 0);
+  } else if (route.screen === "artist-favourites") {
+    $("#favourite-artists-search").value = saved.favouriteArtists?.query || "";
+    $("#favourite-artists-sort").value = ["za", "rating_high", "rating_low"].includes(saved.favouriteArtists?.sort) ? saved.favouriteArtists.sort : "az";
+    showFavouriteArtists(saved.favouriteArtists?.page || 0);
   } else if (route.screen === "recently-played") {
     if (saved.recentSearch !== undefined) $("#recently-played-search").value = saved.recentSearch;
     showRecentlyPlayed(saved.recentPage || 0);

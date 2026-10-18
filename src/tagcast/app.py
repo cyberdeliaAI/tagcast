@@ -147,6 +147,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0")))
         elif url.path == "/api/album-favourites":
             self._run(self.studio.collections.album_favourites)
+        elif url.path == "/api/artist-favourites":
+            self._run(self.studio.collections.artist_favourites)
         elif url.path == "/api/tags":
             self._run(lambda: self.studio.tags.catalogue(query.get("q"), query.get("offset", "0"), query.get("id")))
         elif url.path == "/api/tags/selection":
@@ -217,7 +219,10 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/favourite": self.studio.favourite,
             "/api/play": self.studio.record_play,
             "/api/album-rating": self.studio.collections.rate_album,
+            "/api/artist-rating": self.studio.collections.rate_artist,
             "/api/album-favourite": self.studio.collections.favourite_album,
+            "/api/artist-favourite": self.studio.collections.favourite_artist,
+            "/api/artist-biography": self.studio.artist_bios.view,
             "/api/playlist": self.studio.collections.save_playlist,
             "/api/queue-tracks": self.studio.collections.queue_tracks,
             "/api/queue-sync": self.studio.queue_sync.action,

@@ -48,6 +48,11 @@ def normalize(value):
     return re.sub(r"\s+", " ", value).strip()
 
 
+def artist_name_key(value):
+    """Biography identity is stricter than suggestion matching: retain accents and punctuation."""
+    return " ".join(unicodedata.normalize("NFC", str(value or "")).casefold().split())
+
+
 EDITION_WORDS = (r"remaster(ed)?|edition|deluxe|version|anniversary|expanded|mono|stereo|"
                  r"bonus|reissue|special|collector'?s|live|explicit")
 
@@ -391,6 +396,31 @@ class TheAudioDB(Source):
     name, label = "theaudiodb", "TheAudioDB"
     artists = True
     API = "https://www.theaudiodb.com/api/v1/json/123"
+
+    def biography(self, name):
+        # Only an exact named artist is eligible. Never silently use a fuzzy biography.
+        data = self.http.json(f"{self.API}/search.php", {"s": name}, ttl=0) or {}
+        if not isinstance(data, dict):
+            raise SourceError("returned an invalid artist response")
+        rows = data.get("artists") or []
+        if not isinstance(rows, list):
+            raise SourceError("returned an invalid artist response")
+        matches = [row for row in rows if isinstance(row, dict)
+                   and artist_name_key(row.get("strArtist")) == artist_name_key(name)]
+        empty = {"source": self.name, "language": "en", "name": name, "biography": "", "url": ""}
+        if not matches:
+            return {**empty, "status": "missing"}
+        if len(matches) != 1:
+            return {**empty, "status": "ambiguous"}
+        row = matches[0]
+        artist_id = str(row.get("idArtist") or "")
+        if not artist_id.isascii() or not artist_id.isdigit() or len(artist_id) > 20:
+            raise SourceError("returned an invalid artist ID")
+        # Current v1 responses use strBiography; older responses/documentation use EN.
+        biography = row.get("strBiographyEN") or row.get("strBiography")
+        return {**empty, "status": "ready" if isinstance(biography, str) and biography.strip() else "unavailable",
+                "name": row["strArtist"], "biography": biography if isinstance(biography, str) else "",
+                "url": f"https://www.theaudiodb.com/artist/{artist_id}"}
 
     def album(self, artist, album):
         data = self.http.json(f"{self.API}/searchalbum.php", {"s": artist, "a": album}) or {}

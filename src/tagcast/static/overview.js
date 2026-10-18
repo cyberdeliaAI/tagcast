@@ -20,6 +20,7 @@ function duration(seconds) {
 
 function showScreen(name) {
   if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();
+  if (!["playlists", "album-favourites"].includes(name) && typeof rememberFavouriteView === "function") rememberFavouriteView();
   if (typeof closeHelp === "function") closeHelp(false);
   if (name !== "album-guide") $("#guide-link-dialog").close();
   if (typeof closeQueueActions === "function") closeQueueActions();
@@ -32,7 +33,6 @@ function showScreen(name) {
   state.screen = name;
   $("#collections-page").hidden = !["playlists", "album-favourites"].includes(name);
   $("#show-playlists").classList.toggle("active", name === "playlists");
-  $("#show-album-favourites").classList.toggle("active", name === "album-favourites");
   $("#overview-page").hidden = name !== "overview";
   $("#album-guide-page").hidden = name !== "album-guide";
   $("#show-album-guide").classList.toggle("active", name === "album-guide");
@@ -40,9 +40,17 @@ function showScreen(name) {
   $("#album-page").hidden = name !== "album";
   $("#artists-page").hidden = name !== "artists";
   $("#favourites-page").hidden = name !== "favourites";
+  $("#artist-favourites-page").hidden = name !== "artist-favourites";
+  if (name === "album-favourites") {
+    $("#collections-page").setAttribute("role", "tabpanel");
+    $("#collections-page").setAttribute("aria-labelledby", "favourites-tab-albums");
+    $("#collections-page").setAttribute("tabindex", "0");
+  } else {
+    for (const attribute of ["role", "aria-labelledby", "tabindex"]) $("#collections-page").removeAttribute(attribute);
+  }
   $("#recently-played-page").hidden = name !== "recently-played";
   $("#show-recently-played").classList.toggle("active", name === "recently-played");
-  $("#show-favourites").classList.toggle("active", name === "favourites");
+  $("#show-favourites").classList.toggle("active", Object.values(favouriteViews).includes(name));
   $("#tracks-page").hidden = name !== "tracks";
   $("#browse-page").hidden = name !== "browse";
   for (const kind of Object.keys(browseKinds)) $("#show-" + kind).classList.toggle("active", name === "browse" && browseView.kind === kind);
@@ -53,6 +61,7 @@ function showScreen(name) {
   $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (["playlists", "album-favourites"].includes(name) && typeof renderCollections === "function") renderCollections();
+  renderFavouriteHub();
   if (name === "overview") loadOverview();
   if (typeof syncHistory === "function") syncHistory();
 }

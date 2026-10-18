@@ -76,6 +76,7 @@ class StartTests(unittest.TestCase):
         studio.collections.playlists.return_value = {"playlists": []}
         studio.collections.save_playlist.return_value = {"job": "check"}
         studio.collections.rate_album.return_value = {"job": "check"}
+        studio.collections.rate_artist.return_value = {"job": "check"}
         studio.collections.album_favourites.return_value = {"albums": ["1"]}
         studio.collections.favourite_album.return_value = {"results": [{"id": "1", "favourite": True}]}
         studio.collections.queue_tracks.return_value = {"tracks": []}
@@ -97,6 +98,9 @@ class StartTests(unittest.TestCase):
         studio.album_guide.view.return_value = {"enabled": True, "state": "empty"}
         studio.album_guide.analyse.return_value = {"enabled": True, "state": "ready"}
         studio.album_guide.link.return_value = {"enabled": True, "state": "ready"}
+        studio.collections.favourite_artist.return_value = {"results": []}
+        studio.collections.artist_favourites.return_value = {"artists": []}
+        studio.artist_bios.view.return_value = {"enabled": False}
         studio.status.return_value = {"configured": True, "using_default_client": True}
         handler = type("TestHandler", (app.Handler,), {"studio": studio, "port": 0})
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -120,7 +124,10 @@ class StartTests(unittest.TestCase):
             for path, action in [("/api/playlist", studio.collections.save_playlist),
                                  ("/api/tags/save", studio.tags.save),
                                  ("/api/album-rating", studio.collections.rate_album),
+                                 ("/api/artist-rating", studio.collections.rate_artist),
                                  ("/api/album-favourite", studio.collections.favourite_album),
+                                 ("/api/artist-favourite", studio.collections.favourite_artist),
+                                 ("/api/artist-biography", studio.artist_bios.view),
                                  ("/api/queue-tracks", studio.collections.queue_tracks),
                                  ("/api/config/default", studio.use_default_client),
                                  ("/api/album-guide/analyse", studio.album_guide.analyse),
@@ -131,7 +138,7 @@ class StartTests(unittest.TestCase):
                 action.assert_not_called()
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
                 action.assert_called_once()
-            for path in ("/api/playlists", "/api/album-favourites", "/api/queue-sync", "/api/album-guide", "/api/tags", "/api/tags/selection?albums=1&track=2"):
+            for path in ("/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/tags", "/api/tags/selection?albums=1&track=2"):
                 self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)

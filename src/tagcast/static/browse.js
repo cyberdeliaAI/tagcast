@@ -175,7 +175,7 @@ function renderBrowse() {
   $("#browse-tag-delete").hidden = !detail;
   const decades = browseView.kind === "decades", surprise = detail && decades;
   $("#browse-title").textContent = detail ? browseView.label || "Albums" : `${config.label}.`;
-  $("#breadcrumb").textContent = detail ? `${config.label} / ${browseView.label || "Albums"}` : config.label;
+  $("#breadcrumb").innerHTML = detail ? `${escapeHtml(config.label)}<span class="slash" aria-hidden="true">/</span><span aria-current="page">${escapeHtml(browseView.label || "Albums")}</span>` : escapeHtml(config.label);
   $("#browse-eyebrow").textContent = detail ? config.label.toLocaleUpperCase() : "EXPLORE YOUR COLLECTION";
   $("#browse-subtitle").textContent = surprise ? "A random selection from this decade. Open an album to listen, add it to your queue, or try Surprise me again." : detail ? "Albums with at least one matching track. Open an album to see its tracks, listen or edit." : config.subtitle;
   const introduction = surprise ? decadeIntroduction(browseView.key) : "";

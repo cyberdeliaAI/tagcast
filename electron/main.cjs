@@ -75,7 +75,7 @@ function installMenu() {
     {role: "editMenu"},
     {label: "View", submenu: [{role: "reload"}, {role: "resetZoom"}, {role: "zoomIn"}, {role: "zoomOut"}, {type: "separator"}, {role: "togglefullscreen"}, ...(!app.isPackaged ? [{role: "toggleDevTools"}] : [])]},
     {role: "windowMenu"},
-    {role: "help", submenu: [{label: "Tagcast on GitHub", click: () => openExternal("https://github.com/cyberdeliaAI/tagcast")}]}
+    {role: "help", submenu: [{label: "Tagcast Help", click: () => openExternal("https://github.com/cyberdeliaAI/tagcast/wiki")}]}
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   app.setAboutPanelOptions({applicationName: "Tagcast", applicationVersion: packageInfo.version,
