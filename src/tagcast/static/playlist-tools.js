@@ -12,7 +12,7 @@ function playlistBrowseCard(data) {
 }
 
 function playlistFolderPage(data) {
-  return `<button class="button small" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistCoverImage(data)}<div><div class="eyebrow">PLAYLIST FOLDER</div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div>
+  return `<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistCoverImage(data)}<div><div class="eyebrow">PLAYLIST FOLDER</div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div>
     <div class="album-detail-actions"><button class="button" data-folder-rename>Rename folder…</button><button class="button" data-folder-add>Add playlists or folders…</button><button class="button danger" data-folder-delete ${data.total || data.parent_count ? 'disabled title="Empty the folder and remove its parent references first"' : ""}>Delete empty folder…</button></div>
     ${data.parents?.length ? `<p class="muted">Also in: ${data.parents.map(p => `<button class="text-action" data-playlist-open="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`).join(", ")}</p>` : ""}
     <p>${data.total} playlist ${data.total === 1 ? "reference" : "references"} · removing a reference keeps the playlist and its music.</p><div class="playlist-cards">${data.playlists.map(p => `<div class="playlist-folder-item">${playlistBrowseCard(p)}<button class="text-action" data-folder-remove="${escapeHtml(p.id)}" aria-label="Remove ${escapeHtml(p.name)} from folder">Remove from folder…</button></div>`).join("") || '<p class="muted">This folder is empty. Add playlists or folders when you choose.</p>'}</div>${collectionPages(data.total, 100)}`;
