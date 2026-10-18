@@ -142,6 +142,11 @@ and preserve a valid script order in `index.html`.
   At mobile widths (760px and below), show the cover at full available width above
   the album title, album artist, metadata and actions. Keep desktop cover/title alignment.
   Album background prose and artist biographies are limited to 85ch; attribution stays visible.
+- Artist-name fields in the metadata editor reuse already loaded native names and compact
+  album summaries for local suggestions, with at most 40 choices in the DOM. Allow free
+  typing, preserve exact names/credit IDs, keyboard selection and Escape/Tab dismissal.
+  Never fetch library/track details or write to populate/select a choice. Invalidate the
+  chooser on library/draft replacement and keep normal review, bulk gates and Various Artists.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
 - Tracks go to iBroadcast's trash (`trash`) from the album page after its trash

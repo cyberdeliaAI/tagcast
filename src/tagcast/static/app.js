@@ -115,6 +115,7 @@ function summarize(album) {
 
 function useLocal(albums, mode) {
   closeBrowseOptions();
+  resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
@@ -550,8 +551,109 @@ function field(name, label, value, options = {}) {
 function albumArtistField(albums, bulk) {
   const various = albums.every(a => a.artist_id === 0 && a.artist === "Various Artists");
   const value = various ? "" : common(albums, "artist");
-  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}<input aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Enter the album artist" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}><label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Track artists stay unchanged.</small></div>`;
+  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}${artistChoiceInput(`aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Type to find an existing artist, or enter a new name" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Choose an existing artist from the suggestions, or type a new name. Track artists stay unchanged.</small></div>`;
 }
+
+// Reuse already loaded names; only a small matching list enters the DOM.
+const editorArtistChoices = {albums: null, names: null, values: [], input: null, results: [], active: -1, details: null, draft: null};
+
+function artistChoiceInput(attributes, disabled = false) {
+  return `<span class="artist-choice"><input ${attributes} role="combobox" aria-autocomplete="list" aria-controls="editor-artist-names" aria-expanded="false" data-artist-suggestions autocomplete="off"><button type="button" class="artist-choice-toggle" data-artist-choices-toggle aria-label="Show existing artists" aria-haspopup="listbox" aria-controls="editor-artist-names" ${disabled ? "disabled" : ""}>▾</button></span>`;
+}
+
+function closeEditorArtistChoices() {
+  editorArtistChoices.input?.setAttribute("aria-expanded", "false");
+  editorArtistChoices.input?.removeAttribute("aria-activedescendant");
+  Object.assign(editorArtistChoices, {input: null, results: [], active: -1, details: null, draft: null});
+  $("#editor-artist-names").hidden = true;
+}
+
+function resetEditorArtistChoices() {
+  closeEditorArtistChoices();
+  Object.assign(editorArtistChoices, {albums: null, names: null, values: []});
+  $("#editor-artist-names").innerHTML = "";
+}
+
+function fillEditorArtistChoices(input, all = false) {
+  if (!editing || !$("#editor").open || state.loading || input.disabled || input.hidden
+      || !input.matches?.("[data-artist-suggestions]") || !input.closest("#metadata-form")) return;
+  if (editorArtistChoices.input !== input) closeEditorArtistChoices();
+  if (editorArtistChoices.albums !== state.albums || editorArtistChoices.names !== state.artistNames) {
+    const names = new Set(state.artistNames);
+    for (const album of state.albums) for (const artist of albumArtistEntries(album)) names.add(artist.name);
+    if (!live()) for (const album of state.details.values()) for (const track of album.tracks) {
+      names.add(track.artist);
+      for (const credit of creditValues(track)) names.add(credit.name);
+    }
+    editorArtistChoices.values = [...names].filter(name => typeof name === "string" && name.trim() && name.length <= 1000)
+      .sort((a, b) => a.localeCompare(b)).map(name => ({name, folded: name.toLocaleLowerCase()}));
+    editorArtistChoices.albums = state.albums; editorArtistChoices.names = state.artistNames;
+  }
+  const query = all ? "" : input.value.trim().toLocaleLowerCase(), matches = [];
+  for (const entry of editorArtistChoices.values) {
+    if (entry.folded.includes(query)) matches.push(entry.name);
+    if (matches.length === 40) break;
+  }
+  Object.assign(editorArtistChoices, {input, results: matches, active: -1, details: state.details, draft: editing});
+  const menu = $("#editor-artist-names");
+  menu.innerHTML = matches.map((name, index) => `<button type="button" role="option" aria-selected="false" tabindex="-1" id="editor-artist-choice-${index}" data-artist-choice="${index}">${escapeHtml(name)}</button>`).join("")
+    + `<p class="muted">${matches.length === 40 ? "Showing up to 40 matches. Type more to narrow the list." : matches.length ? "Choose an artist, or type a new name." : "No existing artist matches. You can keep this new name."}</p>`;
+  input.removeAttribute("aria-activedescendant"); input.setAttribute("aria-expanded", "true");
+  const anchor = input.getBoundingClientRect(), width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
+  const below = height - anchor.bottom - 8, above = anchor.top - 8, down = below >= Math.min(240, above);
+  menu.style.width = `${Math.max(0, Math.min(anchor.width, width - 16))}px`;
+  menu.style.maxHeight = `${Math.max(60, Math.min(240, down ? below : above))}px`;
+  menu.style.left = `${Math.max(8, Math.min(anchor.left, width - anchor.width - 8))}px`;
+  menu.hidden = false; menu.scrollTop = 0;
+  menu.style.top = `${Math.max(8, down ? anchor.bottom + 4 : anchor.top - menu.getBoundingClientRect().height - 4)}px`;
+}
+
+function chooseEditorArtist(index) {
+  const choices = editorArtistChoices, input = choices.input, name = choices.results[index];
+  if (!name || !input?.isConnected || input.disabled || input.hidden || state.loading || !$("#editor").open
+      || choices.details !== state.details || choices.draft !== editing) { closeEditorArtistChoices(); return; }
+  input.value = name;
+  input.dispatchEvent(new Event("input", {bubbles: true}));
+  input.focus(); closeEditorArtistChoices();
+}
+
+for (const type of ["focusin", "input"]) document.addEventListener(type, event => {
+  if (event.target.matches?.("[data-artist-suggestions]")) fillEditorArtistChoices(event.target);
+  else if (type === "focusin" && !event.target.closest?.("#editor-artist-names")) closeEditorArtistChoices();
+});
+document.addEventListener("pointerdown", event => {
+  if (event.target.closest?.("[data-artist-choice]")) event.preventDefault();
+});
+document.addEventListener("click", event => {
+  const toggle = event.target.closest("[data-artist-choices-toggle]"), choice = event.target.closest("[data-artist-choice]");
+  if (toggle) { const input = toggle.closest(".artist-choice").querySelector("input"); input.focus(); fillEditorArtistChoices(input, true); }
+  else if (choice) chooseEditorArtist(Number(choice.dataset.artistChoice));
+  else if (!event.target.closest("[data-artist-suggestions], #editor-artist-names")) closeEditorArtistChoices();
+});
+document.addEventListener("keydown", event => {
+  const input = event.target;
+  if (!input.matches?.("[data-artist-suggestions]")) return;
+  const choices = editorArtistChoices, opened = choices.input === input && !$("#editor-artist-names").hidden;
+  if (["Escape", "Tab"].includes(event.key)) {
+    if (opened && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); }
+    closeEditorArtistChoices(); return;
+  }
+  if (event.key === "Enter" && opened && choices.active >= 0) {
+    event.preventDefault(); chooseEditorArtist(choices.active); return;
+  }
+  if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  if (!opened) fillEditorArtistChoices(input);
+  if (!choices.results.length) return;
+  choices.active = event.key === "ArrowDown" ? (choices.active + 1) % choices.results.length
+    : (choices.active < 0 ? choices.results.length - 1 : (choices.active - 1 + choices.results.length) % choices.results.length);
+  const id = `editor-artist-choice-${choices.active}`;
+  input.setAttribute("aria-activedescendant", id);
+  for (const [index, option] of [...$("#editor-artist-names").querySelectorAll("[data-artist-choice]")].entries()) option.setAttribute("aria-selected", String(index === choices.active));
+  $(`#${id}`)?.scrollIntoView({block: "nearest"});
+});
+window.addEventListener("scroll", event => { if (!event.target.closest?.("#editor-artist-names, .artist-choice")) closeEditorArtistChoices(); }, true);
+window.addEventListener("resize", closeEditorArtistChoices);
 
 function syncAlbumArtistControls() {
   if (!editing) return;
@@ -560,7 +662,13 @@ function syncAlbumArtistControls() {
   const enabled = !editing.bulk || Boolean(form.querySelector('[data-enable="artist"]')?.checked);
   box.disabled = !enabled;
   const input = form.elements.namedItem("artist");
-  if (input) { input.hidden = box.checked; input.disabled = !enabled || box.checked; }
+  if (input) {
+    input.hidden = box.checked; input.disabled = !enabled || box.checked;
+    const wrapper = input.closest?.(".artist-choice"), toggle = wrapper?.querySelector("[data-artist-choices-toggle]");
+    if (wrapper) wrapper.hidden = box.checked;
+    if (toggle) toggle.disabled = input.disabled;
+    closeEditorArtistChoices();
+  }
 }
 
 async function openEditor(ids) {
@@ -585,6 +693,7 @@ async function openEditor(ids) {
   if (whole) albums.sort((a, b) => (a.disc || 0) - (b.disc || 0));
   const album = albums[0], bulk = albums.length > 1 && !whole, single = !bulk;
   editing = {ids: albums.map(a => String(a.id)), originals: structuredClone(albums), trackPatches: {}, bulk, set: whole, dirty: new Set()};
+  resetEditorArtistChoices();
   const allTracks = albums.flatMap(a => a.tracks);
   // Two discs of one set with one disc number would no longer be a set.
   const sameSet = bulk && albums.some(a => (discSet(a) || []).filter(d => editing.ids.includes(String(d.id))).length > 1);
@@ -656,7 +765,7 @@ function editTrack(id) {
   if (!original) return;
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
-  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"]].map(([key, label, type]) => `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span><input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}"></label>`).join("")}${genreField("track-genres", "Track genres", track.genres || [])}${creditsField(track)}</div><p class="muted">Track years: 1800–2050; use 0 to clear. Individual track edits take priority over album-wide track changes.</p></div>`;
+  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"]].map(([key, label, type]) => `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="Track artist" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="Find an existing artist, or enter a new name"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`).join("")}${genreField("track-genres", "Track genres", track.genres || [])}${creditsField(track)}</div><p class="muted">Track years: 1800–2050; use 0 to clear. Individual track edits take priority over album-wide track changes.</p></div>`;
   pane.scrollIntoView({block: "nearest", behavior: "smooth"});
 }
 
@@ -1021,6 +1130,7 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
@@ -1295,6 +1405,7 @@ function flushPendingAlbums() {
   render();
 }
 $("#editor").addEventListener("close", flushPendingAlbums);
+$("#editor").addEventListener("close", resetEditorArtistChoices);
 $("#review").addEventListener("close", flushPendingAlbums);
 
 document.addEventListener("click", event => {

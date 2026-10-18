@@ -68,7 +68,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
-    performance: {now: () => playbackClock},
+    Event, performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
@@ -5673,4 +5673,139 @@ test('Mambo! is found with its punctuation but missing English text is distingui
   assert.match(html,/Album found on TheAudioDB, but no English background text is available/);
   assert.match(html,/href="https:\/\/www.theaudiodb.com\/album\/2309687"/);
   assert.doesNotMatch(html,/No matching album|<details/);
+});
+
+function editorArtistInput(p, value = "") {
+  const input = artistEditorForm(p, value), attributes = new Map();
+  Object.assign(input, {name: "artist", dataset: {}, isConnected: true,
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: name => attributes.delete(name), getAttribute: name => attributes.get(name),
+    getBoundingClientRect: () => ({left: 100, right: 400, top: 150, bottom: 190, width: 300}),
+    focus() { p.nodes.get("#metadata-form").focused = input; },
+    dispatchEvent: event => p.emitDocument(event.type, {target: input}),
+    matches: selector => selector === "[data-artist-suggestions]",
+    closest: selector => selector === "#metadata-form" ? p.nodes.get("#metadata-form") : null});
+  return input;
+}
+
+test("artist choices reuse loaded names, bound the visible list and preserve exact punctuation", async () => {
+  const p = livePage(); await settle();
+  p.run(`state.artistNames = [...Array.from({length: 10000}, (_, i) => 'Artist ' + i),
+    'Kate Bush', 'Kate Bush', 'Earth; Wind & Fire', '<Guest "Artist">', 'Last-only Performer'];
+    playTracks(state.details.get(state.albums[0].id))`);
+  await p.run("openEditor([state.albums[0].id])");
+  const input = editorArtistInput(p), list = p.nodes.get("#editor-artist-names");
+  const count = p.requests.length, source = p.nodes.get("#audio").src, queue = p.json("player.queue");
+  await p.emitDocument("focusin", {target: input});
+  assert.equal([...list.innerHTML.matchAll(/role="option"/g)].length, 40);
+  assert.deepEqual(p.json("[...editing.dirty]"), [], "Opening suggestions cannot alter the draft");
+  input.value = "last-only";
+  await p.emitDocument("focusin", {target: input});
+  assert.match(list.innerHTML, />Last-only Performer<\/button>/);
+  input.value = "EARTH;";
+  await p.emitDocument("focusin", {target: input});
+  assert.match(list.innerHTML, />Earth; Wind &amp; Fire<\/button>/);
+  input.value = "guest";
+  await p.emitDocument("focusin", {target: input});
+  assert.match(list.innerHTML, />&lt;Guest &quot;Artist&quot;&gt;<\/button>/);
+  input.value = "kate bush";
+  await p.emitDocument("focusin", {target: input});
+  assert.equal([...list.innerHTML.matchAll(/role="option"/g)].length, 1);
+  assert.match(list.innerHTML, />Kate Bush<\/button>/);
+  assert.equal(p.requests.length, count, "Typing/focusing makes no library or provider request");
+  assert.deepEqual(p.json("player.queue"), queue); assert.equal(p.nodes.get("#audio").src, source);
+  assert.equal(p.nodes.get("#audio").paused, false); assert.equal(p.run("state.history.length"), 0);
+});
+
+test("existing artist selection and new names remain reviewed drafts, with disabled fields untouched", async () => {
+  const p = livePage(); await settle();
+  p.run('state.artistNames = ["Kate Bush"]');
+  await p.run("openEditor([state.albums[0].id])");
+  await settle();
+  const input = editorArtistInput(p, "Kate Bush"), count = p.requests.length;
+  await p.emitDocument("input", {target: input});
+  assert.equal(p.requests.length, count);
+  p.run("buildReview()");
+  assert.deepEqual(p.json("pending.changes.map(c => [c.kind, c.fields.artist?.after])"), [["album", "Kate Bush"]]);
+  assert.doesNotMatch(p.nodes.get("#review-warnings").innerHTML, /New artist in iBroadcast/);
+  assert.ok(p.requests.slice(count).every(r => r.url === "/api/account-settings" && !r.options?.method));
+  input.value = "A new handwritten artist";
+  await p.emitDocument("input", {target: input});
+  assert.equal(input.value, "A new handwritten artist");
+  assert.match(p.nodes.get("#editor-artist-names").innerHTML, /No existing artist matches/);
+  p.run("buildReview()");
+  assert.match(p.nodes.get("#review-warnings").innerHTML, /New artist in iBroadcast/);
+  assert.ok(p.requests.slice(count).every(r => r.url === "/api/account-settings" && !r.options?.method), "Only the normal review's account settings read is allowed");
+  p.run("resetEditorArtistChoices(); editing.dirty.clear()");
+  input.disabled = true;
+  await p.emitDocument("focusin", {target: input});
+  assert.equal(p.nodes.get("#editor-artist-names").innerHTML, "");
+  assert.deepEqual(p.json("[...editing.dirty]"), []);
+});
+
+test("artist choice names are discarded on close and library replacement", async () => {
+  const p = livePage(); await settle();
+  p.run('state.artistNames = ["Old account only"]');
+  await p.run("openEditor([state.albums[0].id])");
+  const input = editorArtistInput(p, "account");
+  await p.emitDocument("focusin", {target: input});
+  assert.match(p.nodes.get("#editor-artist-names").innerHTML, /Old account only/);
+  p.run('state.artistNames = ["New account only"]');
+  await p.emitDocument("focusin", {target: input});
+  assert.doesNotMatch(p.nodes.get("#editor-artist-names").innerHTML, /Old account/);
+  assert.match(p.nodes.get("#editor-artist-names").innerHTML, /New account only/);
+  await p.nodes.get("#editor").emit("close");
+  assert.equal(p.nodes.get("#editor-artist-names").innerHTML, "");
+  assert.equal(p.run("editorArtistChoices.values.length"), 0);
+  p.run('useLocal(demoLibrary(), "demo")');
+  assert.equal(p.nodes.get("#editor-artist-names").innerHTML, "");
+  assert.equal(p.run("editorArtistChoices.values.length"), 0);
+});
+
+test("album, additional-credit and track-artist fields share suggestions without changing credit IDs", async () => {
+  const p = livePage(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  assert.match(p.nodes.get("#editor-content").innerHTML, /name="artist"[^>]*aria-controls="editor-artist-names"[^>]*data-artist-suggestions/);
+  assert.match(p.run('creditRows([{artist_id:77,name:"Guest",type:"artist",phrase:null}], true)'),
+    /data-credit-name[^>]*aria-controls="editor-artist-names"[^>]*data-artist-suggestions/);
+  p.run('const CSS = {escape: value => String(value)}; $("#track-inline").scrollIntoView = () => {}');
+  p.run("editTrack(String(editing.originals[0].tracks[0].id))");
+  assert.match(p.nodes.get("#track-inline").innerHTML, /data-key="artist"[^>]*aria-controls="editor-artist-names"[^>]*data-artist-suggestions/);
+  assert.doesNotMatch(p.nodes.get("#track-inline").innerHTML, /data-key="title"[^>]*data-artist-suggestions/);
+  p.run(`const untouchedCredit = {artist_id:77,name:'Guest',type:'artist',phrase:null};
+    const unchangedRow = {dataset:{original:JSON.stringify(untouchedCredit)}, querySelector: selector =>
+      ({value:selector === '[data-credit-name]' ? 'Guest' : selector === '[data-credit-role]' ? 'artist' : ''})};
+    const unchangedCreditEditor = {querySelector:()=>null,querySelectorAll:()=>[unchangedRow]};`);
+  assert.deepEqual(p.json("readCredits(unchangedCreditEditor)"), [{artist_id:77,name:"Guest",type:"artist",phrase:null}]);
+});
+
+test("artist choices support keyboard selection and dismissal, rejecting stale draft results", async () => {
+  const p = livePage(); await settle();
+  p.run('state.artistNames = ["Unique existing artist"]');
+  await p.run("openEditor([state.albums[0].id])");
+  const input = editorArtistInput(p, "Unique"), menu = p.nodes.get("#editor-artist-names");
+  await p.emitDocument("focusin", {target: input});
+  p.run('$("#editor-artist-choice-0").scrollIntoView = () => {}');
+  const keys = [];
+  const key = async value => p.emitDocument("keydown", {target: input, key: value,
+    preventDefault() { keys.push(value); }, stopPropagation() { keys.push("stopped"); }});
+  await key("ArrowDown");
+  assert.equal(input.getAttribute("aria-activedescendant"), "editor-artist-choice-0");
+  assert.equal(input.value, "Unique", "Highlighting must not replace the text");
+  await key("Enter");
+  assert.equal(input.value, "Unique existing artist");
+  assert.equal(menu.hidden, true); assert.equal(input.getAttribute("aria-expanded"), "false");
+  assert.equal(p.run('editing.dirty.has("artist")'), true);
+  await p.emitDocument("focusin", {target: input});
+  await key("Escape");
+  assert.ok(keys.includes("stopped")); assert.equal(p.nodes.get("#editor").open, true);
+  assert.equal(menu.hidden, true);
+  await p.emitDocument("focusin", {target: input});
+  await key("Tab"); assert.ok(!keys.includes("Tab"), "Tab must keep normal focus navigation");
+  input.value = "Unique";
+  await p.emitDocument("focusin", {target: input});
+  p.run("state.details = new Map(state.details)");
+  p.run("chooseEditorArtist(0)");
+  assert.equal(input.value, "Unique", "A replaced library invalidates the shown choices");
+  assert.equal(menu.hidden, true);
 });
