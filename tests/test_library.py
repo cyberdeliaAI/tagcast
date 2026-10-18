@@ -1,5 +1,6 @@
 import unittest
 from copy import deepcopy
+from unittest.mock import patch
 
 from tagcast.library import (
     ConflictError,
@@ -68,6 +69,37 @@ class DecodeTests(unittest.TestCase):
 
 
 class SummaryTests(unittest.TestCase):
+    def test_editor_names_keep_exact_active_genres_and_composer_roles_without_track_views(self):
+        data = raw()
+        artists = data["library"]["artists"]
+        artists.update({"7": ["Bach; Handel"], "8": ["Featured guest"], "9": ["Hidden composer"]})
+        albums = data["library"]["albums"]
+        albums["map"]["trashed"] = 5
+        for key in ("10", "11", "12"):
+            albums[key].append(key == "12")
+        tracks = data["library"]["tracks"]
+        tracks["map"].update({"artists_additional": 8, "genres_additional": 9})
+        tracks["100"][4] = "Pop;Rock"
+        tracks["100"].extend([[[7, None, "composer"], [8, None, "artist"],
+                               [6, None, "lyricist"], [999, None, "composer"]], ["Jazz / Blues", "café"]])
+        tracks["103"][4] = "Trashed genre"
+        tracks["103"].extend([[[9, None, "composer"]], []])
+        tracks["104"].extend([[[9, None, "composer"]], []])
+        tracks["999"] = ["Unlisted", 10, 4, 1982, "Unlisted genre", 9, False, 0,
+                         [[9, None, "composer"]], []]
+        library = Library(data)
+        with patch.object(library, "track_view", side_effect=AssertionError("No track views")), \
+                patch.object(library, "album_view", side_effect=AssertionError("No album views")):
+            library.album_index()
+            with patch.object(library, "album_index", side_effect=AssertionError("No second scan")):
+                names = library.editor_names()
+        self.assertEqual(names, {"genres": ["café", "Jazz", "Jazz / Blues", "Pop;Rock", "Rock"],
+                                 "composers": ["Bach; Handel"]})
+        names["genres"].clear()
+        self.assertIn("Pop;Rock", library.editor_names()["genres"])
+        data["library"]["tracks"]["100"][4] = "New genre"
+        self.assertIn("New genre", Library(data).editor_names()["genres"])
+
     def test_latest_upload_uses_active_valid_track_timestamps_only(self):
         data = raw()
         rows = data['library']['tracks']

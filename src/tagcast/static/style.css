@@ -704,6 +704,8 @@ body.help-open{overflow:hidden}
 .credit-row>button{justify-self:start}
 .artist-choice{position:relative;display:block;min-width:0}
 .artist-choice>input{width:100%;padding-right:38px}
+.genre-input .artist-choice{flex:1;min-width:140px}
+.field .genre-input .artist-choice>input{padding-right:32px}
 .artist-choice-toggle{position:absolute;right:1px;top:1px;bottom:1px;width:34px;border:0;border-radius:0 5px 5px 0;background:transparent;color:var(--muted)}
 .artist-choice-toggle:hover:not(:disabled){background:var(--palette-tint,#edf2e7)}
 .artist-choices-menu{position:fixed;z-index:100;overflow-y:auto;overscroll-behavior:contain;padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--palette-surface,#fff);color:var(--ink);box-shadow:0 8px 25px #0002}

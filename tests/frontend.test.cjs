@@ -5809,3 +5809,141 @@ test("artist choices support keyboard selection and dismissal, rejecting stale d
   assert.equal(input.value, "Unique", "A replaced library invalidates the shown choices");
   assert.equal(menu.hidden, true);
 });
+
+function editorLabelInput(p, kind, values = [], value = "") {
+  const input = editorArtistInput(p, value), chips = {innerHTML: ""}, error = {textContent: ""};
+  input.name = ""; input.dataset.editorChoiceKind = kind;
+  const key = kind === "composer" ? "composers" : "genres";
+  const field = {dataset: {genres: key, noun: kind, value: JSON.stringify(values), ordered: kind === "composer" ? "0" : "1"},
+    classList: {contains: () => input.disabled, add() {}, remove() {}},
+    querySelector: selector => selector === ".genre-chips" ? chips : selector === "[data-genre-error]" ? error : input};
+  input.closest = selector => selector === ".genre-input input" ? input : selector === ".genre-input" ? field
+    : selector === "#metadata-form" ? p.nodes.get("#metadata-form") : null;
+  const form = p.nodes.get("#metadata-form");
+  form.querySelector = selector => selector === `[data-genres="${key}"]` ? field : null;
+  p.run('const CSS = {escape: value => String(value)}; $("#editor-artist-choice-0").scrollIntoView = () => {}');
+  return {input, field, error, chips};
+}
+
+function labelChoiceKey(p, input, key) {
+  return p.emitDocument("keydown", {target: input, key, defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}});
+}
+
+test("genre and composer choices use separate exact catalogues with bounded lists and no extra requests", async () => {
+  const p = livePage(); await settle();
+  p.run(`state.editorNames = {genres:[...Array.from({length:10000},(_,i)=>'Style '+i), 'Pop;Rock', 'Jazz / Blues'],
+    composers:['Bach; Handel','Existing composer']}; state.artistNames=['Not a composer'];`);
+  await p.run("openEditor([state.albums[0].id])");
+  const {input, field} = editorLabelInput(p, "genre"), menu = p.nodes.get("#editor-artist-names");
+  const count = p.requests.length;
+  await p.emitDocument("focusin", {target: input});
+  assert.equal([...menu.innerHTML.matchAll(/role="option"/g)].length, 40);
+  assert.doesNotMatch(menu.innerHTML, /Existing composer|Not a composer/);
+  input.value = "pop;";
+  await p.emitDocument("focusin", {target: input});
+  assert.deepEqual(p.json("editorArtistChoices.results"), ["Pop;Rock"]);
+  p.run("chooseEditorArtist(0)");
+  assert.deepEqual(JSON.parse(field.dataset.value), ["Pop;Rock"], "Selecting a stored label must not split its semicolon");
+  assert.equal(input.value, "");
+  input.dataset.editorChoiceKind = "composer"; field.dataset.noun = "composer";
+  input.value = "Existing composer";
+  await p.emitDocument("focusin", {target: input});
+  assert.deepEqual(p.json("editorArtistChoices.results"), ["Existing composer"]);
+  assert.equal(menu.getAttribute("aria-label"), "Existing composers");
+  assert.equal(p.requests.length, count);
+});
+
+test("Enter selects the highlighted full genre once, and the result still needs review", async () => {
+  const p = livePage(); await settle();
+  p.run('state.editorNames = {genres:["Progressive Rock"],composers:[]}');
+  await p.run("openEditor([state.albums[0].id])");
+  const {input, field} = editorLabelInput(p, "genre", ["Rock"], "Pro");
+  const count = p.requests.length;
+  await p.emitDocument("focusin", {target: input});
+  await labelChoiceKey(p, input, "ArrowDown");
+  await labelChoiceKey(p, input, "Enter");
+  assert.deepEqual(JSON.parse(field.dataset.value), ["Rock", "Progressive Rock"]);
+  assert.equal(input.value, ""); assert.equal(p.nodes.get("#editor-artist-names").hidden, true);
+  assert.equal(p.run('editing.dirty.has("genres")'), true);
+  assert.equal(p.requests.length, count);
+  p.run("buildReview()");
+  assert.ok(p.json("pending.changes").every(c => c.kind === "track" && JSON.stringify(c.fields.genres.after) === '["Rock","Progressive Rock"]'));
+  assert.equal(p.requests.length, count, "Reviewing genres must not write or reload tracks");
+});
+
+test("new genre typing keeps Enter, semicolon, validation and explicit split behavior", async () => {
+  const p = livePage(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  const {input, field, error} = editorLabelInput(p, "genre", [], "My new genre");
+  await labelChoiceKey(p, input, "Enter");
+  input.value = "Another new genre";
+  await labelChoiceKey(p, input, ";");
+  assert.deepEqual(JSON.parse(field.dataset.value), ["My new genre", "Another new genre"]);
+  input.value = "x".repeat(201);
+  await labelChoiceKey(p, input, "Enter");
+  assert.equal(input.value.length, 201); assert.match(error.textContent, /200 characters/);
+  field.dataset.value = JSON.stringify(Array.from({length:20},(_,i)=>`Genre ${i}`));
+  input.value = "One more";
+  await labelChoiceKey(p, input, ";");
+  assert.equal(input.value, "One more"); assert.equal(JSON.parse(field.dataset.value).length, 20);
+  assert.match(error.textContent, /20 labels/);
+  assert.deepEqual(p.json('splitGenres(["Pop;Rock"])'), ["Pop", "Rock"]);
+  input.disabled = true;
+  p.run("resetEditorArtistChoices()");
+  await p.emitDocument("focusin", {target: input});
+  assert.equal(p.nodes.get("#editor-artist-names").hidden, true);
+});
+
+test("composer selection preserves a compound name and new composer names remain editable", async () => {
+  const p = livePage(); await settle();
+  p.run('state.editorNames = {genres:[],composers:["Bach; Handel"]}');
+  await p.run("openEditor([state.albums[0].id])");
+  const {input, field, error} = editorLabelInput(p, "composer", [], "Bach");
+  await p.emitDocument("focusin", {target: input});
+  await labelChoiceKey(p, input, "ArrowDown");
+  await labelChoiceKey(p, input, "Enter");
+  assert.deepEqual(JSON.parse(field.dataset.value), ["Bach; Handel"]);
+  input.value = "New Composer";
+  await labelChoiceKey(p, input, ";");
+  assert.deepEqual(JSON.parse(field.dataset.value), ["Bach; Handel", "New Composer"]);
+  input.value = "x".repeat(1001);
+  await labelChoiceKey(p, input, "Enter");
+  assert.equal(input.value.length, 1001); assert.match(error.textContent, /1000 characters/);
+  input.value = "";
+  p.run("buildReview()");
+  assert.ok(p.json("pending.changes").every(c => c.kind === "track" && JSON.stringify(c.fields.composers.after) === '["Bach; Handel","New Composer"]'));
+  assert.match(p.nodes.get("#review-warnings").innerHTML, /New Composer/);
+  assert.ok(p.requests.every(r => r.options?.method !== "POST"));
+});
+
+test("a refreshed name catalogue replaces old genre/composer choices and rejects old selections", async () => {
+  const p = livePage(); await settle();
+  p.run('state.editorNames = {genres:["Old label"],composers:[]}');
+  await p.run("openEditor([state.albums[0].id])");
+  const {input, field} = editorLabelInput(p, "genre", [], "Old label");
+  await p.emitDocument("focusin", {target: input});
+  p.run('applyEditorNames({genres:["New label"],composers:["New Composer"]}); chooseEditorArtist(0)');
+  assert.deepEqual(JSON.parse(field.dataset.value), []);
+  input.value = "New label";
+  await p.emitDocument("focusin", {target: input});
+  assert.deepEqual(p.json("editorArtistChoices.results"), ["New label"]);
+  assert.deepEqual(p.json("state.editorNames.composers"), ["New Composer"]);
+});
+
+test("individual composer credits switch between composer and artist choices without replacing names or IDs", async () => {
+  const p = livePage(); await settle();
+  assert.match(p.run('creditRows([{artist_id:77,name:"Bach",type:"composer",phrase:null}])'), /data-editor-choice-kind="composer"/);
+  assert.match(p.run('creditRows([{artist_id:77,name:"Bach",type:"composer",phrase:null}])'), /Show existing composers/);
+  const name = {value:"Bach",dataset:{}}, labels = [];
+  const row = {querySelector: selector => selector === "[data-credit-name]" ? name : {setAttribute: (_, value) => labels.push(value)}};
+  const editor = {dataset:{dirty:"false"}};
+  const role = {value:"composer", matches: selector => selector === "[data-credit-role]",
+    closest: selector => selector === "[data-credit-editor]" ? editor : selector === "[data-credit-row]" ? row : null};
+  await p.emitDocument("change", {target:role});
+  assert.equal(name.dataset.editorChoiceKind, "composer"); assert.equal(name.value, "Bach");
+  role.value = "artist";
+  await p.emitDocument("change", {target:role});
+  assert.equal(name.dataset.editorChoiceKind, "artist"); assert.equal(name.value, "Bach");
+  assert.deepEqual(labels, ["Show existing composers","Show existing artists"]);
+});

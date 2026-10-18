@@ -263,6 +263,7 @@ class Library:
         self._browse_lock = Lock()
         self._upload_dates = {}
         self._genre_labels = None
+        self._editor_names = None
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
@@ -432,7 +433,7 @@ class Library:
     def albums_view(self):
         return [self.album_view(i) for i in self.album_ids()]
 
-    def album_summary(self, album_id):
+    def album_summary(self, album_id, editor_names=None):
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
         genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
@@ -450,7 +451,11 @@ class Library:
             else:
                 no_genre += 1
             no_cover += not number(track.get("artwork_id"))
-            no_composer += not self.composer_entries(track)
+            composers = self.composer_entries(track)
+            no_composer += not composers
+            if editor_names is not None:
+                editor_names["genres"].update(stored)
+                editor_names["composers"].update(e["artist_id"] for e in composers)
             numbers.add(number(track.get("track")))
             position, title = number(track.get("track")), title_key(track.get("title"))
             # Combined sets can contain tracks from different original discs.
@@ -491,7 +496,20 @@ class Library:
         }
 
     def album_index(self):
-        return [self.album_summary(i) for i in self.album_ids()]
+        names = {"genres": set(), "composers": set()} if self._editor_names is None else None
+        albums = [self.album_summary(i, names) for i in self.album_ids()]
+        if names is not None:
+            names["composers"] = {text(self.artists.get(i, {}).get("name"))
+                                  for i in names["composers"]
+                                  if text(self.artists.get(i, {}).get("name")).strip()}
+            self._editor_names = {key: sorted(values, key=str.casefold) for key, values in names.items()}
+        return albums
+
+    def editor_names(self):
+        """Exact active labels/credits collected with summaries, without another track scan."""
+        if self._editor_names is None:
+            self.album_index()
+        return {key: list(values) for key, values in self._editor_names.items()}
 
     def album_set_key(self, album_id):
         """A conservative display grouping; dates and year are not release identifiers."""

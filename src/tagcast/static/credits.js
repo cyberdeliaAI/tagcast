@@ -28,7 +28,7 @@ function creditRows(entries, album = false, disabled = false) {
     const role = entry.type || "artist", roles = album ? ["artist", "band"] : Object.keys(creditRoleLabels);
     if (!roles.includes(role)) roles.push(role);
     return `<div class="credit-row" data-credit-row data-original="${escapeHtml(JSON.stringify(entry))}">
-      <label>Artist name${artistChoiceInput(`data-credit-name placeholder="Find an existing artist, or enter a new name" value="${escapeHtml(entry.name || "")}" ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} artist name"`, disabled)}</label>
+      <label>Artist name${artistChoiceInput(`data-credit-name placeholder="Find an existing artist, or enter a new name" value="${escapeHtml(entry.name || "")}" ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} artist name"`, disabled, role === "composer" ? "composer" : "artist")}</label>
       <label>Role<select data-credit-role ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} role">${roles.map(r => `<option value="${escapeHtml(r)}" ${r === role ? "selected" : ""}>${escapeHtml(creditRoleLabels[r] || r)}</option>`).join("")}</select></label>
       <label>Credit phrase <small>(optional)</small><input data-credit-phrase value="${escapeHtml(entry.phrase || "")}" ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} phrase"></label>
       <button type="button" class="button small" data-credit-remove ${disabled ? "disabled" : ""} aria-label="Remove credit ${index + 1}">Remove</button>
@@ -79,6 +79,12 @@ document.addEventListener("change", event => {
   const editor = event.target.closest?.("[data-credit-editor]");
   if (!editor) return;
   editor.dataset.dirty = "true";
+  if (event.target.matches?.("[data-credit-role]")) {
+    const row = event.target.closest("[data-credit-row]"), composer = event.target.value === "composer";
+    row.querySelector("[data-credit-name]").dataset.editorChoiceKind = composer ? "composer" : "artist";
+    row.querySelector("[data-artist-choices-toggle]").setAttribute("aria-label", composer ? "Show existing composers" : "Show existing artists");
+    closeEditorArtistChoices();
+  }
   if (event.target.matches?.("[data-credit-enable]")) {
     const enabled = event.target.checked;
     editor.classList.toggle("disabled", !enabled);
