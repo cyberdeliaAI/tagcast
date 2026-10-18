@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -237,7 +238,8 @@ class ArtistProfileTests(unittest.TestCase):
         with patch('tagcast.artist_bios.MAX_ENTRIES', 2):
             for i in range(5):
                 self.bios._write(str(i), self.data)
-        with sqlite3.connect(self.studio.home / 'artist-biographies.sqlite3') as db:
+        # A SQLite transaction context does not close the file; Windows needs that before cleanup.
+        with closing(sqlite3.connect(self.studio.home / 'artist-biographies.sqlite3')) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM biographies').fetchone()[0], 2)
         path = self.studio.home / 'artist-biographies.sqlite3'
         path.write_bytes(b'broken database')
