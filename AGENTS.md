@@ -260,6 +260,17 @@ and preserve a valid script order in `index.html`.
   account, `lastmodified` and `combine_sets`. Track search runs on the server's
   library copy (`Library.search_tracks`, at most 1,000 results); the browser never
   loads every track.
+- Album artists and Albums each have one shared Filter and sort menu with independent
+  Sort/Show choices, retaining the existing hidden filter/order values for history and
+  discovery links. Show active checkmarks and both choices on the trigger. Omit zero-count
+  filters except All; counts use loaded artist groups or the merged album shelf within
+  the current artist scope, before text search. A selected filter can remain active
+  when its count drops to zero; keep All reachable without silently resetting search.
+  Remove the former no_genre/fewest/most sort choices and fall back to artist ordering
+  for their old history states. Opening/dismissing never adds history or fetches data.
+  Preserve keyboard arrows/Home/End, Enter/Space, Escape/Tab dismissal, outside click,
+  focus return and touch scrolling. Close on navigation/library replacement; ignore
+  stale menu choices without changing playback, selections or metadata.
 - Collection, album artist and browse group totals emphasize albums, with track
   counts shown smaller underneath. Reuse existing summary and group counts;
   never download track details or add requests just to display these totals.

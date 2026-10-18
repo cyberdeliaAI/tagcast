@@ -114,6 +114,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  closeBrowseOptions();
   if (typeof resetTags === "function") resetTags();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetAlbumGuide === "function") resetAlbumGuide();
@@ -203,10 +204,121 @@ const SORTS = {
   rating_low: (a, b) => compareRating(a.rating || 0, b.rating || 0, false) || SORTS.artist(a, b),
   uploaded_newest: (a, b) => compareUpload(a, b) || SORTS.artist(a, b),
   uploaded_oldest: (a, b) => compareUpload(a, b, false) || SORTS.artist(a, b),
-  no_genre: (a, b) => b.no_genre - a.no_genre || SORTS.artist(a, b),
-  fewest: (a, b) => a.track_count - b.track_count || SORTS.artist(a, b),
-  most: (a, b) => b.track_count - a.track_count || SORTS.artist(a, b),
 };
+const albumSortLabels = {artist: "Album artist · A–Z", artist_za: "Album artist · Z–A",
+  title: "Album title · A–Z", title_za: "Album title · Z–A", year: "Release year · oldest first",
+  newest: "Release year · newest first", rating_high: "Rating · highest first", rating_low: "Rating · lowest first",
+  uploaded_newest: "Date uploaded · newest first", uploaded_oldest: "Date uploaded · oldest first"};
+const artistSortLabels = {az: "Name · A–Z", za: "Name · Z–A", random: "Random",
+  rating_high: "Rating · highest first", rating_low: "Rating · lowest first"};
+const browseChoices = {views: new Map(), kind: null, trigger: null, details: null};
+
+// Hidden values retain the independent filter/order used by history and discovery links.
+// One visible menu changes either value while preserving the other.
+function browseChoiceInputs(kind) {
+  return {filter: $(kind === "artists" ? "#artists-filter" : "#filter"),
+    sort: $(kind === "artists" ? "#artists-sort" : "#sort")};
+}
+
+function syncBrowseChoices(kind, filters, sorts, defaultSort) {
+  const inputs = browseChoiceInputs(kind);
+  if (!filters.some(option => option.value === inputs.filter.value)) inputs.filter.value = "all";
+  if (!Object.hasOwn(sorts, inputs.sort.value)) inputs.sort.value = defaultSort;
+  const filter = filters.find(option => option.value === inputs.filter.value);
+  const options = [
+    ...Object.entries(sorts).map(([value, label]) => ({key: `sort:${value}`, label, selected: value === inputs.sort.value})),
+    ...filters.filter(option => option.value === "all" || option.count > 0).map(option => ({
+      key: `filter:${option.value}`, label: `${option.label}${option.count ? ` · ${option.count.toLocaleString("en")}` : ""}`,
+      selected: option.value === inputs.filter.value, disabled: Boolean(option.disabled)})),
+  ];
+  browseChoices.views.set(kind, options);
+  const trigger = $(`#${kind}-browse-options`);
+  const label = `<span><strong>${escapeHtml(filter.label)}</strong><small>${escapeHtml(sorts[inputs.sort.value])}</small></span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>`;
+  if (trigger.innerHTML !== label) trigger.innerHTML = label;
+  if (browseChoices.kind === kind) {
+    if (browseChoices.details !== state.details) closeBrowseOptions(true);
+    else paintBrowseOptions();
+  }
+}
+
+function closeBrowseOptions(restoreFocus = false) {
+  const trigger = browseChoices.trigger;
+  $("#browse-options-menu").hidden = true;
+  trigger?.setAttribute("aria-expanded", "false");
+  browseChoices.kind = null; browseChoices.trigger = null; browseChoices.details = null;
+  if (restoreFocus && trigger?.isConnected) trigger.focus();
+}
+
+function paintBrowseOptions() {
+  const menu = $("#browse-options-menu"), options = browseChoices.views.get(browseChoices.kind) || [];
+  const html = '<div class="browse-options-title" role="presentation"><span>Filter and sort</span><button type="button" role="menuitem" data-browse-close aria-label="Close filter and sort" tabindex="-1">×</button></div>'
+    + [["sort", "Sort"], ["filter", "Show"]].map(([kind, label]) => `<div role="group" aria-label="${label}"><div class="browse-options-heading" role="presentation">${label}</div>${options.filter(option => option.key.startsWith(`${kind}:`)).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`).join("");
+  if (menu.innerHTML === html) return;
+  const focused = document.activeElement?.getAttribute?.("data-browse-choice"), scroll = menu.scrollTop;
+  menu.innerHTML = html;
+  if (focused) [...menu.querySelectorAll("[data-browse-choice]")].find(option => option.dataset.browseChoice === focused)?.focus();
+  menu.scrollTop = scroll;
+}
+
+function openBrowseOptions(trigger, last = false) {
+  const kind = trigger.dataset.browseOptions, same = browseChoices.trigger === trigger;
+  closeBrowseOptions();
+  if (same || !["albums", "artists"].includes(kind) || state.screen !== kind) return;
+  setThemeMenu(false);
+  if (typeof closeQueueActions === "function") closeQueueActions();
+  if (typeof closeAlbumActions === "function") closeAlbumActions();
+  browseChoices.kind = kind; browseChoices.trigger = trigger; browseChoices.details = state.details;
+  paintBrowseOptions();
+  const menu = $("#browse-options-menu"), anchor = trigger.getBoundingClientRect();
+  const height = document.documentElement.clientHeight, width = document.documentElement.clientWidth;
+  menu.hidden = false; menu.scrollTop = 0; menu.style.maxHeight = `${Math.max(100, height - 16)}px`;
+  const size = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(anchor.right - size.width, width - size.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 6, height - size.height - 8))}px`;
+  trigger.setAttribute("aria-expanded", "true");
+  const options = [...menu.querySelectorAll("button:not(:disabled)")];
+  (last ? options.at(-1) : menu.querySelector('[aria-checked="true"]') || options[0])?.focus();
+}
+
+function chooseBrowseOption(key) {
+  const kind = browseChoices.kind, option = browseChoices.views.get(kind)?.find(value => value.key === key);
+  if (!option || option.disabled || state.screen !== kind || browseChoices.details !== state.details) { closeBrowseOptions(); return; }
+  const [field, value] = key.split(":"), input = browseChoiceInputs(kind)[field];
+  const changed = input.value !== value;
+  input.value = value; closeBrowseOptions(true);
+  if (!changed) return;
+  if (kind === "artists") {
+    if (field === "sort") artistBrowse.randomNames = [];
+    artistBrowse.page = 0; renderArtistBrowse();
+  } else { state.page = 0; render(); }
+}
+
+document.addEventListener("click", event => {
+  const trigger = event.target.closest("[data-browse-options]"), option = event.target.closest("[data-browse-choice]");
+  if (event.target.closest("[data-browse-close]")) closeBrowseOptions(true);
+  else if (trigger) openBrowseOptions(trigger);
+  else if (option) chooseBrowseOption(option.dataset.browseChoice);
+  else if (!event.target.closest("#browse-options-menu")) closeBrowseOptions();
+});
+document.addEventListener("keydown", event => {
+  const trigger = event.target.closest("[data-browse-options]");
+  if (trigger && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+    event.preventDefault(); openBrowseOptions(trigger, event.key === "ArrowUp"); return;
+  }
+  if (!browseChoices.trigger) return;
+  if (["Escape", "Tab"].includes(event.key)) {
+    closeBrowseOptions(true); if (event.key === "Escape") event.preventDefault(); return;
+  }
+  if (!event.target.closest("#browse-options-menu") || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const options = [...$("#browse-options-menu").querySelectorAll("button:not(:disabled)")];
+  const index = options.indexOf(document.activeElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+    : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+  options[next]?.focus();
+});
+window.addEventListener("resize", () => closeBrowseOptions(true));
+window.addEventListener("scroll", event => { if (!event.target.closest?.("#browse-options-menu")) closeBrowseOptions(); }, true);
 const initials = name => name.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
 const pageSize = () => state.perPage || (state.view === "list" ? 100 : 24);
 
@@ -347,6 +459,8 @@ function listView(items) {
 }
 
 function render() {
+  const scope = albumShelf().filter(a => !state.artist || albumHasArtist(a, state.artist));
+  syncBrowseChoices("albums", Object.entries(FILTERS).map(([value, [label, keep]]) => ({value, label, count: scope.filter(keep).length})), albumSortLabels, "artist");
   $("#cleanup-filter").hidden = !live() || $("#filter").value !== "combined";
   $("#duplicate-cleanup-open").hidden = !live() || $("#filter").value !== "duplicates";
   $("#browse-artist-count").textContent = artistGroups().length.toLocaleString("en");
@@ -364,11 +478,6 @@ function render() {
     : state.artist ? "Open an album to listen, or select albums by this artist to edit or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
   $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to move them to the trash together" : "Open an album to see its tracks and listen";
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
-  const scope = albumShelf().filter(a => !state.artist || albumHasArtist(a, state.artist));
-  for (const option of $("#filter").options) {
-    const [label, keep] = FILTERS[option.value];
-    option.textContent = option.value === "all" ? label : `${label} · ${scope.filter(keep).length.toLocaleString("en")}`;
-  }
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
   $("#per-page").value = String(size);
