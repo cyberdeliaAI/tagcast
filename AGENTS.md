@@ -637,6 +637,11 @@ and preserve a valid script order in `index.html`.
   Full title/performer exact matching preserves version text and requires a unique copy
   consistent with all mapped optional fields; invalid cells, duplicate copies and fuzzy/version
   alternatives remain unresolved. Native additional performers count, composers do not.
+  Explain nonautomatic decisions on each row and compare every bounded suggestion with
+  the CSV using the same eligibility checks (title/version, performer, album/album artist,
+  year, track number and the three-second duration margin). Identify duplicate eligible
+  copies, missing native values, invalid CSV fields and absent suggestions explicitly.
+  Preserve the original explanation after manual choices/skips; suggestions remain manual.
   Split artist names only on an explicitly chosen semicolon option. Alternative generation
   is bounded, while automatic matching and explicit paginated search cover the full index.
   Bind at most two in-memory drafts (one-hour expiry) to client/account/session/library copy

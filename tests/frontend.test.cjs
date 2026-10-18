@@ -6285,6 +6285,43 @@ test('CSV manual resolver shows version, album, format and duration and searches
   assert.match(p.nodes.get('#csv-search-results').innerHTML,/data-offset="50"/);
 });
 
+test('CSV unexplained rows show escaped reasons in the overview and differences for each suggestion', async () => {
+  const p=await csvImportPage(); await settle();
+  const data=csvMatched(), row=data.rows[1];
+  row.status='ambiguous';
+  row.reasons=['Compared with the first suggestion: Performing artist name differs.','<script>untrusted</script>'];
+  row.candidates=[{...data.rows[0].choice,differences:['Performing artist name differs','<img src=x>']}];
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'), requests=p.requests.length;
+  p.run(`renderCsvMatches(${JSON.stringify(data)})`);
+  let html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.equal((html.match(/Match explanation/g)||[]).length,1);
+  assert.match(html,/Compared with the first suggestion: Performing artist name differs/);
+  assert.match(html,/&lt;script&gt;untrusted&lt;\/script&gt;/);
+  p.run('renderCsvResolver(1)');
+  html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/Match explanation/);
+  assert.match(html,/Differs from CSV:<\/strong> Performing artist name differs; &lt;img src=x&gt;/);
+  assert.doesNotMatch(html,/<script>|<img src=x>/);
+  assert.match(html,/data-csv-choose="101"/);
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test('CSV multiple-copy reasons distinguish agreeing suggestions from invalid CSV fields', async () => {
+  const p=await csvImportPage(); await settle();
+  const data=csvMatched(), row=data.rows[0];
+  Object.assign(row,{status:'ambiguous',eligible:2,choice:null,reasons:['2 library tracks match all mapped fields. Choose a copy.']});
+  row.candidates[0].differences=[];
+  p.run(`renderCsvMatches(${JSON.stringify(data)}); renderCsvResolver(0)`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/2 library tracks match all mapped fields/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Matches all mapped fields\./);
+  row.source.warnings=['Invalid duration; check the column and units'];
+  row.reasons=['CSV fields need attention; check the warnings.'];
+  p.run(`renderCsvMatches(${JSON.stringify(data)}); renderCsvResolver(0)`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/No differences in the valid CSV fields; check the warnings/);
+  assert.doesNotMatch(p.nodes.get('#csv-import-content').innerHTML,/Matches all mapped fields\./);
+});
+
 test('CSV choice and explicit skip retain row identity, filter and input-order review counts', async () => {
   const p=await csvImportPage(); await settle();
   p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); renderCsvResolver(1)`);

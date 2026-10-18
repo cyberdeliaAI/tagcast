@@ -757,6 +757,7 @@ body.help-open{overflow:hidden}
 .csv-source,.csv-match,.csv-candidate>div{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}
 .csv-import-row small,.csv-candidate small,.csv-review-list small{color:var(--muted)}
 .csv-match>div{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.csv-match-reasons{margin:8px 0;padding:12px 14px;background:var(--palette-surface,#fff);border:1px solid var(--line);border-radius:6px;font-size:.9rem;overflow-wrap:anywhere}.csv-match-reasons ul{margin:5px 0 0;padding-left:20px}.csv-candidate-reason{margin:6px 0 0;font-size:.9rem;color:var(--muted);line-height:1.5}
 .csv-candidate{display:flex;justify-content:space-between;align-items:center;gap:18px;border-top:1px solid var(--line);padding:14px 0}.csv-candidate>button{flex-shrink:0}
 .csv-review-list{padding-left:32px}.csv-review-list li{padding:12px 4px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.csv-review-list li>*{display:block}.csv-description{white-space:pre-wrap}
 @media(max-width:600px){.csv-import-row{grid-template-columns:1fr;gap:12px}.csv-candidate{align-items:flex-start;flex-direction:column}.csv-import-fields{grid-template-columns:minmax(0,1fr)}}

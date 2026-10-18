@@ -115,13 +115,17 @@ function csvSource(row) {
   return `<div class="csv-source"><strong>CSV ${row.position + 1} (line ${row.line}): ${escapeHtml(source.title || "Missing title")}</strong><span>${escapeHtml(source.artist || "Missing artist")}</span><small>${escapeHtml(source.album)}${source.duration ? ` · ${escapeHtml(source.duration)}` : ""}${source.year ? ` · ${escapeHtml(source.year)}` : ""}</small>${source.warnings.map(w => `<p class="warn-box">${escapeHtml(w)}</p>`).join("")}</div>`;
 }
 
+function csvMatchReasons(row) {
+  return row.reasons?.length ? `<aside class="csv-match-reasons"><strong>Match explanation</strong><ul>${row.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></aside>` : "";
+}
+
 function renderCsvMatches(data) {
   csvImport.data = data; csvImport.resolving = null; csvImport.search = null;
   csvImport.offset = data.offset; csvImport.show = data.show;
   const labels = {automatic: "Automatic match", manual: "Manually chosen", skipped: "Skipped", ambiguous: "Choose a track", missing: "No suggested match"};
   $("#csv-import-content").innerHTML = `<h3 tabindex="-1">2. Check matches</h3>${csvImportSummary(data.summary)}
     <label>Show <select id="csv-import-filter">${["all", "unresolved", "automatic", "manual", "skipped"].map(key => `<option value="${key}" ${data.show === key ? "selected" : ""}>${{all: "All CSV records", unresolved: "Unresolved records", automatic: "Automatic matches", manual: "Manual choices", skipped: "Skipped records"}[key]}</option>`).join("")}</select></label>
-    <div class="csv-import-rows">${data.rows.map(row => `<section class="csv-import-row">${csvSource(row)}<div class="csv-match"><small>${labels[row.status]}</small>${row.choice ? csvTrackDetails(row.choice) : '<p class="muted">No track selected.</p>'}<div><button type="button" class="button small" data-csv-resolve="${row.position}">${row.choice ? "Change match…" : "Find / choose a track…"}</button>${row.status !== "skipped" ? `<button type="button" class="text-action" data-csv-skip="${row.position}">Skip this CSV record</button>` : ""}</div></div></section>`).join("") || '<p class="muted">No records in this filter.</p>'}</div>${csvImportPagination(data.total, data.offset, "matches")}
+    <div class="csv-import-rows">${data.rows.map(row => `<section class="csv-import-row">${csvSource(row)}<div class="csv-match"><small>${labels[row.status]}</small>${row.choice ? csvTrackDetails(row.choice) : '<p class="muted">No track selected.</p>'}${csvMatchReasons(row)}<div><button type="button" class="button small" data-csv-resolve="${row.position}">${row.choice ? "Change match…" : "Find / choose a track…"}</button>${row.status !== "skipped" ? `<button type="button" class="text-action" data-csv-skip="${row.position}">Skip this CSV record</button>` : ""}</div></div></section>`).join("") || '<p class="muted">No records in this filter.</p>'}</div>${csvImportPagination(data.total, data.offset, "matches")}
     <button type="button" class="text-action" data-csv-columns>Change columns (resets matches)…</button><form id="csv-review-form"><h3 tabindex="-1">3. Prepare playlist review</h3><label>New private playlist name <input name="name" id="csv-playlist-name" maxlength="200" value="${escapeHtml(csvImport.name)}" required></label><label>Description <textarea name="description" id="csv-playlist-description" maxlength="2000">${escapeHtml(csvImport.description)}</textarea></label>
     <p>Resolve or explicitly skip every record. Chosen tracks keep their CSV order.</p><div class="dialog-footer"><button type="button" class="button" data-close="playlist-import">Cancel</button><button class="button primary" ${data.summary.unresolved || !data.summary.unique ? "disabled" : ""}>Prepare playlist review →</button></div></form>`;
   $("#playlist-import").scrollTop = 0;
@@ -133,7 +137,7 @@ function renderCsvResolver(position) {
   const row = csvImport.data.rows.find(r => r.position === position);
   if (!row) return;
   csvImport.resolving = row; csvImport.search = null;
-  $("#csv-import-content").innerHTML = `<h3 tabindex="-1">Choose a library track</h3>${csvSource(row)}<p class="muted">Compare the full title, performer, album and duration. Suggestions are alternatives, not confirmed matches. Search below for other library copies.</p>
+  $("#csv-import-content").innerHTML = `<h3 tabindex="-1">Choose a library track</h3>${csvSource(row)}${csvMatchReasons(row)}<p class="muted">Compare the full title, performer, album and duration. Suggestions are alternatives, not confirmed matches. Search below for other library copies.</p>
     <h4>Suggestions (up to 10)</h4><div class="csv-candidates">${row.candidates.map(csvCandidate).join("") || '<p class="muted">No suggestions. Search your library below.</p>'}</div>
     <form id="csv-search-form"><label>Search loaded library <input name="query" maxlength="200" value="${escapeHtml(row.source.title)}" placeholder="Part of a title, artist or album"></label><button class="button">Search</button></form><div id="csv-search-results"></div>
     <div class="dialog-footer"><button type="button" class="button" data-csv-matches>← Back to matches</button><button type="button" class="button" data-csv-skip="${position}">Skip this CSV record</button></div>`;
@@ -142,7 +146,9 @@ function renderCsvResolver(position) {
 }
 
 function csvCandidate(track) {
-  return `<div class="csv-candidate"><div>${csvTrackDetails(track)}</div><button type="button" class="button small" data-csv-choose="${escapeHtml(track.id)}">Use this track</button></div>`;
+  const agrees = csvImport.resolving?.source.warnings?.length ? "No differences in the valid CSV fields; check the warnings." : "Matches all mapped fields.";
+  const comparison = Array.isArray(track.differences) ? `<p class="csv-candidate-reason">${track.differences.length ? `<strong>Differs from CSV:</strong> ${track.differences.map(escapeHtml).join("; ")}.` : agrees}</p>` : "";
+  return `<div class="csv-candidate"><div>${csvTrackDetails(track)}${comparison}</div><button type="button" class="button small" data-csv-choose="${escapeHtml(track.id)}">Use this track</button></div>`;
 }
 
 function renderCsvSearch(data, query) {

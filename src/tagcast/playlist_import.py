@@ -137,27 +137,55 @@ class TrackCatalogue:
     def signature(self, track_id):
         return hashlib.sha256(json.dumps(self.row(track_id), sort_keys=True).encode()).hexdigest()
 
+    def differences(self, source, track_id):
+        """Use the same comparisons for eligibility and bounded candidate explanations."""
+        album_id, title, names = self.members[track_id]
+        track, album = self.library.tracks[track_id], self.library.albums[album_id]
+        if title_key(source["title"]) != title:
+            yield "Track title differs (including version text)"
+        if source["artists"] and not set(source["artists"]).issubset(names):
+            yield "Performing artist name differs"
+        if source["album"] and title_key(source["album"]) != title_key(album.get("name")):
+            yield "Album title differs"
+        if source["album_artists"] and not set(source["album_artists"]).issubset(
+                self.names.get(i, "") for i in self.library.album_artist_ids(album)):
+            yield "Album artist name differs"
+        year = number(track.get("year")) or number(album.get("year"))
+        if source["year"] and source["year"] != year:
+            yield "Release year differs" if year else "Library track has no release year"
+        if source["track"] and source["track"] != number(track.get("track")):
+            yield "Track number differs" if number(track.get("track")) else "Library track has no track number"
+        if source["seconds"] is not None:
+            length = number(track.get("length"))
+            if not length:
+                yield "Library track has no duration"
+            elif abs(source["seconds"] - length) > 3:
+                yield "Duration differs by more than 3 seconds"
+
+    def candidate(self, source, track_id):
+        return {**self.row(track_id), "differences": list(self.differences(source, track_id))}
+
+    def reasons(self, row):
+        """Explain the original automatic decision, even after a manual choice or skip."""
+        reasons = []
+        if row["source"]["warnings"]:
+            reasons.append("CSV fields need attention; check the warnings.")
+        if row["eligible"] > 1:
+            fields = "the valid mapped fields" if row["source"]["warnings"] else "all mapped fields"
+            reasons.append(f'{row["eligible"]} library tracks match {fields}. Choose a copy.')
+        elif not row["eligible"]:
+            if row["candidates"]:
+                differences = list(self.differences(row["source"], row["candidates"][0]))
+                if differences:
+                    reasons.append("Compared with the first suggestion: " + "; ".join(differences) + ".")
+            else:
+                reasons.append("No matching suggestion was found in the loaded library. Search manually or check the CSV columns.")
+        return reasons
+
     def match(self, source):
         title, artists = title_key(source["title"]), source["artists"]
         exact = self.titles.get(title, []) if title and artists else []
-        eligible = []
-        for track_id in exact:
-            album_id, _, names = self.members[track_id]
-            if not set(artists).issubset(names):
-                continue
-            track, album = self.library.tracks[track_id], self.library.albums[album_id]
-            if source["album"] and title_key(source["album"]) != title_key(album.get("name")):
-                continue
-            if source["album_artists"] and not set(source["album_artists"]).issubset(
-                    self.names.get(i, "") for i in self.library.album_artist_ids(album)):
-                continue
-            if source["year"] and source["year"] != (number(track.get("year")) or number(album.get("year"))):
-                continue
-            if source["track"] and source["track"] != number(track.get("track")):
-                continue
-            if source["seconds"] is not None and (not number(track.get("length")) or abs(source["seconds"] - number(track.get("length"))) > 3):
-                continue
-            eligible.append(track_id)
+        eligible = [i for i in exact if not any(self.differences(source, i))]
         automatic = eligible[0] if len(eligible) == 1 and not source["warnings"] else None
         if automatic:
             return automatic, [automatic], 1
@@ -334,8 +362,9 @@ class PlaylistImport:
                 "total": len(found), "offset": offset, "show": show,
                 "rows": [{**{key: row[key] for key in ("position", "line", "status", "eligible")},
                           "source": {key: row["source"][key] for key in (*FIELDS, "warnings")},
+                          "reasons": catalogue.reasons(row),
                           "choice": catalogue.row(row["choice"]) if row["choice"] else None,
-                          "candidates": [catalogue.row(i) for i in row["candidates"]]} for row in found[offset:offset + PAGE]]}
+                          "candidates": [catalogue.candidate(row["source"], i) for i in row["candidates"]]} for row in found[offset:offset + PAGE]]}
         self._context({"session": draft["session"]}, draft)
         return response
 
