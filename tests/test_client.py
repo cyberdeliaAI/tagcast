@@ -512,6 +512,42 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(saved["token_set"]["access_token"], mock_ibroadcast.TOKEN)
         del studio
 
+    def test_concurrent_library_status_and_stream_refresh_once_over_http(self):
+        studio = self.local_connection()
+        transport = studio.client
+        begin = threading.Barrier(3)
+        errors, results = [], []
+
+        def run(kind):
+            try:
+                begin.wait(5)
+                if kind == "library":
+                    results.append((kind, transport.fetch_library().artist_name(41)))
+                elif kind == "status":
+                    results.append((kind, transport._jsonrequest("status")["user"]["id"]))
+                else:
+                    with transport.open_stream("/128/abc/903", 903, "7", 1999999999, "bytes=10-19") as stream:
+                        results.append((kind, (stream.status_code, stream.headers["Content-Range"], stream.content)))
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(client.auth, "refresh_access_token", wraps=client.auth.refresh_access_token) as refresh:
+            workers = [threading.Thread(target=run, args=(kind,), daemon=True)
+                       for kind in ("library", "status", "stream")]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(5)
+            self.assertFalse(any(worker.is_alive() for worker in workers))
+            self.assertEqual(errors, [])
+            refresh.assert_called_once_with("test", "refresh-1")
+        result = dict(results)
+        self.assertEqual(result["library"], "Kate Bush")
+        self.assertEqual(str(result["status"]), "7")
+        self.assertEqual(result["stream"], (206, f"bytes 10-19/{len(mock_ibroadcast.AUDIO)}", mock_ibroadcast.AUDIO[10:20]))
+        self.assertEqual(studio._read("tokens.json")["token_set"], transport.token_set.to_dict())
+        self.assertPrivate(Path(self.home, "tokens.json"))
+
     def test_album_cover_is_uploaded_applied_checked_and_undone(self):
         studio = self.connect()
         album = studio.album_details(["72"])[0]

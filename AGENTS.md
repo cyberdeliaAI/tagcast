@@ -116,6 +116,14 @@ and preserve a valid script order in `index.html`.
   without a client secret or user-created app. Existing environment/saved client IDs
   and their tokens take precedence; switching to the default is explicit after
   Disconnect. Preserve browser-redirect sign-in for existing custom configurations.
+- OAuth refresh has a per-client lock and shared in-flight result across JSON API,
+  streaming and artwork uploads. Recheck token generation/expiry inside the gate;
+  bind each request to its captured token so a late rejection never refreshes a newer
+  generation. Share success/failure with waiting requests, preserve bounded auth retries
+  and existing no-retry rules for ambiguous writes. Publish new credentials atomically;
+  release the gate and wake waiters before token persistence, since queue actions may
+  hold Studio.lock. Persist only the active client's current TokenSet so delayed callbacks
+  cannot overwrite newer tokens or restore a disconnected/replaced session.
 - The demo library remains a local preview and is never saved to iBroadcast.
 - Tagcast starts on Album artists. Back and Forward follow the browser history;
   dialogs get no history entry, and Back never closes an open editor.
