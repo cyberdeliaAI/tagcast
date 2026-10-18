@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
 
-from .library import ConflictError, LibraryError, number
+from .library import ConflictError, LibraryError, number, text
 
 CATALOGUE = Path(__file__).with_name("static") / "1001-albums.json"
 GUIDE_MATCHER_VERSION = 2
@@ -122,6 +122,55 @@ class AlbumGuide:
         self.lock = threading.RLock()
         self.report = None
         self.analysed_library = None
+        self.note_index = None
+
+    def notes_for_album(self, album_id, session, expected_album=None, expected_artist=None):
+        """Resolve only a visited album locally, independently of the discovery page/report."""
+        if not _guide_id(album_id):
+            raise LibraryError("Choose one album for background text.")
+        with self.lock:
+            studio = self.studio
+            with studio.lock:
+                client = studio._require_client()
+                library, user = studio.library, studio.library_user
+                if not library or not user or not session or session != studio.playback_session:
+                    raise ConflictError("The account or library changed. Reload the library.")
+                album = library.albums.get(int(album_id))
+                if not album or album.get("trashed") or not library.active_track_ids(int(album_id)):
+                    raise ConflictError("This album is no longer available. Reload the library.")
+                if expected_album is not None and expected_album != (text(album.get("name")) or "Untitled album") \
+                        or expected_artist is not None and expected_artist != library.artist_name(album.get("artist_id")):
+                    raise ConflictError("This album's name or artist changed. Reload the library.")
+                name = text(album.get("name"))
+                artist = text(library.artists.get(number(album.get("artist_id")), {}).get("name"))
+            entries, revision = guide_catalogue()
+            if self.note_index is None or self.note_index[0] != revision:
+                index = defaultdict(list)
+                for entry in entries:
+                    key = guide_key(entry["artist"], True), guide_title(entry["album"])
+                    if all(key):
+                        index[key].append(entry["id"])
+                self.note_index = (revision, index)
+            key = guide_key(artist, True), guide_title(name)
+            candidates = self.note_index[1].get(key, []) if all(key) else []
+            _, links = self._links(user)
+            # A manual choice overrides automatic matching, including another copy of the album.
+            chosen = {candidates[0]} if len(candidates) == 1 and str(candidates[0]) not in links else set()
+            for entry_id, ids in links.items():
+                if album_id in ids and all(
+                        number(i) in library.albums and not library.albums[number(i)].get("trashed")
+                        and library.active_track_ids(number(i)) for i in ids):
+                    chosen.add(int(entry_id))
+            with studio.lock:
+                current = library.albums.get(int(album_id), {})
+                if studio.client is not client or studio.library is not library or studio.library_user != user \
+                        or studio.playback_session != session or current.get("trashed") \
+                        or not library.active_track_ids(int(album_id)) \
+                        or text(current.get("name")) != name \
+                        or text(library.artists.get(number(current.get("artist_id")), {}).get("name")) != artist:
+                    raise ConflictError("The account, library or album changed. Reload the library.")
+            return {"entries": [{key: entries[i - 1][key] for key in ("id", "album", "artist")}
+                                for i in sorted(chosen)]}
 
     def _state(self):
         s = self.studio

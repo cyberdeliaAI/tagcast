@@ -114,6 +114,7 @@ class StartTests(unittest.TestCase):
         studio.tags.selection.return_value = {"tags": [], "tracks": 1, "before": "snapshot"}
         studio.tags.save.return_value = {"job": "check", "error": "", "sent": 1}
         studio.album_guide.view.return_value = {"enabled": True, "state": "empty"}
+        studio.album_guide.notes_for_album.return_value = {"entries": []}
         studio.album_guide.analyse.return_value = {"enabled": True, "state": "ready"}
         studio.album_guide.link.return_value = {"enabled": True, "state": "ready"}
         studio.collections.favourite_artist.return_value = {"results": []}
@@ -158,10 +159,11 @@ class StartTests(unittest.TestCase):
                 action.assert_not_called()
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
                 action.assert_called_once()
-            for path in ("/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/tags", "/api/tags/selection?albums=1&track=2"):
+            for path in ("/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/album-guide/album?album_id=1&session=test-session", "/api/tags", "/api/tags/selection?albums=1&track=2"):
                 self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)
+            studio.album_guide.notes_for_album.assert_called_once_with("1", "test-session", None, None)
             self.assertEqual(request("POST", "/api/play"), 403)
             self.assertEqual(request("POST", "/api/play", {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)
             studio.record_play.assert_not_called()

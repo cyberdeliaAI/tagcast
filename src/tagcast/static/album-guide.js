@@ -6,11 +6,26 @@ const albumGuide = {enabled: lookup.albumGuideEnabled === true, data: null, deta
 const guideLink = {entry: null, request: 0, busy: false, focus: null};
 const guideDisplay = {matching: readGuideMatchingDisplay(), changed: false, pending: Promise.resolve()};
 const guideNotes = {data: null, pending: null, error: false, open: new Set()};
+const guideNoteAlbums = {details: null, revision: 0, entries: new Map()};
+
+function guideNoteAlbumKey(selection) {
+  return JSON.stringify([selection.album_id, selection.artist, selection.album, selection.session]);
+}
+
+function guideNoteAlbumEntry() {
+  const selection = albumInformationSelection();
+  return selection && guideNoteAlbums.details === state.details
+    ? guideNoteAlbums.entries.get(guideNoteAlbumKey(selection)) : null;
+}
 
 function guideNoteEntries() {
-  if (!albumGuide.enabled || !live() || albumGuide.details !== state.details || albumGuide.data?.state !== "ready") return [];
-  const ids = new Set(shelfIds(albumView.id).map(String));
-  return albumGuide.data.entries.filter(entry => entry.status === "found" && entry.album_ids.some(id => ids.has(String(id))));
+  return guideNoteAlbumEntry()?.entries || [];
+}
+
+function resetGuideAlbumNotes() {
+  guideNoteAlbums.revision += 1; guideNoteAlbums.entries.clear(); guideNoteAlbums.details = null;
+  const panel = $("#album-guide-notes");
+  if (panel) { panel.hidden = true; panel.innerHTML = ""; }
 }
 
 function readGuideNotes(data) {
@@ -40,11 +55,9 @@ function guideAlbumNoteRows() {
 }
 
 function albumBackgroundSource() {
-  if (!albumGuide.enabled) return "theaudiodb";
-  // Read the saved report and bundled notes before starting an external lookup.
-  // This never analyses the library or contacts iBroadcast.
-  if (albumGuide.details !== state.details || albumGuide.loading) return "pending";
-  if (!guideNoteEntries().length) return "theaudiodb";
+  const entry = guideNoteAlbumEntry();
+  if (!entry || entry.loading) return "pending";
+  if (!entry.entries.length) return "theaudiodb";
   if (guideNotes.pending || !guideNotes.data && !guideNotes.error) return "pending";
   return guideAlbumNoteRows().length ? "guide" : "theaudiodb";
 }
@@ -60,18 +73,57 @@ function renderGuideAlbumNotes() {
 }
 
 function loadGuideAlbumNotes() {
-  if (state.screen !== "album" || !albumGuide.enabled || !live() || state.loading || !albumView.id) return;
-  if (albumGuide.details !== state.details) {
-    // Read only the saved local report. Opening an album never starts analysis.
-    if (!albumGuide.loading) loadAlbumGuide();
+  const selection = albumInformationSelection();
+  if (!selection) return;
+  if (guideNoteAlbums.details !== state.details) {
+    guideNoteAlbums.revision += 1; guideNoteAlbums.entries.clear(); guideNoteAlbums.details = state.details;
+  }
+  const key = guideNoteAlbumKey(selection);
+  let entry = guideNoteAlbums.entries.get(key);
+  if (!entry) {
+    entry = {loading: true, entries: []}; guideNoteAlbums.entries.set(key, entry);
+    while (guideNoteAlbums.entries.size > 100) guideNoteAlbums.entries.delete(guideNoteAlbums.entries.keys().next().value);
+    loadGuideNoteAlbum(selection, key, entry);
     return;
   }
-  if (!guideNoteEntries().length) { renderGuideAlbumNotes(); return; }
-  if (guideNotes.data || guideNotes.error) { renderGuideAlbumNotes(); return; }
+  if (entry.loading) return;
+  if (!entry.entries.length || guideNotes.data || guideNotes.error) { renderGuideAlbumNotes(); return; }
   if (guideNotes.pending) return;
   guideNotes.pending = api("/1001-album-notes.json").then(data => { guideNotes.data = readGuideNotes(data); })
     .catch(() => { guideNotes.error = true; })
     .finally(() => { guideNotes.pending = null; renderGuideAlbumNotes(); });
+}
+
+async function loadGuideNoteAlbum(selection, key, entry) {
+  const details = state.details, revision = guideNoteAlbums.revision;
+  const current = () => live() && !state.loading && details === state.details
+    && selection.session === state.connection.playback_session && revision === guideNoteAlbums.revision
+    && guideNoteAlbums.entries.get(key) === entry && state.albums.some(a => String(a.id) === selection.album_id
+      && a.name === selection.album && a.artist === selection.artist);
+  const visible = () => current() && albumInformationSelection()
+    && guideNoteAlbumKey(albumInformationSelection()) === key;
+  try {
+    const data = await api(`/api/album-guide/album?${new URLSearchParams(selection)}`);
+    if (!current()) return;
+    if (!Array.isArray(data.entries) || data.entries.length > 1001) throw Error("Invalid local album text matches");
+    const ids = new Set();
+    for (const row of data.entries) {
+      if (!Number.isInteger(row.id) || row.id < 1 || row.id > 1001 || ids.has(row.id)
+          || typeof row.album !== "string" || typeof row.artist !== "string") throw Error("Invalid local album text match");
+      ids.add(row.id);
+    }
+    entry.entries = data.entries;
+  } catch { if (current()) entry.entries = []; }
+  finally {
+    entry.loading = false;
+    if (visible()) {
+      loadGuideAlbumNotes(); renderAlbumInformation();
+    } else if (!current() && guideNoteAlbums.entries.get(key) === entry) {
+      guideNoteAlbums.entries.delete(key);
+      const selected = albumInformationSelection();
+      if (live() && !state.loading && selected && guideNoteAlbumKey(selected) === key) loadGuideAlbumNotes();
+    }
+  }
 }
 
 document.addEventListener("toggle", event => {
@@ -91,13 +143,13 @@ function applyGuideMatchingDisplay() {
   $("#guide-show-matching").checked = guideDisplay.matching;
 }
 
-function resetAlbumGuide() {
+function resetAlbumGuide(renderNotes = true) {
   guideLink.request += 1; guideLink.busy = false;
   guideLink.entry = null; guideLink.focus = null;
   $("#guide-link-dialog").close();
   albumGuide.request += 1;
   Object.assign(albumGuide, {data: null, details: null, loading: false, analysing: false, error: ""});
-  renderGuideAlbumNotes();
+  if (renderNotes) renderGuideAlbumNotes();
 }
 
 function applyAlbumGuideSettings(data) {
@@ -304,7 +356,7 @@ async function saveGuideLink(id, ids) {
       before: entry.manual_ids || [], revision: albumGuide.data.revision, lastmodified: albumGuide.data.lastmodified});
     if (request !== guideLink.request || details !== state.details || session !== state.connection.playback_session
       || !albumGuide.enabled || !live()) return;
-    albumGuide.data = data; $("#guide-link-dialog").close();
+    albumGuide.data = data; resetGuideAlbumNotes(); $("#guide-link-dialog").close();
     toast(ids.length ? "Album linked locally. Your iBroadcast library is unchanged." : "Manual link removed. Automatic analysis is unchanged.");
   } catch (error) {
     if (request !== guideLink.request || details !== state.details || session !== state.connection.playback_session

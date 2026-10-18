@@ -33,6 +33,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   let respondStatus = null;
   let respondUpdates = null;
   let respondNotes = null;
+  let respondAlbumNotes = null;
   let playbackClock = 0;
   function element() {
     const classes = new Set();
@@ -79,6 +80,8 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       requests.push({url, options});
       if (url === "/1001-album-notes.json") return respondNotes ? respondNotes(url, options)
         : {ok: true, json: async () => ({schema: 1, entries: []})};
+      if (url.startsWith("/api/album-guide/album?")) return respondAlbumNotes ? respondAlbumNotes(url, options)
+        : {ok:true,json:async()=>({entries:[]})};
       if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
@@ -97,6 +100,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     setStatusFetch(handler) { respondStatus = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
     setNotesFetch(handler) { respondNotes = handler; },
+    setAlbumNotesFetch(handler) { respondAlbumNotes = handler; },
     flushTimers(delay) {
       for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
     },
@@ -1053,10 +1057,11 @@ test('guide results filter locally, escape text and preserve search on Back with
   assert.equal(p.run('albumGuide.data'), null);
 });
 
-test('album background uses bundled French notes for confirmed guide links only, escapes text and keeps playback', async () => {
+test('album background uses bundled French notes for visited-album matches with discovery disabled, escapes text and keeps playback', async () => {
   const p = livePage(); await settle();
   const report = guideReport(p), ref = report.entries[0];
-  p.run(`applyAlbumGuideSettings({album_guide:true}); albumGuide.data = ${JSON.stringify(report)}; albumGuide.details = state.details; playTracks(state.details.get("1"))`);
+  p.setAlbumNotesFetch(() => ({ok:true,json:async()=>({entries:[ref]})}));
+  p.run('playTracks(state.details.get("1"))');
   const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
   p.setNotesFetch(() => ({ok: true, json: async () => ({schema: 1, entries: [
     {id: ref.id, album: ref.album, artist: ref.artist, text: '<script>alert(1)</script> & an album.',
@@ -1075,12 +1080,12 @@ test('album background uses bundled French notes for confirmed guide links only,
   assert.equal(p.nodes.get('#audio').src, source);
   assert.equal(p.requests.filter(r => r.url === '/1001-album-notes.json').length, 1);
   assert.ok(p.requests.every(r => !/^https?:/.test(r.url)), 'Reading notes makes no external request');
-  p.run('albumGuide.data.entries[0].status = "possible"; renderGuideAlbumNotes()');
+  p.run('guideNoteAlbumEntry().entries = []; renderGuideAlbumNotes()');
   assert.equal(panel.hidden, true, 'Unconfirmed candidates never receive album text');
-  p.run('albumGuide.data.entries[0].status = "found"; renderGuideAlbumNotes()');
+  p.run(`guideNoteAlbumEntry().entries = [${JSON.stringify(ref)}]; renderGuideAlbumNotes()`);
   assert.equal(panel.hidden, false);
   p.run('applyAlbumGuideSettings({album_guide:false})');
-  assert.equal(panel.hidden, true);
+  assert.equal(panel.hidden, false, "Disabling discovery preserves album background text");
 });
 
 test('album note sources allow English and French Wikipedia without accepting lookalikes or credentials', async () => {
@@ -1098,13 +1103,14 @@ test('album note sources allow English and French Wikipedia without accepting lo
 test('late album notes never repaint another page and opening an album never analyses the guide', async () => {
   const p = livePage(); await settle();
   const report = guideReport(p), ref = report.entries[0];
-  p.setFetch(url => { assert.equal(url, '/api/album-guide'); return {ok: true, json: async () => report}; });
+  p.setAlbumNotesFetch(() => ({ok:true,json:async()=>({entries:[ref]})}));
   let release;
   p.setNotesFetch(() => new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({schema: 1,
     entries: [{...ref, text: 'Local background', source_url: 'https://en.wikipedia.org/wiki/Album'}]})}); }));
   p.run('applyAlbumGuideSettings({album_guide:true})');
   await p.run('openAlbum("1")'); await settle();
-  assert.equal(p.requests.filter(r => r.url === '/api/album-guide').length, 1);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/album-guide/album?')).length, 1);
+  assert.equal(p.requests.filter(r => r.url === '/api/album-guide').length, 0);
   assert.equal(typeof release, 'function');
   p.run('showScreen("albums"); $("#album-guide-notes").innerHTML = "unchanged"');
   release(); await settle();
@@ -2665,7 +2671,7 @@ test('Trash suggestions group two complete uploads and prefer older FLAC over ne
   assert.match(html, /Move 10 tracks to the trash/);
   assert.match(html, /MP3.*Uploaded 2026-09-23 22:48:19/);
   assert.doesNotMatch(html, /2022-04-05|old-0/);
-  assert.equal(p.requests.length, count, 'Suggestions reuse the open album without requests');
+  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/album-guide/album?')), 'Only album opening checks local text; suggestions never fetch audio/details or write');
   assert.deepEqual(p.json('player.queue'), queue);
   assert.equal(p.nodes.get('#audio').src, source);
   assert.equal(p.nodes.get('#audio').paused, false);
@@ -4490,7 +4496,7 @@ test("album rows omit their album artist, retain distinct credits and keep plain
   assert.match(row,/<td><strong>Shine On You Crazy Diamond \(Parts I–V\)<\/strong><\/td>/);
   assert.doesNotMatch(row,/album-track-meta|>Pink Floyd<|class="track-tags"/);
   assert.match(row,/data-track-tags="100"/,'Untagged tracks retain tag management in their actions');
-  assert.equal(p.requests.length,count);
+  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/album-guide/album?')));
 });
 
 test("album format summaries distinguish a common format, ties and missing file metadata", async () => {
@@ -4508,7 +4514,7 @@ test("album format summaries distinguish a common format, ties and missing file 
   assert.equal((html.match(/track-format-exception/g)||[]).length,1);
   assert.match(html,/title="File format: MP3 · album mainly FLAC">MP3/);
   assert.doesNotMatch(html,/class="track-format"/,'Repeated file labels are absent from ordinary time cells');
-  assert.equal(p.requests.length,before);
+  assert.ok(p.requests.slice(before).every(r=>r.url.startsWith('/api/album-guide/album?')));
 });
 
 test("track tags and unusual formats add metadata without a repeated album artist or an empty row", async () => {
@@ -5491,61 +5497,74 @@ test('missing album text stays compact, uncertain matches stay unresolved and un
     const html=p.nodes.get('#album-information').innerHTML;
     assert.doesNotMatch(html,/javascript:/);
     if(status==='ready') assert.match(html,/href="https:\/\/www.theaudiodb.com\/"/);
-    else {assert.doesNotMatch(html,/<details/);assert.match(html,/No English album information|More than one album/);}
+    else {assert.doesNotMatch(html,/<details/);assert.match(html,/No matching album|Album found on TheAudioDB|More than one album/);}
   }
 });
 
-test('available 1001 Albums text takes priority without reading or fetching TheAudioDB text', async () => {
-  const p=livePage(); await settle(); await p.run('openAlbum("1")');
-  p.run(`albumGuide.enabled=true; albumGuide.details=state.details;
-    albumGuide.data={state:'ready',entries:[{id:1,status:'found',album_ids:['1'],album:'Reference album',artist:'Reference artist'}]};
-    guideNotes.data=new Map([[1,{album:'Reference album',artist:'Reference artist',text:'Existing Wikipedia text.',source_url:'https://en.wikipedia.org/wiki/Example'}]]);`);
-  p.setFetch(()=>({ok:true,json:async()=>albumInformationReply()}));
-  p.run('applyAlbumInformationSettings({album_information:true}); renderAlbumView()'); await settle();
-  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Existing Wikipedia text/);
-  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/CC BY-SA 4.0/);
-  assert.equal(p.nodes.get('#album-information').hidden,true);
-  assert.equal(p.nodes.get('#album-information').innerHTML,'');
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
-  p.run('applyAlbumInformationSettings({album_information:false})');
-  assert.equal(p.nodes.get('#album-information').hidden,true);
-  assert.equal(p.nodes.get('#album-guide-notes').hidden,false);
-  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Existing Wikipedia text/);
-});
 
-function setGuideAlbumText(p, {status='found', reportState='ready', noteAlbum='Reference album', noteArtist='Reference artist', notes=true}={}) {
-  p.run(`albumGuide.enabled=true; albumGuide.loading=false; albumGuide.details=state.details;
-    albumGuide.data={state:${JSON.stringify(reportState)},entries:[{id:1,status:${JSON.stringify(status)},album_ids:['1'],album:'Reference album',artist:'Reference artist'}]};
-    guideNotes.data=new Map(${JSON.stringify(notes ? [[1,{album:noteAlbum,artist:noteArtist,text:'Preferred 1001 text.',source_url:'https://en.wikipedia.org/wiki/Example'}]]:[])});`);
+const localAlbumReference = {id:1,album:'Reference album',artist:'Reference artist'};
+const localAlbumNote = {...localAlbumReference,text:'Preferred 1001 text.',source_url:'https://en.wikipedia.org/wiki/Example'};
+function setLocalAlbumText(p) {
+  p.run(`guideNoteAlbums.details=state.details;
+    guideNoteAlbums.entries.set(guideNoteAlbumKey(albumInformationSelection()),{loading:false,entries:[${JSON.stringify(localAlbumReference)}]});
+    guideNotes.data=new Map([[1,${JSON.stringify(localAlbumNote)}]]);`);
 }
 
-test('album text waits for both the saved guide report and local notes before choosing its source', async () => {
-  const p=livePage(); await settle(); await p.run('openAlbum("1")');
-  let reportReady, notesReady;
-  p.setFetch(url=>{
-    assert.equal(url,'/api/album-guide');
-    return new Promise(resolve=>{reportReady=resolve;});
-  });
-  p.setNotesFetch(()=>new Promise(resolve=>{notesReady=resolve;}));
-  p.run('applyAlbumGuideSettings({album_guide:true}); applyAlbumInformationSettings({album_information:true})'); await settle();
+test('1001 album text is available with both discovery and AudioDB disabled without any analysis or external lookup', async () => {
+  const p=livePage(); await settle();
+  p.setAlbumNotesFetch(()=>({ok:true,json:async()=>({entries:[localAlbumReference]})}));
+  p.setNotesFetch(()=>({ok:true,json:async()=>({schema:1,entries:[localAlbumNote]})}));
+  p.run('playTracks(state.details.get("1"))');
+  const src=p.nodes.get('#audio').src, queue=p.json('player.queue');
+  await p.run('openAlbum("1")'); await settle();
+  assert.equal(p.run('albumGuide.enabled'),false);
+  assert.equal(p.run('albumInformation.enabled'),false);
+  assert.equal(p.run('albumGuide.data'),null);
+  assert.equal(p.nodes.get('#show-album-guide').hidden,true);
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred 1001 text/);
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Wikipedia contributors/);
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/CC BY-SA 4.0/);
   assert.equal(p.nodes.get('#album-information').hidden,true);
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
-  reportReady({ok:true,json:async()=>({enabled:true,state:'ready',entries:[{id:1,status:'found',album_ids:['1'],album:'Reference album',artist:'Reference artist'}]})}); await settle();
-  assert.equal(typeof notesReady,'function');
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
-  notesReady({ok:true,json:async()=>({schema:1,entries:[{id:1,album:'Reference album',artist:'Reference artist',text:'Preferred local album text.',source_url:'https://en.wikipedia.org/wiki/Example'}]})}); await settle();
-  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred local album text/);
-  assert.equal(p.nodes.get('#album-information').hidden,true);
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
-  assert.equal(p.requests.filter(r=>r.url.includes('/analyse')).length,0);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-guide'||r.url.includes('/analyse')||r.url==='/api/album-information').length,0);
+  assert.deepEqual(p.json('player.queue'),queue); assert.equal(p.nodes.get('#audio').src,src);
+  assert.equal(p.run('state.history.length'),0);
+  const count=p.requests.length, history=p.history.length;
+  p.run('renderAlbumView(); renderGuideAlbumNotes()'); await settle();
+  assert.equal(p.requests.length,count); assert.equal(p.history.length,history);
 });
 
-test('albums without a valid available guide text still use optional TheAudioDB information', async () => {
-  for(const fixture of [{status:'possible'},{reportState:'stale'},{notes:false},{noteAlbum:'Changed title'},{noteArtist:'Different artist'}]) {
-    const p=livePage(); await settle(); await p.run('openAlbum("1")');
-    setGuideAlbumText(p,fixture);
+test('optional AudioDB waits for the visited-album match and bundled text even with discovery off', async () => {
+  const p=livePage(); await settle();
+  let matchReady, notesReady;
+  p.setAlbumNotesFetch(()=>new Promise(resolve=>{matchReady=resolve;}));
+  p.setNotesFetch(()=>new Promise(resolve=>{notesReady=resolve;}));
+  p.run('applyAlbumInformationSettings({album_information:true})'); await p.run('openAlbum("1")'); await settle();
+  assert.equal(p.nodes.get('#album-information').hidden,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
+  p.run('applyAlbumGuideSettings({album_guide:false})');
+  matchReady({ok:true,json:async()=>({entries:[localAlbumReference]})}); await settle();
+  assert.equal(typeof notesReady,'function');
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
+  notesReady({ok:true,json:async()=>({schema:1,entries:[localAlbumNote]})}); await settle();
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred 1001 text/);
+  assert.equal(p.nodes.get('#album-information').hidden,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-guide'||r.url.includes('/analyse')).length,0);
+});
+
+test('albums without a valid local text still use optional AudioDB and only send the chosen identity', async () => {
+  for(const fixture of ['unmatched','missing-note','wrong-title','wrong-artist']) {
+    const p=livePage(); await settle();
+    p.setAlbumNotesFetch(url=>{
+      assert.equal(new URL('http://localhost'+url).searchParams.get('album_id'),'1');
+      return {ok:true,json:async()=>({entries:fixture==='unmatched'?[]:[localAlbumReference]})};
+    });
+    const note={...localAlbumNote};
+    if(fixture==='wrong-title')note.album='Another title';
+    if(fixture==='wrong-artist')note.artist='Another artist';
+    p.setNotesFetch(()=>({ok:true,json:async()=>({schema:1,entries:fixture==='missing-note'?[]:[note]})}));
     p.setFetch(url=>{assert.equal(url,'/api/album-information');return {ok:true,json:async()=>albumInformationReply()};});
-    p.run('applyAlbumInformationSettings({album_information:true}); renderGuideAlbumNotes()'); await settle();
+    p.run('applyAlbumInformationSettings({album_information:true})'); await p.run('openAlbum("1")'); await settle();
     assert.equal(p.nodes.get('#album-guide-notes').hidden,true);
     assert.equal(p.nodes.get('#album-information').hidden,false);
     assert.match(p.nodes.get('#album-information').innerHTML,/Album background/);
@@ -5553,76 +5572,105 @@ test('albums without a valid available guide text still use optional TheAudioDB 
   }
 });
 
-test('a failed local guide read or notes load allows TheAudioDB fallback without starting analysis', async () => {
-  for(const fail of ['report','notes']) {
-    const p=livePage(); await settle(); await p.run('openAlbum("1")');
-    p.setFetch(url=>{
-      if(url==='/api/album-guide')return fail==='report'
-        ? {ok:false,status:500,json:async()=>({error:'Saved report is unavailable.'})}
-        : {ok:true,json:async()=>({enabled:true,state:'ready',entries:[{id:1,status:'found',album_ids:['1'],album:'Reference album',artist:'Reference artist'}]})};
-      assert.equal(url,'/api/album-information'); return {ok:true,json:async()=>albumInformationReply()};
-    });
+test('local identity or text read errors permit optional AudioDB without starting a guide analysis', async () => {
+  for(const fail of ['match','notes']) {
+    const p=livePage(); await settle();
+    p.setAlbumNotesFetch(()=>fail==='match'
+      ? {ok:false,status:500,json:async()=>({error:'Local identity unavailable.'})}
+      : {ok:true,json:async()=>({entries:[localAlbumReference]})});
+    p.setFetch(url=>{assert.equal(url,'/api/album-information');return {ok:true,json:async()=>albumInformationReply()};});
     p.setNotesFetch(()=>({ok:false,status:500,json:async()=>({error:'Bundled notes unavailable.'})}));
-    p.run('applyAlbumGuideSettings({album_guide:true}); applyAlbumInformationSettings({album_information:true})'); await settle();
+    p.run('applyAlbumInformationSettings({album_information:true})'); await p.run('openAlbum("1")'); await settle();
     assert.equal(p.nodes.get('#album-information').hidden,false);
     assert.match(p.nodes.get('#album-information').innerHTML,/Album background/);
     assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,1);
-    assert.equal(p.requests.filter(r=>r.url.includes('/analyse')).length,0);
+    assert.equal(p.requests.filter(r=>r.url==='/api/album-guide'||r.url.includes('/analyse')).length,0);
   }
 });
 
-test('a guide text arriving during an AudioDB read or lookup suppresses late text, retries and further lookups', async () => {
+test('local text arriving during an AudioDB read or lookup hides late text, retry and further lookups', async () => {
   for(const stage of ['cache','lookup']) {
     const p=livePage(); await settle(); await p.run('openAlbum("1")');
     let finish;
     p.setFetch((url,options)=>{
       assert.equal(url,'/api/album-information');
-      if(stage==='lookup'&&!JSON.parse(options.body).lookup) return {ok:true,json:async()=>({enabled:true,needs_lookup:true})};
+      if(stage==='lookup'&&!JSON.parse(options.body).lookup)return {ok:true,json:async()=>({enabled:true,needs_lookup:true})};
       return new Promise(resolve=>{finish=resolve;});
     });
     p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
-    const requests=p.requests.length;
-    setGuideAlbumText(p);
-    p.run('renderGuideAlbumNotes()');
+    const count=p.requests.length;
+    setLocalAlbumText(p); p.run('renderGuideAlbumNotes()');
     assert.equal(p.nodes.get('#album-information').hidden,true);
     finish({ok:true,json:async()=>albumInformationReply({description:'Late AudioDB text.',needs_lookup:stage==='cache'})}); await settle();
     p.run('renderAlbumView()'); await p.click({'[data-album-information-retry]':{}}); await settle();
-    assert.equal(p.requests.length,requests);
+    assert.equal(p.requests.length,count);
     assert.equal(p.nodes.get('#album-information').hidden,true);
     assert.equal(p.nodes.get('#album-information').innerHTML,'');
     assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred 1001 text/);
   }
 });
 
-test('guide source preference survives Back and hidden matching controls while disabled guide restores fallback', async () => {
-  const p=livePage(); await settle(); await p.run('openAlbum("1")');
-  setGuideAlbumText(p);
-  p.setFetch(url=>{assert.equal(url,'/api/album-information');return {ok:true,json:async()=>albumInformationReply()};});
-  p.run('guideDisplay.matching=false; applyAlbumInformationSettings({album_information:true}); renderAlbumView(); showScreen("albums")');
+test('local text priority survives Back and discovery setting changes without fetching or losing expansion', async () => {
+  const p=livePage(); await settle();
+  p.setAlbumNotesFetch(()=>({ok:true,json:async()=>({entries:[localAlbumReference]})}));
+  p.setNotesFetch(()=>({ok:true,json:async()=>({schema:1,entries:[localAlbumNote]})}));
+  await p.run('openAlbum("1")'); await settle();
+  p.run('guideNotes.open.add(1); guideDisplay.matching=false; applyAlbumInformationSettings({album_information:true}); applyAlbumGuideSettings({album_guide:true}); showScreen("albums")');
+  const count=p.requests.length;
   p.history.back(); await settle();
+  assert.match(p.nodes.get('#album-guide-notes').innerHTML,/<details[^>]* open>/);
   assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred 1001 text/);
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
-  assert.equal(p.nodes.get('#album-information').hidden,true);
   p.run('applyAlbumGuideSettings({album_guide:false})'); await settle();
-  assert.equal(p.nodes.get('#album-guide-notes').hidden,true);
-  assert.match(p.nodes.get('#album-information').innerHTML,/Album background/);
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,1);
+  assert.equal(p.requests.length,count);
+  assert.equal(p.nodes.get('#album-guide-notes').hidden,false);
+  assert.equal(p.nodes.get('#album-information').hidden,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
 });
 
-test('source priority rechecks a saved guide report after a metadata-only cache replacement', async () => {
+test('source priority rechecks only the visited album after a metadata-only cache replacement', async () => {
   const p=livePage(); await settle(); await p.run('openAlbum("1")');
-  setGuideAlbumText(p);
-  p.run('applyAlbumInformationSettings({album_information:true}); renderGuideAlbumNotes()');
+  setLocalAlbumText(p); p.run('applyAlbumInformationSettings({album_information:true}); renderGuideAlbumNotes()');
   let release;
-  p.setFetch(url=>{
-    assert.equal(url,'/api/album-guide');
+  p.setAlbumNotesFetch(url=>{
+    assert.ok(url.startsWith('/api/album-guide/album?'));
     return new Promise(resolve=>{release=resolve;});
   });
   p.run('state.details=new Map(state.details); renderAlbumInformation()'); await settle();
-  assert.equal(typeof release,'function');
-  assert.equal(p.nodes.get('#album-information').hidden,true);
-  release({ok:true,json:async()=>({enabled:true,state:'ready',entries:[{id:1,status:'found',album_ids:['1'],album:'Reference album',artist:'Reference artist'}]})}); await settle();
+  assert.equal(typeof release,'function'); assert.equal(p.nodes.get('#album-information').hidden,true);
+  release({ok:true,json:async()=>({entries:[localAlbumReference]})}); await settle();
   assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred 1001 text/);
   assert.equal(p.nodes.get('#album-information').hidden,true);
-  assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
+  assert.equal(p.requests.filter(r=>r.url==='/api/album-information'||r.url==='/api/album-guide').length,0);
+});
+
+test('late per-album background matches cannot load text or repaint after navigation, replacement or a new session', async () => {
+  for(const change of ['navigate','replace','session','rename']) {
+    const p=livePage(); await settle(); let finish;
+    p.setAlbumNotesFetch(()=>new Promise(resolve=>{finish=resolve;}));
+    await p.run('openAlbum("1")'); await settle();
+    if(change==='navigate')p.run('showScreen("albums")');
+    else if(change==='replace')p.run('useLocal(demoLibrary(),"demo"); render()');
+    else if(change==='session')p.run('state.connection.playback_session="other"');
+    else p.run('state.albums[0].name="Different album"');
+    const count=p.requests.length;
+    finish({ok:true,json:async()=>({entries:[localAlbumReference]})}); await settle();
+    assert.equal(p.requests.length,count);
+    assert.doesNotMatch(p.nodes.get('#album-guide-notes')?.innerHTML || '',/Preferred 1001 text/);
+  }
+});
+
+test('Mambo! is found with its punctuation but missing English text is distinguished from a missing album', async () => {
+  const p=livePage(); await settle();
+  p.run('Object.assign(state.albums[0],{name:"Mambo!",artist:"Yma Sumac"}); Object.assign(state.details.get("1"),{name:"Mambo!",artist:"Yma Sumac"})');
+  await p.run('openAlbum("1")');
+  p.setFetch((url,options)=>{
+    assert.equal(JSON.parse(options.body).album,'Mambo!');
+    assert.equal(JSON.parse(options.body).artist,'Yma Sumac');
+    return {ok:true,json:async()=>albumInformationReply({status:'unavailable',artist:'Yma Sumac',album:'Mambo!',description:'',url:'https://www.theaudiodb.com/album/2309687'})};
+  });
+  p.run('applyAlbumInformationSettings({album_information:true})'); await settle();
+  const html=p.nodes.get('#album-information').innerHTML;
+  assert.match(html,/Album found on TheAudioDB, but no English background text is available/);
+  assert.match(html,/href="https:\/\/www.theaudiodb.com\/album\/2309687"/);
+  assert.doesNotMatch(html,/No matching album|<details/);
 });
