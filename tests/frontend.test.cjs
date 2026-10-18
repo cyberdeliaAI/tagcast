@@ -6260,12 +6260,55 @@ test('CSV mapping submits zero-based column choices and units only after the mat
     assert.equal(url,'/api/playlist-import/match'); const body=JSON.parse(options.body);
     assert.deepEqual(body.mapping,{title:0,artist:1,album:null,album_artist:null,duration:2,year:null,track:null});
     assert.equal(body.duration_unit,'milliseconds'); assert.equal(body.artist_separator,';');
-    return {ok:true,json:async()=>csvMatched()};
+    assert.equal(body.show,'unresolved'); assert.equal(body.offset,0);
+    return {ok:true,json:async()=>csvMatched({show:'unresolved'})};
   });
   await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-map-form',elements:{map_title:{value:'0'},map_artist:{value:'1'},map_album:{value:''},map_album_artist:{value:''},map_duration:{value:'2'},map_year:{value:''},map_track:{value:''},duration_unit:{value:'milliseconds'},artist_separator:{value:';'}}}});
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/1 unresolved/);
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/&lt;Unknown&gt;/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="unresolved" selected/);
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+});
+
+test('CSV import can review only selected matches and clearly omit unresolved records without skipping them', async () => {
+  const p=await csvImportPage(); await settle();
+  const data=csvMatched({show:'unresolved',total:900});
+  data.summary={total:1000,resolved:100,unresolved:900,skipped:0,duplicates:0,unique:100,automatic:100,manual:0,blank_records:0};
+  data.rows=[{...data.rows[1],position:100}];
+  p.run(`renderCsvMatches(${JSON.stringify(data)})`);
+  let html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/class="button primary" >Review 100 matched tracks →/);
+  assert.match(html,/900 unresolved CSV records will be left out/);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  const review={...data,revision:3,phase:'review',name:'Found tracks',description:'',total:100,offset:0,omitted_unresolved:900,review_token:'partial-review',tracks:[csvMatched().rows[0].choice]};
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/review');
+    assert.deepEqual(JSON.parse(options.body),{id:data.id,revision:2,session:'csv-session',name:'Found tracks',description:'',omit_unresolved:true});
+    return {ok:true,json:async()=>review};
+  });
+  await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-review-form',elements:{name:{value:'Found tracks'},description:{value:''}}}});
+  html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/900 unresolved \(left out\)/);
+  assert.match(html,/900 unresolved CSV records will be left out/);
+  assert.match(html,/Create a new private playlist with 100 tracks/);
+  assert.match(html,/Create private playlist in iBroadcast/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/revise');
+    assert.deepEqual(JSON.parse(options.body),{id:data.id,revision:3,session:'csv-session',show:'unresolved',offset:0});
+    return {ok:true,json:async()=>({...data,revision:4})};
+  });
+  await p.click({'[data-csv-revise]':{}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="unresolved" selected/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/900 unresolved/);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test('CSV review remains disabled when no track is selected', async () => {
+  const p=await csvImportPage(); await settle();
+  const data=csvMatched(); Object.assign(data.summary,{unique:0,resolved:0,automatic:0,unresolved:2});
+  p.run(`renderCsvMatches(${JSON.stringify(data)})`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/class="button primary" disabled>Review 0 matched tracks/);
 });
 
 test('CSV manual resolver shows version, album, format and duration and searches a bounded page', async () => {

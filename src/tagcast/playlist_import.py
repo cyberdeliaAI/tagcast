@@ -333,7 +333,7 @@ class PlaylistImport:
             self._context(body, draft)
             draft.update(rows=rows, mapping=dict(mapping), duration_unit=unit, artist_separator=separator,
                          revision=draft["revision"] + 1, phase="matched", review=None)
-            return self._view(draft, {})
+            return self._view(draft, body)
 
     @staticmethod
     def _page(body):
@@ -407,10 +407,16 @@ class PlaylistImport:
             if not isinstance(name, str) or not name.strip() or len(name) > 200 or not isinstance(description, str) or len(description) > 2000:
                 raise LibraryError("Enter a playlist name of 1–200 characters and description up to 2,000.")
             summary = self._summary(draft)
-            if summary["unresolved"] or not summary["unique"]:
-                raise LibraryError("Resolve or explicitly skip every CSV record, keeping at least one track.")
+            omit_unresolved = body.get("omit_unresolved", False)
+            if type(omit_unresolved) is not bool:
+                raise LibraryError("Choose whether to leave unresolved CSV records out of the playlist.")
+            if summary["unresolved"] and not omit_unresolved:
+                raise LibraryError("Resolve or skip the remaining CSV records, or explicitly continue with only the selected matches.")
+            if not summary["unique"]:
+                raise LibraryError("Choose at least one track to create a playlist.")
             draft.update(phase="review", revision=draft["revision"] + 1,
                          review={"token": secrets.token_hex(16), "name": name.strip(), "description": description.strip(),
+                                 "omitted_unresolved": summary["unresolved"] if omit_unresolved else 0,
                                  "tracks": list(dict.fromkeys(r["choice"] for r in draft["rows"] if r["choice"]))})
             return self._review_view(draft, {})
 
@@ -422,6 +428,7 @@ class PlaylistImport:
         catalogue = self._index(draft["library"])
         return {"id": draft["id"], "revision": draft["revision"], "phase": draft["phase"], "review_token": review["token"],
                 "name": review["name"], "description": review["description"], "summary": self._summary(draft),
+                "omitted_unresolved": review["omitted_unresolved"],
                 "total": len(review["tracks"]), "offset": offset,
                 "tracks": [catalogue.row(i) for i in review["tracks"][offset:offset + PAGE]]}
 
@@ -429,7 +436,7 @@ class PlaylistImport:
         with self.lock:
             draft = self._draft(body, ("review",))
             draft.update(phase="matched", revision=draft["revision"] + 1, review=None)
-            return self._view(draft, {})
+            return self._view(draft, body)
 
     def discard(self, body):
         with self.lock:
