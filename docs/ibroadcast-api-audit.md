@@ -1,11 +1,10 @@
 # iBroadcast API coverage and limits
 
 Audit date: 2026-10-18. Baseline source: `fb1e00251c65fd703c9a56859a303eddf1e50936`.
-Updated for the following unreleased implementation on `main`.
+Updated for the implementation published in Tagcast 0.70.0.
 
-This describes the development source, including unreleased artist ratings, multiple
-album artists, track credits, thumbs-down and the genre/playlist fixes. These are
-not all present in the downloadable 0.60.0 release. Verification uses local mocks;
+This describes Tagcast 0.70.0, including artist ratings, multiple album artists,
+track credits, thumbs-down and the genre/playlist fixes. Verification uses local mocks;
 no real iBroadcast account data was changed for the audit or implementation tests.
 
 ## Scope and confidence
@@ -309,5 +308,5 @@ made as part of this inventory.
 - Distinguish display grouping from native writes, and local preferences/hearts
   from account settings/ratings.
 - Record explicit documented limits separately from conservative local caps.
-- Update this audit when publishing the unreleased features or receiving written
+- Update this audit when changing API coverage or receiving written
   clarification from iBroadcast.

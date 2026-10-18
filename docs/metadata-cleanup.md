@@ -26,10 +26,10 @@ folder, separately from browser History. Export the report before making a new
 preview, which replaces it. A server restart stops execution; resume is explicit.
 There is no batch Undo button. The report includes each track's original values.
 
-## Split album artists (unreleased)
+## Split album artists
 
-The **Album artists** category is available in current source/test builds, not in
-the published 0.60.0 downloads. It reads native library records, never a CSV export.
+The **Album artists** category is available in Tagcast 0.70.0, including desktop
+downloads. It reads native library records, never a CSV export.
 For example, `Caetano Veloso;Gal Costa` becomes primary album artist **Caetano
 Veloso**, with **Gal Costa** as an additional album artist. Both then have the
 album in their own artist view. This does not rename the old artist throughout
@@ -110,7 +110,7 @@ Slashes, commas and ampersands remain part of a name: `Films/Games`, `R&B` and
   primary name stays primary; the rest become additional artist credits. Existing
   artists are reused by ID where possible; missing artists are created. Other roles
   and credit phrases are preserved. Album artists stay unchanged.
-- **Album artists (unreleased):** split the primary and additional performer names
+- **Album artists:** split the primary and additional performer names
   of each native album, preserving existing separate credits. The first primary
   name stays primary; remaining names become additional album artists. Track
   metadata stays unchanged. See the review and restrictions above.

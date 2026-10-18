@@ -1,8 +1,8 @@
 # Artist profiles: implementation and local checks
 
-These features are in the development source and have not been published in a
-desktop release. See the Wiki's [upcoming changes](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes)
-for user instructions and availability.
+Available in Tagcast 0.70.0, including desktop downloads. See the Wiki's
+[artist and favourite instructions](https://github.com/cyberdeliaAI/tagcast/wiki/Ratings-favourites-and-playlists)
+and [background texts](https://github.com/cyberdeliaAI/tagcast/wiki/Browsing-and-discovery).
 
 Artist favourites and optional biographies use the shared Python server and plain
 JavaScript interface in both Electron and browser/source starts. There is no new

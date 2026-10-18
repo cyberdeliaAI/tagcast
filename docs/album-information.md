@@ -1,7 +1,7 @@
 # Optional album information
 
-Available in current development/source builds; not yet in a desktop release.
-User instructions are in the Wiki's [upcoming changes](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes#optional-album-information).
+Available in Tagcast 0.70.0, including desktop downloads.
+User instructions are in the Wiki's [album information guide](https://github.com/cyberdeliaAI/tagcast/wiki/Browsing-and-discovery#optional-album-information).
 
 Enable **Settings → Album information → Show album information from TheAudioDB**
 and save. When visiting an album, **About this album · TheAudioDB** shows available
