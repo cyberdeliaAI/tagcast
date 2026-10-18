@@ -14,6 +14,7 @@ import secrets
 import shutil
 import threading
 import time
+from concurrent.futures import Future
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -147,8 +148,11 @@ class StudioClient(ibroadcast.iBroadcast):
     def __init__(self, **kwargs):
         super().__init__(client=CLIENT_NAME, version=__version__,
                          device_name="Tagcast", log=log, **kwargs)
+        self._refresh_lock = threading.Lock()
+        self._refreshing = None
+        self._token_generation = 0
 
-    def _post(self, url, args, retry=True):
+    def _post(self, url, args, retry=True, access_token=None):
         """POST JSON. Network errors, HTTP 429 and 5xx are retried (writes here set values,
         so sending one twice does no harm), except for modes in NO_RETRY or play history."""
         retry = retry and args.get("mode") not in NO_RETRY and "history" not in args
@@ -156,6 +160,8 @@ class StudioClient(ibroadcast.iBroadcast):
             time.sleep(delay)
             last = attempt == (len(RETRY_DELAYS) if retry else 0)
             headers = self._auth_headers()
+            if access_token is not None:
+                headers["Authorization"] = f"Bearer {access_token}"
             try:
                 response = requests.post(url, data=json.dumps(args), headers=headers,
                                          timeout=TIMEOUT if url == LIBRARY_URL else 45)
@@ -181,34 +187,74 @@ class StudioClient(ibroadcast.iBroadcast):
         raise ApiError("iBroadcast did not answer.")
 
     def _jsonrequest(self, mode, url=None, **kwargs):
-        token_set = getattr(self, "token_set", None)
-        if token_set and token_set.is_expired and self._refresh_token and self._client_id:
-            self._refresh_or_fail()
+        access_token, generation = self._request_token()
         url = url or f"{API_URL}/{mode}"
         args = self._request_body(mode, **kwargs)
-        data = self._post(url, args)
+        data = self._post(url, args, access_token=access_token)
         if data.get("authenticated") is False:
             if not (self._refresh_token and self._client_id):
                 raise NotConnected("Your iBroadcast session expired. Connect again.")
-            self._refresh_or_fail()
-            data = self._post(url, args)
+            self._refresh_or_fail(generation)
+            access_token, _ = self._token_snapshot()
+            data = self._post(url, args, access_token=access_token)
             if data.get("authenticated") is False:
                 raise NotConnected("iBroadcast did not accept the session. Connect again.")
         if data.get("result") is False:
             raise ApiError(data.get("message") or f"iBroadcast rejected {mode}.")
         return data
 
-    def _refresh_or_fail(self):
+    def _token_snapshot(self):
+        with self._refresh_lock:
+            return self._access_token, self._token_generation
+
+    def _request_token(self):
+        with self._refresh_lock:
+            generation = self._token_generation
+            token_set = getattr(self, "token_set", None)
+            expired = token_set and token_set.is_expired and self._refresh_token and self._client_id
+        if expired:
+            self._refresh_or_fail(generation, expired_only=True)
+        return self._token_snapshot()
+
+    def _refresh_or_fail(self, generation=None, *, expired_only=False):
         try:
-            self._refresh()
+            self._refresh(generation, expired_only=expired_only)
         except (oauth.OAuthError, requests.RequestException, KeyError, ValueError):
             raise NotConnected("Your iBroadcast session expired. Connect again.") from None
 
-    def _refresh(self):
-        token_set = auth.refresh_access_token(self._client_id, self._refresh_token)
-        self._access_token = token_set.access_token
-        self._refresh_token = token_set.refresh_token
-        self.token_set = token_set
+    def _refresh(self, generation=None, *, expired_only=False):
+        """Share an in-flight refresh; late failures must not rotate a newer token."""
+        with self._refresh_lock:
+            if generation is not None and generation != self._token_generation:
+                return
+            token_set = getattr(self, "token_set", None)
+            if expired_only and token_set and not token_set.is_expired:
+                return
+            pending = self._refreshing
+            leader = pending is None
+            if leader:
+                pending = self._refreshing = Future()
+                refresh_token = self._refresh_token
+        if not leader:
+            pending.result()
+            return
+        try:
+            token_set = auth.refresh_access_token(self._client_id, refresh_token)
+        except BaseException as error:
+            # Wake waiting requests even if this worker is interrupted.
+            with self._refresh_lock:
+                self._refreshing = None
+                pending.set_exception(error)
+            raise
+        with self._refresh_lock:
+            self._access_token = token_set.access_token
+            self._refresh_token = token_set.refresh_token
+            self.token_set = token_set
+            self._token_generation += 1
+            self._refreshing = None
+            pending.set_result(token_set)
+        # A queue request can hold Studio.lock while waiting for this refresh.
+        # Never hold the gate or keep waiters blocked while persisting tokens.
         if self._token_refreshed_callback:
             self._token_refreshed_callback(token_set)
 
@@ -217,14 +263,13 @@ class StudioClient(ibroadcast.iBroadcast):
 
     def _with_fresh_token(self, send):
         """Run send() and retry once with a refreshed token if iBroadcast refuses it."""
-        token_set = getattr(self, "token_set", None)
-        if token_set and token_set.is_expired and self._refresh_token and self._client_id:
-            self._refresh_or_fail()
-        response = send()
+        access_token, generation = self._request_token()
+        response = send(access_token)
         if response.status_code in (401, 403) and self._refresh_token and self._client_id:
             response.close()
-            self._refresh_or_fail()
-            response = send()
+            self._refresh_or_fail(generation)
+            access_token, _ = self._token_snapshot()
+            response = send(access_token)
         return response
 
     def upload_artwork(self, data, filename, mime, user_id):
@@ -234,10 +279,10 @@ class StudioClient(ibroadcast.iBroadcast):
         uploaded_file) without an album or artist, so applying it stays a separate,
         checked step (set_artwork / set_artist_artwork).
         """
-        def send():
+        def send(access_token):
             return requests.post(
                 ARTWORK_UPLOAD_URL, timeout=TIMEOUT,
-                headers={"Authorization": f"Bearer {self._access_token}",
+                headers={"Authorization": f"Bearer {access_token}",
                          "User-Agent": self._user_agent},
                 data={"client": self._client, "version": self._version,
                       "device_name": self._device_name, "user_id": user_id},
@@ -257,8 +302,8 @@ class StudioClient(ibroadcast.iBroadcast):
 
     def open_stream(self, path, file_id, user_id, expires, range_header=None):
         """Open the audio of one track. The caller closes the returned response."""
-        def send():
-            params = {"Signature": self._access_token, "file_id": file_id, "user_id": user_id,
+        def send(access_token):
+            params = {"Signature": access_token, "file_id": file_id, "user_id": user_id,
                       "platform": self._client, "version": self._version}
             if expires:
                 params["Expires"] = expires
@@ -413,7 +458,7 @@ class Studio:
 
     def _save_tokens(self, token_set, client):
         with self.lock:
-            if client is self.client:
+            if client is self.client and token_set is client.token_set:
                 self._write("tokens.json", {"client_id": self.client_id,
                                             "token_set": token_set.to_dict()})
 

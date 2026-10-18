@@ -81,7 +81,7 @@ they do not justify changing currently working payloads blindly.
 | --- | --- | --- |
 | OAuth device-code sign-in | Supported | Default public client; handles pending approval, slowdown, denial and expiry responses. |
 | OAuth authorization code and PKCE | Supported for custom client configurations | State validation, verifier/challenge and loopback callback. |
-| Token refresh | Supported | Refreshes expired/rejected access tokens; stores rotated tokens server-side. |
+| Token refresh | Supported | Refreshes expired/rejected access tokens; stores rotated tokens server-side. Current development shares a single in-flight refresh per client across API, artwork and streams, ignores late rejections of an older token generation, and guards delayed persistence callbacks. |
 | Token revocation | Supported | Disconnect attempts revocation and forgets local credentials even if revocation fails. |
 | Account, app and device administration | No | Reading basic account status and listing queue sessions do not provide these administrative operations. |
 | Streaming and HTTP Range | Supported | Same audio element; local streaming proxy keeps credentials out of the browser. |
