@@ -4,10 +4,11 @@
 const artistBrowse = {page: 0, pageSize: storedPageSize("tagcast-artists-per-page") || 24, randomNames: [], library: 0};
 const artistProfile = {enabled: false, revision: 0, serverRevision: null, entries: new Map(), favourite: null, rating: null};
 const favouriteArtists = {page: 0, pageSize: storedPageSize("tagcast-favourite-artists-per-page") || 24};
-let artistBrowseTimer;
+let artistBrowseTimer, artistBiographyRetryTimer;
 
 function resetArtistBrowse() {
   clearTimeout(artistBrowseTimer);
+  clearTimeout(artistBiographyRetryTimer);
   artistBrowse.page = 0; artistBrowse.randomNames = []; artistBrowse.library += 1;
   favouriteArtists.page = 0;
   if (artistProfile.rating?.pending) collectionsView.busy = false;
@@ -35,6 +36,7 @@ function applyArtistSettings(data) {
 }
 
 function renderArtistProfile() {
+  clearTimeout(artistBiographyRetryTimer);
   const box = $("#artist-biography"), status = $("#artist-favourite-status");
   const selection = live() && !state.loading && state.artist ? artistProfileSelection(state.artist) : null;
   status.hidden = true;
@@ -69,13 +71,24 @@ function renderArtistProfile() {
     : focused?.matches?.("#artist-biography [data-artist-biography-retry]") ? "[data-artist-biography-retry]" : "";
   box.dataset.biographyKey = key;
   const data = entry.data;
-  const note = entry.error ? `<p class="error-text" role="status">${escapeHtml(entry.error)} <button type="button" class="text-action" data-artist-biography-retry>Try again</button></p>`
+  const wait = Math.max(0, Math.ceil(((entry.retryAt || 0) - Date.now()) / 1000));
+  const retryTime = wait ? new Date(entry.retryAt).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "";
+  if (entry.error && wait) {
+    const revision = artistProfile.revision;
+    artistBiographyRetryTimer = setTimeout(() => {
+      if (artistProfile.revision === revision && artistProfile.entries.get(key) === entry
+          && artistProfile.enabled && live() && selection.session === state.connection.playback_session
+          && state.screen === "albums" && state.artist === selection.name) renderArtistProfile();
+    }, wait * 1000);
+  }
+  const note = entry.error ? `<p class="error-text" role="status">${escapeHtml(entry.error)} <button type="button" class="text-action" data-artist-biography-retry${wait ? " disabled" : ""}>${wait ? `Try again at ${escapeHtml(retryTime)}` : "Try again"}</button></p>`
     : entry.loading ? '<p class="muted" role="status">Loading artist biography…</p>' : "";
   if (data?.status === "ready" && data.biography) {
     const url = /^https:\/\/www\.theaudiodb\.com\/artist\/\d+$/.test(data.url || "") ? data.url : "https://www.theaudiodb.com/";
     box.innerHTML = `<details ${opened ? "open" : ""}><summary>About this artist <span class="muted">TheAudioDB</span></summary><div class="artist-biography-text">${String(data.biography).split(/\n+/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div><p class="artist-biography-source">Biography: <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">TheAudioDB ↗</a> · English · Saved on this computer</p>${note}</details>`;
   } else {
-    const missing = data?.status === "ambiguous" ? "More than one artist matches this name on TheAudioDB; no biography was chosen."
+    const missing = data?.reason === "missing_name" ? "Add an artist name to look up a biography."
+      : data?.status === "ambiguous" ? "More than one artist matches this name on TheAudioDB; no biography was chosen."
       : data?.status === "missing" || data?.status === "unavailable" ? "No English biography found on TheAudioDB." : "";
     box.innerHTML = `${missing ? `<p class="muted">${escapeHtml(missing)}</p>` : ""}${note}`;
     if (!box.innerHTML) box.hidden = true;
@@ -153,13 +166,27 @@ async function loadArtistBiography(selection, key, entry) {
       if (!data.enabled) { applyArtistSettings({artist_biographies: false}); return; }
       entry.data = data;
     }
-  } catch (error) { if (current()) entry.error = error.message; }
-  finally {
+  } catch (error) {
     if (current()) {
-      entry.loading = false;
+      entry.error = error.message;
+      const wait = Number(error.data?.retry_after);
+      entry.retryAt = Number.isFinite(wait) && wait > 0 ? Date.now() + Math.min(wait, 60) * 1000 : 0;
+    }
+  }
+  finally {
+    entry.loading = false;
+    if (current()) {
       // A cache-only read completed after leaving. Fetch only if this page is visited again.
       if (entry.data?.needs_lookup && !entry.error && !visible()) artistProfile.entries.delete(key);
       if (visible()) renderArtistProfile();
+    } else if (artistProfile.entries.get(key) === entry) {
+      // Save/tag read-back can replace only the metadata Map, without resetting this cache.
+      // Retire its stale request and read fresh data only for the still-visible same group.
+      artistProfile.entries.delete(key);
+      const selected = artistProfileSelection(selection.name);
+      if (live() && !state.loading && revision === artistProfile.revision && artistProfile.enabled
+          && selection.session === state.connection.playback_session && state.screen === "albums"
+          && state.artist === selection.name && selected?.artists.join(",") === selection.artists.join(",")) renderArtistProfile();
     }
   }
 }
@@ -169,10 +196,12 @@ async function toggleArtistFavourite(name) {
   if (document.querySelector("dialog[open]")) { toast("Close the open dialog first."); return; }
   const selection = artistProfileSelection(name);
   if (!selection) return;
-  const details = state.details, before = selection.artists.every(id => state.artistFavourites.has(id));
+  const generation = artistBrowse.library, before = selection.artists.every(id => state.artistFavourites.has(id));
   const focused = document.activeElement?.getAttribute?.("data-artist-favourite") === name;
-  const current = () => live() && details === state.details && selection.session === state.connection.playback_session;
   const update = {name, pending: true, value: !before, error: ""};
+  // Local hearts use native IDs: a metadata-only refresh must not discard a confirmed write.
+  const current = () => live() && !state.loading && generation === artistBrowse.library
+    && selection.session === state.connection.playback_session && artistProfile.favourite === update;
   artistProfile.favourite = update; renderArtistProfile();
   try {
     const data = await api("/api/artist-favourite", {...selection, before, favourite: !before});
@@ -182,8 +211,9 @@ async function toggleArtistFavourite(name) {
     toast(before ? "Artist favourite removed locally." : "Artist favourite saved locally.");
   } catch (error) { if (current()) { update.error = error.message; toast(error.message); } }
   finally {
+    update.pending = false;
     if (current()) {
-      update.pending = false; renderArtistProfile(); renderArtistBrowse(); renderFavouriteArtists(); renderFavouriteHub();
+      renderArtistProfile(); renderArtistBrowse(); renderFavouriteArtists(); renderFavouriteHub();
       if (focused && state.screen === "albums" && state.artist === name) $("#page-title [data-artist-favourite]")?.focus();
     }
   }
@@ -314,7 +344,15 @@ document.addEventListener("click", event => {
   if (favourite) { toggleArtistFavourite(favourite.dataset.artistFavourite); return; }
   if (event.target.closest("[data-artist-biography-retry]")) {
     const selection = state.artist && artistProfileSelection(state.artist);
-    if (selection) { artistProfile.entries.delete(JSON.stringify([selection.artists, selection.name])); renderArtistProfile(); }
+    const key = selection && JSON.stringify([selection.artists, selection.name]);
+    const entry = artistProfile.entries.get(key);
+    if (selection && !entry?.loading && !(entry?.retryAt > Date.now())) {
+      if (entry) {
+        entry.loading = true; entry.error = ""; entry.retryAt = 0;
+        loadArtistBiography(selection, key, entry);
+      }
+      renderArtistProfile();
+    }
     return;
   }
   const artist = event.target.closest("[data-browse-artist]");

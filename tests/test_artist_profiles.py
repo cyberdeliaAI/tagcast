@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from test_library import lib
 from test_sources import FakeHttp
 
-from tagcast.artist_bios import ArtistBiographies
+from tagcast.artist_bios import ArtistBiographies, BiographyRetryError
 from tagcast.collections import Collections
 from tagcast.library import ConflictError, LibraryError
 from tagcast.sources import SourceError, TheAudioDB
@@ -184,6 +184,44 @@ class ArtistProfileTests(unittest.TestCase):
             lookup.assert_called_once()
         self.assertEqual(self.bios.view(self.selection)['biography'], self.data['biography'])
         self.assertTrue(self.bios.view(self.selection)['needs_lookup'])
+
+    def test_unnamed_artists_never_lookup_or_cache_the_display_placeholder(self):
+        self.studio.config['artist_biographies'] = True
+        for stored_name in ('', '   '):
+            self.studio.library.artists.rows[4][0] = stored_name
+            selection = {**self.selection, 'name': self.studio.library.artist_name(4)}
+            for lookup in (False, True):
+                with self.subTest(name=stored_name, lookup=lookup), patch.object(TheAudioDB, 'biography') as fetch:
+                    result = self.bios.view({**selection, 'lookup': lookup})
+                    self.assertEqual(result['reason'], 'missing_name')
+                    self.assertFalse(result['needs_lookup'])
+                    fetch.assert_not_called()
+        self.assertFalse((self.studio.home / 'artist-biographies.sqlite3').exists())
+        # A real stored name that happens to match the placeholder is still eligible.
+        self.studio.library.artists.rows[4][0] = 'Unknown artist'
+        with patch.object(TheAudioDB, 'biography', return_value=self.data.copy()) as fetch:
+            self.bios.view({**self.selection, 'name': 'Unknown artist', 'lookup': True})
+            fetch.assert_called_once_with('Unknown artist')
+
+    def test_biography_retry_reports_remaining_wait_then_allows_an_explicit_lookup(self):
+        self.studio.config['artist_biographies'] = True
+        with patch('tagcast.artist_bios.time.time', return_value=1000), \
+                patch.object(TheAudioDB, 'biography', side_effect=SourceError('is busy')) as fetch:
+            with self.assertRaises(BiographyRetryError) as first:
+                self.bios.view({**self.selection, 'lookup': True})
+            self.assertEqual(first.exception.retry_after, 60)
+            fetch.assert_called_once()
+        with patch('tagcast.artist_bios.time.time', return_value=1040.2), \
+                patch.object(TheAudioDB, 'biography', return_value=self.data.copy()) as fetch:
+            with self.assertRaises(BiographyRetryError) as waiting:
+                self.bios.view({**self.selection, 'lookup': True})
+            self.assertEqual(waiting.exception.retry_after, 20)
+            fetch.assert_not_called()
+        with patch('tagcast.artist_bios.time.time', return_value=1060), \
+                patch.object(TheAudioDB, 'biography', return_value=self.data.copy()) as fetch:
+            self.assertEqual(self.bios.view({**self.selection, 'lookup': True})['status'], 'ready')
+            fetch.assert_called_once()
+        self.assertEqual(self.bios.failures, {})
 
     def test_simultaneous_visits_share_one_lookup_and_cache_size_is_bounded(self):
         self.studio.config['artist_biographies'] = True

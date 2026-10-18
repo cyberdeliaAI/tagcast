@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
 from . import __version__
+from .artist_bios import BiographyRetryError
 from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio
 from .library import ConflictError, LibraryError
@@ -79,6 +80,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(409, {"error": str(error), "conflict": True})
         except NotConnected as error:
             self._json(401, {"error": str(error), "connected": False})
+        except BiographyRetryError as error:
+            self._json(429, {"error": str(error), "retry_after": error.retry_after})
         except (ApiError, LibraryError, ArtworkError, SourceError) as error:
             self._json(400, {"error": str(error)})
         except Exception:  # never leak a traceback to the page

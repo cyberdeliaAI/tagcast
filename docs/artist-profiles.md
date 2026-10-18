@@ -37,6 +37,11 @@ atomic write and read-back. Damaged files are reported without overwriting them
 or preventing library loading. Neither heart changes nor reads contact iBroadcast,
 change ratings or add metadata History entries.
 
+A metadata/tag read-back may replace the track-detail cache without changing the
+account. Confirmed heart replies still update their native IDs in that case;
+account/session or full-library replacement rejects old replies. Pending state
+always finishes, including when its result is no longer eligible for display.
+
 ## Native ratings and sorting
 
 The stars below an album artist's name use iBroadcast's documented `rateartist`
@@ -60,6 +65,11 @@ stay last, and names break ties. Existing upload-day set grouping is unchanged.
 Upload dates are deliberately not offered as an artist sort. Sorting uses compact
 summaries and never downloads tracks or contacts iBroadcast.
 
+Confirmed album-rating read-back invalidates the derived multi-disc shelf and
+repaints a visible album list, including partial results and mixed disc ratings.
+Unnamed native artists are confirmed using the same displayed identity used for
+selection; missing native records still cannot confirm a rating.
+
 ## Optional biographies
 
 Enable **Settings → Artist biographies → Show artist biographies from TheAudioDB**
@@ -72,7 +82,10 @@ The fixed public API endpoint is
 `https://www.theaudiodb.com/api/v1/json/123/search.php?s=ARTIST_NAME`.
 The only library information sent is the visited artist's name. The shared source
 client paces requests at least 2.1 seconds apart. A provider error backs off for one
-minute, preserves existing cached text and permits an explicit retry. No shared or
+minute, preserves existing cached text and reports the remaining delay as HTTP 429
+with a bounded `retry_after`. The interface disables **Try again** while waiting
+and enables it at the deadline without fetching automatically. Retrying after
+that deadline is explicit and still uses the shared request pacing. No shared or
 personal Premium key is included in this feature.
 
 Matching retains accents, punctuation and qualifiers, allowing only Unicode-normalized
@@ -81,6 +94,9 @@ unresolved. A single same-name result can still describe another person or band;
 the interface retains attribution and a link for checking. An artist image is not
 required. Both the current `strBiography` and older `strBiographyEN` English fields
 are supported. Provider HTML is stripped and display text is escaped.
+An empty stored artist name is not looked up or cached under its display placeholder;
+the page explains that a name is needed. A genuine stored name of `Unknown artist`
+remains eligible, rather than being filtered merely by its spelling.
 
 The separate `artist-biographies.sqlite3` file is created only on first enabled
 use, with owner-only creation permissions where supported. It stores public text
@@ -94,6 +110,9 @@ reports an error without replacing it or affecting playback or albums.
 Late results are rejected after library, account, session or biography-preference
 replacement. The disclosure has no browser-history entry, preserves focus through
 background updates, and keeps its expanded state when returning from an album.
+If a metadata/tag read-back retires an in-flight biography, its entry is removed
+and its loading flag is cleared. A still-visible unchanged group reads the cache
+again; hidden artists wait until the next visit. Neither path scans the library.
 
 ## Checks
 
