@@ -20,8 +20,8 @@ function resetArtistBrowse() {
 const favouriteArtistGroup = group => group.ids.length > 0 && group.ids.every(id => state.artistFavourites.has(id));
 
 function artistProfileSelection(name) {
-  const ids = [...new Set(state.albums.filter(a => a.artist === name && Number.isInteger(Number(a.artist_id)) && Number(a.artist_id) > 0)
-    .map(a => String(a.artist_id)))].sort((a, b) => Number(a) - Number(b));
+  const ids = [...new Set(state.albums.flatMap(albumArtistEntries).filter(a => a.name === name && Number(a.id) > 0)
+    .map(a => String(a.id)))].sort((a, b) => Number(a) - Number(b));
   return ids.length ? {artists: ids, name, session: state.connection.playback_session} : null;
 }
 
@@ -97,7 +97,7 @@ function renderArtistProfile() {
 }
 
 function nativeArtistRatings(selection) {
-  const ratings = new Map(state.albums.map(album => [String(album.artist_id), album.artist_rating || 0]));
+  const ratings = new Map(state.albums.flatMap(albumArtistEntries).map(a => [String(a.id), a.rating || 0]));
   return selection.artists.map(id => ratings.get(id) || 0);
 }
 
@@ -131,6 +131,7 @@ async function rateArtist(rating) {
     const confirmed = new Map((job.results || []).map(r => [String(r.id), Number(r.rating) || 0]));
     for (const album of [...state.albums, ...state.details.values()]) {
       if (confirmed.has(String(album.artist_id))) album.artist_rating = confirmed.get(String(album.artist_id));
+      for (const artist of album.album_artists || []) if (confirmed.has(String(artist.id))) artist.rating = confirmed.get(String(artist.id));
     }
     if (response.error || !selection.artists.every(id => job.results?.some(r => String(r.id) === id && r.status === "saved" && Number(r.rating) === rating))) throw Error(response.error || "The artist rating was not confirmed. Reload before trying again.");
     update.message = "Artist rating saved and confirmed in iBroadcast."; toast(update.message);

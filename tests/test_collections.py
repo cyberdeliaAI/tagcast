@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import certifi
 from test_client import client, mock_ibroadcast
+from test_library import change
 
 from tagcast.library import ConflictError, LibraryError
 from tagcast.queue_sync import QUEUE_SCOPES, clean_state
@@ -61,6 +62,77 @@ class CollectionTests(unittest.TestCase):
         self.job(self.studio.collections.rate_artist({**body, 'before': [4], 'rating': 0}))
         self.assertEqual(self.studio.collections.artist_favourites()['artists'], ['41'])
         self.assertEqual(self.studio.library.album_summary(72)['artist_rating'], 0)
+
+
+    def test_additional_album_artist_and_full_track_credits_save_and_verify_native_ids(self):
+        album = self.studio.library.album_view(72)
+        track = self.studio.library.track_view(900)
+        album_credits = [{'artist_id': 42, 'name': 'Pink Floyd', 'type': 'artist', 'phrase': 'with'}]
+        track_credits = [{'artist_id': None, 'name': 'New Lyricist', 'type': 'lyricist', 'phrase': 'Words by'}]
+        result = self.studio.save([
+            change('album', 72, 72, credits=(album['credits'], album_credits)),
+            change('track', 900, 72, credits=(track['credits'], track_credits))])
+        checked = self.job(result)
+        self.assertTrue(all(row['status'] == 'saved' for row in checked['results']))
+        self.assertEqual(result['created_artists'], ['New Lyricist'])
+        saved = self.studio.library.album_view(72)
+        self.assertEqual([a['name'] for a in saved['album_artists']], ['Kate Bush', 'Pink Floyd'])
+        self.assertEqual(saved['tracks'][0]['credits'][0]['type'], 'lyricist')
+        self.assertIsInstance(saved['tracks'][0]['credits'][0]['artist_id'], int)
+        selection = {'artists': ['42'], 'name': 'Pink Floyd', 'session': self.studio.playback_session}
+        self.studio.collections.favourite_artist({**selection, 'before': False, 'favourite': True})
+        self.assertEqual(self.studio.collections.artist_favourites()['artists'], ['42'])
+        self.assertTrue(all(r['status'] == 'saved' for r in self.job(self.studio.collections.rate_artist(
+            {**selection, 'before': [0], 'rating': 3}))['results']))
+        self.assertEqual(self.studio.library.album_summary(72)['album_artists'][1]['rating'], 3)
+
+    def test_thumbs_down_sets_one_native_track_rating_and_can_be_cleared(self):
+        self.assertTrue(all(r['status'] == 'saved' for r in self.job(self.studio.favourite(
+            {'track_id': '903', 'before': 0, 'rating': 1}))['results']))
+        self.assertEqual(self.studio.library.track_view(903)['rating'], 1)
+        self.assertNotIn('903', [r['id'] for r in self.studio.library.favourites()['tracks']])
+        with self.assertRaises(ConflictError):
+            self.studio.favourite({'track_id': '903', 'before': 0, 'rating': 5})
+        self.assertTrue(all(r['status'] == 'saved' for r in self.job(self.studio.favourite(
+            {'track_id': '903', 'before': 1, 'rating': 0}))['results']))
+        self.assertEqual(self.studio.library.track_view(903)['rating'], 0)
+        self.assertEqual([w['rating'] for w in mock_ibroadcast.STATE['writes'] if w['mode'] == 'ratetrack'], [1, 0])
+
+    def test_combined_sets_block_album_credits_without_creating_their_artists(self):
+        album = self.studio.library.album_view(72)
+        track = self.studio.library.track_view(900)
+        mock_ibroadcast.STATE['combine_sets'] = True
+        result = self.studio.save([
+            change('album', 72, 72, credits=(album['credits'], [
+                {'artist_id': None, 'name': 'Blocked Album Guest', 'type': 'artist', 'phrase': None}])),
+            change('track', 900, 72, credits=(track['credits'], [
+                {'artist_id': None, 'name': 'Allowed Writer', 'type': 'lyricist', 'phrase': None}]))])
+        checked = self.job(result)
+        self.assertEqual({r['kind']: r['status'] for r in checked['results']},
+                         {'album': 'blocked', 'track': 'saved'})
+        self.assertEqual(result['created_artists'], ['Allowed Writer'])
+        self.assertNotIn('Blocked Album Guest', mock_ibroadcast.STATE['artists'].values())
+        self.assertEqual(self.studio.library.album_view(72)['credits'], [])
+
+    def test_large_playlist_append_and_delete_use_checked_compact_snapshots(self):
+        tracks = copy.deepcopy(mock_ibroadcast.STATE['tracks'])
+        for action in ('delete', 'append'):
+            mock_ibroadcast.STATE['playlists'][888] = {
+                'name': 'Large playlist', 'type': 'playlist', 'tracks': [900, 901] * 5001}
+            mock_ibroadcast.STATE['version'] += 1
+            self.studio.load_library(refresh=True)
+            page = self.studio.collections.playlists(playlist_id='888', offset='10000')
+            self.assertEqual(page['total'], 10002)
+            self.assertEqual(len(page['tracks']), 2)
+            body = {'action': action, 'playlist': page['id'], 'before_token': page['before_token'],
+                    'before_name': page['name'], 'confirm_delete': True, 'tracks': [903]}
+            checked = self.job(self.studio.collections.save_playlist(body))
+            self.assertEqual(checked['results'][0]['status'], 'saved')
+            if action == 'delete':
+                self.assertNotIn(888, mock_ibroadcast.STATE['playlists'])
+            else:
+                self.assertEqual(mock_ibroadcast.STATE['playlists'][888]['tracks'], [900, 901, 903])
+            self.assertEqual(mock_ibroadcast.STATE['tracks'], tracks)
 
     def test_artist_ratings_reject_stale_values_names_sessions_and_invalid_inputs(self):
         body = {'artists': ['41'], 'name': 'Kate Bush', 'session': self.studio.playback_session,
@@ -165,12 +237,12 @@ class CollectionTests(unittest.TestCase):
     def test_former_five_star_favourites_are_imported_once_per_account(self):
         path = self.studio.home / 'album-favourites.json'
         path.unlink()
-        self.studio.library.albums.rows[73][-1] = 5
+        self.studio.library.albums.rows[73][self.studio.library.albums.fields['rating']] = 5
         self.assertEqual(self.studio.collections.album_favourites()['albums'], ['73'])
         self.favourite(before=(True,), value=False)
         self.assertEqual(self.studio.album_details(['73'])[0]['rating'], 5)
         self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
-        self.studio.library.albums.rows[74][-1] = 5
+        self.studio.library.albums.rows[74][self.studio.library.albums.fields['rating']] = 5
         self.assertEqual(self.studio.collections.album_favourites()['albums'], [])
         self.studio.library_user = 'another-account'
         self.assertEqual(set(self.studio.collections.album_favourites()['albums']), {'73', '74'})
@@ -239,11 +311,11 @@ class CollectionTests(unittest.TestCase):
     def test_local_multi_disc_favourites_keep_separate_ratings_and_original_disc_ids(self):
         library = self.studio.library
         # The two displayed discs share identity, but retain independent stars.
-        library.albums.rows[73][-1] = 3
+        library.albums.rows[73][library.albums.fields['rating']] = 3
         library.albums.rows[74] = [*library.albums.rows[73]]
         library.albums.rows[74][1] = [904]
         library.albums.rows[74][5] = 2
-        library.albums.rows[74][-1] = 4
+        library.albums.rows[74][library.albums.fields['rating']] = 4
         self.favourite(ids=('73', '74'), before=(False, False))
         self.assertEqual(set(self.studio.collections.album_favourites()['albums']), {'73', '74'})
         self.assertEqual([a['rating'] for a in self.studio.album_details(['73', '74'])], [3, 4])

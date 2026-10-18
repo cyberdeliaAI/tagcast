@@ -1,12 +1,13 @@
 "use strict";
 
-// Native iBroadcast likes: rating 5 adds a favourite, 0 clears the rating.
+// Native iBroadcast track ratings: 5 likes, 1 dislikes, 0 clears the rating.
 // Only one server page is downloaded; no browser copy of the entire track library.
 const storedFavouritesSize = storedPageSize("tagcast-favourites-per-page");
 const favourites = {rows: [], total: 0, count: null, query: "", page: 0,
   pageSize: [50, 100, 200].includes(storedFavouritesSize) ? storedFavouritesSize : 50, request: 0,
   epoch: 0, details: null, loading: false, busy: false, error: "", pending: null};
 let favouritesTimer;
+const dislikeIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 14V3h4v11h-4ZM17 4H7a2 2 0 0 0-2 1.6l-2 7A2 2 0 0 0 5 15h5l-1 4a2 2 0 0 0 2 2l6-7"/></svg>';
 const heartIcon = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>';
 const favouriteViews = {tracks: "favourites", albums: "album-favourites", artists: "artist-favourites"};
 const favouriteHub = {kind: "tracks", albums: {query: "", offset: 0}};
@@ -57,12 +58,20 @@ function heartButton(track) {
   const pending = favourites.pending?.id === String(track.id) ? favourites.pending : null;
   const rating = Number(track.rating) || 0, liked = (pending?.rating ?? rating) >= 5;
   const label = liked ? `Remove ${track.title} from favourites (clear track rating)` : `Add ${track.title} to favourites (set track rating to 5)`;
-  return `<button class="favourite-button ${pending ? "is-pending" : ""}" data-favourite="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${liked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(pending?.message || label)}" title="${escapeHtml(pending?.message || label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${heartIcon}</button>`;
+  return `<button class="favourite-button ${pending ? "is-pending" : ""}" data-favourite="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${liked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(pending?.message || label)}" title="${escapeHtml(pending?.message || label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${heartIcon}</button>${trackDislikeButton(track)}`;
+}
+
+function trackDislikeButton(track) {
+  const pending = favourites.pending?.id === String(track.id) ? favourites.pending : null;
+  const rating = Number(track.rating) || 0, disliked = (pending?.rating ?? rating) === 1;
+  const label = disliked ? `Clear dislike of ${track.title}` : `Dislike ${track.title} (track rating 1)`;
+  return `<button type="button" class="favourite-button dislike-button ${pending ? "is-pending" : ""}" data-dislike="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${disliked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(pending?.message || label)}" title="${escapeHtml(pending?.message || label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${dislikeIcon}</button>`;
 }
 
 function resetFavourites() {
+  if (favourites.busy) saving = false;
   favourites.epoch += 1; favourites.request += 1;
-  Object.assign(favourites, {rows: [], total: 0, count: null, details: null, loading: false, error: "", pending: null});
+  Object.assign(favourites, {rows: [], total: 0, count: null, details: null, loading: false, error: "", pending: null, busy: false});
 }
 
 function updateFavouriteControls() {
@@ -79,12 +88,20 @@ function updateFavouriteControls() {
   button.setAttribute("aria-pressed", String(liked));
   button.setAttribute("aria-label", pending?.message || (liked ? "Remove current track from favourites (clear track rating)" : "Add current track to favourites (set track rating to 5)"));
   button.title = button.getAttribute("aria-label");
-  for (const node of document.querySelectorAll("[data-favourite]")) {
-    const update = favourites.pending?.id === node.dataset.favourite ? favourites.pending : null;
+  const dislike = $("#player-dislike");
+  dislike.innerHTML = dislikeIcon; dislike.disabled = button.disabled;
+  const disliked = Number(pending?.rating ?? track?.rating) === 1;
+  dislike.setAttribute("aria-pressed", String(disliked));
+  dislike.setAttribute("aria-busy", String(Boolean(pending)));
+  dislike.classList.toggle("is-pending", Boolean(pending));
+  dislike.title = pending?.message || (disliked ? "Clear current track dislike" : "Dislike current track (rating 1)");
+  dislike.setAttribute("aria-label", dislike.title);
+  for (const node of document.querySelectorAll("[data-favourite], [data-dislike]")) {
+    const update = favourites.pending?.id === (node.dataset.favourite ?? node.dataset.dislike) ? favourites.pending : null;
     node.disabled = Boolean(!live() || state.loading || favourites.busy || saving || checking);
     node.classList.toggle("is-pending", Boolean(update));
     node.setAttribute("aria-busy", String(Boolean(update)));
-    node.setAttribute("aria-pressed", String((update?.rating ?? Number(node.dataset.rating)) >= 5));
+    node.setAttribute("aria-pressed", String(node.dataset.dislike !== undefined ? (update?.rating ?? Number(node.dataset.rating)) === 1 : (update?.rating ?? Number(node.dataset.rating)) >= 5));
     if (update) { node.title = update.message; node.setAttribute("aria-label", update.message); }
   }
 }
@@ -111,13 +128,15 @@ async function refreshPlayerRatings() {
   } catch { /* existing playback continues; a write still checks the current rating */ }
 }
 
-async function toggleFavourite(id, before, title = "this track") {
+async function toggleFavourite(id, before, title = "this track", requestedRating = null) {
   if (!live() || state.loading || favourites.busy || saving || checking) return;
   if (DIALOGS_WITH_DRAFTS.some(selector => $(selector).open)) { toast("Close the editor or review first, then change favourites."); return; }
-  const rating = before >= 5 ? 0 : 5;
-  if (before > 0 && before < 5 && !confirm(`“${title}” has track rating ${before}. Add to favourites and replace it with rating 5 in iBroadcast?`)) return;
+  const rating = requestedRating ?? (before >= 5 ? 0 : 5);
+  if (![0, 1, 5].includes(rating)) return;
+  if (rating === 5 && before > 0 && before < 5 && !confirm(`“${title}” has track rating ${before}. Add to favourites and replace it with rating 5 in iBroadcast?`)) return;
+  if (rating === 1 && before > 1 && !confirm(`Dislike “${title}” and replace its current track rating ${before} with 1 in iBroadcast?`)) return;
   const epoch = favourites.epoch;
-  const update = {id: String(id), rating, message: "Saving favourite…"};
+  const update = {id: String(id), rating, message: "Saving track rating…"};
   favourites.pending = update;
   favourites.busy = true; saving = true; updateChrome();
   let accepted = false;
@@ -126,8 +145,8 @@ async function toggleFavourite(id, before, title = "this track") {
     accepted = true;
     if (epoch !== favourites.epoch) return;
     if (response.job) {
-      update.message = "Favourite sent · checking iBroadcast…"; updateFavouriteControls();
-      toast("Favourite sent. Checking it against iBroadcast…");
+      update.message = "Track rating sent · checking iBroadcast…"; updateFavouriteControls();
+      toast("Track rating sent. Checking it against iBroadcast…");
       let job;
       do {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -139,7 +158,7 @@ async function toggleFavourite(id, before, title = "this track") {
       const result = job.results?.find(t => String(t.id) === String(id));
       if (!result) throw Error("The rating could not be read back. Reload the library.");
       setTrackRating(String(id), result.rating);
-      if (result.status !== "saved") throw Error("iBroadcast did not confirm this favourite. Reload the library before trying again.");
+      if (result.status !== "saved") throw Error("iBroadcast did not confirm this track rating. Reload the library before trying again.");
     } else setTrackRating(String(id), response.rating);
     if (favourites.pending === update) favourites.pending = null;
     updateFavouriteControls(); renderAlbumView(); renderTrackSearch();
@@ -147,13 +166,14 @@ async function toggleFavourite(id, before, title = "this track") {
     // Fetch just one page to update the count and remove/add the changed row.
     await loadFavourites();
     if (epoch !== favourites.epoch) return;
-    toast(rating === 5 ? "Added to iBroadcast favourites (track rating 5)." : "Removed from iBroadcast favourites (track rating cleared).");
+    toast(rating === 5 ? "Added to iBroadcast favourites (track rating 5)." : rating === 1 ? "Track disliked in iBroadcast (track rating 1)." : "Track rating cleared in iBroadcast.");
   } catch (error) {
     if (epoch !== favourites.epoch) return;
     if (error.status === 401) state.connection.connected = false;
     if (accepted) favourites.details = null;
-    toast(`${accepted ? "Favourite sent, but not confirmed" : "Could not change favourite"}: ${error.message}`);
+    toast(`${accepted ? "Track rating sent, but not confirmed" : "Could not change track rating"}: ${error.message}`);
   } finally {
+    if (epoch !== favourites.epoch) return;
     if (favourites.pending === update) favourites.pending = null;
     favourites.busy = false; saving = false;
     updateChrome(); renderAlbumView(); renderTrackSearch(); renderFavourites();
@@ -220,11 +240,17 @@ $("#favourites-per-page").addEventListener("change", () => {
   favourites.pageSize = size; favourites.page = 0;
   rememberPageSize("tagcast-favourites-per-page", size); loadFavourites();
 });
+$("#player-dislike").addEventListener("click", () => {
+  const track = player.queue[player.index];
+  if (track) return toggleFavourite(String(track.id), Number(track.rating) || 0, track.title, Number(track.rating) === 1 ? 0 : 1);
+});
 $("#player-favourite").addEventListener("click", () => {
   const track = player.queue[player.index];
   if (track) return toggleFavourite(String(track.id), Number(track.rating) || 0, track.title);
 });
 document.addEventListener("click", event => {
+  const dislike = event.target.closest("[data-dislike]");
+  if (dislike) return toggleFavourite(dislike.dataset.dislike, Number(dislike.dataset.rating), dislike.dataset.favouriteTitle, Number(dislike.dataset.rating) === 1 ? 0 : 1);
   const heart = event.target.closest("[data-favourite]");
   if (heart) return toggleFavourite(heart.dataset.favourite, Number(heart.dataset.rating), heart.dataset.favouriteTitle);
   const page = event.target.closest("[data-favourite-page]");

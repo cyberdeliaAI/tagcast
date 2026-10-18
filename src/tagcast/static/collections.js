@@ -144,7 +144,7 @@ async function renderCollections() {
   if (!live() || state.loading) { page.innerHTML = '<div class="empty">Connect iBroadcast to use playlists and album favourites.</div>'; return; }
   collectionsView.details = state.details;
   if (state.screen === "album-favourites") {
-    const albums = albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))), filtered = albums.filter(a => `${a.name} ${a.artist}`.toLowerCase().includes(collectionsView.query.toLowerCase()));
+    const albums = albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))), filtered = albums.filter(a => `${a.name} ${albumArtistsText(a)}`.toLowerCase().includes(collectionsView.query.toLowerCase()));
     if (state.albumFavouriteError) { page.innerHTML = `<p class="error-box">${escapeHtml(state.albumFavouriteError)}</p>`; return; }
     collectionsView.offset = Math.min(collectionsView.offset, Math.max(0, Math.ceil(filtered.length / 50) - 1) * 50);
     replaceCollections(`<p class="muted">Albums marked with a heart in Tagcast. Saved on this computer for your account, independently of star ratings. Multi-disc sets appear once when every disc is a favourite.</p><input class="collection-search" id="collection-search" placeholder="Search favourite albums" value="${escapeHtml(collectionsView.query)}" aria-label="Search favourite albums"><p>${filtered.length} ${filtered.length === 1 ? "album" : "albums"}</p><div class="album-grid">${gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50)) || '<div class="empty">No favourite albums match. Use the heart on an album page to add one.</div>'}</div>${collectionPages(filtered.length, 50)}`);
@@ -159,7 +159,7 @@ async function renderCollections() {
     if (request !== collectionsView.request || details !== state.details || state.screen !== "playlists") return;
     collectionsView.data = data;
     if (collectionsView.playlist) {
-      page.innerHTML = `<button class="button small" data-playlist-back>← Playlists</button><div class="page-intro"><div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ Play playlist</button><button class="button" data-playlist-edit>Edit playlist…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks · in playlist order</p><table class="album-tracks track-results"><thead><tr><th>#</th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr><td><button class="track-play" data-playlist-position="${t.position}" aria-label="Play from ${escapeHtml(t.title)}">▶</button> ${t.position + 1}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td>${queueButton(t.album_id, t)}</td></tr>`).join("")}</tbody></table>${collectionPages(data.total, 100)}`;
+      page.innerHTML = `<button class="button small" data-playlist-back>← Playlists</button><div class="page-intro"><div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ ${data.large ? "Play this page" : "Play playlist"}</button><button class="button" data-playlist-edit ${data.large ? 'disabled title="Full replacement is limited to 10,000 tracks"' : ""}>Edit playlist…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks · in playlist order</p>${data.large ? '<p class="muted">Large playlist: browse 100 tracks per page. Playback starts from this page. Full-content editing is limited to 10,000 tracks; adding tracks and reviewed deletion remain available.</p>' : ""}<table class="album-tracks track-results"><thead><tr><th>#</th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr><td><button class="track-play" data-playlist-position="${t.position}" aria-label="Play from ${escapeHtml(t.title)}">▶</button> ${t.position + 1}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td>${queueButton(t.album_id, t)}</td></tr>`).join("")}</tbody></table>${collectionPages(data.total, 100)}`;
     } else replaceCollections(`<div class="page-intro"><div><h1>Playlists<span>.</span></h1><p>Your editable iBroadcast playlists. System lists are managed by iBroadcast.</p></div></div><div class="toolbar"><input class="collection-search" id="collection-search" placeholder="Search playlists" value="${escapeHtml(collectionsView.query)}" aria-label="Search playlists"><button class="button" data-playlist-create>Create playlist…</button></div><p>${data.total} playlists</p><div class="playlist-cards">${data.playlists.map(p => `<button class="button playlist-card" data-playlist-open="${p.id}"><strong>${escapeHtml(p.name)}</strong><small>${p.count} tracks</small></button>`).join("") || '<p class="muted">No matching playlists. Add an album or save the queue to create one.</p>'}</div>${collectionPages(data.total, 100)}`);
     if (typeof syncHistory === "function") syncHistory();
   } catch (error) { if (request === collectionsView.request && details === state.details) page.innerHTML = `<p class="error-box">${escapeHtml(error.message)}</p>`; }
@@ -209,7 +209,7 @@ async function openPlaylistDelete(id) {
   try {
     const data = await api(`/api/playlists?id=${encodeURIComponent(id)}`);
     if (request !== playlistDraft.request || details !== state.details || session !== state.connection.playback_session || !$("#playlist-dialog").open) return;
-    playlistDraft.body = {action: "delete", playlist: data.id, before: data.before, before_name: data.name, confirm_delete: true};
+    playlistDraft.body = {action: "delete", playlist: data.id, ...(data.before_token ? {before_token: data.before_token} : {before: data.before}), before_name: data.name, confirm_delete: true};
     $("#playlist-dialog-content").innerHTML = `<h3>${escapeHtml(data.name)}</h3><p>${data.total} ${data.total === 1 ? "track" : "tracks"} in this playlist.</p><div class="warn-box">Delete this playlist from iBroadcast? The tracks stay in your music library. Tagcast cannot undo playlist deletion.</div><div class="dialog-footer"><button class="button" data-close="playlist-dialog">Keep playlist</button><button class="button danger primary" data-playlist-save>Delete playlist</button></div>`;
   } catch (error) { if (request === playlistDraft.request && details === state.details) $("#playlist-dialog-content").innerHTML = `<p class="error-box">${escapeHtml(error.message)}</p>`; }
 }
@@ -224,7 +224,9 @@ async function reviewPlaylist(form) {
     name: form.elements.name.value.trim(), description: form.elements.description.value.trim()};
   if (destination !== "new") {
     const current = edit || await api(`/api/playlists?id=${encodeURIComponent(destination)}`);
-    body.playlist = current.id; body.before = current.before || current.tracks; body.before_name = current.name;
+    body.playlist = current.id;
+    if (current.before_token) body.before_token = current.before_token; else body.before = current.before || current.tracks;
+    body.before_name = current.name;
     if (!body.name || body.action === "append") body.name = current.name;
   }
   if (!body.name) { toast("Enter a playlist name."); return; }
@@ -307,7 +309,7 @@ document.addEventListener("click", async event => {
       if (play.hasAttribute("data-playlist-edit")) return openPlaylistSave(rows, data);
       if (!rows.length || !localPlaybackAllowed()) return;
       cancelRandomPlay(); player.epoch += 1; player.shuffle = false; player.queue = rows;
-      player.index = Number(play.dataset.playlistPosition) || 0; playCurrent();
+      player.index = play.hasAttribute("data-playlist-position") ? Math.max(0, (Number(play.dataset.playlistPosition) || 0) - (data.large ? data.offset : 0)) : 0; playCurrent();
     } catch (error) { toast(error.message); }
   }
 });

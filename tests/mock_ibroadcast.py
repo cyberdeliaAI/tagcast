@@ -66,9 +66,9 @@ def library():
                           t["track"], t["trashed"], t["artwork_id"], t.get("additional", []), f"/128/abc/{i}", t.get("type", "audio/mpeg"),
                           t.get("genres_additional", []), t.get("rating", 0), t.get("uploaded_on", ""),
                           t.get("uploaded_time", ""), t.get("length", 0)]
-    albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6}}
+    albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6, "artists_additional": 7, "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}}}
     for i, a in STATE["albums"].items():
-        albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0)]
+        albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0), a.get("additional", [])]
     artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3, "rating": 4}}
     for i, name in STATE["artists"].items():
         artists[str(i)] = [name, [], i in STATE["album_only_artists"], STATE["artist_art"].get(i, 0), STATE.get("artist_ratings", {}).get(i, 0)]
@@ -274,6 +274,9 @@ class H(BaseHTTPRequestHandler):
             if mode == "update_album":
                 for row in body["albums"]:
                     a = STATE["albums"][row["album_id"]]
+                    if "artists_additional" in row:
+                        a["additional"] = [[e["artist_id"], e.get("phrase"), e.get("type")]
+                                           for e in row["artists_additional"]]
                     for k in ("name", "artist_id"):
                         if k in row:
                             a[k] = row[k]

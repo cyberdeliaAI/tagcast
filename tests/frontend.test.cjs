@@ -1363,7 +1363,7 @@ test("favourite failures do not claim a successful change, and stale writes cann
   p.setFetch(async () => ({ok: false, status: 409, json: async () => ({error: "Rating changed elsewhere"})}));
   await p.run('toggleFavourite(String(oldTrack.id), 0, oldTrack.title)');
   assert.equal(p.run("oldTrack.rating"), 0);
-  assert.match(p.nodes.get("#toast").textContent, /Could not change favourite: Rating changed elsewhere/);
+  assert.match(p.nodes.get("#toast").textContent, /Could not change track rating: Rating changed elsewhere/);
   let resolve;
   p.setFetch(() => new Promise(r => { resolve = r; }));
   const write = p.run('toggleFavourite(String(oldTrack.id), 0, oldTrack.title)');
@@ -5064,4 +5064,173 @@ test('changing biography preferences cannot discard a confirmed local artist hea
   assert.equal(p.run('artistProfile.favourite.pending'),false);
   assert.deepEqual(p.json('[...state.artistFavourites]'),['42']);
   assert.match(p.nodes.get('#page-title').innerHTML,/aria-pressed="true" aria-busy="false"/);
+});
+
+test('additional album artists have their own cards, profile, image, search and album links without detail reads', async () => {
+  const p = livePage(); await settle();
+  const count = p.requests.length;
+  p.run(`const sharedAlbum = state.albums[0];
+    sharedAlbum.album_artists = [albumArtistEntries(sharedAlbum)[0], {id:'77',name:'Shared Guest',rating:4,image:'https://example.test/guest-150',artwork_id:22}];
+    state.albums = [...state.albums]; renderArtistBrowse(); setArtist('Shared Guest');`);
+  assert.equal(p.run('filteredAlbums().length'), 1);
+  assert.deepEqual(p.json('artistProfileSelection("Shared Guest").artists'), ['77']);
+  assert.equal(p.run('nativeArtistRatings(artistProfileSelection("Shared Guest"))[0]'), 4);
+  assert.match(p.nodes.get('#artist-panel').innerHTML, /guest-300/);
+  assert.equal(p.run('artistPageTarget("Shared Guest").id'), '77');
+  assert.match(p.run('albumArtistLinks(state.albums[0])'), /data-artist="Shared Guest"/);
+  p.run('state.artist=null; $("#search").value="Shared Guest"');
+  assert.equal(p.run('filteredAlbums().length'), 1);
+  assert.equal(p.requests.length, count);
+});
+
+test('credit editing preserves native identities, unknown roles and phrases until explicitly changed', async () => {
+  const p = page(); await settle();
+  p.run(`const originalCredit = {artist_id:77,name:'Guest',type:'guitar',phrase:null};
+    const creditName = {value:'Guest'}, creditRole = {value:'guitar'}, creditPhrase = {value:''};
+    const creditRow = {dataset:{original:JSON.stringify(originalCredit)},querySelector:selector => ({'[data-credit-name]':creditName,'[data-credit-role]':creditRole,'[data-credit-phrase]':creditPhrase})[selector]};
+    const creditError={textContent:''}; const creditEditor = {querySelectorAll:()=>[creditRow],querySelector:()=>creditError};`);
+  assert.deepEqual(p.json('readCredits(creditEditor)'), [{artist_id:77,name:'Guest',type:'guitar',phrase:null}]);
+  p.run('creditName.value="Another Guest"; creditRole.value="lyricist"; creditPhrase.value="Words by"');
+  assert.deepEqual(p.json('readCredits(creditEditor)'), [{artist_id:null,name:'Another Guest',type:'lyricist',phrase:'Words by'}]);
+  assert.match(p.run('creditRows([originalCredit])'), /value="guitar" selected/);
+  assert.match(p.run('creditRows([{...originalCredit,name:"<img src=x>"}])'), /&lt;img src=x&gt;/);
+  p.run('creditName.value=""');
+  assert.throws(() => p.run('readCredits(creditEditor)'), /names are required/);
+  assert.match(p.run('creditError.textContent'), /names are required/);
+});
+
+test('genre input accepts 200 characters and keeps oversized input instead of truncating or committing it', async () => {
+  const p = page(); await settle();
+  assert.equal(p.run('addGenres([], "x".repeat(200))[0].length'), 200);
+  assert.equal(p.run('addGenres([], "🎵".repeat(200)).length'), 1);
+  assert.throws(() => p.run('addGenres([], "x".repeat(201))'), /200 characters/);
+  assert.throws(() => p.run('addGenres(Array.from({length:20},(_,i)=>String(i)), "one more")'), /20 labels/);
+  p.run(`const longGenreInput={value:'x'.repeat(201)};
+    const longGenreField={dataset:{value:'[]'},querySelector:()=>longGenreInput};`);
+  assert.throws(() => p.run('commitTyped(longGenreField)'), /input has been kept/);
+  assert.equal(p.run('longGenreInput.value.length'), 201);
+  assert.equal(p.run('longGenreField.dataset.value'), '[]');
+  assert.doesNotMatch(p.run('genreField("genres", "Genres", [])'), /maxlength=/);
+});
+
+test('track thumbs-down waits for read-back, clears a heart and can be removed without touching playback', async () => {
+  const p = livePage(); await settle();
+  p.run('const dislikedTrack=state.details.get(state.albums[0].id).tracks[0]; dislikedTrack.rating=5; playTracks(state.details.get(state.albums[0].id))');
+  const id = p.run('String(dislikedTrack.id)'), source = p.nodes.get('#audio').src, entries = p.history.length;
+  const writes = [];
+  p.setFetch((url, options) => {
+    if (url === '/api/favourite') {
+      const body = JSON.parse(options.body); writes.push(body);
+      return {ok:true,json:async()=>({job:'dislike'})};
+    }
+    if (url === '/api/jobs/dislike') return {ok:true,json:async()=>({state:'done',results:[{id,rating:writes.at(-1).rating,status:'saved'}]})};
+    return {ok:true,json:async()=>({tracks:[],count:0,total:0,offset:0})};
+  });
+  const pending = p.run('toggleFavourite(String(dislikedTrack.id), 5, dislikedTrack.title, 1)'); await settle();
+  assert.equal(p.run('dislikedTrack.rating'), 5);
+  assert.equal(p.nodes.get('#player-dislike').getAttribute('aria-pressed'), 'true');
+  assert.equal(p.nodes.get('#player-favourite').getAttribute('aria-pressed'), 'false');
+  p.flushTimers(2000); await pending;
+  assert.equal(p.run('dislikedTrack.rating'), 1);
+  const clear = p.run('toggleFavourite(String(dislikedTrack.id), 1, dislikedTrack.title, 0)'); await settle(); p.flushTimers(2000); await clear;
+  assert.deepEqual(writes.map(w=>w.rating), [1,0]);
+  assert.equal(p.run('dislikedTrack.rating'), 0);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.equal(p.history.length, entries);
+  assert.equal(p.run('state.history.length'), 0);
+});
+
+test('old track-rating replies cannot release a newer account rating lock', async () => {
+  const p = livePage(); await settle(); let firstReply, secondReply;
+  p.setFetch((url) => {
+    if (url === '/api/favourite') return new Promise(resolve => { if (!firstReply) firstReply=resolve; else secondReply=resolve; });
+    return {ok:true,json:async()=>({tracks:[],count:0,total:0,offset:0})};
+  });
+  const first = p.run('toggleFavourite("101", 0, "Old account track", 1)'); await settle();
+  p.run('resetFavourites()');
+  const second = p.run('toggleFavourite("102", 0, "New account track", 1)'); await settle();
+  firstReply({ok:true,json:async()=>({rating:1})}); await first;
+  assert.equal(p.run('favourites.busy'), true);
+  assert.equal(p.run('favourites.pending.id'), '102');
+  secondReply({ok:true,json:async()=>({rating:1})}); await second;
+  assert.equal(p.run('favourites.busy'), false);
+});
+
+test('large playlists render a bounded page and use a compact deletion snapshot without fetching every track', async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get(state.albums[0].id))');
+  const source=p.nodes.get('#audio').src, queue=p.json('player.queue');
+  p.setFetch(url=>{
+    assert.match(url,/^\/api\/playlists/);
+    return {ok:true,json:async()=>({id:'88',name:'Large playlist',description:'',large:true,total:20002,stored_total:20002,offset:10000,
+      before:[],before_token:'snapshot-token',tracks:[101],rows:[]})};
+  });
+  p.run('showCollections("playlists","88",{offset:10000})'); await settle();
+  assert.match(p.nodes.get('#collections-page').innerHTML,/20002 tracks/);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/Play this page/);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/data-playlist-edit disabled/);
+  await p.run('openPlaylistDelete("88")');
+  assert.deepEqual(p.json('playlistDraft.body'),{action:'delete',playlist:'88',before_token:'snapshot-token',before_name:'Large playlist',confirm_delete:true});
+  assert.ok(p.requests.every(r=>r.options?.method!=='POST'));
+  assert.equal(p.nodes.get('#audio').src,source); assert.deepEqual(p.json('player.queue'),queue);
+});
+
+test('reviewed individual credits override bulk composers and read-back supplies IDs for Undo', async () => {
+  const p=livePage(); await settle();
+  await p.run('openEditor([state.albums[0].id])');
+  p.run(`const reviewedTrack=editing.originals[0].tracks[0];
+    editing.trackPatches[String(reviewedTrack.id)]={credits:[{artist_id:null,name:'New Writer',type:'lyricist',phrase:'Words by'}]};
+    editing.dirty.add('composers');`);
+  const composerField={dataset:{value:'["Bulk Composer"]'},classList:{contains:()=>false},querySelector:()=>({value:''})};
+  p.nodes.get('#metadata-form').querySelector=selector=>selector==='[data-genres="composers"]'?composerField:null;
+  p.run('buildReview()');
+  const selected=p.json('pending.changes.find(c=>String(c.id)===String(reviewedTrack.id))');
+  assert.equal(selected.fields.credits.after[0].name,'New Writer');
+  assert.equal(selected.fields.composers,undefined);
+  p.run('state.history=[{status:"sent",source:"ibroadcast",changes:structuredClone(pending.changes)}]');
+  const changes=p.json('pending.changes'), albums=p.json('state.albums');
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',albums,results:changes.map(c=>({kind:c.kind,id:c.id,status:'saved',
+    ...(c.fields.credits?{credits:[{artist_id:88,name:'New Writer',type:'lyricist',phrase:'Words by'}]}:{})}))})}));
+  const checked=p.run('followJob("credit-check",state.history[0])'); p.flushTimers(2000); await checked;
+  assert.equal(p.run('state.history[0].changes.find(c=>c.fields.credits).fields.credits.after[0].artist_id'),88);
+  assert.deepEqual(p.json('state.history[0].changes.find(c=>c.fields.credits).fields.credits.before'),selected.fields.credits.before);
+});
+
+test('an additional album artist is linked in the player without repeating it as a track artist', async () => {
+  const p=livePage(); await settle();
+  p.run(`const multiArtistAlbum=state.details.get(state.albums[0].id);
+    multiArtistAlbum.album_artists=[albumArtistEntries(multiArtistAlbum)[0],{id:'77',name:'Shared Guest'}];
+    multiArtistAlbum.tracks[0].artist='Shared Guest'; multiArtistAlbum.tracks[0].artist_id=77;
+    multiArtistAlbum.tracks[0].performers=[{id:77,name:'Shared Guest'}]; playTracks(multiArtistAlbum);`);
+  assert.match(p.nodes.get('#player-additional-album-artists').innerHTML,/data-artist="Shared Guest"/);
+  assert.equal(p.nodes.get('#player-track-line').hidden,true);
+  assert.deepEqual(p.json('player.queue[0].album.album_artists.map(a=>a.name)'),[p.run('multiArtistAlbum.artist'),'Shared Guest']);
+});
+
+test('large playlist playback uses the selected row within the current page', async () => {
+  const p=livePage(); await settle();
+  p.run(`collectionsView.data={large:true,offset:10000,tracks:[101,102]};`);
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/queue-tracks'); assert.deepEqual(JSON.parse(options.body).tracks,[101,102]);
+    return {ok:true,json:async()=>({tracks:[101,102].map(id=>({id:String(id),title:'Track '+id,artist:'Artist',album:{id:'1',name:'Album',artist:'Artist'}}))})};
+  });
+  await p.click({'[data-playlist-position]':{dataset:{playlistPosition:'10001'},hasAttribute:key=>key==='data-playlist-position'}});
+  assert.equal(p.run('player.queue[player.index].id'),'102');
+  assert.equal(p.run('player.index'),1);
+  assert.equal(p.nodes.get('#audio').src,'/api/stream/102?quality=128');
+});
+
+test('bulk editing accepts albums sharing an additional album artist and keeps mixed credits opt-in', async () => {
+  const p=livePage(); await settle();
+  p.run(`const sharedIds=[state.albums[0].id,state.albums[2].id];
+    for(const id of sharedIds) { const album=state.details.get(id);
+      album.credits=[{artist_id:77,name:'Shared Guest',type:'artist',phrase:null}];
+      album.album_artists=[albumArtistEntries(album)[0],{id:'77',name:'Shared Guest',rating:0}]; }
+    state.albums=[...state.details.values()].map(summarize); state.artist='Shared Guest';`);
+  await p.run('openEditor(sharedIds)');
+  assert.equal(p.run('editing.bulk'),true);
+  assert.equal(p.run('editing.originals.length'),2);
+  assert.match(p.nodes.get('#editor-content').innerHTML,/Change additional album artists/);
+  assert.match(p.nodes.get('#editor-content').innerHTML,/credit-editor disabled/);
 });

@@ -10,7 +10,7 @@ import secrets
 import threading
 from collections import Counter
 
-from .library import MAX_GENRES, LibraryError, number, stored_genres, text
+from .library import MAX_GENRE_LENGTH, MAX_GENRES, LibraryError, number, stored_genres, text
 
 log = logging.getLogger("tagcast")
 CATEGORIES = {"genres", "track-artists", "composers", "genre-labels"}
@@ -62,7 +62,7 @@ def candidate(library, track_id, category, mapping=None):
                 return None
             after = split_labels(values)
         removing = category == "genre-labels" and mapping.get("remove") is True
-        if (not after and not removing) or len(after) > MAX_GENRES or any(len(n) > 200 for n in after):
+        if (not after and not removing) or len(after) > MAX_GENRES or any(len(n) > MAX_GENRE_LENGTH for n in after):
             raise LibraryError("Genres must contain 1–20 labels of at most 200 characters.")
         wire = {"genre": after[0] if after else "", "genres_additional": after[1:]}
         if wire == before:
@@ -152,7 +152,7 @@ class Cleanup:
             if remove and replacements != []:
                 raise LibraryError("Removing a label requires an empty replacement list.")
             if not isinstance(replacements, list) or not (0 if remove else 1) <= len(replacements) <= MAX_GENRES \
-                    or any(not isinstance(n, str) or not n.strip() or len(n.strip()) > 200
+                    or any(not isinstance(n, str) or not n.strip() or len(n.strip()) > MAX_GENRE_LENGTH
                            for n in replacements):
                 raise LibraryError("Enter 1–20 replacement labels of at most 200 characters each.")
             names, seen = [], set()

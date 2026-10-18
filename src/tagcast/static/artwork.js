@@ -26,10 +26,10 @@ function artistArtTarget() {
 }
 
 function artistPageTarget(name) {
-  const album = state.albums.find(a => a.artist === name && a.artist_id);
-  if (!album) return null;
-  return {target: "artist", id: String(album.artist_id), label: name, current: (album.artist_image || "").replace(/-150$/, "-300"),
-    artist: name, before: {artwork_id: album.artist_artwork_id || 0}};
+  const artist = state.albums.flatMap(albumArtistEntries).find(a => a.name === name && Number(a.id) > 0);
+  if (!artist) return null;
+  return {target: "artist", id: String(artist.id), label: name, current: (artist.image || "").replace(/-150$/, "-300"),
+    artist: name, before: {artwork_id: artist.artwork_id || 0}};
 }
 
 function openArtwork(target, preselect) {

@@ -32,6 +32,7 @@ from .library import (
     Library,
     LibraryError,
     number,
+    patch_artist_names,
     plan_save,
     text,
     verify,
@@ -658,7 +659,7 @@ class Studio:
             favourites = {"albums": None, "error": str(error)}
         try:
             artist_favourites = self.collections.artist_favourites(
-                library, {str(a["artist_id"]) for a in albums})
+                library, {entry["id"] for a in albums for entry in a["album_artists"] if entry["id"] != "0"})
         except LibraryError as error:
             artist_favourites = {"artists": None, "error": str(error)}
         return {"albums": albums, "artists": library.artist_names(),
@@ -803,8 +804,8 @@ class Studio:
         track_id, before, rating = body.get("track_id"), body.get("before"), body.get("rating")
         if not isinstance(track_id, str) or not track_id.isdigit() or int(track_id) <= 0 \
                 or type(before) is not int or not 0 <= before <= 10 \
-                or type(rating) is not int or rating not in (0, 5):
-            raise ApiError("Choose a track and its current rating; favourites use 5 or 0.")
+                or type(rating) is not int or rating not in (0, 1, 5):
+            raise ApiError("Choose a track and its current rating: 0 clears, 1 dislikes, 5 likes.")
         track_id = int(track_id)
         client = self._require_client()
         if not self.save_lock.acquire(blocking=False):
@@ -860,8 +861,7 @@ class Studio:
                      f"{'change was' if len(blocked) == 1 else 'changes were'} not sent; "
                      "track changes were saved as usual.")
         sendable = {**plan, "items": [i for i in plan["items"] if (i["kind"], i["id"]) not in failed]}
-        needed = {i["patch"]["artist"] for i in sendable["items"] if "artist" in i["patch"]} \
-            | {name for i in sendable["items"] for name in i["patch"].get("composers", [])}
+        needed = {name for i in sendable["items"] for name in patch_artist_names(i["patch"])}
 
         artist_ids, created = dict(plan["artists"]), []
         for name in [n for n in plan["new_artists"] if n in needed]:
