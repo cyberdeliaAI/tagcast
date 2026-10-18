@@ -40,6 +40,7 @@ from .library import (
     verify,
     write_requests,
 )
+from .metadata_export import MetadataExport
 from .queue_sync import QUEUE_SCOPES, QueueSync
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
@@ -346,6 +347,7 @@ class Studio:
         self.library_user = None
         self.premium = False
         self.collections = Collections(self)
+        self.metadata_export = MetadataExport(self)
         self.tags = Tags(self)
         self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on

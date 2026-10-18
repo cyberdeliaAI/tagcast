@@ -173,7 +173,7 @@ and permissions would need confirmation before implementation.
 | Dashboard restoration/deletion | `restore_file`, `dashboard_delete` | No |
 | Audio uploads | Upload server and processing flow | No; Tagcast edits the existing cloud library. |
 | Playlist-file import | `upload_playlist` | No |
-| Download/export | `downloadlibrary`, download server | No library audio export; Change history export is local JSON. |
+| Download/export | `downloadlibrary`, download server | No library audio export. Current development adds read-only JSON / CSV ZIP metadata snapshots from the loaded library; no download server API is used. |
 | Single-track sharing | `sharetrack` | No |
 | Similar tracks | `createtracklist` | No |
 | Discovery | `home` | No; Tagcast's own discovery screens are local. |
@@ -260,6 +260,7 @@ Local checks are defined in [library.py](../src/tagcast/library.py),
 | Search, rating/date sorting, years, decades and duplicate analysis | Derived from the downloaded library; no separate server search/sort API required. |
 | Random album selection | Local choice from loaded compact summaries; only the chosen album's details are loaded. |
 | Change history export | Browser-local JSON; not an export of audio files or the complete library. |
+| Full library metadata export (development) | Explicit read-only JSON / linked CSV ZIP snapshots from the loaded server library, with separate ordered artist credits, roles and phrases. See [format and completeness](metadata-export.md). |
 
 This distinction matters: local support for a similar feature does not establish
 support for the native API operation or cross-device account synchronization.

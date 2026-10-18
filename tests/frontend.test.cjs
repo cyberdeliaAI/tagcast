@@ -5947,3 +5947,116 @@ test("individual composer credits switch between composer and artist choices wit
   assert.equal(name.dataset.editorChoiceKind, "artist"); assert.equal(name.value, "Bach");
   assert.deepEqual(labels, ["Show existing composers","Show existing artists"]);
 });
+
+test("metadata export in Settings prepares linked tables and offers an explicit native download", async () => {
+  const p = page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="export-session"; playTracks(state.details.get("1")); openSettings()');
+  const before = p.run('JSON.stringify({queue:player.queue,history:state.history,src:audio.src,page:state.screen})');
+  const settings = p.nodes.get('#settings-content').innerHTML;
+  assert.match(settings, /Export library metadata/);
+  assert.match(settings, /data-metadata-option="tags"/);
+  assert.ok(settings.indexOf('id="metadata-export"') < settings.indexOf('id="settings-form"') || !settings.includes('id="settings-form"'));
+  const id = 'a'.repeat(32);
+  p.setFetch((url, options) => {
+    if (url === '/api/metadata-export') {
+      assert.equal(options.headers['X-Tagcast'], '1');
+      assert.deepEqual(JSON.parse(options.body), {format:'json', session:'export-session', include_tags:false, include_playlists:true, include_favourites:true});
+      return {ok:true,json:async()=>({id,state:'preparing',format:'json'})};
+    }
+    assert.equal(url, `/api/metadata-export/status?id=${id}&session=export-session`);
+    return {ok:true,json:async()=>({id,state:'ready',format:'json',filename:'tagcast-metadata-test.json',
+      manifest:{counts:{albums:2,tracks:20,credits:35},optional:{tags:{requested:false,status:'not_requested'},playlists:{requested:true,status:'not_loaded'}}}})};
+  });
+  await p.change({dataset:{metadataOption:'tags'},checked:false,matches:()=>false,closest:()=>null});
+  await p.run('prepareMetadataExport("json")'); await settle();
+  const status = p.nodes.get('#metadata-export-status').innerHTML;
+  assert.match(status, /2 native album\/disc records · 20 tracks · 35 credits/);
+  assert.match(status, /Download JSON/);
+  assert.match(status, /Unavailable: playlists/);
+  assert.match(status, /href="\/api\/metadata-export\/download\?id=a{32}&amp;session=export-session" download="tagcast-metadata-test.json"/);
+  assert.equal(p.downloads.length, 0, 'Preparation never downloads a blob or changes the page');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,history:state.history,src:audio.src,page:state.screen})'), before);
+  assert.equal(p.requests.filter(r=>r.url==='/api/settings' && r.options?.method==='POST').length,0);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/albums')).length,0);
+});
+
+test("metadata export is disabled in preview and polling pauses when Settings closes", async () => {
+  const p = page(); await settle(); p.run('openSettings()');
+  assert.match(p.nodes.get('#metadata-export-actions').innerHTML, /data-metadata-prepare="json" disabled/);
+  await p.run('prepareMetadataExport("json")');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/metadata-export')).length,0);
+  const id='b'.repeat(32); let ready=false;
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/metadata-export' ? {id,state:'preparing',format:'csv'}
+    : ready ? {id,state:'ready',format:'csv',filename:'metadata.zip',manifest:{counts:{}}} : {id,state:'preparing',format:'csv'}}));
+  p.run('state.mode="live"; state.connection.playback_session="export-session"; openSettings()');
+  await p.run('prepareMetadataExport("csv")'); await settle();
+  assert.match(p.nodes.get('#metadata-export-actions').innerHTML,/Cancel preparation/);
+  p.nodes.get('#settings').close(); await p.nodes.get('#settings').emit('close');
+  const count = p.requests.length;
+  p.flushTimers(1000); await settle();
+  assert.equal(p.requests.length,count);
+  ready=true; p.run('openSettings()'); await settle();
+  assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download CSV ZIP/);
+  assert.equal(p.downloads.length,0);
+});
+
+test("late metadata preparations and status replies cannot expose a replaced library's download", async () => {
+  const p = page(); await settle(); const id='c'.repeat(32);
+  p.run('state.mode="live"; state.connection.playback_session="first"; openSettings()');
+  let release;
+  p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('prepareMetadataExport("json")');
+  p.run('state.details=new Map(); state.connection.playback_session="second"; render()');
+  release({ok:true,json:async()=>({id,state:'preparing',format:'json'})}); await pending; await settle();
+  assert.equal(p.run('metadataExportView.job'),null);
+  assert.doesNotMatch(p.nodes.get('#metadata-export-status').innerHTML,/Download/);
+  let delayed;
+  p.setFetch(url=>url==='/api/metadata-export' ? {ok:true,json:async()=>({id,state:'preparing',format:'json'})}
+    : new Promise(resolve=>{delayed=resolve;}));
+  await p.run('prepareMetadataExport("json")'); await settle();
+  p.run('useLocal(demoLibrary(),"demo"); updateChrome()');
+  delayed({ok:true,json:async()=>({id,state:'ready',format:'json',filename:'old.json',manifest:{counts:{}}})}); await settle();
+  assert.equal(p.run('metadataExportView.job'),null);
+  assert.doesNotMatch(p.nodes.get('#metadata-export-status').innerHTML,/old.json|Download/);
+});
+
+test("metadata cancellation and expiry allow a fresh preparation without saving settings", async () => {
+  const p=page(); await settle(); const id='d'.repeat(32);
+  p.run('state.mode="live"; state.connection.playback_session="export-session"; openSettings()');
+  let expired=false;
+  p.setFetch((url,options)=> {
+    if(url==='/api/metadata-export/cancel') {
+      assert.deepEqual(JSON.parse(options.body),{id,session:'export-session'});
+      return {ok:true,json:async()=>({state:'cancelled'})};
+    }
+    return expired ? {ok:false,status:400,json:async()=>({error:'This metadata export expired.'})}
+      : {ok:true,json:async()=>({id,state:'preparing',format:'json'})};
+  });
+  await p.run('prepareMetadataExport("json")'); await settle();
+  await p.run('cancelMetadataExport()'); await settle();
+  assert.equal(p.run('metadataExportView.job'),null);
+  assert.equal(p.run('metadataExportView.busy'),false);
+  await p.run('prepareMetadataExport("json")'); await settle();
+  expired=true; p.flushTimers(1000); await settle();
+  assert.match(p.nodes.get('#metadata-export-status').innerHTML,/expired/);
+  assert.doesNotMatch(p.nodes.get('#metadata-export-actions').innerHTML,/data-metadata-prepare="json" disabled/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/settings' && r.options?.method==='POST').length,0);
+});
+
+test("reopening Settings ignores an older in-flight export status reply", async () => {
+  const p=page(); await settle(); const id='e'.repeat(32); let release, reads=0;
+  p.run('state.mode="live"; state.connection.playback_session="export-session"; openSettings()');
+  p.setFetch(url=> {
+    if(url==='/api/metadata-export') return {ok:true,json:async()=>({id,state:'preparing',format:'json'})};
+    reads++;
+    if(reads===1) return new Promise(resolve=>{release=resolve;});
+    return {ok:true,json:async()=>({id,state:'ready',format:'json',filename:'new.json',manifest:{counts:{}}})};
+  });
+  await p.run('prepareMetadataExport("json")'); await settle();
+  p.nodes.get('#settings').close(); await p.nodes.get('#settings').emit('close');
+  p.run('openSettings()'); await settle();
+  assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download JSON/);
+  release({ok:true,json:async()=>({id,state:'preparing',format:'json'})}); await settle();
+  assert.equal(p.run('metadataExportView.busy'),false);
+  assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download JSON/);
+});

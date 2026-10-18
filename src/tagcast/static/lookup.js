@@ -134,6 +134,7 @@ function openSettings() {
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>
     <p class="muted">These choices apply immediately and are remembered in this browser. Track and album pages and fullscreen Now playing keep their information.</p></section>`
     + sidebarSettingsPanel()
+    + metadataExportPanel()
     + `<section class="history-settings"><h3>Change history</h3>
     <p class="muted">Download the change history saved in this browser as a JSON file for your records.</p>
     <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
@@ -170,6 +171,7 @@ function openSettings() {
     ${updateSettingsPanel()}
     <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`);
   $("#settings").showModal();
+  resumeMetadataExport();
 }
 
 async function saveSettings(form, clear) {

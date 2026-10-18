@@ -36,6 +36,8 @@ The application consists of a Python server and a plain JavaScript frontend.
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
 - `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
+- `src/tagcast/metadata_export.py`: explicit, read-only JSON / linked CSV ZIP snapshots of the loaded library,
+  account/session/library-bound background preparation and private temporary streamed downloads.
 - `src/tagcast/tags.py`: native tag browsing and reviewed creation, rename, deletion
   and per-album/track assignments, separate from genres and metadata saves.
 - `src/tagcast/queue_sync.py`: opt-in server-side WebSocket bridge; extra OAuth queue
@@ -45,8 +47,8 @@ The application consists of a Python server and a plain JavaScript frontend.
   album artist and held in a separate bounded local SQLite cache.
 - `src/tagcast/album_info.py`: opt-in TheAudioDB album background text for a visited
   album, with strict artist/full-title matching and a separate bounded SQLite cache.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty-three JavaScript files:
-  `app.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
+- `src/tagcast/static/`: HTML, CSS, SVG and twenty-four JavaScript files:
+  `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
@@ -309,6 +311,18 @@ and preserve a valid script order in `index.html`.
   summaries, merging discs and paginating locally. Preserve exact group membership,
   browser history, genre links and stale-response guards across library changes.
   Card album counts match the merged shelf; duplicate disc numbers remain separate.
+- Settings also offers full loaded-library metadata export as JSON or a ZIP of linked CSV
+  tables, separate from browser-local Export changes. Prepare only on explicit choice,
+  then download a private temporary file without buffering all tracks in browser JS.
+  Preserve native album membership/IDs, separate ordered credits/roles/phrases, exact
+  stored genres, ratings and upload precision. Optional loaded tags/playlists and
+  account-local saved favourites report missing/unavailable data; never fetch library
+  details, migrate favourites or write to iBroadcast to prepare an export. Exclude
+  tokens, source keys, signed URLs, settings and provider prose. Keep CSV null/text
+  encoding reversible and spreadsheet formulas escaped. Bind jobs/downloads to the
+  captured account, client, playback session, library copy/revision and combine setting;
+  reject stale results. One preparation / two retained jobs, 15-minute expiry,
+  explicit cancellation and shutdown cleanup; preserve audio, drafts and history.
 - Settings contains online sources/keys, playback recording, update checks and
   Export changes under Change history. Export downloads the same browser-local JSON
   history as the History dialog, never submits settings and is disabled when empty;
