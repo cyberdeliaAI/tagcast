@@ -127,6 +127,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.account_settings)
         elif url.path == "/api/settings":
             self._run(self.studio.settings)
+        elif url.path == "/api/metadata-export/status":
+            self._run(lambda: self.studio.metadata_export.status(query.get("id"), query.get("session")))
+        elif url.path == "/api/metadata-export/download":
+            self._metadata_download(query.get("id"), query.get("session"))
         elif url.path == "/api/album-guide":
             self._run(self.studio.album_guide.view)
         elif url.path == "/api/album-guide/album":
@@ -212,6 +216,8 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/cleanup/start": lambda b: self.studio.cleanup.start(b.get("id"), b.get("excluded")),
             "/api/cleanup/stop": lambda b: self.studio.cleanup.cancel(b.get("id")),
             "/api/settings": self.studio.save_settings,
+            "/api/metadata-export": self.studio.metadata_export.start,
+            "/api/metadata-export/cancel": self.studio.metadata_export.cancel,
             "/api/album-guide/analyse": lambda b: self.studio.album_guide.analyse(),
             "/api/album-guide/link": self.studio.album_guide.link,
             "/api/updates/check": lambda b: self.studio.check_updates(manual=True),
@@ -239,6 +245,33 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(404, {"error": "Unknown endpoint."})
             return
         self._run(lambda: routes[path](self._body()))
+
+    def _metadata_download(self, job_id, session):
+        """Stream the prepared private file without buffering it in a JSON response."""
+        started = False
+        try:
+            with self.studio.metadata_export.download(job_id, session) as job:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8" if job["format"] == "json" else "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="{job["filename"]}"')
+                self.send_header("Content-Length", str(job["size"]))
+                self.send_header("Cache-Control", "no-store")
+                started = True
+                self.end_headers()
+                while chunk := job["file"].read(64 * 1024):
+                    self.studio.metadata_export._check(job)
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        except Exception as error:
+            if started:
+                self.close_connection = True
+                logging.debug("Metadata download stopped: %s", type(error).__name__)
+            else:
+                # Reuse the API's sanitized error/status handling before any headers.
+                def failed(failure=error):
+                    raise failure
+                self._run(failed)
 
     def _stream(self, track_id, quality=None):
         """Pass a track's audio through, so the access token never reaches the page."""
@@ -310,6 +343,7 @@ class Server(ThreadingHTTPServer):
         studio = getattr(getattr(handler, "func", handler), "studio", None)
         if studio:
             studio.queue_sync.disconnect()
+            studio.metadata_export.close()
         super().server_close()
 
 

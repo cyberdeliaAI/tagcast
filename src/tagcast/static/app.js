@@ -462,6 +462,7 @@ function listView(items) {
 }
 
 function render() {
+  if (typeof syncMetadataExport === "function") syncMetadataExport();
   const scope = albumShelf().filter(a => !state.artist || albumHasArtist(a, state.artist));
   syncBrowseChoices("albums", Object.entries(FILTERS).map(([value, [label, keep]]) => ({value, label, count: scope.filter(keep).length})), albumSortLabels, "artist");
   $("#cleanup-filter").hidden = !live() || $("#filter").value !== "combined";
@@ -1119,6 +1120,7 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof syncMetadataExport === "function") syncMetadataExport();
   if (typeof updateAlbumGuideControls === "function") updateAlbumGuideControls();
   if (typeof updateRecentlyPlayedControls === "function") updateRecentlyPlayedControls();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
