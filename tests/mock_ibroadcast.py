@@ -76,9 +76,9 @@ def library():
             "status": {"lastmodified": lastmodified()},
             "lastfm": {"sessionkey": "secret-lastfm-session"},
             "library": {"albums": albums, "tracks": tracks, "artists": artists, "expires": 1999999999,
-                        "playlists": {"map": {"name": 0, "type": 1, "tracks": 2, "system_created": 3, "description": 4},
-                                      "777": ["Recently Played", "recently-played", STATE["recent_tracks"][:], True, ""],
-                                      **{str(i): [p["name"], None, p["tracks"], False, p.get("description", "")] for i, p in STATE["playlists"].items()}},
+                        "playlists": {"map": {"name": 0, "type": 1, "tracks": 2, "system_created": 3, "description": 4, "artwork_id": 5},
+                                      "777": ["Recently Played", "recently-played", STATE["recent_tracks"][:], True, "", 0],
+                                      **{str(i): [p["name"], p.get("type"), p["tracks"], p.get("system_created", False), p.get("description", ""), p.get("artwork_id", 0)] for i, p in STATE["playlists"].items()}},
                         "tags": {str(i): row for i, row in STATE["tags"].items()}}}
 
 
@@ -201,7 +201,7 @@ class H(BaseHTTPRequestHandler):
             if mode == "update_album" and STATE["combine_sets"]:
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode in ("update_album", "update_track", "create_artist", "set_artwork",
-                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "appendplaylist", "updateplaylist", "deleteplaylist",
+                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "updateplaylist", "deleteplaylist",
                         "createtag", "updatetag", "deletetags", "tagtracks"):
                 if STATE["busy"]:
                     STATE["busy"] -= 1
@@ -243,17 +243,18 @@ class H(BaseHTTPRequestHandler):
                 assert type(body["album_id"]) is int
                 STATE["albums"][body["album_id"]]["rating"] = body["rating"]
                 return self.send(200, {"result": True})
-            if mode == "createplaylist":
+            if mode in ("createplaylist", "createplaylistfolder"):
                 i = max([800, *STATE["playlists"]]) + 1
-                STATE["playlists"][i] = {"name": body["name"], "description": body["description"], "tracks": body["tracks"][:]}
+                STATE["playlists"][i] = {"name": body["name"], "description": body.get("description", ""), "tracks": body.get("tracks", [])[:], "type": "folder" if mode == "createplaylistfolder" else None, "artwork_id": 0}
                 return self.send(200, {"result": True, "playlist_id": i})
             if mode == "deleteplaylist":
                 STATE["playlists"].pop(int(body["playlist"]), None)
                 return self.send(200, {"result": True})
             if mode in ("appendplaylist", "updateplaylist"):
                 p = STATE["playlists"][int(body["playlist"])]
-                p["tracks"] = list(dict.fromkeys([*p["tracks"], *body["tracks"]])) if mode == "appendplaylist" else body["tracks"][:]
-                for field in ("name", "description"):
+                if "tracks" in body:
+                    p["tracks"] = list(dict.fromkeys([*p["tracks"], *body["tracks"]])) if mode == "appendplaylist" else body["tracks"][:]
+                for field in ("name", "description", "artwork_id"):
                     if field in body:
                         p[field] = body[field]
                 return self.send(200, {"result": True})

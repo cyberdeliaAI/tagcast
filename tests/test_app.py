@@ -93,6 +93,9 @@ class StartTests(unittest.TestCase):
         studio.favourite.return_value = {"status": "saved", "rating": 5}
         studio.collections.playlists.return_value = {"playlists": []}
         studio.collections.save_playlist.return_value = {"job": "check"}
+        studio.collections.save_folder.return_value = {"job": "check"}
+        studio.collections.playlist_artwork.return_value = {"job": "check"}
+        studio.collections.folder_choices.return_value = {"playlists": []}
         studio.collections.rate_album.return_value = {"job": "check"}
         studio.collections.rate_artist.return_value = {"job": "check"}
         studio.collections.album_favourites.return_value = {"albums": ["1"]}
@@ -142,6 +145,8 @@ class StartTests(unittest.TestCase):
 
         try:
             for path, action in [("/api/playlist", studio.collections.save_playlist),
+                                 ("/api/playlist-folder", studio.collections.save_folder),
+                                 ("/api/playlist/artwork", studio.collections.playlist_artwork),
                                  ("/api/tags/save", studio.tags.save),
                                  ("/api/album-rating", studio.collections.rate_album),
                                  ("/api/artist-rating", studio.collections.rate_artist),
@@ -159,7 +164,7 @@ class StartTests(unittest.TestCase):
                 action.assert_not_called()
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
                 action.assert_called_once()
-            for path in ("/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/album-guide/album?album_id=1&session=test-session", "/api/tags", "/api/tags/selection?albums=1&track=2"):
+            for path in ("/api/playlist-folder/choices", "/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/album-guide/album?album_id=1&session=test-session", "/api/tags", "/api/tags/selection?albums=1&track=2"):
                 self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)

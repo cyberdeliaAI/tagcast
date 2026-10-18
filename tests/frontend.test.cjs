@@ -945,7 +945,13 @@ test('the question mark selects only the current page or dialog help', async () 
   }
   p.run('state.screen = "playlists"; collectionsView.playlist = "25"; openHelp()');
   assert.equal(p.run('helpTour.topic'), 'playlist');
-  p.run('closeHelp(); $("#editor").showModal(); openHelp()');
+  p.run('closeHelp(); collectionsView.data={is_folder:true}; openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'playlist-folder');
+  p.run('closeHelp(); $("#playlist-dialog").showModal(); openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'playlist-review');
+  p.run('closeHelp(); $("#playlist-dialog").close(); art.target={target:"playlist"}; $("#artwork").showModal(); openHelp()');
+  assert.equal(p.run('helpTour.topic'), 'playlist-cover');
+  p.run('closeHelp(); $("#artwork").close(); $("#editor").showModal(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'editing');
   p.run('closeHelp(); $("#review").showModal(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'review');
@@ -6059,4 +6065,136 @@ test("reopening Settings ignores an older in-flight export status reply", async 
   release({ok:true,json:async()=>({id,state:'preparing',format:'json'})}); await settle();
   assert.equal(p.run('metadataExportView.busy'),false);
   assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download JSON/);
+});
+
+test('playlist browsing shows native covers and folders without treating folder references as tracks', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="session-folders"; playTracks(state.details.get("1"))');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  p.setFetch(url=>({ok:true,json:async()=>url.includes('id=40') ? {id:'40',name:'Decades',description:'',is_folder:true,total:2,offset:0,before_token:'folder-before',parents:[],parent_count:0,
+    playlists:[{id:'81',name:'Eighties',kind:'playlist',count:5,artwork:'https://example.invalid/cover.jpg'}, {id:'999',name:'Unavailable playlist',kind:'unavailable',count:0}]}
+    : {playlists:[{id:'40',name:'Decades',kind:'folder',count:2},{id:'82',name:'Covered',kind:'playlist',count:2,artwork:'https://example.invalid/list.jpg'}],total:2,offset:0}}));
+  p.run('showCollections("playlists")'); await settle();
+  assert.match(p.requests.at(-1).url,/browse=1/);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/Create folder/);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/list.jpg/);
+  p.run('showCollections("playlists","40")'); await settle();
+  const html=p.nodes.get('#collections-page').innerHTML;
+  assert.match(html,/PLAYLIST FOLDER/); assert.match(html,/Add playlists or folders/);
+  assert.match(html,/data-folder-remove="999"/);
+  assert.doesNotMatch(html,/data-playlist-play|data-playlist-edit|data-playlist-position/);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('folder creation is reviewed and confirmed independently of metadata and playback', async () => {
+  const p=page(); await settle(); p.run('state.mode="live"; state.connection.playback_session="folder-session"; playTracks(state.details.get("1"))');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  p.setFetch((url,options)=> {
+    if(url==='/api/playlist-folder') {
+      const body=JSON.parse(options.body); assert.equal(body.action,'create'); assert.equal(body.approved,true);
+      assert.equal(body.session,'folder-session'); assert.equal(body.name,'<Decades>'); assert.equal(body.tracks,undefined);
+      return {ok:true,json:async()=>({id:'40',job:'folder-save'})};
+    }
+    return {ok:true,json:async()=>({state:'done',results:[{id:'40',status:'saved'}]})};
+  });
+  await p.run('openPlaylistFolder("create")');
+  p.run('reviewPlaylistFolder({elements:{name:{value:"<Decades>"},description:{value:"Notes"}}})');
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/&lt;Decades&gt;/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-folder').length,0);
+  await p.run('savePlaylistFolder()');
+  assert.equal(p.nodes.get('#playlist-dialog').open,false);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-folder').length,1);
+});
+
+test('folder additions retain selections across bounded pages and submit playlist identities after review', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="folder-session"; collectionsView.data={id:"40",offset:0}');
+  const folder={id:'40',name:'Decades',description:'',is_folder:true,playlists:[],total:0,offset:0,before_token:'folder-token'};
+  p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/playlists?id=') ? folder : {playlists:url.includes('offset=100') ? [{id:'82',name:'Nineties',kind:'folder',before_token:'child-82'}] : [{id:'81',name:'Eighties',kind:'playlist',count:50,before_token:'child-81'}],total:101,offset:url.includes('offset=100')?100:0}}));
+  await p.run('openPlaylistFolder("add")');
+  await p.change({dataset:{folderChoice:'81'},checked:true,matches:()=>false,closest:()=>null});
+  p.run('folderDraft.offset=100'); await p.run('loadFolderChoices()');
+  await p.change({dataset:{folderChoice:'82'},checked:true,matches:()=>false,closest:()=>null});
+  p.run('reviewPlaylistFolder()');
+  const body=p.json('folderDraft.body');
+  assert.equal(body.action,'add'); assert.equal(body.before_token,'folder-token');
+  assert.deepEqual(body.members.map(m=>m.id),['81','82']);
+  assert.equal(body.tracks,undefined); assert.equal(body.members[0].before_token,'child-81');
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  p.nodes.get('#playlist-dialog').close(); await p.nodes.get('#playlist-dialog').emit('close');
+  await p.run('savePlaylistFolder()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-folder').length,0);
+});
+
+test('folder unlink review identifies the reference and never queues or deletes the child playlist', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="folder-session"; collectionsView.data={id:"40",offset:100}');
+  p.setFetch(url=> { assert.match(url,/id=40&offset=100/); return {ok:true,json:async()=>({id:'40',name:'Decades',is_folder:true,offset:100,before_token:'before',playlists:[{id:'81',name:'Eighties',kind:'playlist',before_token:'child'}]})}; });
+  await p.run('openPlaylistFolder("remove","81")');
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/playlists themselves stay available/);
+  const body=p.json('folderDraft.body'); assert.equal(body.action,'remove'); assert.equal(body.members[0].id,'81');
+  assert.equal(body.confirm_delete,undefined); assert.equal(body.tracks,undefined);
+});
+
+test('stale folder reads and writes are rejected after library or dialog replacement', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="folder-session"; collectionsView.data={id:"40"}');
+  let release;
+  p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('openPlaylistFolder("rename")');
+  p.run('state.details=new Map(); state.connection.playback_session="new-account"');
+  release({ok:true,json:async()=>({id:'40',name:'OLD PRIVATE FOLDER',is_folder:true,playlists:[]})}); await pending;
+  assert.doesNotMatch(p.nodes.get('#playlist-dialog-content').innerHTML,/OLD PRIVATE FOLDER/);
+  await p.run('savePlaylistFolder()'); assert.equal(p.requests.filter(r=>r.url==='/api/playlist-folder').length,0);
+  p.setFetch(()=>({ok:true,json:async()=>({playlists:[]})}));
+  await p.run('openPlaylistSave()');
+  assert.equal(p.run('folderDraft.body'),null);
+});
+
+test('playlist covers use the existing comparison and a separate checked save without changing tracks or History', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="cover-session"; playTracks(state.details.get("1")); collectionsView.data={id:"81",name:"My list",before_token:"cover-before",artwork:"https://example.invalid/old.jpg"}');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  const requests=p.requests.length;
+  p.run('openPlaylistCover()');
+  assert.match(p.nodes.get('#artwork-content').innerHTML,/PLAYLIST COVER/);
+  assert.match(p.nodes.get('#artwork-content').innerHTML,/Track and album artwork stays unchanged/);
+  assert.equal(p.requests.length,requests,'Opening never searches online sources or fetches related track artwork');
+  p.setFetch((url,options)=> {
+    if(url==='/api/playlist/artwork') {
+      const body=JSON.parse(options.body); assert.deepEqual(body.source,{artwork_id:99});
+      assert.equal(body.before_token,'cover-before'); assert.equal(body.approved,true);
+      return {ok:true,json:async()=>({job:'cover-job',artwork_id:99,image:'https://example.invalid/new.jpg'})};
+    }
+    return {ok:true,json:async()=>({state:'done',results:[{id:'81',status:'saved'}]})};
+  });
+  p.run('art.options=[{artwork_id:99}]; art.choice=0'); await p.run('saveArtwork()');
+  assert.equal(p.nodes.get('#artwork').open,false);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test('an ambiguous playlist cover save cannot repeat and stale account targets cannot send', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="cover-session"; collectionsView.data={id:"81",name:"List",before_token:"before"}; openPlaylistCover(); art.options=[{artwork_id:99}]; art.choice=0');
+  p.setFetch(()=>({ok:false,status:503,json:async()=>({error:'Uncertain request'})}));
+  await p.run('saveArtwork()'); await p.run('saveArtwork()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist/artwork').length,1);
+  assert.match(p.nodes.get('#art-status').textContent,/Check the playlist before retrying/);
+  p.run('state.connection.playback_session="other-account"; art.submitted=false'); await p.run('saveArtwork()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist/artwork').length,1);
+});
+
+
+test('folder rename review shows the exact new name and escaped description', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="folder-session"; collectionsView.data={id:"40"}');
+  p.setFetch(()=>({ok:true,json:async()=>({id:'40',name:'Before',description:'Old',is_folder:true,playlists:[],before_token:'token'})}));
+  await p.run('openPlaylistFolder("rename")');
+  p.run('reviewPlaylistFolder({elements:{name:{value:"After"},description:{value:"<New notes>"}}})');
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/Name: Before → After/);
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/Description: &lt;New notes&gt;/);
+  assert.equal(p.json('folderDraft.body').description,'<New notes>');
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });

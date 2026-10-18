@@ -36,20 +36,20 @@ function openArtwork(target, preselect) {
   if (!target) return;
   if (!live()) { toast("Connect your iBroadcast account to change images."); return; }
   art.target = target; art.options = []; art.choice = null; art.saved = []; art.artworkId = 0;
-  const isAlbum = target.target === "album";
-  $("#artwork-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${isAlbum ? "ALBUM COVER" : "ARTIST IMAGE"}</div><h2>${escapeHtml(target.label)}</h2></div><button class="close" data-close="artwork" aria-label="Close">×</button></div>
+  art.submitted = false;
+  const isAlbum = target.target === "album", isPlaylist = target.target === "playlist";
+  $("#artwork-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${isPlaylist ? "PLAYLIST COVER" : isAlbum ? "ALBUM COVER" : "ARTIST IMAGE"}</div><h2>${escapeHtml(target.label)}</h2></div>${isPlaylist ? '<button type="button" class="button small help-trigger" data-help-context="playlist-cover" aria-label="Help with playlist cover">?</button>' : ""}<button class="close" data-close="artwork" aria-label="Close">×</button></div>
     <div class="art-compare"><figure><figcaption>Now</figcaption>${target.current ? `<img src="${escapeHtml(target.current)}" alt="Current image" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;art-empty&quot;>No image</div>'">` : '<div class="art-empty">No image</div>'}</figure><span class="art-arrow" aria-hidden="true">→</span><figure><figcaption>New</figcaption><div id="art-new"><div class="art-empty">Choose an image below</div></div><small id="art-size"></small></figure></div>
-    <h3 class="art-heading">Suggestions</h3>
+    ${isPlaylist ? "" : `<h3 class="art-heading">Suggestions</h3>
     <div id="art-suggestions" class="art-grid"><p class="muted"><span class="spinner"></span>Searching…</p></div>
     <h3 class="art-heading">Already in iBroadcast</h3><div id="art-related" class="art-grid"><p class="muted"><span class="spinner"></span>Loading…</p></div>
-    <h3 class="art-heading">Your own image</h3>
+    `}<h3 class="art-heading">Your own image</h3>
     <div class="art-own"><label class="art-drop" id="art-drop"><input type="file" id="art-file" accept="image/jpeg,image/png,image/webp,image/gif"> Drop an image here, paste it, or <u>choose a file</u></label>
     <form id="art-url-form" class="connect-row"><input id="art-url" type="url" placeholder="https://… address of an image" aria-label="Image address"><button class="button">Use</button></form></div>
-    <div class="dialog-footer"><span class="muted" id="art-status">${!isAlbum ? "Replaces this artist's image everywhere in iBroadcast." : target.discs ? `Replaces the cover of all ${target.tracks} tracks, on all ${target.discs.length} discs.` : `Replaces the cover of all ${target.tracks} tracks of this album.`}</span><button class="button" data-close="artwork">Cancel</button><button class="button primary" id="art-save" disabled>Save to iBroadcast</button></div>`;
+    <div class="dialog-footer"><span class="muted" id="art-status">${isPlaylist ? "Changes only this playlist cover. Track and album artwork stays unchanged." : !isAlbum ? "Replaces this artist's image everywhere in iBroadcast." : target.discs ? `Replaces the cover of all ${target.tracks} tracks, on all ${target.discs.length} discs.` : `Replaces the cover of all ${target.tracks} tracks of this album.`}</span><button class="button" data-close="artwork">Cancel</button><button class="button primary" id="art-save" disabled>Save to iBroadcast</button></div>`;
   $("#artwork").showModal();
   if (preselect) choose(addOption(preselect));
-  loadSuggestions(target);
-  loadRelated(target);
+  if (!isPlaylist) { loadSuggestions(target); loadRelated(target); }
 }
 
 function addOption(option) {
@@ -66,6 +66,7 @@ function tile(index) {
 
 function loadSuggestions(target) {
   const box = $("#art-suggestions");
+  if (target.target === "playlist") { box.innerHTML = '<p class="muted">Choose your own file or image address below.</p>'; return; }
   const indexes = [];
   const show = () => { box.innerHTML = indexes.length ? indexes.map(tile).join("") : '<p class="muted">No suggestions yet.</p>'; };
   if (target.target === "album" && coverChoices().length) {
@@ -87,6 +88,7 @@ function loadSuggestions(target) {
 
 async function loadRelated(target) {
   const box = $("#art-related");
+  if (target.target === "playlist") { box.innerHTML = '<p class="muted">The current cover is shown above. Album and artist image searches are separate.</p>'; return; }
   try {
     const data = await api(`/api/artwork/related?${new URLSearchParams(target.target === "album" ? {album_id: target.id} : {artist_id: target.id})}`);
     const indexes = data.artwork.map(a => addOption({artwork_id: a.artwork_id, url: a.image, thumb: a.thumb, source: "iBroadcast"}));
@@ -123,6 +125,7 @@ function readFile(file) {
 async function saveArtwork() {
   const t = art.target, o = art.options[art.choice];
   if (!t || !o) return;
+  if (t.target === "playlist") return savePlaylistCover(t, o);
   const save = $("#art-save"), discs = t.discs || [t];
   save.disabled = true; save.textContent = "Saving…";
   try {

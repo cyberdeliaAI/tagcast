@@ -86,13 +86,27 @@ const HELP_TOPICS = {
     ["Find an artist", "Search names, change their order or choose a page size. This list uses loaded album summaries and never downloads all track details.", ["#artist-favourites-page .toolbar"]],
   ]},
   playlists: {title: "Playlists", scope: "#collections-page", steps: [
-    ["Your playlists", "Browse and search your iBroadcast playlists, then open one to see its tracks in order. System playlists and folders are protected.", ["#collections-page .page-intro", "#collections-page"]],
+    ["Your playlists", "Browse and search your iBroadcast playlists, then open one to see its tracks in order. Open folders to browse their playlist references. System playlists remain managed by iBroadcast.", ["#collections-page .page-intro", "#collections-page"]],
+    ["Playlist folders", "Create an empty folder, then review additions, removals and name changes. Removing a reference leaves its playlist and music intact. Search finds nested playlists too. Folder loops are blocked; only empty folders without parent references can be deleted.", ["[data-folder-create]", "#collections-page"]],
     ["Create a playlist", "Choose Create playlist to create a private playlist. You review its name and contents before it is sent to iBroadcast.", ["[data-playlist-create]", "#collection-search"]],
   ]},
   playlist: {title: "Playlist", scope: "#collections-page", steps: [
     ["Playlist contents", "Tracks appear in the playlist's order, 100 per page. Playlists over 10,000 tracks can be opened and paged; Play this page queues only the current page. Full-content replacement stays limited to 10,000 tracks. Adding tracks and reviewed deletion remain available. Use + for individual queue actions.", ["#collections-page .track-results", "#collections-page"]],
+    ["Playlist cover", "Change cover compares the current image with your file or image URL. Save explicitly, then wait for confirmation. Only this playlist artwork changes; track and album covers, playback and metadata history stay intact.", ["[data-playlist-cover]"]],
     ["Add your queue", "You can append the current queue to this playlist after reviewing the change. Adding an individual track or album is also available from its playlist action.", ["[data-playlist-add-queue]"], "Queue additions are available for editable private playlists."],
     ["Delete the playlist", "Delete playlist requires a review. It removes only the playlist definition; all its tracks remain in your library. System playlists and folders cannot be deleted here.", ["[data-playlist-delete]"], "Deletion is available only for editable playlists."],
+  ]},
+  "playlist-folder": {title: "Playlist folder", scope: "#collections-page", steps: [
+    ["Folder references", "Open a member playlist or nested folder. These are playlist identities, never song IDs. Unavailable references stay visible and can be removed explicitly.", ["#collections-page .playlist-cards"]],
+    ["Manage the folder", "Rename or add references after review. Remove from folder unlinks only that reference. Delete is available only for an empty folder that is not referenced by another folder.", ["[data-folder-add]", "[data-folder-delete]"]],
+  ]},
+  "playlist-review": {title: "Playlist review", scope: "#playlist-dialog", steps: [
+    ["Review the change", "Check the name, destination and selected contents before confirming. Folder reviews add or remove playlist references; ordinary playlist reviews operate on tracks. Closing cancels an unsent draft.", ["#playlist-dialog-content"]],
+    ["Confirm and wait", "Confirm once, then wait for a fresh read-back. An uncertain request is not repeated automatically. System playlists stay protected; music files are never deleted by folder or playlist-definition operations.", ["#playlist-dialog-content .dialog-footer"]],
+  ]},
+  "playlist-cover": {title: "Playlist cover", scope: "#artwork", steps: [
+    ["Compare covers", "Choose a JPEG, PNG, WebP or GIF file up to 15 MB, or an image URL. Compare Now and New before saving. This is a playlist cover; it does not replace the covers of its tracks or albums.", ["#artwork .art-compare", "#artwork .art-own"]],
+    ["Save and check", "Save explicitly and wait for iBroadcast read-back. If the playlist or account changed during upload, the image is not applied. An uncertain save needs a fresh review before retrying.", ["#art-save", "#art-status"]],
   ]},
   "recently-played": {title: "Recently played", scope: "#recently-played-page", steps: [
     ["Your recent listening", "This is iBroadcast's recent tracks playlist, including plays reported by other devices. The most recent track is first and each track appears once. iBroadcast provides no play timestamps in this list.", ["#recently-played-page .page-intro"]],
@@ -121,11 +135,13 @@ const HELP_TOPICS = {
 function currentHelpContext() {
   if ($("#audio-output-dialog").open) return "audio-output";
   if ($("#tag-dialog").open) return "tags";
+  if ($("#playlist-dialog").open) return "playlist-review";
+  if ($("#artwork").open && art.target?.target === "playlist") return "playlist-cover";
   for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
     if ($(`#${id}`).open) return context;
   }
   if (state.screen === "album-guide") return "guide";
-  if (state.screen === "playlists" && collectionsView.playlist) return "playlist";
+  if (state.screen === "playlists" && collectionsView.playlist) return collectionsView.data?.is_folder ? "playlist-folder" : "playlist";
   return state.screen;
 }
 

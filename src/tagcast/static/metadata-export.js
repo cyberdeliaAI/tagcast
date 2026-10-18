@@ -22,7 +22,7 @@ function metadataExportPanel() {
   return `<section class="history-settings" id="metadata-export"><h3>Export library metadata</h3>
     <p class="muted">Download the loaded iBroadcast library as structured JSON or a ZIP of linked CSV tables. Includes separate album artists, track credits, roles, credit phrases, genres, ratings and upload dates. Uses the full loaded library, regardless of page filters.</p>
     <p class="muted">This snapshot contains saved metadata; open drafts and later changes are not included. Audio and image files are not included.</p>
-    ${[["tags", "Include loaded tags"], ["playlists", "Include loaded playlists"], ["favourites", "Include local album and artist favourites"]].map(([key, label]) => `<label class="checkline"><input type="checkbox" data-metadata-option="${key}" ${metadataExportView.options[key] ? "checked" : ""}> ${label}</label>`).join("")}
+    ${[["tags", "Include loaded tags"], ["playlists", "Include loaded playlists and folders"], ["favourites", "Include local album and artist favourites"]].map(([key, label]) => `<label class="checkline"><input type="checkbox" data-metadata-option="${key}" ${metadataExportView.options[key] ? "checked" : ""}> ${label}</label>`).join("")}
     <p class="muted">These choices apply to the next preparation. Optional data is included only when already available. The export reports anything unavailable; preparing it never fetches extra library data or changes iBroadcast.</p>
     <div id="metadata-export-actions"></div><div id="metadata-export-status" role="status" aria-live="polite"></div></section>`;
 }

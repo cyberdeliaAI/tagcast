@@ -730,3 +730,19 @@ body.help-open{overflow:hidden}
 .browse-options-menu [role="group"]+[role="group"]{border-top:1px solid var(--line);margin-top:6px}
 .browse-options-title button{width:36px;justify-content:center;font-size:22px;padding:4px}
 @media(max-width:760px){.toolbar .browse-options-trigger{flex:1;min-width:0}.browse-options-menu button{min-height:44px}}
+
+/* Native playlist images and reference-only playlist folders. */
+.playlist-intro{display:flex;align-items:flex-start;justify-content:flex-start;gap:24px}
+.playlist-cover{width:150px;height:150px;object-fit:cover;border-radius:8px;flex:none}
+.playlist-cover.small{width:64px;height:64px}
+.playlist-placeholder{display:flex;align-items:center;justify-content:center;background:var(--palette-tint,#edf2e7);color:var(--muted);font-size:38px;border:1px solid var(--line)}
+.playlist-card{display:flex;align-items:center;gap:14px;text-align:left;width:100%}
+.playlist-card>span{min-width:0;overflow-wrap:anywhere}
+.playlist-folder-item{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+@media(max-width:600px){.playlist-intro{gap:14px}.playlist-intro>.playlist-cover{width:100px;height:100px}}
+.playlist-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));align-items:start}
+.playlist-card{flex-direction:row;min-width:0}.playlist-card strong,.playlist-card small{display:block}.playlist-card small{margin-top:5px;color:var(--muted)}
+#playlist-folder-form input:not([type=checkbox]),#playlist-folder-form textarea{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
+#playlist-folder-form textarea{min-height:80px;resize:vertical}
+
+.playlist-placeholder svg{width:36px;height:36px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}

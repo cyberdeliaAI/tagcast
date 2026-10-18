@@ -33,10 +33,12 @@ COLUMNS = {
     "tags": ("tag_id", "name", "archived"),
     "tag_tracks": ("tag_id", "track_id", "in_export"),
     "playlists": ("playlist_id", "name", "description", "type", "system_created", "artwork_id", "sort"),
+    "playlist_folders": ("folder_id", "name", "description", "artwork_id", "sort"),
+    "playlist_folder_items": ("folder_id", "position", "playlist_id", "kind", "in_export"),
     "playlist_tracks": ("playlist_id", "position", "track_id", "in_export"),
     "favourites": ("entity_type", "entity_id", "in_export"),
 }
-CSV_NOTES = """Tagcast library metadata export (schema 1)
+CSV_NOTES = """Tagcast library metadata export (schema 2)
 
 manifest.json describes the snapshot, completeness, counts and columns.
 IDs join the tables. Album records are the native records supplied by iBroadcast;
@@ -56,7 +58,9 @@ and distinguishes literal \\N from null. Booleans are true/false. JSON preserves
 native scalar values directly. No metadata is truncated.
 
 Optional tag/playlist memberships preserve stored IDs, order and repeated playlist
-positions, including unavailable tracks (in_export=false). Core music tables cover
+positions, including unavailable tracks (in_export=false). Playlist folders are
+separate records; playlist_folder_items contains playlist/folder IDs, never track
+IDs. Missing references are retained with kind=unavailable and in_export=false. Core music tables cover
 active library membership. Local favourites are only from this account's saved files;
 no migration is run. Optional data is never fetched to prepare this export.
 
@@ -95,7 +99,7 @@ class Snapshot:
                 self.members.setdefault(track_id, album_id)
         self.tracks = sorted(self.members)
         self.manifest = {
-            "format": "tagcast-library-metadata", "schema_version": 1,
+            "format": "tagcast-library-metadata", "schema_version": 2,
             "tagcast_version": __version__, "exported_at": datetime.now(timezone.utc).isoformat(),
             "library_revision": library.lastmodified, "combine_sets": library.combine_sets,
             "scope": "active_library", "optional": optional, "counts": {},
@@ -161,12 +165,31 @@ class Snapshot:
                     yield {"tag_id": str(tag_id), "track_id": str(track_id), "in_export": track_id in self.members}
         elif table == "playlists" and self.options["playlists"] and lib.playlists_loaded:
             for playlist_id, row in sorted(lib.playlists.items()):
+                if row.get("type") == "folder":
+                    continue
                 yield {"playlist_id": str(playlist_id), **{key: scalar(row.get(key)) for key in COLUMNS[table][1:]}}
         elif table == "playlist_tracks" and self.options["playlists"] and lib.playlists_loaded:
             for playlist_id, row in sorted(lib.playlists.items()):
+                if row.get("type") == "folder":
+                    continue
                 for position, track_id in enumerate(row.get("tracks") or []):
                     if type(track_id) in (int, str) and str(track_id).isascii() and str(track_id).isdigit():
                         yield {"playlist_id": str(playlist_id), "position": position, "track_id": str(track_id), "in_export": number(track_id) in self.members}
+        elif table == "playlist_folders" and self.options["playlists"] and lib.playlists_loaded:
+            for folder_id, row in sorted(lib.playlists.items()):
+                if row.get("type") == "folder":
+                    yield {"folder_id": str(folder_id), **{key: scalar(row.get(key)) for key in COLUMNS[table][1:]}}
+        elif table == "playlist_folder_items" and self.options["playlists"] and lib.playlists_loaded:
+            for folder_id, row in sorted(lib.playlists.items()):
+                if row.get("type") != "folder":
+                    continue
+                for position, member in enumerate(row.get("tracks") or []):
+                    if type(member) not in (int, str) or not str(member).isascii() or not str(member).isdigit():
+                        continue
+                    child = lib.playlists.get(number(member))
+                    yield {"folder_id": str(folder_id), "position": position, "playlist_id": str(member),
+                           "kind": "unavailable" if child is None else "folder" if child.get("type") == "folder" else "playlist",
+                           "in_export": child is not None}
         elif table == "favourites":
             for entity_type, ids in self.favourites.items():
                 exported = set(self.albums) if entity_type == "album" else set(lib.artists) | {0}

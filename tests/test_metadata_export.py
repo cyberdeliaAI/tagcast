@@ -292,6 +292,33 @@ class MetadataExportTests(ExportTestCase):
             self.assertEqual(*list(pool.map(lambda _: read(), range(2))))
 
 
+
+    def test_folder_ids_never_become_track_ids_and_json_csv_preserve_the_graph(self):
+        data = fixture()
+        # Folder ID 100 deliberately collides with an exported track ID.
+        data["library"]["playlists"].update({
+            "100": {"type": "folder", "name": "Root", "tracks": [50, 60, 999, 50], "artwork_id": 9},
+            "60": {"type": "folder", "name": "Nested", "tracks": [100]},
+        })
+        self.studio.library = Library(data)
+        exported = json.loads(self.contents(self.start()))
+        self.assertEqual(exported["manifest"]["schema_version"], 2)
+        self.assertEqual([r["playlist_id"] for r in exported["playlists"]], ["50"])
+        self.assertEqual({r["playlist_id"] for r in exported["playlist_tracks"]}, {"50"})
+        self.assertEqual({r["folder_id"] for r in exported["playlist_folders"]}, {"60", "100"})
+        members = [r for r in exported["playlist_folder_items"] if r["folder_id"] == "100"]
+        self.assertEqual([(r["playlist_id"], r["kind"], r["in_export"]) for r in members],
+                         [("50", "playlist", True), ("60", "folder", True), ("999", "unavailable", False), ("50", "playlist", True)])
+        self.assertEqual([r["position"] for r in members], [0, 1, 2, 3])
+        with zipfile.ZipFile(io.BytesIO(self.contents(self.start("csv")))) as archive:
+            for table in ("playlist_folders", "playlist_folder_items", "playlist_tracks"):
+                rows = list(csv.DictReader(io.StringIO(archive.read(table + ".csv").decode("utf-8-sig"))))
+                self.assertEqual(rows, [{k: str(csv_cell(v)) for k, v in row.items()} for row in exported[table]])
+        excluded = json.loads(self.contents(self.start(include_playlists=False)))
+        for table in ("playlists", "playlist_tracks", "playlist_folders", "playlist_folder_items"):
+            self.assertEqual(excluded[table], [])
+
+
 class MetadataExportHTTPTests(ExportTestCase):
     def test_download_routes_security_headers_attachment_and_exact_json_zip(self):
         handler = type("ExportHandler", (app.Handler,), {"studio": self.studio, "port": 0})
