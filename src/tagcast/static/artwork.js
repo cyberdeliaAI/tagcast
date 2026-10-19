@@ -126,11 +126,11 @@ async function saveArtwork() {
   const t = art.target, o = art.options[art.choice];
   if (!t || !o) return;
   if (t.target === "playlist") return savePlaylistCover(t, o);
-  const save = $("#art-save"), discs = t.discs || [t];
+  const save = $("#art-save"), status = $("#art-status"), discs = t.discs || [t];
   save.disabled = true; save.textContent = "Saving…";
   try {
     for (const d of discs.filter(d => !art.saved.includes(d.id))) {
-      $("#art-status").innerHTML = `<span class="spinner"></span>${discs.length > 1 ? `Saving disc ${art.saved.length + 1} of ${discs.length}…` : "Checking iBroadcast and saving…"}`;
+      setActionStatus("#art-status", discs.length > 1 ? `Saving disc ${art.saved.length + 1} of ${discs.length}…` : "Checking iBroadcast and saving…", true);
       // After the first disc, the others reuse the image that is now in iBroadcast.
       const source = art.artworkId ? {artwork_id: art.artworkId} : o.artwork_id ? {artwork_id: o.artwork_id} : o.data ? {data: o.data, name: o.name} : {url: o.url};
       const result = await api("/api/artwork", {target: d.target, id: d.id, label: d.label, before: d.before, source});
@@ -149,7 +149,7 @@ async function saveArtwork() {
     const part = art.saved.length ? `${art.saved.length} of ${discs.length} discs have the new cover. ` : "";
     $("#art-status").innerHTML = `<span class="error-text">${escapeHtml(part + error.message)}</span>`;
     if (error.status === 409) { save.textContent = "Reload library"; save.onclick = () => { $("#artwork").close(); $("#editor").close(); loadLive(); }; }
-  }
+  } finally { if ($("#art-status") === status) setActionStatus("#art-status", undefined); }
 }
 
 function artworkEntry(t, result, from, beforeImage) {

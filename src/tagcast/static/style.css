@@ -761,6 +761,10 @@ body.help-open{overflow:hidden}
 
 /* Local CSV playlist wizard, with bounded match and review pages. */
 .library-loading{margin-top:23px;padding:18px 20px;background:var(--palette-surface,#fff);border:1px solid var(--line);border-radius:8px}.library-loading strong{font-size:16px}.library-loading p{color:var(--muted);font-size:12px;line-height:1.6;margin:6px 0 12px}.library-loading progress{display:block;width:100%;height:8px;accent-color:var(--green)}
+.operation-status[data-working="true"]::before,.button[aria-busy="true"]::before{content:"";display:inline-block;flex:none;width:48px;height:3px;margin-right:9px;vertical-align:middle;border-radius:2px;background:linear-gradient(90deg,transparent,currentColor,transparent);background-size:200% 100%;animation:operation-wait 1.2s linear infinite;opacity:.7}
+.operation-status.error-text[data-working="true"]{color:var(--muted)}
+@keyframes operation-wait{from{background-position:100% 0}to{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.operation-status[data-working="true"]::before,.button[aria-busy="true"]::before{animation:none;background:currentColor;opacity:.4}}
 .playlist-import-dialog{width:min(1120px,94vw);max-width:94vw}
 .csv-import-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
 .playlist-import-dialog label:not(.checkline){display:flex;flex-direction:column;gap:6px;margin:12px 0}

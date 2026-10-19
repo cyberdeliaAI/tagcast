@@ -32,7 +32,7 @@ async function openPlaylistFolder(action, memberId = null) {
   Object.assign(folderDraft, {details: state.details, session: state.connection.playback_session,
     body: null, data: null, action, query: "", offset: 0, selected: new Map()});
   $("#playlist-dialog-title").textContent = action === "create" ? "Create playlist folder" : "Playlist folder";
-  $("#playlist-dialog-content").innerHTML = '<p role="status">Preparing folder review…</p>';
+  $("#playlist-dialog-content").innerHTML = '<p role="status" class="operation-status" data-working="true">Preparing folder review…</p>';
   $("#playlist-dialog").showModal();
   try {
     const fresh = action === "create" ? null : await api(`/api/playlists?id=${encodeURIComponent(data.id)}&offset=${data.offset || 0}`);
@@ -95,7 +95,8 @@ async function savePlaylistFolder() {
   const draft = folderDraft, body = draft.body, request = draft.request;
   if (!body || !folderDraftCurrent(request) || collectionsView.busy || !$("#playlist-dialog").open) return;
   draft.body = null; collectionsView.busy = true;
-  $("[data-folder-save]").disabled = true; $("[data-folder-save]").textContent = "Saving and checking…";
+  const button = $("[data-folder-save]");
+  button.disabled = true; button.textContent = "Saving and checking…"; button.setAttribute("aria-busy", "true");
   try {
     const response = await api("/api/playlist-folder", body);
     const job = await collectionJob(response, () => folderDraftCurrent(request));
@@ -108,7 +109,7 @@ async function savePlaylistFolder() {
       else renderCollections();
     }
   } catch (error) { if (folderDraftCurrent(request)) { $("#playlist-dialog").close(); toast(`Check Playlists before retrying: ${error.message}`); } }
-  finally { collectionsView.busy = false; }
+  finally { collectionsView.busy = false; button.setAttribute("aria-busy", "false"); }
 }
 
 function openPlaylistCover() {
@@ -122,8 +123,10 @@ async function savePlaylistCover(target, option) {
   const current = () => target === art.target && target.details === state.details
     && target.session === state.connection.playback_session && live();
   if (!current() || collectionsView.busy || art.submitted) return;
+  const status = $("#art-status");
   art.submitted = true; collectionsView.busy = true;
   $("#art-save").disabled = true; $("#art-save").textContent = "Saving and checking…";
+  setActionStatus("#art-status", "Saving the playlist cover and checking iBroadcast…", true);
   try {
     const source = option.artwork_id ? {artwork_id: option.artwork_id} : option.data ? {data: option.data, name: option.name} : {url: option.url};
     const response = await api("/api/playlist/artwork", {playlist: target.id, before_name: target.label,
@@ -134,7 +137,7 @@ async function savePlaylistCover(target, option) {
     $("#artwork").close(); toast("Playlist cover confirmed in iBroadcast.");
     if (state.screen === "playlists") renderCollections();
   } catch (error) { if (current()) { $("#art-status").textContent = `Check the playlist before retrying: ${error.message}`; $("#art-save").textContent = "Close and review again"; } }
-  finally { collectionsView.busy = false; }
+  finally { collectionsView.busy = false; if ($("#art-status") === status) setActionStatus("#art-status", undefined); }
 }
 
 document.addEventListener("submit", event => {

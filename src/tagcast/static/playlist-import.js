@@ -16,7 +16,7 @@ function resetPlaylistImport() {
   csvImport.resolving = null; csvImport.search = null; csvImport.fileData = null; csvImport.mapping = null;
   csvImport.name = ""; csvImport.description = "";
   csvImport.createdPlaylist = null;
-  $("#playlist-import").close(); $("#csv-import-content").innerHTML = ""; $("#csv-import-status").textContent = "";
+  $("#playlist-import").close(); $("#csv-import-content").innerHTML = ""; setActionStatus("#csv-import-status", "");
 }
 
 function openPlaylistImport() {
@@ -24,7 +24,7 @@ function openPlaylistImport() {
   Object.assign(csvImport, {request: csvImport.request + 1, data: null, details: state.details,
     session: state.connection.playback_session, busy: false, name: "", description: "", show: "unresolved", offset: 0,
     resolving: null, search: null, submitted: false, fileData: null, mapping: null, createdPlaylist: null});
-  $("#csv-import-status").textContent = "";
+  setActionStatus("#csv-import-status", "");
   $("#csv-import-content").innerHTML = `<p>Choose a CSV and link its columns to track information. Matching uses your loaded library. You will review every selection before creating a new private playlist.</p>
     <form id="csv-file-form"><label>CSV file <input type="file" name="file" accept=".csv,.tsv,text/csv,text/tab-separated-values"></label>
     <div class="csv-import-fields"><label>Separator <select name="delimiter"><option value="auto">Detect automatically</option><option value=",">Comma (,)</option><option value=";">Semicolon (;)</option><option value="&#9;">Tab</option><option value="|">Pipe (|)</option></select></label>
@@ -36,7 +36,7 @@ function openPlaylistImport() {
 
 function csvImportWorking(busy, message = "") {
   csvImport.busy = busy;
-  $("#csv-import-status").textContent = message;
+  setActionStatus("#csv-import-status", message, busy);
   for (const element of $("#csv-import-content").querySelectorAll("input, select, textarea, button")) {
     if (!element.hasAttribute("data-close")) {
       if (busy) { element.dataset.csvWasDisabled = String(element.disabled); element.disabled = true; }
@@ -214,7 +214,7 @@ async function saveCsvPlaylist() {
     showCollections("playlists", response.id);
   } catch (error) {
     if (csvImportCurrent(request)) {
-      $("#csv-import-status").textContent = `Check Playlists before importing again: ${error.message}`;
+      setActionStatus("#csv-import-status", `Check Playlists before importing again: ${error.message}`);
       csvImport.busy = false;
       $("#csv-import-content").innerHTML = `<p>This import cannot be sent again. Close this window and check Playlists. If the playlist is present, use it rather than creating another copy.</p>${csvUnresolvedExport(data)}<button type="button" class="button" data-close="playlist-import">Close</button>`;
     }

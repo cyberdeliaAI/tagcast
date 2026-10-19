@@ -3,6 +3,15 @@
 const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+function setActionStatus(selector, message, working = false) {
+  const node = $(selector);
+  if (!node) return;
+  if (message !== undefined) node.textContent = message;
+  node.classList.add("operation-status");
+  node.setAttribute("data-working", String(working));
+  node.setAttribute("role", "status");
+}
+
 function searchClearButton(id, value = "", disabled = false) {
   return `<button type="button" class="search-clear" data-search-clear="${escapeHtml(id)}" aria-controls="${escapeHtml(id)}" aria-label="Clear search" title="Clear search" ${!value || disabled ? "hidden" : ""}><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8m0-8-8 8"/></svg></button>`;
 }
@@ -1169,6 +1178,8 @@ function updateChrome() {
   $("#reload-button").hidden = !c.connected;
   $("#logout-button").hidden = !c.connected;
   const badge = $("#mode-badge");
+  badge.classList.add("operation-status");
+  badge.setAttribute("data-working", String(checking > 0 && !state.loading && live() && c.connected));
   badge.classList.toggle("live", live());
   badge.textContent = state.loading ? "Loading library…" : checking ? "Checking saves…" : live() ? "Live" : "Demo · Connect";
   badge.title = c.connected ? `Connected as ${c.account || "your iBroadcast account"}. Open connection details.` : "Connect your iBroadcast account.";
@@ -1371,7 +1382,7 @@ async function saveDraft() {
   saving = true;
   const apply = $("#apply-draft");
   apply.disabled = true; $("#review-cancel").disabled = true; apply.textContent = "Saving…";
-  $("#review-status").innerHTML = '<span class="spinner"></span>Checking iBroadcast and saving…';
+  setActionStatus("#review-status", "Checking iBroadcast and saving…", true);
   try {
     const result = await api("/api/save", {changes: pending.changes});
     const byId = new Map((result.results || []).map(r => [`${r.kind}:${r.id}`, r.status]));
@@ -1410,6 +1421,7 @@ async function saveDraft() {
     }
   } finally {
     saving = false;
+    setActionStatus("#review-status", undefined);
   }
 }
 
