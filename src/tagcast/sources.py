@@ -501,23 +501,28 @@ KEYS = {cls.key: cls for cls in SOURCES if cls.key}
 class Lookup:
     """All sources, sharing one paced HTTP session and cache."""
 
-    def __init__(self, keys_func):
+    def __init__(self, keys_func, disabled_func=None):
         self.http = Http(PACING)
         self.keys_func = keys_func  # returns the current {config key: value}
+        self.disabled_func = disabled_func or (lambda: [])
 
     def _sources(self):
         keys = self.keys_func()
         return {cls.name: cls(self.http, keys) for cls in SOURCES}
 
     def describe(self):
+        disabled = self.disabled_func()
         return [{"name": s.name, "label": s.label, "albums": s.albums, "artists": s.artists,
-                 "enabled": s.enabled, "key": s.key or "", "key_help": s.key_help}
+                 "enabled": s.enabled and s.name not in disabled, "available": s.enabled,
+                 "selected": s.name not in disabled, "key": s.key or "", "key_help": s.key_help}
                 for s in self._sources().values()]
 
     def _get(self, name, kind):
         source = self._sources().get(name)
         if not source or not getattr(source, kind):
             raise SourceError(f"Unknown {kind[:-1]} source.")
+        if name in self.disabled_func():
+            raise SourceError(f"{source.label} is disabled. Enable it in Settings.")
         if not source.enabled:
             raise SourceError(f"{source.label} needs a key. Add it in Settings.")
         return source

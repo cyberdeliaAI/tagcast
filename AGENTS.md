@@ -331,6 +331,11 @@ and preserve a valid script order in `index.html`.
   captured account, client, playback session, library copy/revision and combine setting;
   reject stale results. One preparation / two retained jobs, 15-minute expiry,
   explicit cancellation and shutdown cleanup; preserve audio, drafts and history.
+- Online metadata/artwork sources are selected by default; Settings persists a validated
+  `disabled_sources` list. Keep user selection separate from key availability, preserve
+  saved/environment keys, skip disabled sources in automatic/manual/image searches and
+  reject direct provider lookups server-side. Invalidate in-flight suggestion channels
+  after source preferences change. Biography/album-information opt-ins remain separate.
 - Settings contains online sources/keys, playback recording, update checks and
   Export changes under Change history. Export downloads the same browser-local JSON
   history as the History dialog, never submits settings and is disabled when empty;

@@ -366,7 +366,7 @@ class Studio:
         self.config = self._read("config.json") or {}
         self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
-        self.lookup = Lookup(self.source_keys)
+        self.lookup = Lookup(self.source_keys, self.disabled_sources)
         self.artist_bios = ArtistBiographies(self)
         self.album_info = AlbumInformation(self)
         self.cleanup = Cleanup(self)
@@ -1009,6 +1009,10 @@ class Studio:
     def source_keys(self):
         return {key: os.environ.get(KEY_ENV[key]) or self.config.get(key, "") for key in KEY_ENV}
 
+    def disabled_sources(self):
+        disabled = self.config.get("disabled_sources", [])
+        return disabled if isinstance(disabled, list) else []
+
     def settings(self):
         return {"sources": self.lookup.describe(),
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
@@ -1032,6 +1036,13 @@ class Studio:
 
     def save_settings(self, body):
         with self.lock:
+            if "disabled_sources" in body:
+                disabled = body["disabled_sources"]
+                names = {source["name"] for source in self.lookup.describe()}
+                if not isinstance(disabled, list) or len(disabled) > len(names) \
+                        or any(not isinstance(name, str) or name not in names for name in disabled) \
+                        or len(set(disabled)) != len(disabled):
+                    raise ApiError("Choose valid online sources to enable or disable.")
             if "album_information" in body and type(body["album_information"]) is not bool:
                 raise ApiError("Choose whether album information is enabled.")
             if "artist_biographies" in body and type(body["artist_biographies"]) is not bool:
@@ -1063,6 +1074,8 @@ class Studio:
                         self.config.pop(key, None)
             if "auto_lookup" in body:
                 self.config["auto_lookup"] = bool(body["auto_lookup"])
+            if "disabled_sources" in body:
+                self.config["disabled_sources"] = list(body["disabled_sources"])
             if "auto_updates" in body:
                 self.config["auto_updates"] = body["auto_updates"]
             if "record_plays" in body:
