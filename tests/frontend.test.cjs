@@ -1960,6 +1960,61 @@ test("artist overview paginates a large collection and resets paging on search a
   assert.match(p.nodes.get("#artists-grid").innerHTML, /No album artists match/);
 });
 
+test('clearing the artist search resets only its text and page, cancels pending filtering and returns focus', async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1")); audio.currentTime=24;
+    state.albums=Array.from({length:60},(_,i)=>({...state.albums[0],id:String(i),artist_id:i+10,
+      artist:"Artist "+String(i).padStart(2,"0"),artist_image:"",album_artists:undefined}));
+    showArtistBrowse(); $("#artists-filter").value="no_image"; $("#artists-sort").value="za";
+    artistBrowse.page=1; renderArtistBrowse();`);
+  const button = p.nodes.get('#artists-search-clear'), input = p.nodes.get('#artists-search');
+  assert.equal(button.hidden, true);
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src, requests = p.requests.length;
+  input.value = 'toots'; await input.emit('input');
+  assert.equal(button.hidden, false, 'The clear button appears without waiting for debounce');
+  button.focus();
+  await button.emit('click');
+  assert.equal(input.value, '');
+  assert.equal(button.hidden, true);
+  assert.equal(p.run('artistBrowse.page'), 0);
+  assert.equal(p.nodes.get('#artists-filter').value, 'no_image');
+  assert.equal(p.nodes.get('#artists-sort').value, 'za');
+  assert.equal(p.nodes.get('#artists-results').textContent, '60 album artists');
+  assert.equal(p.run('document.activeElement === $("#artists-search")'), true);
+  const entries = p.history.length;
+  p.flushTimers(150);
+  assert.equal(p.history.length, entries, 'The cancelled search timer adds no later history entry');
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 24);
+  assert.equal(p.requests.length, requests, 'Clearing a local search needs no library request');
+});
+
+test('the artist clear button follows typing, manual deletion and restored browser history', async () => {
+  const p = page(); await settle();
+  p.run('showArtistBrowse()');
+  const input = p.nodes.get('#artists-search'), button = p.nodes.get('#artists-search-clear');
+  input.value = 'Pink'; await input.emit('input'); p.flushTimers(150);
+  assert.equal(button.hidden, false);
+  assert.match(p.nodes.get('#artists-grid').innerHTML, /Pink Floyd/);
+  await p.nodes.get('#all-albums').emit('click');
+  p.history.back(); await settle();
+  assert.equal(input.value, 'Pink');
+  assert.equal(button.hidden, false);
+  await button.emit('click');
+  await p.nodes.get('#all-albums').emit('click');
+  p.history.back(); await settle();
+  assert.equal(input.value, '');
+  assert.equal(button.hidden, true);
+  p.history.forward(); await settle();
+  p.history.back(); await settle();
+  assert.equal(button.hidden, true);
+  input.value = ' '; await input.emit('input');
+  assert.equal(button.hidden, false, 'Whitespace can also be cleared');
+  input.value = ''; await input.emit('input');
+  assert.equal(button.hidden, true, 'Deleting the final character hides the clear button immediately');
+});
+
 test("artist cards use an available image, safe metadata and initials when an image is missing", () => {
   const p = page();
   p.run(`state.albums[0].artist_image = ""; state.albums[1].artist_image = "https://example.test/artist-150";

@@ -290,8 +290,13 @@ $("#favourite-artists-per-page").addEventListener("change", event => {
   rememberPageSize("tagcast-favourite-artists-per-page", size); renderFavouriteArtists();
 });
 
+function updateArtistSearchClear() {
+  $("#artists-search-clear").hidden = !$("#artists-search").value;
+}
+
 function renderArtistBrowse() {
   if (state.screen !== "artists") return;
+  updateArtistSearchClear();
   const all = artistGroups();
   syncBrowseChoices("artists", [
     {value: "all", label: "All album artists", count: all.length},
@@ -319,7 +324,14 @@ function showArtistBrowse() {
 }
 
 $("#show-artists").addEventListener("click", showArtistBrowse);
+$("#artists-search-clear").addEventListener("click", () => {
+  clearTimeout(artistBrowseTimer);
+  $("#artists-search").value = ""; artistBrowse.page = 0;
+  renderArtistBrowse();
+  $("#artists-search").focus();
+});
 $("#artists-search").addEventListener("input", () => {
+  updateArtistSearchClear();
   clearTimeout(artistBrowseTimer);
   artistBrowseTimer = setTimeout(() => { artistBrowse.page = 0; renderArtistBrowse(); }, 150);
 });

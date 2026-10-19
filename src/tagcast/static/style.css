@@ -396,6 +396,11 @@ body.has-player main{padding-bottom:80px}
 @media(max-width:760px){.album-detail-header{align-items:stretch;flex-direction:column;gap:18px}.album-detail-header>.album-cover-preview{width:100%}.album-detail-info{width:100%;min-width:0}.album-detail-header .cover-caption{display:none}.album-detail-info h1{font-size:24px;letter-spacing:-.7px}.album-tracks td,.album-tracks th{padding:12px 9px}.album-tracks .track-number{width:65px}.album-tracks .track-time{width:60px}.topbar{height:auto;min-height:70px;padding:14px 0;flex-direction:column;align-items:flex-start;gap:12px}.top-actions{gap:8px;flex-wrap:wrap;justify-content:flex-start}.topbar>div:first-child{min-width:0;overflow-wrap:anywhere}}
 .page-back{margin-top:30px}.page-back+.page-intro{padding-top:26px}
 
+.search-with-clear input{flex:1;min-width:0}
+.search-clear{display:inline-flex;align-items:center;justify-content:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:0;border-radius:4px;background:none;color:var(--muted)}
+.search-clear svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.search-clear:hover{background:var(--paper);color:var(--ink)}
+
 /* Release notifications share the existing controls; checking never blocks the library. */
 .topbar{height:auto;min-height:86px;gap:12px;flex-wrap:wrap;padding:16px 0}
 .top-actions{flex-wrap:wrap;gap:12px}
