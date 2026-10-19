@@ -7025,3 +7025,77 @@ test('source preference changes reject late album and artwork suggestions and re
   p.run('applyLookupSources(lookup.sources.map(s=>({...s,selected:true,enabled:true}))); fetchSuggestions("artist",{name:"Artist"},s=>received.push(s.name),"artwork")');
   await settle(); assert.deepEqual(p.json('received'),['deezer']);
 });
+
+test('selected album trash shows activity through its POST, stop request and read-back, then clears it', async () => {
+  const p=livePage(); await settle();
+  p.run('state.connection.connected=true; playTracks(state.details.get("1")); state.selected=new Set(["1"])');
+  await p.run('reviewSelectedAlbumTrash()');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
+  const albums=p.json('state.albums'), rows=p.json('selectedAlbumsTrash.groups.flatMap(g=>g.discs.flatMap(d=>d.tracks.map(t=>({kind:"track",id:t.id,status:"saved"}))))');
+  let send,read; const calls=[];
+  p.setFetch((url,options)=>{
+    calls.push(url); return new Promise(resolve=>{if(options?.body) send=resolve; else read=resolve;});
+  });
+  const work=p.run('trashSelectedAlbums()'); await settle();
+  const status=p.nodes.get('#selected-trash-status');
+  assert.equal(status.getAttribute('data-working'),'true');
+  assert.equal(status.getAttribute('role'),'status');
+  assert.match(status.textContent,/Checking and moving batch 1 of 1/);
+  await p.nodes.get('#trash-review').emit('click',{target:{closest:s=>s==='#selected-trash-stop'?{}:null}});
+  assert.match(status.textContent,/Stopping/); assert.equal(status.getAttribute('data-working'),'true');
+  send({ok:true,json:async()=>({job:'visible-trash',results:rows})}); await settle();
+  assert.match(status.textContent,/Verifying batch 1 of 1/);
+  assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'true');
+  p.flushTimers(2000); await settle();
+  assert.equal(status.getAttribute('data-working'),'true','Polling is still part of the operation');
+  read({ok:true,json:async()=>({state:'done',results:rows,albums})}); await work;
+  assert.equal(status.getAttribute('data-working'),'false');
+  assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'false');
+  assert.match(status.textContent,/confirmed/);
+  assert.deepEqual(calls,['/api/trash/albums','/api/jobs/visible-trash']);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src})'),before);
+});
+
+test('operation status stops on failed trash and resets with library replacement without extra writes', async () => {
+  const p=livePage(); await settle();
+  p.run('state.selected=new Set(["1"])'); await p.run('reviewSelectedAlbumTrash()');
+  let reject; p.setFetch(()=>new Promise((_,fail)=>{reject=fail;}));
+  const work=p.run('trashSelectedAlbums()'); await settle();
+  const status=p.nodes.get('#selected-trash-status');
+  assert.equal(status.getAttribute('data-working'),'true');
+  reject(Error('Connection unavailable')); await work;
+  assert.equal(status.getAttribute('data-working'),'false'); assert.match(status.textContent,/Connection unavailable/);
+  p.run('setActionStatus("#selected-trash-status","Old request",true); resetSelectedAlbumTrash()');
+  assert.equal(status.getAttribute('data-working'),'false'); assert.equal(status.textContent,'');
+  assert.equal(p.requests.filter(r=>r.url==='/api/trash/albums').length,1);
+});
+
+test('Cleanup running reports animate while completed reports and CSV errors remain still', async () => {
+  const p=page(); await settle();
+  p.run(`cleanupView.data={id:"draft",state:"running",category:"genres",albums:0,tracks:0,groups:[],counts:{confirmed:3,pending:4}}; renderCleanup()`);
+  assert.match(p.nodes.get('#cleanup-content').innerHTML,/class="operation-status" data-working="true"/);
+  p.run('cleanupView.data.state="done"; renderCleanup()');
+  assert.doesNotMatch(p.nodes.get('#cleanup-content').innerHTML,/data-working="true"/);
+  p.run('csvImportWorking(true,"Matching against the loaded library…")');
+  const status=p.nodes.get('#csv-import-status'); assert.equal(status.getAttribute('data-working'),'true');
+  p.run('csvImportWorking(false,"Unable to match")');
+  assert.equal(status.getAttribute('data-working'),'false'); assert.equal(status.textContent,'Unable to match');
+  p.run('setActionStatus("#cleanup-status","Still checking",true); resetCleanup()');
+  assert.equal(p.nodes.get('#cleanup-status').getAttribute('data-working'),'false');
+});
+
+test('compact progress respects reduced motion and remains separate from full library loading', async () => {
+  const p=livePage(); await settle();
+  p.run('state.connection.connected=true; checking=1; updateChrome()');
+  assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'true');
+  assert.equal(p.nodes.get('#library-loading').hidden,true);
+  p.run('state.loading=true; updateChrome()');
+  assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'false');
+  assert.equal(p.nodes.get('#library-loading').hidden,false);
+  p.run('state.loading=false; state.connection.connected=false; updateChrome()');
+  assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'false');
+  p.run('state.mode="demo"; updateChrome()');
+  assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'false');
+  const css=readFileSync(path.join(staticDir,'style.css'),'utf8');
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{\.operation-status\[data-working="true"\]::before,[\s\S]*?animation:none/);
+});

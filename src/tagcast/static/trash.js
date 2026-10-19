@@ -5,6 +5,7 @@ const selectedAlbumsTrash = {request: 0, details: null, groups: null, busy: fals
 function resetSelectedAlbumTrash() {
   selectedAlbumsTrash.request += 1; selectedAlbumsTrash.stop = true;
   selectedAlbumsTrash.groups = null; selectedAlbumsTrash.details = null;
+  setActionStatus("#selected-trash-status", "");
   if ($("#trash-review").open) $("#trash-review").close();
 }
 
@@ -27,7 +28,7 @@ async function reviewSelectedAlbumTrash() {
   if (!groups.length) return;
   const view = selectedAlbumsTrash, request = ++view.request, details = state.details;
   view.details = details; view.groups = null; view.stop = false; view.combine = Boolean(state.connection.combine_sets);
-  $("#trash-content").innerHTML = '<div class="dialog-heading"><h2>Review selected albums</h2><button class="close" data-close="trash-review" aria-label="Close">×</button></div><p role="status">Loading tracks of the selected albums…</p>';
+  $("#trash-content").innerHTML = '<div class="dialog-heading"><h2>Review selected albums</h2><button class="close" data-close="trash-review" aria-label="Close">×</button></div><p role="status" class="operation-status" data-working="true">Loading tracks of the selected albums…</p>';
   $("#trash-review").showModal();
   try {
     const ids = groups.flatMap(g => g.ids);
@@ -74,7 +75,7 @@ async function trashSelectedAlbums() {
         changes: rows.map(t => ({kind: "track", id: t.id, albumId: t.albumId, label: t.title, status: "sent",
           fields: {trash: {before: "In your library", after: "In the trash"}}}))};
       state.history.unshift(entry); rememberHistory();
-      $("#selected-trash-status").textContent = `Checking batch ${complete + 1} of ${batches.length}…`;
+      setActionStatus("#selected-trash-status", `Checking and moving batch ${complete + 1} of ${batches.length}…`, true);
       let result;
       try {
         result = await api("/api/trash/albums", {approved: true, combine_sets: view.combine, albums});
@@ -85,6 +86,7 @@ async function trashSelectedAlbums() {
         rememberHistory(); throw error;
       }
       if (!current()) break;
+      setActionStatus("#selected-trash-status", `Verifying batch ${complete + 1} of ${batches.length} with iBroadcast…`, true);
       const job = await followJob(result.job, entry, null, current);
       if (!job || request !== view.request || !live()) break;
       view.details = state.details; // this batch's checked album index replaced the cache
@@ -96,7 +98,7 @@ async function trashSelectedAlbums() {
   finally {
     view.busy = false; saving = false; updateChrome();
     if (request === view.request) {
-      $("#selected-trash-status").textContent = failure || (complete === batches.length ? "All selected albums confirmed in iBroadcast's trash." : `Stopped after ${complete} of ${batches.length} batches. Review the remaining selection again to continue.`);
+      setActionStatus("#selected-trash-status", failure || (complete === batches.length ? "All selected albums confirmed in iBroadcast's trash." : `Stopped after ${complete} of ${batches.length} batches. Review the remaining selection again to continue.`));
       $("#selected-trash-footer").innerHTML = '<button class="button" data-close="trash-review">Close</button><button class="button" id="selected-trash-refresh">Reload library</button>';
       view.groups = null;
     }
@@ -110,7 +112,7 @@ $("#trash-review").addEventListener("close", () => {
 });
 $("#trash-review").addEventListener("click", event => {
   if (event.target.closest("#selected-trash-confirm")) return trashSelectedAlbums();
-  if (event.target.closest("#selected-trash-stop")) { selectedAlbumsTrash.stop = true; $("#selected-trash-status").textContent = "Stopping after the current request is checked…"; }
+  if (event.target.closest("#selected-trash-stop")) { selectedAlbumsTrash.stop = true; setActionStatus("#selected-trash-status", "Stopping after the current request is checked…", true); }
   if (event.target.closest("#selected-trash-refresh")) { $("#trash-review").close(); return loadLive(); }
 });
 
@@ -123,7 +125,7 @@ function resetDuplicateCleanup(close = false) {
   view.request += 1; clearTimeout(view.timer);
   view.data = null; view.offset = 0; view.excluded.clear(); view.busy = false; view.approved = false;
   view.expanded.clear(); view.renderedId = null;
-  $("#duplicate-cleanup-status").textContent = "";
+  setActionStatus("#duplicate-cleanup-status", "");
   if (close && $("#duplicate-cleanup").open) $("#duplicate-cleanup").close();
 }
 
@@ -170,7 +172,7 @@ function renderDuplicateCleanup() {
     <button class="button" id="duplicate-cleanup-preview" ${running || view.busy ? "disabled" : ""}>Analyse all albums</button>
     ${data.id ? `<div class="notice">${data.scanned.toLocaleString("en")} duplicate albums analysed · ${data.tracks.toLocaleString("en")} copies suggested for the trash · ${data.manual.toLocaleString("en")} repeated ${data.manual === 1 ? "position needs" : "positions need"} manual comparison. Batches: up to ${data.batch_tracks} tracks / ${data.batch_albums} albums.</div>
     ${data.error ? `<p class="warn-box" role="status">${escapeHtml(data.error)}</p>` : ""}
-    ${preview ? '<p>Compare the proposed copies and retained tracks below. Uncheck copies or whole albums to keep them. Albums without suggestions remain available for manual cleanup.</p>' : `<p role="status"><strong>${escapeHtml(data.state)}</strong> · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.excluded || 0} excluded</p>`}
+    ${preview ? '<p>Compare the proposed copies and retained tracks below. Uncheck copies or whole albums to keep them. Albums without suggestions remain available for manual cleanup.</p>' : `<p role="status" class="operation-status" data-working="${running}"><strong>${escapeHtml(data.state)}</strong> · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.excluded || 0} excluded</p>`}
     ${preview && data.tracks ? `<div class="cleanup-controls"><button class="text-action" id="duplicate-select-all" ${disabled}>Select all suggested copies</button><button class="text-action" id="duplicate-select-none" ${disabled}>Keep all copies</button><strong id="duplicate-cleanup-selected" role="status"></strong></div>` : ""}
     <div class="cleanup-albums">${data.groups.map(group => {
       const proposed = data.selection.filter(t => t.group === group.id), selected = proposed.filter(t => !view.excluded.has(t.id));
@@ -200,24 +202,24 @@ async function duplicateCleanupAction(action) {
   const details = state.details, request = ++view.request;
   const body = action === "preview" ? {} : {id: view.data.id, excluded: [...view.excluded], approved: view.approved};
   view.busy = true; view.approved = false; clearTimeout(view.timer); renderDuplicateCleanup();
-  $("#duplicate-cleanup-status").textContent = action === "preview" ? "Analysing stored album metadata…" : action === "start" ? "Checking the selection and starting…" : "Stopping after the current request…";
+  setActionStatus("#duplicate-cleanup-status", action === "preview" ? "Analysing stored album metadata…" : action === "start" ? "Checking the selection and starting…" : "Stopping after the current request…", true);
   try {
     const data = await api(`/api/duplicate-cleanup/${action}`, body);
     if (request !== view.request || details !== state.details || !live()) return;
     view.data = data; view.excluded = new Set(data.excluded || []); view.offset = 0;
-    $("#duplicate-cleanup-status").textContent = "";
+    setActionStatus("#duplicate-cleanup-status", "");
     if (data.state === "running" && $("#duplicate-cleanup").open) view.timer = setTimeout(fetchDuplicateCleanup, 1500);
   } catch (error) {
     if (request === view.request && details === state.details) $("#duplicate-cleanup-status").textContent = error.message;
   } finally {
-    if (request === view.request && details === state.details) { view.busy = false; renderDuplicateCleanup(); }
+    if (request === view.request && details === state.details) { view.busy = false; setActionStatus("#duplicate-cleanup-status", undefined); renderDuplicateCleanup(); }
   }
 }
 
 $("#duplicate-cleanup-open").addEventListener("click", async () => {
   if (!live()) return;
   $("#duplicate-cleanup-content").innerHTML = '<p class="muted">Loading the saved report…</p>';
-  $("#duplicate-cleanup-status").textContent = ""; $("#duplicate-cleanup").showModal();
+  setActionStatus("#duplicate-cleanup-status", ""); $("#duplicate-cleanup").showModal();
   await fetchDuplicateCleanup();
 });
 $("#duplicate-cleanup").addEventListener("close", () => clearTimeout(duplicateCleanupView.timer));
@@ -402,7 +404,7 @@ async function moveToTrash() {
   const album = rows[0].disc, button = $("#trash-confirm");
   saving = true;  // one write at a time, like metadata saves
   button.disabled = true; button.textContent = "Moving…";
-  $("#trash-status").innerHTML = '<span class="spinner"></span>Checking iBroadcast…';
+  setActionStatus("#trash-status", "Checking iBroadcast…", true);
   try {
     const result = await api("/api/trash", {tracks});
     const albumOf = new Map(tracks.map(t => [t.id, t.album_id]));
@@ -422,7 +424,7 @@ async function moveToTrash() {
     button.disabled = false; button.textContent = "Try again";
     $("#trash-status").innerHTML = `<span class="error-text">${escapeHtml(error.message)}</span>`;
     if (error.status === 409) { button.textContent = "Reload library"; button.onclick = () => { $("#trash-review").close(); loadLive(); }; }
-  } finally { saving = false; }
+  } finally { saving = false; setActionStatus("#trash-status", undefined); }
 }
 
 function startAlbumTrash() {

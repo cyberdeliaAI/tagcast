@@ -46,7 +46,7 @@ function beginTagDialog(action, origin = null) {
     view.focus = document.activeElement; view.scroll = window.scrollY || 0;
     $("#tag-dialog").showModal();
   }
-  $("#tag-dialog-content").innerHTML = '<p role="status">Loading tags…</p>';
+  $("#tag-dialog-content").innerHTML = '<p role="status" class="operation-status" data-working="true">Loading tags…</p>';
   return view.request;
 }
 
@@ -75,7 +75,7 @@ function renderTagSelection() {
 
 async function loadTagChoices() {
   const view = tagDraft, request = view.request, listRequest = ++view.listRequest;
-  $("#tag-choices").innerHTML = '<p role="status">Loading tags…</p>';
+  $("#tag-choices").innerHTML = '<p role="status" class="operation-status" data-working="true">Loading tags…</p>';
   try {
     const data = await api(`/api/tags?${new URLSearchParams({q: view.query, offset: String(view.offset)})}`);
     if (!tagCurrent(request) || listRequest !== view.listRequest || !view.selection || !$("#tag-dialog").open) return;
@@ -147,7 +147,7 @@ async function saveTags() {
   if (!view.body || view.busy || saving || checking || !tagCurrent(request)) return;
   const body = view.body; view.body = null; view.busy = true; saving = true;
   $("#tag-dialog-close").disabled = true;
-  $("#tag-dialog-content").innerHTML = '<p role="status">Saving tags and checking iBroadcast…</p>';
+  $("#tag-dialog-content").innerHTML = '<p role="status" class="operation-status" data-working="true">Saving tags and checking iBroadcast…</p>';
   try {
     const response = await api("/api/tags/save", {...body, approved: true});
     if (!tagCurrent(request)) return;

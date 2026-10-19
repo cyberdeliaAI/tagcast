@@ -261,7 +261,7 @@ async function savePlaylistDraft() {
       if (body.action === "delete") showCollections("playlists"); else renderCollections();
     }
   } catch (error) { if (current()) { toast(`Check the playlist before trying again: ${error.message}`); $("#playlist-dialog").close(); if (body.action === "delete" && state.screen === "playlists") showCollections("playlists"); } }
-  finally { collectionsView.busy = false; }
+  finally { collectionsView.busy = false; saveButton.setAttribute("aria-busy", "false"); }
 }
 
 $("#show-playlists").addEventListener("click", () => showCollections("playlists"));

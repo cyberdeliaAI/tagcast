@@ -137,6 +137,11 @@ and preserve a valid script order in `index.html`.
   Hide it on success, error, disconnect or local replacement; reject older load responses
   after a newer request/session so they cannot replace data or hide its indicator. Keep
   current audio and queue intact during an ordinary live reload.
+- Long-running reviewed actions use a compact animated status line while requests and
+  read-back are active. Keep the phase text accessible, respect reduced motion, stop
+  animation on completion/error/reset, and never infer a percentage or add polling.
+  Cleanup running reports and the Checking saves badge retain this subtle activity cue;
+  full-library loading keeps its separate larger indicator.
 - Tagcast starts on Album artists. Back and Forward follow the browser history;
   dialogs get no history entry, and Back never closes an open editor.
   Album details use a clickable breadcrumb for their browsing origin (artist, tag,

@@ -15,7 +15,7 @@ function resetCleanup(close = false) {
   cleanupView.removeLabel = false;
   cleanupView.labels = null; cleanupView.labelQuery = ""; cleanupView.labelOffset = 0;
   cleanupView.labelRequest += 1; cleanupView.labelsBusy = false; cleanupView.draftChanged = false;
-  $("#cleanup-status").textContent = "";
+  setActionStatus("#cleanup-status", "");
   $("#cleanup-content").innerHTML = '<p class="muted">Library reloaded. Reopen cleanup to see the latest report.</p>';
   if (close && $("#cleanup").open) $("#cleanup").close();
 }
@@ -65,7 +65,7 @@ function renderCleanup() {
     ${category === "genre-labels" ? genreLabelControls(running || cleanupView.busy) : ""}
     ${data.id ? `<div class="notice">${escapeHtml(cleanupLabels[data.category])}: ${data.albums.toLocaleString("en")} albums · ${data.tracks.toLocaleString("en")} affected tracks. Batches contain up to ${data.batch_tracks} tracks from ${data.batch_albums} albums.</div>
     ${data.mapping ? `<p class="cleanup-rule-summary"><strong>Reviewed rule:</strong> ${escapeHtml(data.mapping.label)} → ${escapeHtml(data.mapping.remove ? "Remove this label" : data.mapping.replacements.join(" · "))}</p>` : ""}
-    ${preview ? `<p>${albumArtists ? "Review every proposed disc below, including its primary and additional album artists." : "Review the examples below. Export the full report to inspect every track."} Uncheck an album to exclude all its discs and tracks.</p><div class="cleanup-controls"><button class="text-action" id="cleanup-select-all">Select all albums</button><button class="text-action" id="cleanup-select-none">Exclude all albums</button><span id="cleanup-selected" role="status"></span></div>` : `<p role="status"><strong>${escapeHtml(data.state)}</strong>${albumArtists ? " · Disc records:" : ""} · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.blocked || 0} blocked · ${counts.excluded || 0} excluded</p>`}
+    ${preview ? `<p>${albumArtists ? "Review every proposed disc below, including its primary and additional album artists." : "Review the examples below. Export the full report to inspect every track."} Uncheck an album to exclude all its discs and tracks.</p><div class="cleanup-controls"><button class="text-action" id="cleanup-select-all">Select all albums</button><button class="text-action" id="cleanup-select-none">Exclude all albums</button><span id="cleanup-selected" role="status"></span></div>` : `<p role="status" class="operation-status" data-working="${running}"><strong>${escapeHtml(data.state)}</strong>${albumArtists ? " · Disc records:" : ""} · ${counts.confirmed || 0} confirmed · ${counts.pending || 0} pending · ${counts.sent || 0} sent / checking · ${counts.unconfirmed || 0} unconfirmed · ${counts.conflict || 0} conflicts · ${counts.blocked || 0} blocked · ${counts.excluded || 0} excluded</p>`}
     ${data.error ? `<p class="warn-box" role="status">${escapeHtml(data.error)}</p>` : ""}
     <div class="cleanup-albums">${data.groups.map(g => `<section class="cleanup-album"><h3>${preview ? `<label><input type="checkbox" data-cleanup-album="${escapeHtml(g.id)}" ${cleanupView.excluded.has(g.id) ? "" : "checked"}> ` : ""}${escapeHtml(g.album)}${preview ? "</label>" : ""}</h3><p class="muted">${escapeHtml(g.artist)} · ${g.tracks} affected tracks</p>${g.examples.map(cleanupExample).join("")}</section>`).join("") || '<p class="muted">No changes found for this preview.</p>'}</div>
     <div class="pagination"><button class="button small" data-cleanup-page="-25" ${cleanupView.offset <= 0 ? "disabled" : ""}>← Previous</button><span>${data.albums ? Math.floor(cleanupView.offset / 25) + 1 : 0} / ${Math.ceil(data.albums / 25)}</span><button class="button small" data-cleanup-page="25" ${cleanupView.offset + 25 >= data.albums ? "disabled" : ""}>Next →</button></div>
@@ -144,7 +144,7 @@ async function cleanupAction(action) {
   cleanupView.busy = true;
   renderCleanup();
   const details = state.details, request = ++cleanupView.request;
-  $("#cleanup-status").textContent = action === "preview" ? "Preparing a read-only preview…" : action === "start" ? "Checking your library and starting…" : "Stopping after the current request…";
+  setActionStatus("#cleanup-status", action === "preview" ? "Preparing a read-only preview…" : action === "start" ? "Checking your library and starting…" : "Stopping after the current request…", true);
   clearTimeout(cleanupView.timer);
   try {
     const data = await api(`/api/cleanup/${action}`, action === "preview" ? {category, ...rule} : {id: cleanupView.data.id, excluded: [...cleanupView.excluded]});
@@ -161,9 +161,10 @@ async function cleanupAction(action) {
   } finally {
     if (request !== cleanupView.request || details !== state.details || !live()) return;
     cleanupView.busy = false;
+    setActionStatus("#cleanup-status", undefined);
     renderCleanup();
   }
-  $("#cleanup-status").textContent = "";
+  setActionStatus("#cleanup-status", "");
 }
 
 async function exportCleanupReport() {
@@ -208,12 +209,12 @@ $("#cleanup").addEventListener("change", event => {
   if (event.target.id === "cleanup-label-choice") {
     cleanupView.ruleLabel = event.target.value; cleanupView.ruleText = event.target.value;
     cleanupView.removeLabel = false;
-    $("#cleanup-status").textContent = "";
+    setActionStatus("#cleanup-status", "");
     cleanupView.draftChanged = true; renderCleanup(); return;
   }
   if (event.target.id === "cleanup-label-remove") {
     cleanupView.removeLabel = event.target.checked;
-    cleanupView.draftChanged = true; $("#cleanup-status").textContent = "";
+    cleanupView.draftChanged = true; setActionStatus("#cleanup-status", "");
     renderCleanup(); return;
   }
   if (event.target.dataset.cleanupAlbum) {
@@ -225,7 +226,7 @@ $("#cleanup").addEventListener("change", event => {
 $("#cleanup").addEventListener("input", event => {
   if (event.target.id === "cleanup-label-replacements") {
     cleanupView.ruleText = event.target.value; cleanupView.draftChanged = true;
-    $("#cleanup-status").textContent = "";
+    setActionStatus("#cleanup-status", "");
     const approval = $("#cleanup-approved"); if (approval) approval.checked = false;
     updateCleanupSelection();
   } else if (event.target.id === "cleanup-label-search") cleanupView.labelQuery = event.target.value;
