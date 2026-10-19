@@ -78,7 +78,7 @@ unreleased where their features are not in the published desktop downloads.
 | [x] | `release-years.png` | Release-year overview with year cards and collection counts. |
 | [x] | `decades.png` | A decade's random album selection and introduction. |
 | [x] | `favourites.png` | Track favourites with search, queue and heart controls. |
-| Text only | — | Playlist details remain documented without a screenshot in this set. |
+| [x] | `playlist-import-created.png` | Confirmed imported playlist; supplied on 19 October 2026 (0.70.0 interface). |
 | [x] | `recently-played.png` | Recently played with track rows and playback controls. |
 | [x] | `overview.png` | Library totals, metadata health and useful links. |
 | [x] | `history.png` | Change history with saved and unconfirmed metadata/artwork results. |
@@ -177,3 +177,22 @@ Overview account fields is preserved.
    references. Retain any screenshots intentionally used as historical examples.
 
 Publishing these documentation updates to GitHub does not require a release.
+
+
+## Playlist import captures, 19 October 2026
+
+Eight user-supplied original PNGs, copied without resizing or edits. They show the
+0.70.0 interface; source/test-only changes such as shuffle, playback markers and
+compact activity indicators are not present. Used in the Wiki's
+[playlist import walkthrough](https://github.com/cyberdeliaAI/tagcast/wiki/Ratings-favourites-and-playlists#csv-import-walkthrough).
+
+| PNG | Step |
+|---|---|
+| `playlist-import-file.png` | Choose the CSV file and text options. |
+| `playlist-import-columns.png` | Map columns and duration units. |
+| `playlist-import-unresolved.png` | Review automatic/unresolved counts and reasons. |
+| `playlist-import-choose-track.png` | Compare candidates and choose a library track. |
+| `playlist-import-ready.png` | Resolve remaining choices and name the playlist. |
+| `playlist-import-review.png` | Final ordered, paginated review before creation. |
+| `playlist-import-created.png` | Confirmed imported playlist. |
+| `playlist-cover-compare.png` | Separate playlist cover comparison before saving. |
