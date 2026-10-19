@@ -334,6 +334,7 @@ function openGuideLink(id, focus) {
 }
 
 function renderGuideLink() {
+  syncSearchClearButtons();
   if (!guideLink.entry) return;
   const words = foldText($("#guide-link-search").value.slice(0, 200)).split(" ").filter(Boolean);
   const ids = new Set(guideLink.entry.album_ids);

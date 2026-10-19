@@ -33,7 +33,7 @@ function websiteLinks(artist, album) {
 
 function lookupPanel(album) {
   return `<aside class="sources lookup"><div class="eyebrow">ONLINE SOURCES</div><h3>Suggestions</h3>
-    <form id="lookup-form" class="lookup-form"><input name="artist" value="${escapeHtml(album.artist)}" aria-label="Artist to search for" placeholder="Artist"><input name="album" value="${escapeHtml(album.name)}" aria-label="Album to search for" placeholder="Album"><button class="button small">Search</button></form>
+    <form id="lookup-form" class="lookup-form">${clearableSearchInput("lookup-artist-search", 'name="artist" aria-label="Artist to search for" placeholder="Artist"', album.artist)}${clearableSearchInput("lookup-album-search", 'name="album" aria-label="Album to search for" placeholder="Album"', album.name)}<button class="button small">Search</button></form>
     <p class="muted lookup-hint">Click a year or genre to put it in the form; Shift-click a genre to add it to the others. Nothing is saved until you review.</p>
     <div id="lookup-results"></div>
     <p class="lookup-links">Websites: ${websiteLinks(album.artist, album.name)}</p>

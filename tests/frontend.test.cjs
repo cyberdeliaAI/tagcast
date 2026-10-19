@@ -38,7 +38,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   function element() {
     const classes = new Set();
     const events = new Map(), attributes = new Map();
-    return {value: "", checked: false, disabled: false, dataset: {}, options: [], children: [], innerHTML: "", textContent: "",
+    return {value: "", checked: false, disabled: false, readOnly: false, dataset: {}, options: [], children: [], innerHTML: "", textContent: "",
       appendChild(node) { this.children = this.children.filter(child => child !== node); this.children.push(node); return node; },
       isConnected: true, style: {}, clientWidth: 1265, clientHeight: 710,
       getBoundingClientRect() { return {left: 1000, right: 1042, top: 300, bottom: 336, width: 220, height: 130}; },
@@ -47,6 +47,13 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
         toggle: (c, on) => on ? classes.add(c) : classes.delete(c)},
       addEventListener(type, handler) { const handlers = events.get(type) || []; handlers.push(handler); events.set(type, handlers); },
       emit(type, event = {}) { return Promise.all((events.get(type) || []).map(handler => handler(event))); },
+      dispatchEvent(event) {
+        const delivered = {type: event.type, target: this, bubbles: event.bubbles};
+        for (const handler of events.get(event.type) || []) handler(delivered);
+        if (event.bubbles) for (const handler of documentEvents.get(event.type) || []) handler(delivered);
+        return true;
+      },
+      closest() { return null; },
       querySelector() { return null; }, querySelectorAll() { return []; },
       elements: {namedItem() { return null; }}, reportValidity() { return true; },
       showModal() { this.open = true; }, close() { this.open = false; }, focus() { document.activeElement = this; },
@@ -57,6 +64,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       removeAttribute(name) { attributes.delete(name); if (name === "src") delete this.src; }};
   }
   const document = {body: element(), documentElement: element(),
+    getElementById(id) { return this.querySelector(`#${id}`); },
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
@@ -6838,4 +6846,96 @@ test('a CSV draft closes and clears its displayed data when the active session c
   assert.equal(p.nodes.get('#csv-import-content').innerHTML,'');
   assert.equal(p.run('csvImport.data'),null);
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+});
+
+function searchClearFixture(p, id, value) {
+  p.run(`{
+    const input=document.getElementById(${JSON.stringify(id)});
+    input.id=${JSON.stringify(id)}; input.value=${JSON.stringify(value)};
+    const button=document.getElementById(${JSON.stringify(id+'-test-clear')});
+    button.dataset.searchClear=${JSON.stringify(id)};
+    document.querySelectorAll=selector=>selector==='[data-search-clear]'?[button]:[];
+    syncSearchClearButtons();
+  }`);
+  return {input:p.nodes.get('#'+id),button:p.nodes.get('#'+id+'-test-clear'),
+    clear:()=>p.click({'[data-search-clear]':p.nodes.get('#'+id+'-test-clear')})};
+}
+
+test('every static search has an accessible non-submit clear button', () => {
+  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');
+  const ids=['favourite-artists-search','guide-search','artists-search','browse-search','tracks-search','favourites-search','recently-played-search','search','guide-link-search'];
+  for (const id of ids) {
+    const button=html.match(new RegExp(`<button[^>]*data-search-clear="${id}"[^>]*>`))?.[0];
+    assert.ok(button,id); assert.match(button,/type="button"/);
+    assert.match(button,new RegExp(`aria-controls="${id}"`));
+    assert.match(button,/aria-label="Clear [^"]+"/); assert.match(button,/ hidden>/);
+  }
+});
+
+test('shared album search clear preserves filters, order, selection, playback and restored history', async () => {
+  const p=page(); await settle();
+  await p.nodes.get('#all-albums').emit('click');
+  p.run('playTracks(state.details.get("1")); state.selected.add("1"); $("#filter").value="all"; $("#sort").value="title_za"; state.page=4');
+  const {input,button,clear}=searchClearFixture(p,'search','Pink');
+  input.dispatchEvent(new Event('input',{bubbles:true})); p.flushTimers(150);
+  assert.equal(button.hidden,false);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,selected:[...state.selected],changes:state.history})');
+  const requests=p.requests.length;
+  await clear(); p.flushTimers(150);
+  assert.equal(input.value,''); assert.equal(button.hidden,true); assert.equal(p.run('state.page'),0);
+  assert.equal(p.nodes.get('#sort').value,'title_za'); assert.equal(p.nodes.get('#filter').value,'all');
+  assert.equal(p.run('document.activeElement === $("#search")'),true);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,selected:[...state.selected],changes:state.history})'),before);
+  assert.equal(p.requests.length,requests);
+  input.value='Pink'; input.dispatchEvent(new Event('input',{bubbles:true})); p.flushTimers(150);
+  await p.nodes.get('#show-artists').emit('click');
+  p.history.back(); await settle();
+  assert.equal(input.value,'Pink'); assert.equal(button.hidden,false);
+  await clear(); p.flushTimers(150);
+  await p.nodes.get('#show-artists').emit('click'); p.history.back(); await settle();
+  assert.equal(input.value,''); assert.equal(button.hidden,true);
+});
+
+test('dynamic collection search clears the query and paging without modifying native collections', async () => {
+  const p=page(); await settle();
+  p.run('collectionsView.query="Test"; collectionsView.offset=100');
+  const {input,button,clear}=searchClearFixture(p,'collection-search','Test');
+  const requests=p.requests.length;
+  await clear();
+  assert.equal(input.value,''); assert.equal(button.hidden,true);
+  assert.equal(p.run('collectionsView.query'),''); assert.equal(p.run('collectionsView.offset'),0);
+  assert.equal(p.requests.length,requests,'Clearing uses the normal debounce, without a write');
+  input.value=' '; input.dispatchEvent(new Event('input',{bubbles:true})); assert.equal(button.hidden,false);
+  input.value=''; input.dispatchEvent(new Event('input',{bubbles:true})); assert.equal(button.hidden,true);
+});
+
+test('clearing explicit dialog searches does not submit, fetch, clear metadata or discard CSV choices', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); renderCsvResolver(0); cleanupView.ruleLabel="Rock"; cleanupView.ruleText="Rock music"`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/data-search-clear="csv-library-query"/);
+  assert.match(p.run('lookupPanel({artist:"<Artist>",name:"Album"})'),/value="&lt;Artist&gt;"/);
+  const before=p.run('JSON.stringify({csv:csvImport.data,selected:csvImport.resolving,queue:player.queue,src:audio.src,changes:state.history})');
+  const requests=p.requests.length;
+  for(const id of ['csv-library-query','playlist-destination-query','playlist-folder-query','lookup-artist-search','lookup-album-search','cleanup-label-search']) {
+    const {input,button,clear}=searchClearFixture(p,id,'Some query');
+    await clear(); assert.equal(input.value,'',id); assert.equal(button.hidden,true,id);
+    assert.equal(p.run(`document.activeElement === document.getElementById(${JSON.stringify(id)})`),true,id);
+  }
+  assert.equal(p.run('cleanupView.labelQuery'),'');
+  assert.equal(p.run('cleanupView.ruleLabel'),'Rock'); assert.equal(p.run('cleanupView.ruleText'),'Rock music');
+  assert.equal(p.run('JSON.stringify({csv:csvImport.data,selected:csvImport.resolving,queue:player.queue,src:audio.src,changes:state.history})'),before);
+  assert.equal(p.requests.length,requests,'Only an explicit Search/Find can start these lookups');
+});
+
+test('disabled and readonly searches cannot be cleared and newly rendered queries are escaped', async () => {
+  const p=page(); await settle();
+  const {input,button,clear}=searchClearFixture(p,'cleanup-label-search','Keep');
+  for(const property of ['disabled','readOnly']) {
+    input[property]=true; p.run('syncSearchClearButtons()'); assert.equal(button.hidden,true);
+    await clear(); assert.equal(input.value,'Keep'); input[property]=false;
+  }
+  const html=p.run(`clearableSearchInput('safe-query','name="query"','"/><img onerror="bad">')`);
+  assert.doesNotMatch(html,/<img/); assert.match(html,/&lt;img onerror=&quot;bad&quot;&gt;/);
+  p.run('cleanupView.labelQuery="Keep"');
+  assert.match(p.run('genreLabelControls(true)'),/data-search-clear="cleanup-label-search"[^>]* hidden/);
 });

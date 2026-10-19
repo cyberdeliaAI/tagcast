@@ -166,7 +166,7 @@ function renderCsvResolver(position) {
   csvImport.resolving = row; csvImport.search = null;
   $("#csv-import-content").innerHTML = `<h3 tabindex="-1">Choose a library track</h3>${csvSource(row)}${csvMatchReasons(row)}<p class="muted">Compare the full title, performer, album and duration. Suggestions are alternatives, not confirmed matches. Search below for other library copies.</p>
     <h4>Suggestions (up to 10)</h4><div class="csv-candidates">${row.candidates.map(csvCandidate).join("") || '<p class="muted">No suggestions. Search your library below.</p>'}</div>
-    <form id="csv-search-form"><label>Search loaded library <input name="query" maxlength="200" value="${escapeHtml(row.source.title)}" placeholder="Part of a title, artist or album"></label><button class="button">Search</button></form><div id="csv-search-results"></div>
+    <form id="csv-search-form"><div class="clearable-field"><label for="csv-library-query">Search loaded library</label>${clearableSearchInput("csv-library-query", 'name="query" maxlength="200" placeholder="Part of a title, artist or album"', row.source.title)}</div><button class="button">Search</button></form><div id="csv-search-results"></div>
     <div class="dialog-footer"><button type="button" class="button" data-csv-matches>← Back to matches</button><button type="button" class="button" data-csv-skip="${position}">Skip this CSV record</button></div>`;
   $("#playlist-import").scrollTop = 0;
   document.querySelector("#csv-import-content h3")?.focus?.();
