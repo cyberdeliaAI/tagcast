@@ -2,6 +2,35 @@
 
 const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function searchClearButton(id, value = "", disabled = false) {
+  return `<button type="button" class="search-clear" data-search-clear="${escapeHtml(id)}" aria-controls="${escapeHtml(id)}" aria-label="Clear search" title="Clear search" ${!value || disabled ? "hidden" : ""}><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8m0-8-8 8"/></svg></button>`;
+}
+
+function clearableSearchInput(id, attributes, value = "", disabled = false) {
+  return `<span class="clearable-search"><input id="${escapeHtml(id)}" ${attributes} value="${escapeHtml(value)}" ${disabled ? "disabled" : ""}>${searchClearButton(id, value, disabled)}</span>`;
+}
+
+function syncSearchClearButtons() {
+  for (const button of document.querySelectorAll("[data-search-clear]")) {
+    const input = document.getElementById(button.dataset.searchClear);
+    button.hidden = !input || !input.value || input.disabled || input.readOnly;
+  }
+}
+
+document.addEventListener("input", syncSearchClearButtons);
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-search-clear]");
+  if (!button) return;
+  const id = button.dataset.searchClear, input = document.getElementById(id);
+  if (!input || !input.value || input.disabled || input.readOnly) return;
+  input.value = "";
+  syncSearchClearButtons();
+  // Reuse each search's input handling; explicit Search forms still wait for submit.
+  input.dispatchEvent(new Event("input", {bubbles: true}));
+  document.getElementById(id)?.focus();
+});
+
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
 const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};

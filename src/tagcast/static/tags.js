@@ -68,7 +68,7 @@ async function openTrackTags(albumId, trackId = null, query = "") {
 function renderTagSelection() {
   const view = tagDraft, selection = view.selection;
   $("#tag-dialog-content").innerHTML = `<h3>${escapeHtml(selection.label)}</h3><p class="muted">${selection.tracks} ${selection.tracks === 1 ? "track" : "tracks"}. Tags are your own labels, separate from genres. Keep as is preserves partial assignments.</p>
-    <div class="toolbar"><label class="search"><span>⌕</span><input id="tag-search" maxlength="200" aria-label="Search tags" placeholder="Search tags" value="${escapeHtml(view.query)}"></label><button type="button" class="button small" id="tag-new">New tag…</button></div>
+    <div class="toolbar"><div class="search search-with-clear"><span aria-hidden="true">⌕</span><input id="tag-search" maxlength="200" aria-label="Search tags" placeholder="Search tags" value="${escapeHtml(view.query)}">${searchClearButton("tag-search", view.query)}</div><button type="button" class="button small" id="tag-new">New tag…</button></div>
     <div id="tag-choices"></div><div class="pagination" id="tag-pagination"></div><p class="muted" id="tag-change-count"></p><div class="dialog-footer"><button class="button" data-close="tag-dialog">Cancel</button><button class="button primary" id="tag-review" disabled>Review tag changes →</button></div>`;
   $("#tag-search").focus();
 }

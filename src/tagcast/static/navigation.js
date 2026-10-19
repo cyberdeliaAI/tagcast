@@ -211,6 +211,7 @@ function restoreNavigationScroll() {
 
 // Same-page renders update filters; only page changes add history entries.
 function syncHistory() {
+  syncSearchClearButtons();
   if (!nav.ready || nav.restoring) return;
   navigationScope();
   const hash = `#/${currentRoute()}`, entry = history.state || {};

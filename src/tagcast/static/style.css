@@ -400,6 +400,12 @@ body.has-player main{padding-bottom:80px}
 .search-clear{display:inline-flex;align-items:center;justify-content:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:0;border-radius:4px;background:none;color:var(--muted)}
 .search-clear svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .search-clear:hover{background:var(--paper);color:var(--ink)}
+.clearable-search{display:block;position:relative;min-width:0}
+.clearable-search>input{width:100%;min-width:0}
+.clearable-search>.search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%)}
+.clearable-field{display:flex;flex-direction:column;gap:8px}
+.clearable-search:has(>.collection-search){width:min(560px,100%);max-width:100%}
+.toolbar>.clearable-search{flex:1}
 
 /* Release notifications share the existing controls; checking never blocks the library. */
 .topbar{height:auto;min-height:86px;gap:12px;flex-wrap:wrap;padding:16px 0}
@@ -578,7 +584,7 @@ body.visual-player-open{overflow:hidden}
 .player-quality{display:block;font-size:10px;color:var(--palette-muted,#7b8578);margin-top:3px}
 .playlist-cards,.device-list{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.playlist-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:180px}.collection-search{min-width:240px;max-width:100%}
 #playlist-dialog,#devices-dialog{width:min(760px,calc(100vw - 32px));max-height:90vh;overflow:auto}
-#playlist-dialog-content form>label,#remote-controls>label{display:flex;flex-direction:column;gap:8px;margin:16px 0}.playlist-review-tracks{max-height:42vh;overflow:auto;margin:18px 0}.playlist-review-tracks .checkline{margin-bottom:10px}
+#playlist-dialog-content form>label,#playlist-dialog-content form>.clearable-field,#remote-controls>label{display:flex;flex-direction:column;gap:8px;margin:16px 0}.playlist-review-tracks{max-height:42vh;overflow:auto;margin:18px 0}.playlist-review-tracks .checkline{margin-bottom:10px}
 #player-repeat{min-width:36px;font-size:13px}.now-playing-footer{gap:8px;flex-wrap:wrap}
 .collection-search,#playlist-form input:not([type=checkbox]),#playlist-form textarea,#playlist-form select,#remote-controls input:not([type=range]),#remote-controls select,.playback-settings select{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
 .collection-search{width:min(560px,100%)}#playlist-form textarea{min-height:80px;resize:vertical}.playback-settings>label:has(select){display:flex;gap:12px;align-items:center;flex-wrap:wrap}
@@ -749,6 +755,7 @@ body.help-open{overflow:hidden}
 .playlist-card{flex-direction:row;min-width:0}.playlist-card strong,.playlist-card small{display:block}.playlist-card small{margin-top:5px;color:var(--muted)}
 #playlist-folder-form input:not([type=checkbox]),#playlist-folder-form textarea{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
 #playlist-folder-form textarea{min-height:80px;resize:vertical}
+.clearable-search>input,#playlist-form .clearable-search>input,#playlist-folder-form .clearable-search>input,.lookup-form .clearable-search>input{padding-right:44px}
 
 .playlist-placeholder svg{width:36px;height:36px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}
 
