@@ -161,7 +161,7 @@ async function renderCollections() {
     if (data.is_folder) {
       page.innerHTML = playlistFolderPage(data);
     } else if (collectionsView.playlist) {
-      page.innerHTML = `<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistCoverImage(data)}<div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ ${data.large ? "Play this page" : "Play playlist"}</button><button class="button" data-playlist-cover>Change cover…</button><button class="button" data-playlist-edit ${data.large ? 'disabled title="Full replacement is limited to 10,000 tracks"' : ""}>Edit playlist…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks · in playlist order</p>${data.large ? '<p class="muted">Large playlist: browse 100 tracks per page. Playback starts from this page. Full-content editing is limited to 10,000 tracks; adding tracks and reviewed deletion remain available.</p>' : ""}<table class="album-tracks album-tracklist track-results"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr data-row="${escapeHtml(t.id)}"><td class="track-number">${trackNumberControl(t, t.position + 1, `data-playlist-position="${escapeHtml(t.position)}"`, true)}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td>${queueButton(t.album_id, t)}</td></tr>`).join("")}</tbody></table>${collectionPages(data.total, 100)}`;
+      page.innerHTML = `<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistCoverImage(data)}<div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ ${data.large ? "Play this page" : "Play playlist"}</button><button type="button" class="button" data-playlist-shuffle ${data.tracks.length ? "" : "disabled"}>${data.large ? "Shuffle this page" : "Shuffle playlist"}</button><button class="button" data-playlist-cover>Change cover…</button><button class="button" data-playlist-edit ${data.large ? 'disabled title="Full replacement is limited to 10,000 tracks"' : ""}>Edit playlist…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks · in playlist order</p>${data.large ? '<p class="muted">Large playlist: browse 100 tracks per page. Playback and shuffle use only this page. Full-content editing is limited to 10,000 tracks; adding tracks and reviewed deletion remain available.</p>' : ""}<table class="album-tracks album-tracklist track-results"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr data-row="${escapeHtml(t.id)}"><td class="track-number">${trackNumberControl(t, t.position + 1, `data-playlist-position="${escapeHtml(t.position)}"`, true)}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td>${queueButton(t.album_id, t)}</td></tr>`).join("")}</tbody></table>${collectionPages(data.total, 100)}`;
     } else replaceCollections(`<div class="page-intro"><div><h1>Playlists<span>.</span></h1><p>Your iBroadcast playlists and folders. Search also finds playlists inside folders. System lists are managed by iBroadcast.</p></div></div><div class="toolbar"><input class="collection-search" id="collection-search" placeholder="Search playlists" value="${escapeHtml(collectionsView.query)}" aria-label="Search playlists"><button class="button" data-playlist-create>Create playlist…</button><button class="button" data-folder-create>Create folder…</button><button class="button" data-csv-import>Import CSV…</button></div><p>${data.total} playlists and folders</p><div class="playlist-cards">${data.playlists.map(playlistBrowseCard).join("") || '<p class="muted">No matching playlists. Add an album or save the queue to create one.</p>'}</div>${collectionPages(data.total, 100)}`);
     markPlaying();
     if (typeof syncHistory === "function") syncHistory();
@@ -306,15 +306,29 @@ document.addEventListener("click", async event => {
   if (target.closest("[data-playlist-delete]") && collectionsView.data) return openPlaylistDelete(collectionsView.data.id);
   if (target.closest("[data-playlist-save]")) savePlaylistDraft();
   if (target.closest("[data-playlist-revise]")) openPlaylistSave(playlistDraft.tracks, playlistDraft.selected);
-  const play = target.closest("[data-playlist-play], [data-playlist-position], [data-playlist-edit]");
+  const play = target.closest("[data-playlist-play], [data-playlist-shuffle], [data-playlist-position], [data-playlist-edit]");
   if (play && collectionsView.data) {
-    const data = collectionsView.data, details = state.details, epoch = player.epoch;
+    const data = collectionsView.data, details = state.details, session = state.connection.playback_session;
+    const edit = play.hasAttribute("data-playlist-edit"), shuffle = play.hasAttribute("data-playlist-shuffle");
+    if (!live() || state.loading || data.is_folder) return;
+    if (!edit) {
+      if (!localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
+      cancelRandomPlay(); player.epoch += 1;
+    }
+    const epoch = player.epoch;
+    const current = () => details === state.details && session === state.connection.playback_session
+      && epoch === player.epoch && live() && !state.loading;
     try {
-      const rows = await selectedQueueTracks(data.tracks, () => details === state.details && epoch === player.epoch && live());
-      if (play.hasAttribute("data-playlist-edit")) return openPlaylistSave(rows, data);
+      const rows = await selectedQueueTracks(data.tracks, current);
+      if (!current()) return;
+      if (edit) return openPlaylistSave(rows, data);
       if (!rows.length || !localPlaybackAllowed()) return;
-      cancelRandomPlay(); player.epoch += 1; player.shuffle = false; player.queue = rows;
+      if (shuffle) for (let i = rows.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rows[i], rows[j]] = [rows[j], rows[i]];
+      }
+      player.shuffle = shuffle; player.queue = rows;
       player.index = play.hasAttribute("data-playlist-position") ? Math.max(0, (Number(play.dataset.playlistPosition) || 0) - (data.large ? data.offset : 0)) : 0; playCurrent();
-    } catch (error) { toast(error.message); }
+    } catch (error) { if (current()) toast(error.message); }
   }
 });

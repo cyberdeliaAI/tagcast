@@ -5320,6 +5320,117 @@ test('large playlist playback uses the selected row within the current page', as
   assert.equal(p.nodes.get('#audio').src,'/api/stream/102?quality=128');
 });
 
+test('playlist shuffle mixes only the playback queue and ordinary Play restores the saved order', async () => {
+  const p = livePage(); await settle();
+  p.run('collectionsView.data = {id:"88", tracks:[101,102,103,104]}; Math.random = () => 0');
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/queue-tracks');
+    const ids = JSON.parse(options.body).tracks;
+    assert.deepEqual(ids, [101,102,103,104]);
+    return {ok:true,json:async()=>({tracks:ids.map(id=>({id:String(id),title:'Track '+id,artist:'Artist',album:{id:'1',name:'Album',artist:'Artist'}}))})};
+  });
+  const history = p.history.length;
+  await p.click({'[data-playlist-shuffle]':{hasAttribute:key=>key==='data-playlist-shuffle'}});
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ['102','103','104','101']);
+  assert.deepEqual(p.json('collectionsView.data.tracks'), [101,102,103,104]);
+  assert.equal(p.run('player.index'), 0);
+  assert.equal(p.nodes.get('#audio').src, '/api/stream/102?quality=128');
+  assert.equal(p.run('encodedLocalQueue().shuffle'), true);
+  const visited = [p.run('player.queue[player.index].id')];
+  for (let i=1; i<4; i++) {
+    await p.nodes.get('#audio').emit('ended');
+    visited.push(p.run('player.queue[player.index].id'));
+  }
+  assert.deepEqual(visited, ['102','103','104','101']);
+  assert.equal(p.history.length, history);
+  assert.equal(p.run('state.history.length'), 0);
+  await p.click({'[data-playlist-play]':{hasAttribute:()=>false}});
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ['101','102','103','104']);
+  assert.equal(p.run('player.shuffle'), false);
+  assert.equal(p.nodes.get('#audio').src, '/api/stream/101?quality=128');
+});
+
+test('shuffle includes all positions of an ordinary playlist using bounded metadata reads', async () => {
+  const p = livePage(); await settle();
+  p.run('collectionsView.data = {id:"88",offset:100,tracks:Array.from({length:2100},(_,i)=>i+100)}; $("#now-playing-panel").hidden=true; Math.random=()=>0');
+  const batches = [];
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/queue-tracks');
+    const ids = JSON.parse(options.body).tracks; batches.push(ids);
+    return {ok:true,json:async()=>({tracks:ids.map(id=>({id:String(id),title:'Track '+id,artist:'Artist',album:{id:'1',name:'Album',artist:'Artist'}}))})};
+  });
+  await p.click({'[data-playlist-shuffle]':{hasAttribute:key=>key==='data-playlist-shuffle'}});
+  assert.deepEqual(batches.map(ids=>ids.length), [1000,1000,100]);
+  assert.equal(p.run('player.queue.length'), 2100);
+  assert.equal(p.run('new Set(player.queue.map(t=>t.id)).size'), 2100);
+  assert.deepEqual(p.json('player.queue.map(t=>Number(t.id)).sort((a,b)=>a-b)'), batches.flat());
+  assert.deepEqual(p.json('collectionsView.data.tracks'), batches.flat());
+});
+
+test('large playlist shuffle is explicitly limited to the current page and empty playlists disable it', async () => {
+  const p = livePage(); await settle();
+  p.run('state.screen="playlists"; collectionsView.playlist="88"; collectionsView.offset=10000; Math.random=()=>0');
+  p.setFetch((url, options) => {
+    if (url.startsWith('/api/playlists?')) return {ok:true,json:async()=>({id:'88',name:'Large',description:'',
+      large:true,total:20002,offset:10000,tracks:[101,102],rows:[]})};
+    assert.equal(url, '/api/queue-tracks');
+    assert.deepEqual(JSON.parse(options.body).tracks, [101,102]);
+    return {ok:true,json:async()=>({tracks:[101,102].map(id=>({id:String(id),title:'Track '+id,artist:'Artist',album:{id:'1',name:'Album',artist:'Artist'}}))})};
+  });
+  await p.run('renderCollections()');
+  assert.match(p.nodes.get('#collections-page').innerHTML, /data-playlist-shuffle[^>]*>Shuffle this page/);
+  assert.match(p.nodes.get('#collections-page').innerHTML, /Playback and shuffle use only this page/);
+  await p.click({'[data-playlist-shuffle]':{hasAttribute:key=>key==='data-playlist-shuffle'}});
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ['102','101']);
+  p.setFetch(()=>({ok:true,json:async()=>({id:'88',name:'Empty',description:'',tracks:[],rows:[],total:0})}));
+  await p.run('renderCollections()');
+  assert.match(p.nodes.get('#collections-page').innerHTML, /data-playlist-shuffle disabled>Shuffle playlist/);
+});
+
+test('pending playlist shuffle cannot undo stopping, another Play, or a library or session replacement', async () => {
+  for (const change of ['stopPlayer()', 'playTracks(state.details.get("2"))',
+    'state.details=new Map(state.details)', 'state.connection.playback_session="another-session"']) {
+    const p = livePage(); await settle();
+    p.run('playTracks(state.details.get("1")); collectionsView.data={id:"88",tracks:[101,102]}');
+    let finish;
+    p.setFetch(url=>{
+      assert.equal(url, '/api/queue-tracks');
+      return new Promise(resolve=>{finish=resolve;});
+    });
+    const pending = p.click({'[data-playlist-shuffle]':{hasAttribute:key=>key==='data-playlist-shuffle'}});
+    await settle(); p.run(change);
+    const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+    finish({ok:true,json:async()=>({tracks:[101,102].map(id=>({id:String(id),title:'Track '+id,artist:'A',album:{id:'1',name:'Album',artist:'A'}}))})});
+    await pending;
+    assert.deepEqual(p.json('player.queue'), queue, change);
+    assert.equal(p.nodes.get('#audio').src, source, change);
+  }
+});
+
+test('the most recent playlist Play wins over delayed shuffle and remote controllers cannot start it', async () => {
+  const p = livePage(); await settle();
+  p.run('collectionsView.data={id:"88",tracks:[101,102]}; Math.random=()=>0');
+  const response = {ok:true,json:async()=>({tracks:[101,102].map(id=>({id:String(id),title:'Track '+id,artist:'A',album:{id:'1',name:'Album',artist:'A'}}))})};
+  let finish, calls=0;
+  p.setFetch(url=>{
+    assert.equal(url, '/api/queue-tracks');
+    if (++calls===1) return new Promise(resolve=>{finish=resolve;});
+    return response;
+  });
+  const pending = p.click({'[data-playlist-shuffle]':{hasAttribute:key=>key==='data-playlist-shuffle'}});
+  await settle();
+  await p.click({'[data-playlist-play]':{hasAttribute:()=>false}});
+  finish(response); await pending;
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ['101','102']);
+  assert.equal(p.run('player.shuffle'), false);
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src, before = p.requests.length;
+  p.run('queueSync.active=true; queueSync.allowed=false; queueSync.view={own:false,state:{role:"controller"}}');
+  await p.click({'[data-playlist-shuffle]':{hasAttribute:key=>key==='data-playlist-shuffle'}});
+  assert.equal(p.requests.length, before);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+});
+
 test('playlist rows follow playback when opened, paused, advanced and stopped without replacing the queue', async () => {
   const p = livePage(); await settle();
   p.run(`playTracks(state.details.get("1"));
