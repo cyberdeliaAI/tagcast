@@ -6,12 +6,24 @@
 const lookup = {sources: [], auto: true, recordPlays: false, streamQuality: "128", queueSync: false, settingsRevision: 0, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
 const sourceLabel = name => lookup.sources.find(s => s.name === name)?.label || name;
 
+function applyLookupSources(sources) {
+  const choices = rows => JSON.stringify(rows.map(s => [s.name, s.enabled, s.selected]));
+  const changed = lookup.sources.length && choices(lookup.sources) !== choices(sources);
+  lookup.sources = sources;
+  if (!changed) return;
+  // Do not let answers started before a settings change repopulate either chooser.
+  for (const channel of Object.keys(lookup.tokens)) lookup.tokens[channel] += 1;
+  lookup.results = new Map();
+  const box = $("#lookup-results");
+  if (box) box.innerHTML = '<p class="muted">Source settings changed. Press Search to refresh suggestions.</p>';
+}
+
 async function loadSettings() {
   const revision = lookup.settingsRevision;
   try {
     const data = await api("/api/settings");
     if (revision !== lookup.settingsRevision) return;
-    lookup.sources = data.sources; lookup.auto = data.auto_lookup; lookup.keysFromEnv = data.keys_from_env || [];
+    applyLookupSources(data.sources); lookup.auto = data.auto_lookup; lookup.keysFromEnv = data.keys_from_env || [];
     lookup.recordPlays = data.record_plays === true;
     lookup.albumGuideEnabled = data.album_guide === true;
     if (typeof applyAlbumGuideSettings === "function") applyAlbumGuideSettings(data);
@@ -65,13 +77,14 @@ function fetchSuggestions(kind, params, onResult, channel = "album") {
 function runLookups(artist, album) {
   const box = $("#lookup-results");
   lookup.results = new Map();
-  const missing = lookup.sources.filter(s => s.albums && !s.enabled);
+  const missing = lookup.sources.filter(s => s.albums && s.selected !== false && !s.enabled);
   const sources = fetchSuggestions("album", {artist, album}, (source, candidates, error) => {
     if (candidates) lookup.results.set(source.name, candidates);
     renderSource(source, candidates, error);
   });
   box.innerHTML = sources.map(s => `<section class="lookup-source" data-source="${s.name}"><h4>${escapeHtml(s.label)}<span class="lookup-state"><span class="spinner"></span></span></h4><div class="lookup-items"></div></section>`).join("")
-    + (missing.length ? `<p class="muted lookup-missing">${missing.map(s => escapeHtml(s.label)).join(", ")} ${missing.length === 1 ? "needs" : "need"} a key. <button class="text-action" data-open-settings>Add keys</button></p>` : "");
+    + (missing.length ? `<p class="muted lookup-missing">${missing.map(s => escapeHtml(s.label)).join(", ")} ${missing.length === 1 ? "needs" : "need"} a key. <button class="text-action" data-open-settings>Add keys</button></p>` : "")
+    + (!sources.length && !missing.length ? '<p class="muted">Online sources are switched off. <button class="text-action" data-open-settings>Choose sources in Settings</button></p>' : "");
 }
 
 function renderSource(source, candidates, error) {
@@ -118,6 +131,7 @@ function setFormField(name, value) {
 function coverChoices() {
   const out = [];
   for (const [source, candidates] of lookup.results) {
+    if (lookup.sources.some(s => s.name === source && !s.enabled)) continue;
     for (const c of candidates) if (c.cover && c.score >= 0.75) out.push({url: c.cover, thumb: c.thumb || c.cover, source: sourceLabel(source), title: c.title, score: c.score});
   }
   return out.sort((a, b) => b.score - a.score);
@@ -160,13 +174,17 @@ function openSettings() {
     <label class="checkline"><input type="checkbox" name="album_information" ${albumInformation.enabled ? "checked" : ""}> Show album information from TheAudioDB</label>
     <p class="muted">Off by default. When you visit an album, Tagcast sends its album artist and full title to TheAudioDB if no current local text is available. English text is saved on this computer and checked again after 30 days, when revisited. Only one exact artist/title match is used; information is not available for every album or edition. Available 1001 Albums texts take priority even when the discovery page is disabled or has never been analysed; those albums do not look up or show TheAudioDB text.</p></section>
     <section class="source-settings"><h3>Online sources &amp; keys</h3>
+    <p class="muted">Choose sources for metadata and image suggestions. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
+    ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ' <span class="muted">· Needs a key</span>' : ""}</label>`).join("")}
+    <p class="muted">TheAudioDB artist biographies and album information use their separate switches above.</p>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
-      return `<div class="setting-row"><div><strong>${escapeHtml(s.label)}</strong> <span class="status ${s.enabled ? "saved" : "not_sent"}">${s.enabled ? "Ready" : "Needs a key"}</span><small>${escapeHtml(s.key_help)}</small></div>${env ? '<span class="muted">Set by an environment variable</span>' : `<input type="password" name="${s.key}" autocomplete="off" spellcheck="false" placeholder="${s.enabled ? "Saved · type to replace" : "Paste your key"}" aria-label="${escapeHtml(s.label)} key">${s.enabled ? `<button type="button" class="text-action" data-clear-key="${s.key}">Remove</button>` : ""}`}</div>`;
+      const available = s.available ?? s.enabled;
+      return `<div class="setting-row"><div><strong>${escapeHtml(s.label)}</strong> <span class="status ${available ? "saved" : "not_sent"}">${available ? "Key ready" : "Needs a key"}</span><small>${escapeHtml(s.key_help)}</small></div>${env ? '<span class="muted">Set by an environment variable</span>' : `<input type="password" name="${s.key}" autocomplete="off" spellcheck="false" placeholder="${available ? "Saved · type to replace" : "Paste your key"}" aria-label="${escapeHtml(s.label)} key">${available ? `<button type="button" class="text-action" data-clear-key="${s.key}">Remove</button>` : ""}`}</div>`;
     }).join("")}
-    <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in all sources as soon as you open it</label>
-    <p class="muted">Looking up sends the artist and album name to each source. Tagcast waits between requests so it stays within each source's limits.</p>
+    <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in selected sources as soon as you open it</label>
+    <p class="muted">Looking up sends the artist and album name to each selected source with an available key, if required. Tagcast waits between requests so it stays within each source's limits.</p>
     </section>
     ${updateSettingsPanel()}
     <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`);
@@ -176,6 +194,8 @@ function openSettings() {
 
 async function saveSettings(form, clear) {
   const body = {auto_lookup: form.elements.auto_lookup.checked, auto_updates: form.elements.auto_updates.checked};
+  const sources = [...form.querySelectorAll("[data-source-toggle]")];
+  if (sources.length) body.disabled_sources = sources.filter(input => !input.checked).map(input => input.dataset.sourceToggle);
   if (form.elements.stream_quality) body.stream_quality = form.elements.stream_quality.value;
   if (form.elements.queue_sync) body.queue_sync = form.elements.queue_sync.checked;
   if (form.elements.record_plays) body.record_plays = form.elements.record_plays.checked;
@@ -187,7 +207,7 @@ async function saveSettings(form, clear) {
   try {
     const data = await api("/api/settings", body);
     lookup.settingsRevision += 1;
-    lookup.sources = data.sources; lookup.auto = data.auto_lookup;
+    applyLookupSources(data.sources); lookup.auto = data.auto_lookup;
     lookup.recordPlays = data.record_plays === true;
     applyAlbumGuideSettings(data);
     applyArtistSettings(data);

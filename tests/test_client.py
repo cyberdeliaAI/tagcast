@@ -662,6 +662,45 @@ class ClientTests(unittest.TestCase):
             with self.assertRaises(client.ApiError):
                 studio.save_settings({"auto_updates": bad})
 
+    def test_source_selection_persists_without_account_preserving_keys_and_other_settings(self):
+        studio = client.Studio(self.home)
+        settings = studio.save_settings({"discogs_token": "keep-source-key", "auto_lookup": False,
+                                         "disabled_sources": ["deezer", "itunes", "discogs"]})
+        rows = {row["name"]: row for row in settings["sources"]}
+        for name in ("deezer", "itunes", "discogs"):
+            self.assertFalse(rows[name]["enabled"])
+            self.assertFalse(rows[name]["selected"])
+        self.assertTrue(rows["discogs"]["available"])
+        self.assertNotIn("keep-source-key", json.dumps(settings))
+        restarted = client.Studio(self.home)
+        self.assertEqual(restarted.disabled_sources(), ["deezer", "itunes", "discogs"])
+        restarted.save_settings({"auto_updates": False})
+        self.assertEqual(restarted.disabled_sources(), ["deezer", "itunes", "discogs"])
+        with patch.object(restarted.lookup.http, "json", side_effect=AssertionError("No provider read")):
+            from tagcast.sources import SourceError
+            with self.assertRaisesRegex(SourceError, "disabled"):
+                restarted.lookup_album("deezer", artist="Artist", album="Album")
+            with self.assertRaisesRegex(SourceError, "disabled"):
+                restarted.lookup_artist("discogs", "Artist")
+        restored = restarted.save_settings({"disabled_sources": []})
+        self.assertTrue(next(s for s in restored["sources"] if s["name"] == "discogs")["enabled"])
+        self.assertEqual(restarted.config["discogs_token"], "keep-source-key")
+        self.assertFalse(restored["auto_lookup"])
+        self.assertPrivate(Path(self.home, "config.json"))
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
+    def test_invalid_source_preferences_do_not_partially_change_or_persist_settings(self):
+        studio = client.Studio(self.home)
+        studio.save_settings({"disabled_sources": ["deezer"]})
+        original = Path(self.home, "config.json").read_bytes()
+        for bad in (None, "deezer", {}, ["unknown"], ["deezer", "deezer"], [False], [{}],
+                    ["deezer"] * 8):
+            with self.subTest(value=bad), self.assertRaises(client.ApiError):
+                studio.save_settings({"disabled_sources": bad, "stream_quality": "orig",
+                                      "discogs_token": "not-saved"})
+            self.assertEqual(studio.config, {"disabled_sources": ["deezer"]})
+            self.assertEqual(Path(self.home, "config.json").read_bytes(), original)
+
     def play_event(self, studio, **patch):
         return {"track_id": "903", "event_id": "play-event-1234567890",
                 "session": studio.playback_session,

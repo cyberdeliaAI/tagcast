@@ -6939,3 +6939,89 @@ test('disabled and readonly searches cannot be cleared and newly rendered querie
   p.run('cleanupView.labelQuery="Keep"');
   assert.match(p.run('genreLabelControls(true)'),/data-search-clear="cleanup-label-search"[^>]* hidden/);
 });
+
+function selectableSources() {
+  return [
+    {name:'musicbrainz',label:'MusicBrainz',albums:true,artists:false,key:'',available:true,selected:true,enabled:true},
+    {name:'deezer',label:'Deezer',albums:true,artists:true,key:'',available:true,selected:true,enabled:true},
+    {name:'itunes',label:'Apple Music / iTunes',albums:true,artists:false,key:'',available:true,selected:true,enabled:true},
+    {name:'discogs',label:'Discogs',albums:true,artists:true,key:'discogs_token',key_help:'Token help',available:true,selected:true,enabled:true},
+    {name:'lastfm',label:'Last.fm',albums:true,artists:false,key:'lastfm_api_key',key_help:'Key help',available:false,selected:true,enabled:false},
+  ];
+}
+
+test('Settings offers selected source switches even without keys and keeps saved-key controls when disabled', async () => {
+  const p=page(); await settle();
+  const sources=selectableSources(); sources[1].selected=false; sources[1].enabled=false;
+  sources[3].selected=false; sources[3].enabled=false;
+  p.run(`lookup.sources=${JSON.stringify(sources)}; openSettings()`);
+  const html=p.nodes.get('#settings-content').innerHTML;
+  assert.match(html,/data-source-toggle="itunes" checked/);
+  assert.match(html,/data-source-toggle="lastfm" checked/,'No key does not change the source preference');
+  assert.doesNotMatch(html,/data-source-toggle="deezer" checked/);
+  assert.doesNotMatch(html,/data-source-toggle="discogs" checked/);
+  assert.match(html,/data-clear-key="discogs_token"/,'Disabling preserves the saved key and its Remove control');
+  assert.match(html,/Saved · type to replace/);
+  assert.match(html,/separate switches above/);
+  const before=p.requests.length;
+  await p.emitDocument('change',{target:{dataset:{sourceToggle:'itunes'},checked:false,closest:()=>null,matches:()=>false}});
+  assert.equal(p.requests.length,before,'Changing a checkbox is a draft until Save');
+});
+
+test('saving and reenabling sources uses the settings POST, preserving playback and editor draft', async () => {
+  const p=page(); await settle();
+  p.run(`lookup.sources=${JSON.stringify(selectableSources())}; lookup.auto=false; playTracks(state.details.get("1"));`);
+  await p.run('openEditor(["1"])');
+  p.run('editing.dirty.add("name")');
+  const before=p.run('JSON.stringify({editing,queue:player.queue,src:audio.src,history:state.history})');
+  const bodies=[];
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/settings'); const body=JSON.parse(options.body); bodies.push(body);
+    return {ok:true,json:async()=>({sources:selectableSources().map(s=>({...s,selected:!body.disabled_sources.includes(s.name),enabled:s.available&&!body.disabled_sources.includes(s.name)})),auto_lookup:false,auto_updates:false})};
+  });
+  for (const disabled of [['deezer','itunes','discogs'],[]]) {
+    await p.run(`saveSettings({elements:{auto_lookup:{checked:false},auto_updates:{checked:false}},querySelectorAll:selector=>selector==='[data-source-toggle]'?lookup.sources.map(s=>({dataset:{sourceToggle:s.name},checked:!${JSON.stringify(disabled)}.includes(s.name)})):[]})`);
+    assert.deepEqual(bodies.at(-1).disabled_sources,disabled);
+    assert.equal(p.run('lookup.sources.find(s=>s.name==="deezer").selected'),!disabled.length);
+  }
+  assert.equal(p.run('JSON.stringify({editing,queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test('automatic and manual suggestions skip disabled sources, distinguish missing keys and handle all-off', async () => {
+  const p=page(); await settle();
+  const sources=selectableSources().map(s=>({...s,selected:!['deezer','itunes'].includes(s.name),enabled:s.enabled&&!['deezer','itunes'].includes(s.name)}));
+  p.run(`lookup.sources=${JSON.stringify(sources)}; lookup.auto=true; renderSource=()=>{}`);
+  p.setFetch(()=>({ok:true,json:async()=>({candidates:[]})}));
+  const first=p.requests.length;
+  p.run('startLookups({artist:"Artist",name:"Album"})'); await settle();
+  const names=()=>p.requests.slice(first).map(r=>new URL(r.url,'http://localhost').searchParams.get('source'));
+  assert.deepEqual(names().sort(),['discogs','musicbrainz']);
+  let html=p.nodes.get('#lookup-results').innerHTML;
+  assert.match(html,/Last\.fm needs a key/); assert.doesNotMatch(html,/Deezer|iTunes/);
+  p.run('runLookups("Artist","Album")'); await settle();
+  assert.deepEqual(names().sort(),['discogs','discogs','musicbrainz','musicbrainz']);
+  const count=p.requests.length;
+  p.run('applyLookupSources(lookup.sources.map(s=>({...s,enabled:false,selected:false}))); runLookups("Artist","Album")');
+  assert.equal(p.requests.length,count);
+  html=p.nodes.get('#lookup-results').innerHTML;
+  assert.match(html,/switched off/); assert.doesNotMatch(html,/needs? a key/);
+});
+
+test('source preference changes reject late album and artwork suggestions and reenabling allows fresh lookups', async () => {
+  const p=page(); await settle();
+  const sources=selectableSources().filter(s=>s.name==='deezer');
+  p.run(`lookup.sources=${JSON.stringify(sources)}; let received=[]`);
+  const pending=[];
+  p.setFetch(()=>new Promise(resolve=>pending.push(resolve)));
+  p.run('fetchSuggestions("album",{artist:"Artist",album:"Album"},s=>received.push(s.name),"album"); fetchSuggestions("artist",{name:"Artist"},s=>received.push(s.name),"artwork")');
+  assert.equal(pending.length,2);
+  p.run('lookup.results.set("deezer",[{cover:"https://example.test/old",score:1}]); applyLookupSources(lookup.sources.map(s=>({...s,selected:false,enabled:false})))');
+  for(const resolve of pending) resolve({ok:true,json:async()=>({candidates:[{title:'Late'}]})});
+  await settle(); assert.deepEqual(p.json('received'),[]); assert.equal(p.run('coverChoices().length'),0);
+  const count=p.requests.length;
+  p.run('fetchSuggestions("artist",{name:"Artist"},s=>received.push(s.name),"artwork")');
+  assert.equal(p.requests.length,count);
+  p.setFetch(()=>({ok:true,json:async()=>({candidates:[]})}));
+  p.run('applyLookupSources(lookup.sources.map(s=>({...s,selected:true,enabled:true}))); fetchSuggestions("artist",{name:"Artist"},s=>received.push(s.name),"artwork")');
+  await settle(); assert.deepEqual(p.json('received'),['deezer']);
+});

@@ -49,6 +49,32 @@ class MatchingTests(unittest.TestCase):
 
 
 class SourceTests(unittest.TestCase):
+    def test_source_selection_defaults_on_independently_of_key_availability(self):
+        lk = lookup([])
+        rows = {row["name"]: row for row in lk.describe()}
+        self.assertTrue(all(row["selected"] for row in rows.values()))
+        self.assertTrue(rows["deezer"]["enabled"])
+        self.assertFalse(rows["discogs"]["available"])
+        self.assertFalse(rows["discogs"]["enabled"])
+
+    def test_disabled_sources_block_album_and_artist_search_before_http_even_with_keys(self):
+        lk = lookup([], keys={"discogs_token": "private-key"})
+        disabled = ["deezer", "itunes", "discogs"]
+        lk.disabled_func = lambda: disabled
+        for name in disabled:
+            with self.subTest(name=name), self.assertRaisesRegex(SourceError, "disabled"):
+                lk.album(name, "Artist", "Album")
+        with self.assertRaisesRegex(SourceError, "disabled"):
+            lk.artist("deezer", "Artist")
+        self.assertEqual(lk.http.calls, [])
+        rows = {row["name"]: row for row in lk.describe()}
+        self.assertTrue(rows["discogs"]["available"])
+        self.assertFalse(rows["discogs"]["selected"])
+        self.assertFalse(rows["discogs"]["enabled"])
+        disabled.clear()
+        self.assertEqual(lk.album("discogs", "Artist", "Album"), [])
+        self.assertTrue(lk.http.calls)
+
     def test_deezer_album_uses_details_for_year_and_genres(self):
         lk = lookup([
             ("search/album", {"data": [{"id": 5, "title": "Mezzanine", "artist": {"name": "Massive Attack"},
