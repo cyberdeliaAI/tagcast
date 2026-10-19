@@ -182,7 +182,7 @@ Publishing these documentation updates to GitHub does not require a release.
 ## Playlist import captures, 19 October 2026
 
 Eight user-supplied original PNGs, copied without resizing or edits. They show the
-0.70.0 interface; source/test-only changes such as shuffle, playback markers and
+0.70.0 interface; changes introduced in 0.70.2, such as shuffle, playback markers and
 compact activity indicators are not present. Used in the Wiki's
 [playlist import walkthrough](https://github.com/cyberdeliaAI/tagcast/wiki/Ratings-favourites-and-playlists#csv-import-walkthrough).
 

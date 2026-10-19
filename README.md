@@ -13,10 +13,10 @@ run Tagcast in your browser with **Python**. Both share the same editor and play
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [0.70.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.0):**
-CSV playlist import with reviewed matching, complete JSON/CSV metadata exports,
-playlist covers and folders, additional artist credits, artist favourites and
-ratings, and optional locally cached album information and artist biographies.
+**New in [0.70.2](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.2):**
+Playlist shuffle and now-playing markers, clear buttons in search fields,
+optional online source selection and compact activity feedback while saving
+and checking changes.
 
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
@@ -44,14 +44,14 @@ ratings, and optional locally cached album information and artist biographies.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 0.70.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.0):
+[Tagcast 0.70.2](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.2):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.0/tagcast-0.70.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,

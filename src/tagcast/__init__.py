@@ -1,3 +1,3 @@
 """Tagcast for iBroadcast."""
 
-__version__ = "0.70.0"
+__version__ = "0.70.2"
