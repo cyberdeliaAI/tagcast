@@ -257,12 +257,11 @@ body.has-player main{padding-bottom:80px}
 .chart-tip span{color:var(--palette-shell-muted,#b9c8bc)}
 @media(max-width:1100px){.overview-grid{grid-template-columns:1fr}.top-grid{grid-template-columns:1fr}}
 .artist-panel{display:flex;align-items:center;gap:16px;min-width:0}
-.artist-photo{width:96px;height:96px;border-radius:8px;overflow:hidden;position:relative;display:grid;place-items:center;background:var(--palette-tint,#c9d4c6);color:var(--palette-ink,#3f5547);font:italic 30px Georgia,serif;flex-shrink:0;box-shadow:0 4px 14px #1d332a1a}
+.artist-photo{width:160px;height:160px;border-radius:8px;overflow:hidden;position:relative;display:grid;place-items:center;background:var(--palette-tint,#c9d4c6);color:var(--palette-ink,#3f5547);font:italic 30px Georgia,serif;flex-shrink:0;box-shadow:0 4px 14px #1d332a1a}
 .artist-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .library-total small{display:block;font-size:9px;color:var(--muted)}
 .library-total small{margin-top:4px}
-.artist-meta .text-action{margin-top:6px}
-@media(max-width:760px){.artist-panel .artist-photo{width:64px;height:64px}}
+@media(max-width:760px){.artist-panel .artist-photo{width:96px;height:96px}}
 .artist-favourite{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;min-width:44px;min-height:44px;margin-left:6px;padding:4px;border:0;border-radius:6px;background:transparent;color:var(--muted)}
 .artist-favourite svg{display:block;width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .artist-favourite.is-selected svg{fill:currentColor}
@@ -325,12 +324,7 @@ body.has-player main{padding-bottom:80px}
 
 /* ---- album artist browsing --------------------------------------------- */
 .artists-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:26px 24px;padding-bottom:24px}
-.artist-card{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--palette-surface,#fff);color:var(--ink);padding:20px;text-align:center;min-width:0;transition:background .15s}
-.artist-card-open{border:0;padding:0;background:none;color:inherit;width:100%;text-align:center}
-.artist-card-open::after{content:"";position:absolute;inset:0;border-radius:10px;z-index:1}
-.artist-card-open:focus-visible{outline:none}
-.artist-card-open:focus-visible::after{outline:2px solid var(--green);outline-offset:3px}
-.artist-card-photo>.artist-card-edit{position:absolute;inset:0;z-index:2;width:100%;height:100%}
+.artist-card{border:1px solid var(--line);border-radius:10px;background:var(--palette-surface,#fff);color:var(--ink);padding:20px;text-align:center;min-width:0;transition:background .15s}
 .artist-card:hover{background:var(--palette-tint,#edf2e7)}
 .artist-card-photo{display:grid;place-items:center;position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--palette-tint,#c9d4c6);color:var(--palette-ink,#3f5547);font:italic 48px Georgia,serif;margin-bottom:18px}
 .artist-card-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -755,7 +749,6 @@ body.help-open{overflow:hidden}
 /* Artwork entry points retain the existing comparison and explicit save. */
 .image-edit-button{position:relative;display:block;border:0;padding:0;background:none;border-radius:8px;flex:none;cursor:pointer}
 .image-edit-button.artist-photo{display:grid;background:var(--palette-tint,#c9d4c6)}
-.artist-card-photo>.artist-card-edit:focus-visible{outline-offset:-3px}
 .image-edit-button:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 .image-edit-label{position:absolute;inset:auto 0 0;padding:8px 4px;background:#1d2f26e6;color:#fff;border-radius:0 0 8px 8px;text-align:center;font:500 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;opacity:0;transition:opacity .15s;z-index:3}
 .image-edit-button:hover>.image-edit-label,.image-edit-button:focus-visible>.image-edit-label{opacity:1}

@@ -220,15 +220,6 @@ async function undoArtwork(entry) {
 }
 
 document.addEventListener("click", event => {
-  const artistImage = event.target.closest("[data-artist-image]");
-  if (artistImage) {
-    const target = artistPageTarget(artistImage.dataset.artistImage, artistImage.dataset.artistImageId);
-    if (artistImage.isConnected && live() && !state.loading && !saving && !checking
-        && !document.querySelector("dialog[open]") && ["artists", "artist-favourites"].includes(state.screen)
-        && String(artistBrowse.library) === artistImage.dataset.artistLibrary
-        && target?.id === artistImage.dataset.artistImageId) openArtwork(target);
-    return;
-  }
   if (event.target.closest("#change-cover")) { openArtwork(albumArtTarget()); return; }
   if (event.target.closest("#change-artist-image")) { openArtwork(artistArtTarget()); return; }
   const pageImage = event.target.closest("#change-artist-page-image");

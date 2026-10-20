@@ -317,9 +317,9 @@ and preserve a valid script order in `index.html`.
   never download track details or add requests just to display these totals.
 - Playlist details show the duration of all active playlist positions from the loaded
   server library, including repeats across pages; flag missing durations explicitly.
-  Playlist covers and rounded-square artist photos open the existing artwork comparison
-  through an image overlay on hover/focus, always visible on touch. Artist cards keep
-  separate native buttons for image editing and navigation, with no nested buttons.
+  Playlist covers and the larger rounded-square artist-page photo open the existing
+  artwork comparison through an image overlay on hover/focus, always visible on touch.
+  Artist overview cards only open albums; they have no image-editing action.
   Edit the native identity supplying the displayed image. The artist-page header shows
   only its photo; its album count remains above the album list, without a track total.
 - `browse.js` provides Track artists, Composers, Genres and Release year. Index

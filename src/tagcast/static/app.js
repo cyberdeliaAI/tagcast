@@ -440,11 +440,8 @@ function artistGroups() {
   const groups = new Map(), ratings = new Map();
   for (const album of albumShelf()) for (const name of new Set(albumArtistEntries(album).map(a => a.name))) {
     const artist = albumArtistEntries(album).find(a => a.name === name);
-    const group = groups.get(name) || {count: 0, image: "", imageArtistId: null, ids: new Set()};
-    if (!group.image && artist.image) {
-      group.image = artist.image; group.imageArtistId = Number(artist.id) > 0 ? String(artist.id) : null;
-    }
-    group.count += 1; groups.set(name, group);
+    const group = groups.get(name) || {count: 0, image: artist.image || "", ids: new Set()};
+    group.image ||= artist.image || ""; group.count += 1; groups.set(name, group);
   }
   for (const album of state.albums) for (const artist of albumArtistEntries(album)) {
     if (Number(artist.id) > 0) { groups.get(artist.name)?.ids.add(String(artist.id)); ratings.set(String(artist.id), artist.rating || 0); }

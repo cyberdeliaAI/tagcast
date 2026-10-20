@@ -2035,30 +2035,12 @@ test("artist cards use an available image, safe metadata and initials when an im
   assert.match(html, /loading="lazy" referrerpolicy="no-referrer"/);
 });
 
-test("artist image controls open the comparison independently of browsing and reject stale cards", async () => {
-  const p = livePage(); await settle();
-  p.run('playTracks(state.details.get("1")); showArtistBrowse()');
-  const before = p.run('JSON.stringify({screen:state.screen,artist:state.artist,queue:player.queue,src:audio.src,history:state.history})');
-  const html = p.nodes.get('#artists-grid').innerHTML;
-  assert.match(html, /data-artist-image="Kate Bush"/);
-  assert.match(html, /class="artist-card-open" data-browse-artist="Kate Bush"/);
-  const id = p.run('artistGroups().find(([name]) => name === \"Kate Bush\")[1].ids[0]');
-  const control = {isConnected:true, dataset:{artistImage:'Kate Bush', artistImageId:id, artistLibrary:String(p.run('artistBrowse.library'))}};
-  p.setFetch(() => ({ok:true,json:async()=>({options:[]})}));
-  await p.click({'[data-artist-image]':control});
-  assert.equal(p.run('art.target.id'), id);
-  assert.equal(p.nodes.get('#artwork').open, true);
-  assert.match(p.nodes.get('#artwork-content').innerHTML, /Replaces this artist.*everywhere in iBroadcast/);
-  assert.equal(p.run('JSON.stringify({screen:state.screen,artist:state.artist,queue:player.queue,src:audio.src,history:state.history})'),before);
-  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length, 0);
-  p.nodes.get('#artwork').close();
-  p.run('art.target = null; resetArtistBrowse()');
-  await p.click({'[data-artist-image]':control});
-  assert.equal(p.run('art.target'), null);
-  control.dataset.artistLibrary = String(p.run('artistBrowse.library'));
-  control.isConnected = false;
-  await p.click({'[data-artist-image]':control});
-  assert.equal(p.run('art.target'), null);
+test("live artist overview cards open albums without exposing image editing", async () => {
+  const p=livePage(); await settle(); p.run('showArtistBrowse()');
+  const html=p.nodes.get('#artists-grid').innerHTML;
+  assert.match(html, /<button class="artist-card" data-browse-artist="Kate Bush"/);
+  assert.doesNotMatch(html, /data-artist-image|image-edit-label|Change image|Add image/);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });
 
 test("artist header puts its image action on the photo and demo cards keep navigation only", async () => {
@@ -2074,19 +2056,18 @@ test("artist header puts its image action on the photo and demo cards keep navig
   assert.match(p.nodes.get('#artists-grid').innerHTML, /data-browse-artist=/);
 });
 
-test("artist card image editing uses the identity supplying the photo when native names are shared", async () => {
+test("artist page image editing uses the identity supplying the photo when native names are shared", async () => {
   const p=livePage(); await settle();
   p.run(`state.albums = [
     {...state.albums[0],id:"a",artist:"Shared name",artist_id:"10",artist_image:""},
     {...state.albums[0],id:"b",artist:"Shared name",artist_id:"11",artist_image:"https://example.test/eleven-150"}
   ]; showArtistBrowse()`);
-  assert.match(p.nodes.get('#artists-grid').innerHTML,/data-artist-image-id="11"/);
+  p.run('setArtist("Shared name")');
+  assert.match(p.nodes.get('#artist-panel').innerHTML,/data-artist-page-image-id="11"/);
   p.setFetch(()=>({ok:true,json:async()=>({options:[]})}));
-  await p.click({'[data-artist-image]':{isConnected:true,dataset:{artistImage:'Shared name',artistImageId:'11',artistLibrary:String(p.run('artistBrowse.library'))}}});
+  await p.click({'#change-artist-page-image':{dataset:{artistPageImageId:'11'}}});
   assert.equal(p.run('art.target.id'),'11');
   assert.equal(p.run('art.target.current'),'https://example.test/eleven-300');
-  p.nodes.get('#artwork').close(); p.run('setArtist(\"Shared name\")');
-  assert.match(p.nodes.get('#artist-panel').innerHTML,/data-artist-page-image-id=\"11\"/);
 });
 
 test("Random album artists keeps one complete order across pages, filters and Back without loading tracks", async () => {
