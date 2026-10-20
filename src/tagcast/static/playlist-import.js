@@ -2,7 +2,7 @@
 
 // CSV contents stay local. Matching and choices never write music metadata or play audio.
 const csvImport = {request: 0, data: null, details: null, session: "", busy: false,
-  name: "", description: "", fileData: null, mapping: null, durationUnit: "seconds", artistSeparator: "", show: "unresolved", offset: 0, resolving: null, search: null, submitted: false, createdPlaylist: null};
+  name: "", description: "", fileData: null, mapping: null, durationUnit: "seconds", artistSeparator: "", copyPreference: "manual", show: "unresolved", offset: 0, resolving: null, search: null, submitted: false, createdPlaylist: null};
 const csvFields = {title: "Track title (required)", artist: "Performing artist (required)",
   album: "Album title", album_artist: "Album artist", duration: "Duration", year: "Release year / date", track: "Track number"};
 const csvCloseReview = {request: null, focus: null};
@@ -21,7 +21,8 @@ async function pausePlaylistImport() {
     description: $("#csv-playlist-description")?.value ?? csvImport.description, mapping, mapping_step: Boolean(form),
     duration_unit: form?.elements.duration_unit.value || csvImport.durationUnit,
     artist_separator: form?.elements.artist_separator.value ?? csvImport.artistSeparator,
-    show: csvImport.show, offset: csvImport.offset};
+    show: csvImport.show, offset: csvImport.offset,
+    copy_preference: form?.elements.copy_preference.value ?? csvImport.copyPreference};
   csvImportWorking(true, "Saving this import locally…");
   try {
     await api("/api/playlist-import/pause", {id: data.id, revision: data.revision, session: csvImport.session, ...fields});
@@ -66,7 +67,7 @@ async function resumePausedImport(saved) {
     const result = await api("/api/playlist-import/resume", {saved_id: saved.id, saved_token: saved.token, session});
     if (!csvImportCurrent(request)) return;
     Object.assign(csvImport, {name: result.name, description: result.description, fileData: result.file,
-      mapping: result.mapping, durationUnit: result.duration_unit, artistSeparator: result.artist_separator});
+      mapping: result.mapping, durationUnit: result.duration_unit, artistSeparator: result.artist_separator, copyPreference: result.copy_preference || "manual"});
     csvImportWorking(false);
     if (result.view.phase === "mapping") renderCsvMapping(result.view); else renderCsvMatches(result.view);
     setActionStatus("#csv-import-status", "Resumed. Matches were checked again; unchanged manual choices and skipped records were kept.");
@@ -112,7 +113,7 @@ function resetPlaylistImport() {
   $("#csv-import-discard").close();
   csvImport.request += 1; csvImport.data = null; csvImport.busy = false;
   csvImport.resolving = null; csvImport.search = null; csvImport.fileData = null; csvImport.mapping = null;
-  csvImport.name = ""; csvImport.description = "";
+  csvImport.name = ""; csvImport.description = ""; csvImport.copyPreference = "manual";
   csvImport.createdPlaylist = null;
   csvPausedView.rows = []; csvPausedView.removing = null; syncCsvPauseButton();
   $("#playlist-import").close(); $("#csv-import-content").innerHTML = ""; setActionStatus("#csv-import-status", "");
@@ -122,7 +123,7 @@ function openPlaylistImport() {
   if (!live() || state.loading || collectionsView.busy || saving || checking || document.querySelector("dialog[open]")) return;
   Object.assign(csvImport, {request: csvImport.request + 1, data: null, details: state.details,
     session: state.connection.playback_session, busy: false, name: "", description: "", show: "unresolved", offset: 0,
-    resolving: null, search: null, submitted: false, fileData: null, mapping: null, createdPlaylist: null});
+    resolving: null, search: null, submitted: false, fileData: null, mapping: null, copyPreference: "manual", createdPlaylist: null});
   setActionStatus("#csv-import-status", "");
   $("#csv-import-title").textContent = "Import a playlist"; syncCsvPauseButton();
   $("#csv-import-content").innerHTML = `<p>Choose a CSV and link its columns to track information. Matching uses your loaded library. You will review every selection before creating a new private playlist.</p>
@@ -214,9 +215,11 @@ function renderCsvMapping(data) {
   const options = chosen => '<option value="">Choose / do not use</option>' + data.columns.map((name, i) => `<option value="${i}" ${chosen === i ? "selected" : ""}>${i + 1}. ${escapeHtml(name || "(unnamed)")}</option>`).join("");
   const unit = data.duration_unit || (/\bms\b|milli/i.test(data.columns[data.mapping.duration] || "") ? "milliseconds" : "seconds");
   $("#csv-import-content").innerHTML = `<h3 tabindex="-1">1. Link columns</h3><p>${data.total} data records · ${data.blank_records} blank records omitted. Confirm the suggested columns using the preview.</p>
-    <form id="csv-map-form"><div class="csv-import-fields">${Object.entries(csvFields).map(([key, label]) => `<label>${label}<select name="map_${key}" ${["title", "artist"].includes(key) ? "required" : ""}>${options(data.mapping[key])}</select></label>`).join("")}
+    <form id="csv-map-form"><div class="csv-import-fields">${Object.entries(csvFields).map(([key, label]) => `<label>${label}<select name="map_${key}" ${key === "album" ? 'aria-label="Album title" aria-describedby="csv-album-hint"' : ""} ${["title", "artist"].includes(key) ? "required" : ""}>${options(data.mapping[key])}</select>${key === "album" ? '<small id="csv-album-hint" class="muted">Mapping Album title makes matching stricter: only tracks from that album can match automatically. Choose “do not use” to allow copies from other albums or compilations.</small>' : ""}</label>`).join("")}
     <label>Numeric duration unit <select name="duration_unit"><option value="seconds" ${unit === "seconds" ? "selected" : ""}>Seconds</option><option value="milliseconds" ${unit === "milliseconds" ? "selected" : ""}>Milliseconds</option></select></label>
-    <label>Names inside an artist cell <select name="artist_separator"><option value="">Keep as one name</option><option value=";" ${data.artist_separator === ";" ? "selected" : ""}>Separate names on semicolons (;)</option></select></label></div>
+    <label>Names inside an artist cell <select name="artist_separator"><option value="">Keep as one name</option><option value=";" ${data.artist_separator === ";" ? "selected" : ""}>Separate names on semicolons (;)</option></select></label>
+    <label>When multiple tracks match <select name="copy_preference">${Object.entries({manual: "Choose manually", flac: "Prefer FLAC", oldest: "Prefer oldest year", first: "Choose first match", flac_oldest: "FLAC first, then oldest year"}).map(([value, label]) => `<option value="${value}" ${(data.copy_preference || csvImport.copyPreference) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label></div>
+    <p class="muted">Copy preferences apply only when all mapped fields match. FLAC is preferred when available; oldest year uses the stored track year, with album year as fallback, and puts unknown years last. This can be a compilation or reissue year. Remaining ties and First match use the lowest track ID for a stable choice. You can change any automatic choice before the final review.</p>
     <p class="muted">Title and performing artist are required. Durations also accept mm:ss or hh:mm:ss. Optional album, album artist, duration, year and track number help distinguish copies. Version text is retained; live, remix and other title differences need a manual choice. Spotify links and ISRCs are not used.</p>
     <div class="table-scroll"><table><thead><tr>${data.columns.map((name, i) => `<th>${i + 1}. ${escapeHtml(name)}</th>`).join("")}</tr></thead><tbody>${data.sample.map(row => `<tr>${row.cells.map(value => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
     <div class="dialog-footer"><button type="button" class="button" data-close="playlist-import">Cancel</button><button class="button primary">Match tracks →</button></div></form>`;
@@ -331,8 +334,8 @@ document.addEventListener("submit", event => {
   if (form.id === "csv-map-form") {
     event.preventDefault();
     const mapping = Object.fromEntries(Object.keys(csvFields).map(key => [key, form.elements[`map_${key}`].value === "" ? null : Number(form.elements[`map_${key}`].value)]));
-    csvImport.mapping = mapping; csvImport.durationUnit = form.elements.duration_unit.value; csvImport.artistSeparator = form.elements.artist_separator.value;
-    return csvImportCall("match", {mapping, duration_unit: form.elements.duration_unit.value, artist_separator: form.elements.artist_separator.value, show: "unresolved", offset: 0});
+    csvImport.mapping = mapping; csvImport.durationUnit = form.elements.duration_unit.value; csvImport.artistSeparator = form.elements.artist_separator.value; csvImport.copyPreference = form.elements.copy_preference.value;
+    return csvImportCall("match", {mapping, duration_unit: form.elements.duration_unit.value, artist_separator: form.elements.artist_separator.value, copy_preference: csvImport.copyPreference, show: "unresolved", offset: 0});
   }
   if (form.id === "csv-review-form") {
     event.preventDefault(); csvImport.name = form.elements.name.value; csvImport.description = form.elements.description.value;
@@ -376,7 +379,7 @@ document.addEventListener("click", event => {
   if (target.closest("[data-csv-export]")) return exportUnresolvedCsv();
   if (target.closest("[data-csv-import]")) return openPlaylistImport();
   if (target.closest("[data-csv-columns]") && csvImportCurrent() && !csvImport.busy && csvImport.fileData) {
-    const data = {...csvImport.fileData, id: csvImport.data.id, revision: csvImport.data.revision, mapping: csvImport.mapping, duration_unit: csvImport.durationUnit, artist_separator: csvImport.artistSeparator};
+    const data = {...csvImport.fileData, id: csvImport.data.id, revision: csvImport.data.revision, mapping: csvImport.mapping, duration_unit: csvImport.durationUnit, artist_separator: csvImport.artistSeparator, copy_preference: csvImport.copyPreference};
     return renderCsvMapping(data);
   }
   const resolver = target.closest("[data-csv-resolve]");

@@ -6804,17 +6804,36 @@ test('CSV file errors retain the file step and do not send truncated or undecoda
   assert.equal(p.requests.length,requests);
 });
 
+test('CSV mapping explains album strictness and keeps explicit copy preference when revisiting columns', async () => {
+  const p=await csvImportPage(); await settle();
+  const before=p.requests.length;
+  p.run(`csvImport.mapping={title:0,artist:1}; csvImport.copyPreference="flac_oldest";
+    renderCsvMapping({id:"draft",revision:1,columns:["Title","Artist","Album"],sample:[],total:2,blank_records:0,mapping:{title:0,artist:1,album:2}});`);
+  let html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/Mapping Album title makes matching stricter/);
+  assert.match(html,/copies from other albums or compilations/);
+  assert.match(html,/value="flac_oldest" selected/);
+  assert.match(html,/apply only when all mapped fields match/);
+  assert.match(html,/unknown years last/);
+  assert.match(html,/lowest track ID/);
+  assert.equal((html.match(/<option value="(?:manual|flac|oldest|first|flac_oldest)"/g)||[]).length,5);
+  await p.click({'[data-csv-columns]':{}});
+  html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/value="flac_oldest" selected/);
+  assert.equal(p.requests.length,before,'Choosing or viewing options never writes or fetches');
+});
+
 test('CSV mapping submits zero-based column choices and units only after the match button', async () => {
   const p=await csvImportPage(); await settle();
   p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:1}');
   p.setFetch((url,options)=> {
     assert.equal(url,'/api/playlist-import/match'); const body=JSON.parse(options.body);
     assert.deepEqual(body.mapping,{title:0,artist:1,album:null,album_artist:null,duration:2,year:null,track:null});
-    assert.equal(body.duration_unit,'milliseconds'); assert.equal(body.artist_separator,';');
+    assert.equal(body.duration_unit,'milliseconds'); assert.equal(body.artist_separator,';'); assert.equal(body.copy_preference,'flac_oldest');
     assert.equal(body.show,'unresolved'); assert.equal(body.offset,0);
     return {ok:true,json:async()=>csvMatched({show:'unresolved'})};
   });
-  await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-map-form',elements:{map_title:{value:'0'},map_artist:{value:'1'},map_album:{value:''},map_album_artist:{value:''},map_duration:{value:'2'},map_year:{value:''},map_track:{value:''},duration_unit:{value:'milliseconds'},artist_separator:{value:';'}}}});
+  await p.emitDocument('submit',{preventDefault(){},target:{id:'csv-map-form',elements:{map_title:{value:'0'},map_artist:{value:'1'},map_album:{value:''},map_album_artist:{value:''},map_duration:{value:'2'},map_year:{value:''},map_track:{value:''},duration_unit:{value:'milliseconds'},artist_separator:{value:';'},copy_preference:{value:'flac_oldest'}}}});
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/1 unresolved/);
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/&lt;Unknown&gt;/);
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="unresolved" selected/);
@@ -7049,7 +7068,7 @@ function pausedCsvRow(overrides={}) {
 test('Pause import explicitly saves local progress and closes only after success without affecting playback', async () => {
   for (const success of [true,false]) {
     const p=await csvImportPage(); await settle();
-    p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); csvImport.mapping={title:0,artist:1};
+    p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); csvImport.mapping={title:0,artist:1}; csvImport.copyPreference="flac_oldest";
       $("#csv-playlist-name").value="My paused import"; $("#csv-playlist-description").value="Notes";
       { const query=document.querySelector.bind(document); document.querySelector=s=>s==="#csv-map-form"?null:query(s); }`);
     assert.equal(p.nodes.get('#csv-import-pause').hidden,false);
@@ -7058,7 +7077,7 @@ test('Pause import explicitly saves local progress and closes only after success
       assert.equal(url,'/api/playlist-import/pause');
       const body=JSON.parse(options.body);
       assert.deepEqual(body.mapping,{title:0,artist:1});
-      assert.equal(body.name,'My paused import'); assert.equal(body.description,'Notes');
+      assert.equal(body.name,'My paused import'); assert.equal(body.description,'Notes'); assert.equal(body.copy_preference,'flac_oldest');
       assert.equal(body.revision,2); assert.equal(body.session,'csv-session');
       return {ok:success,status:503,json:async()=>success?{saved:pausedCsvRow()}:{error:'Local disk full'}};
     });
@@ -7104,7 +7123,7 @@ test('Resuming refreshes the library before restoring matches and never reuses a
     assert.equal(p.run('refreshFinished'),true); assert.equal(url,'/api/playlist-import/resume');
     assert.deepEqual(JSON.parse(options.body),{saved_id:row.id,saved_token:row.token,session:'csv-session'});
     return {ok:true,json:async()=>({name:row.name,description:row.description,
-      mapping:{title:0,artist:1},duration_unit:'seconds',artist_separator:'',file:{mapping:{title:0,artist:1},columns:['Title','Artist'],sample:[]},
+      mapping:{title:0,artist:1},duration_unit:'seconds',artist_separator:'',copy_preference:'flac_oldest',file:{mapping:{title:0,artist:1},columns:['Title','Artist'],sample:[]},
       view:csvMatched({show:'manual'})})};
   });
   await p.run(`resumePausedImport(${JSON.stringify(row)})`);
@@ -7113,6 +7132,7 @@ test('Resuming refreshes the library before restoring matches and never reuses a
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="manual" selected/);
   assert.match(p.nodes.get('#csv-import-status').textContent,/Resumed/);
   assert.equal(p.run('csvImport.submitted'),false);
+  assert.equal(p.run('csvImport.copyPreference'),'flac_oldest');
   assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
   assert.equal(p.requests.filter(r=>r.url.endsWith('/save')||r.url.endsWith('/review')).length,0);
 });

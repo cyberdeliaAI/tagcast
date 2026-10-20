@@ -14,9 +14,9 @@ from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from heapq import nlargest
 
-from .library import ConflictError, LibraryError, fold, number, text, title_key
+from .library import FORMATS, ConflictError, LibraryError, fold, number, text, title_key
 from .metadata_export import csv_cell
-from .playlist_import_store import MAX_PAUSED, PausedImports
+from .playlist_import_store import COPY_PREFERENCES, MAX_PAUSED, PausedImports
 
 MAX_ROWS = 10000
 MAX_TEXT = 10 * 1024 * 1024
@@ -183,7 +183,9 @@ class TrackCatalogue:
             reasons.append("CSV fields need attention; check the warnings.")
         if row["eligible"] > 1:
             fields = "the valid mapped fields" if row["source"]["warnings"] else "all mapped fields"
-            reasons.append(f'{row["eligible"]} library tracks match {fields}. Choose a copy.')
+            decision = (f'Originally selected using: {COPY_PREFERENCES[row["copy_preference"]]}.'
+                        if row.get("preferred") else "Choose a copy.")
+            reasons.append(f'{row["eligible"]} library tracks match {fields}. {decision}')
         elif not row["eligible"]:
             if row["candidates"]:
                 differences = list(self.differences(row["source"], row["candidates"][0]))
@@ -193,15 +195,31 @@ class TrackCatalogue:
                 reasons.append("No matching suggestion was found in the loaded library. Search manually or check the CSV columns.")
         return reasons
 
-    def match(self, source):
+    def preferred_copy(self, eligible, preference):
+        def rank(track_id):
+            album_id = self.members[track_id][0]
+            track, album = self.library.tracks[track_id], self.library.albums[album_id]
+            flac = FORMATS.get(text(track.get("type")).strip().lower()) == "FLAC"
+            year = number(track.get("year")) or number(album.get("year"))
+            return (not flac if preference in ("flac", "flac_oldest") else False,
+                    (year if year > 0 else math.inf) if preference in ("oldest", "flac_oldest") else 0,
+                    track_id)
+        return min(eligible, key=rank)
+
+    def match(self, source, preference="manual"):
         title, artists = title_key(source["title"]), source["artists"]
         exact = self.titles.get(title, []) if title and artists else []
         eligible = [i for i in exact if not any(self.differences(source, i))]
-        automatic = eligible[0] if len(eligible) == 1 and not source["warnings"] else None
+        automatic = None
+        if eligible and not source["warnings"]:
+            if len(eligible) == 1:
+                automatic = eligible[0]
+            elif preference != "manual":
+                automatic = self.preferred_copy(eligible, preference)
         if automatic:
-            return automatic, [automatic], 1
+            return automatic, [automatic], len(eligible)
         eligible_ids = set(eligible)
-        # Title-version differences and duplicate copies always remain a manual decision.
+        # Title-version differences remain manual; duplicate copies need an explicit preference.
         # Automatic decisions use the complete exact index above. Alternative
         # suggestions are bounded; explicit search can page through every copy.
         pool = set(exact[:1000]) | set(eligible[:30])
@@ -308,12 +326,15 @@ class PlaylistImport:
             mapping = body.get("mapping", draft.get("mapping", guessed_mapping(draft["columns"])))
             unit = body.get("duration_unit", draft.get("duration_unit", "seconds"))
             separator = body.get("artist_separator", draft.get("artist_separator", ""))
+            preference = body.get("copy_preference", draft.get("copy_preference", "manual"))
+            if not isinstance(preference, str) or preference not in COPY_PREFERENCES:
+                raise LibraryError("Choose a valid matching-copy preference.")
             mapping_step = body.get("mapping_step", False)
             if not isinstance(mapping, dict) or set(mapping) - set(FIELDS) or any(v is not None and (type(v) is not int or not 0 <= v < len(draft["columns"])) for v in mapping.values()) or unit not in ("seconds", "milliseconds") or separator not in ("", ";"):
                 raise LibraryError("Choose valid column mappings and duration units.")
             if type(mapping_step) is not bool:
                 raise LibraryError("Choose a valid import step.")
-            mapping_step = mapping_step or draft["phase"] == "mapping" or mapping != draft.get("mapping") or unit != draft.get("duration_unit") or separator != draft.get("artist_separator")
+            mapping_step = mapping_step or draft["phase"] == "mapping" or mapping != draft.get("mapping") or unit != draft.get("duration_unit") or separator != draft.get("artist_separator") or preference != draft.get("copy_preference", "manual")
             show, offset = body.get("show", "unresolved"), self._page(body)
             if show not in ("all", "unresolved", "automatic", "manual", "skipped"):
                 raise LibraryError("Choose a valid import filter.")
@@ -332,7 +353,7 @@ class PlaylistImport:
             row = {"id": key, "token": secrets.token_hex(16), "saved_at": time.time(), "state": "paused",
                    "name": name.strip(), "description": description, "phase": "mapping" if mapping_step else "matched",
                    "columns": draft["columns"], "records": draft["records"], "blanks": draft["blanks"], "delimiter": draft["delimiter"],
-                   "mapping": mapping, "duration_unit": unit, "artist_separator": separator, "show": show, "offset": offset,
+                   "mapping": mapping, "duration_unit": unit, "artist_separator": separator, "copy_preference": preference, "show": show, "offset": offset,
                    "unresolved": 0 if mapping_step else self._summary(draft)["unresolved"],
                    "choices": [({key: r[key] for key in ("position", "status", "choice", "signature")}
                                 if r["status"] in ("manual", "skipped") else r["previous_choice"])
@@ -361,6 +382,7 @@ class PlaylistImport:
             client, library = self._context(body)
             account = self.studio.library_user
             saved = self.paused_store.selected(self.paused_store.load(account), body)
+            preference = saved.get("copy_preference", "manual")
             if saved["state"] != "paused":
                 raise ConflictError("Playlist creation was already requested. Check Playlists before importing again.")
             while len(self.drafts) >= 2:
@@ -374,12 +396,12 @@ class PlaylistImport:
             self.drafts[key] = draft
             file_data = {key: draft[key] for key in ("id", "revision", "phase", "columns", "delimiter")}
             file_data.update(sample=draft["records"][:5], total=len(draft["records"]), blank_records=draft["blanks"],
-                             mapping=saved["mapping"], duration_unit=saved["duration_unit"], artist_separator=saved["artist_separator"])
+                             mapping=saved["mapping"], duration_unit=saved["duration_unit"], artist_separator=saved["artist_separator"], copy_preference=preference)
             view = file_data
             try:
                 if saved["phase"] != "mapping":
                     fields = {"id": key, "revision": 1, "session": body["session"], "mapping": saved["mapping"],
-                              "duration_unit": saved["duration_unit"], "artist_separator": saved["artist_separator"]}
+                              "duration_unit": saved["duration_unit"], "artist_separator": saved["artist_separator"], "copy_preference": preference}
                     self.match(fields)
                     catalogue = self._index(library)
                     for choice in saved["choices"]:
@@ -396,7 +418,7 @@ class PlaylistImport:
                     view = self._view(draft, {"show": saved["show"], "offset": saved["offset"]})
                 self._context(body, draft)
                 return {"view": view, "file": file_data, "name": saved["name"], "description": saved["description"],
-                        "mapping": saved["mapping"], "duration_unit": saved["duration_unit"], "artist_separator": saved["artist_separator"]}
+                        "mapping": saved["mapping"], "duration_unit": saved["duration_unit"], "artist_separator": saved["artist_separator"], "copy_preference": preference}
             except Exception:
                 self.drafts.pop(key, None)
                 raise
@@ -443,6 +465,9 @@ class PlaylistImport:
         with self.lock:
             draft = self._draft(body, ("mapping", "matched", "review"))
             mapping, unit, separator = body.get("mapping"), body.get("duration_unit", "seconds"), body.get("artist_separator", "")
+            preference = body.get("copy_preference", "manual")
+            if not isinstance(preference, str) or preference not in COPY_PREFERENCES:
+                raise LibraryError("Choose a valid matching-copy preference.")
             if not isinstance(mapping, dict) or set(mapping) - set(FIELDS) or unit not in ("seconds", "milliseconds") or separator not in ("", ";"):
                 raise LibraryError("Choose valid column mappings and duration units.")
             for key in FIELDS:
@@ -472,14 +497,15 @@ class PlaylistImport:
                         source["warnings"].append(f"Invalid {key}; check the column")
                 cache_key = tuple(source[key] for key in FIELDS) + tuple(source["warnings"])
                 if cache_key not in matches:
-                    matches[cache_key] = catalogue.match(source)
+                    matches[cache_key] = catalogue.match(source, preference)
                 automatic, candidates, eligible = matches[cache_key]
                 rows.append({"position": position, "line": record["line"], "source": source,
                              "status": "automatic" if automatic else "ambiguous" if candidates else "missing",
                              "choice": automatic, "candidates": candidates, "eligible": eligible,
+                             "copy_preference": preference, "preferred": bool(automatic and eligible > 1),
                              "signature": catalogue.signature(automatic) if automatic else None})
             self._context(body, draft)
-            draft.update(rows=rows, mapping=dict(mapping), duration_unit=unit, artist_separator=separator,
+            draft.update(rows=rows, mapping=dict(mapping), duration_unit=unit, artist_separator=separator, copy_preference=preference,
                          revision=draft["revision"] + 1, phase="matched", review=None)
             return self._view(draft, body)
 
