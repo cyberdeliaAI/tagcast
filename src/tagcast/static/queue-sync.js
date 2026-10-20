@@ -9,8 +9,8 @@ function applyQueueSettings(data) {
   $("#devices-button").hidden = !queueSync.enabled;
   if (!queueSync.enabled) {
     clearTimeout(queueSync.timer); queueSync.active = false; queueSync.view = null; queueSync.allowed = false;
-    $("#player").hidden = !player.queue[player.index];
-    document.body.classList.toggle("has-player", Boolean(player.queue[player.index]));
+    $("#player").hidden = !player.queue.length;
+    document.body.classList.toggle("has-player", Boolean(player.queue.length));
   }
 }
 
@@ -110,8 +110,8 @@ async function pollQueue() {
     }
     if (view.state?.role === "controller") { queueSync.allowed = false; audio.pause(); playReporting.watch = null; closeVisualPlayer(); }
     const controlling = queueSync.active && (!view.own || view.state?.role === "controller");
-    $("#player").hidden = controlling || !player.queue[player.index];
-    document.body.classList.toggle("has-player", !controlling && Boolean(player.queue[player.index]));
+    $("#player").hidden = controlling || !player.queue.length;
+    document.body.classList.toggle("has-player", !controlling && Boolean(player.queue.length));
     if (typeof syncSystemPlayback === "function") syncSystemPlayback();
     renderDevices(false);
   } catch (error) { queueSync.error = error.message; renderDevices(false); }
