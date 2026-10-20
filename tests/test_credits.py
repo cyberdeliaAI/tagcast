@@ -126,9 +126,10 @@ class LargePlaylistTests(unittest.TestCase):
         self.library.playlists = decode_table({"1": {"name": "Large", "type": "playlist", "tracks": [100, 101] * 10001}})
         self.library.playlists_loaded = True
         self.studio = SimpleNamespace(library=self.library, library_user="account", playback_session="session",
-                                      client=object(), save_lock=threading.Lock())
+                                      client=object(), save_lock=threading.Lock(), lock=threading.RLock())
         self.studio._require_client = lambda: self.studio.client
         self.studio._current = lambda *args, **kwargs: (self.library, "memory")
+        self.studio._library = lambda: (self.library, self.studio.library_user)
         self.collections = Collections(self.studio)
 
     def test_large_playlist_has_bounded_page_rows_ids_and_account_scoped_snapshot(self):

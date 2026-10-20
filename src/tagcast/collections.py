@@ -219,11 +219,17 @@ class Collections:
             return {"results": [{"id": str(i), "favourite": group.issubset(saved)}
                                 for i, group in zip(ids, members)]}
 
-    def library(self, refresh=False):
+    def library(self, refresh=False, cached=False):
         client = self.studio._require_client()
-        library, _ = self.studio._current(client, refresh=refresh)
+        if cached and not refresh:
+            library, _ = self.studio._library()
+        else:
+            library, _ = self.studio._current(client, refresh=refresh)
         if not library.playlists_loaded:
             library, _ = self.studio._current(client, refresh=True)
+        with self.studio.lock:
+            if client is not self.studio.client or library is not self.studio.library:
+                raise ConflictError("The account or library changed. Reload the library.")
         return client, library
 
     @staticmethod
@@ -247,7 +253,8 @@ class Collections:
             raise ConflictError("This playlist changed in iBroadcast. Open a new review.")
 
     def playlists(self, query="", playlist_id=None, offset="0", browse=False):
-        _, library = self.library()
+        # Browsing shares the loaded library; writes still check the remote revision.
+        _, library = self.library(cached=True)
         try:
             offset = int(offset)
         except (TypeError, ValueError):
@@ -359,7 +366,7 @@ class Collections:
                 "parent_count": len(parents)}
 
     def folder_choices(self, query="", offset="0"):
-        _, library = self.library()
+        _, library = self.library(cached=True)
         try:
             offset = int(offset)
         except (TypeError, ValueError):

@@ -71,6 +71,50 @@ class CollectionTests(unittest.TestCase):
         view = self.studio.collections.playlists(playlist_id='888')
         self.assertEqual((view['total'], view['duration'], view['duration_missing']), (0, 0, 0))
 
+    def test_playlist_browsing_reuses_loaded_library_without_remote_status_checks(self):
+        self.playlist_metadata_body()
+        mock_ibroadcast.STATE['playlists'][889] = {
+            'name': 'Folder', 'type': 'folder', 'tracks': [888]}
+        self.studio.load_library(refresh=True)
+        with patch.object(self.studio, '_remote_state', side_effect=AssertionError('No status call')), \
+                patch.object(self.studio.client, 'fetch_library', side_effect=AssertionError('No download')):
+            for _ in range(2):
+                self.assertEqual(self.studio.collections.playlists(browse=True)['total'], 1)
+                self.assertEqual(self.studio.collections.playlists(query='Keep', browse=True)['total'], 1)
+                self.assertEqual(self.studio.collections.playlists(playlist_id='889')['total'], 1)
+                self.assertEqual(self.studio.collections.playlists(playlist_id='888')['total'], 2)
+                self.assertEqual(self.studio.collections.playlists(offset='100')['playlists'], [])
+                self.assertEqual(self.studio.collections.folder_choices()['total'], 2)
+
+    def test_cached_playlist_browsing_refreshes_on_reload_and_writes_still_check_fresh_data(self):
+        body = self.playlist_metadata_body()
+        mock_ibroadcast.STATE['playlists'][888]['description'] = 'Edited elsewhere'
+        mock_ibroadcast.STATE['version'] += 1
+        cached = self.studio.collections.playlists(playlist_id='888')
+        self.assertEqual(cached['description'], 'Before')
+        with self.assertRaises(ConflictError):
+            self.studio.collections.save_playlist(body)
+        self.assertEqual(mock_ibroadcast.STATE['writes'], [])
+        self.studio.load_library(refresh=True)
+        refreshed = self.studio.collections.playlists(playlist_id='888')
+        self.assertEqual(refreshed['description'], 'Edited elsewhere')
+        body.update(before_token=refreshed['before_token'])
+        self.assertEqual(self.job(self.studio.collections.save_playlist(body))['results'][0]['status'], 'saved')
+        with patch.object(self.studio, '_remote_state', side_effect=AssertionError('Read-back already refreshed')):
+            self.assertEqual(self.studio.collections.playlists(playlist_id='888')['description'],
+                             'Only this text changes')
+
+    def test_playlist_cache_upgrades_older_library_once_and_never_survives_disconnect(self):
+        self.playlist_metadata_body()
+        self.studio.library.playlists_loaded = False
+        with patch.object(self.studio.client, 'fetch_library', wraps=self.studio.client.fetch_library) as fetch:
+            self.studio.collections.playlists(browse=True)
+            self.studio.collections.playlists(browse=True)
+        self.assertEqual(fetch.call_count, 1)
+        self.studio._disconnect()
+        with self.assertRaises(client.NotConnected):
+            self.studio.collections.playlists(browse=True)
+
     def playlist_metadata_body(self):
         mock_ibroadcast.STATE['playlists'][888] = {
             'name': 'Keep every position', 'description': 'Before', 'type': None,
