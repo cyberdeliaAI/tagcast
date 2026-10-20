@@ -386,8 +386,10 @@ function removeQueueEntry(index, revision) {
   const removed = player.queue.splice(index, 1)[0];
   if (index < player.index) player.index -= 1;
   if (current) {
-    if (player.queue[index]) { audio.pause(); playCurrent(wasPlaying); }
-    else { stopPlayer({keepQueue: player.queue.length > 0}); renderStreamQuality(); }
+    audio.pause();
+    if (player.queue[index]) playCurrent(wasPlaying);
+    else if (player.queue.length) { player.index = player.queue.length - 1; playCurrent(false); }
+    else stopPlayer();
   } else markPlaying();
   const next = Math.min(index, player.queue.length - 1);
   (next >= 0 ? $("#now-playing-list").querySelector(`[data-queue-remove="${next}"]`)
@@ -399,14 +401,14 @@ function appendToQueue(album, trackId = null, next = false) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
   const tracks = trackId === null ? album.tracks : album.tracks.filter(t => String(t.id) === String(trackId));
   if (!tracks.length) throw Error("This track is no longer on that album. Reload the library.");
-  const empty = !player.queue.length, ended = audio.ended, idle = !player.queue[player.index];
+  const empty = !player.queue.length, ended = audio.ended;
   const following = Math.min(player.index + 1, player.queue.length), rows = queueTracks(album, tracks);
-  if (next && !empty && !ended && !idle) {
+  if (next && !empty && !ended) {
     let insert = following;
     while (player.queue[insert]?.upNext) insert += 1;
     player.queue.splice(insert, 0, ...rows.map(t => ({...t, upNext: true})));
   } else player.queue.push(...rows);
-  if (empty || ended || idle) { player.index = empty ? 0 : following; playCurrent(); }
+  if (empty || ended || !player.queue[player.index]) { player.index = empty ? 0 : following; playCurrent(); }
   else markPlaying();
   toast(`${next ? "Playing next:" : "Added"} ${tracks.length === 1 ? "1 track" : `${tracks.length} tracks`} to the queue.`);
 }
@@ -538,7 +540,7 @@ function step(delta) {
   player.index = next; playCurrent();
 }
 
-function stopPlayer(options) {
+function stopPlayer() {
   if (typeof closePlaybackOutput === "function") closePlaybackOutput(false);
   closeQueueActions();
   playReporting.watch = null;
@@ -547,9 +549,7 @@ function stopPlayer(options) {
   audio.pause(); audio.removeAttribute("src"); audio.load();
   $("#player").hidden = true; document.body.classList.remove("has-player");
   closeVisualPlayer();
-  if (options?.keepQueue !== true) player.queue = [];
-  player.index = player.queue.length ? player.queue.length : -1;
-  player.album = null; markPlaying();
+  player.queue = []; player.index = -1; player.album = null; markPlaying();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
 }
 
@@ -557,7 +557,7 @@ audio.addEventListener("ended", () => {
   samplePlayback();
   if (playReporting.watch) { playReporting.watch.active = false; playReporting.watch.completed = true; }
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
-  if (!player.queue[player.index]) return;
+  if (!player.queue[player.index] || audio.paused && !audio.ended) return;
   if (player.repeat === "track") { playCurrent(); return; }
   if (player.repeat === "queue" && player.index >= player.queue.length - 1 && player.queue.length) {
     player.queue = player.queue.filter(t => !t.upNext); player.index = 0; playCurrent();

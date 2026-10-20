@@ -424,7 +424,7 @@ and preserve a valid script order in `index.html`.
   row's Play button, keyboard accessible and bound to the rendered entry/revision.
   Removing another position preserves the current audio/time and adjusts its index;
   removing the current position selects the following entry, preserving paused state,
-  or stops audio while retaining earlier entries if none follows. Removing one of
+  or pauses on the preceding retained entry if none follows, keeping the queue reachable. Removing one of
   several identical track IDs affects only that occurrence, including Up next.
   Preserve focus/scroll, queue-sync player/controller ownership and the stopped state;
   never edit saved playlists, library metadata or music files for queue removal.
