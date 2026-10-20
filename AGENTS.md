@@ -113,6 +113,10 @@ and preserve a valid script order in `index.html`.
 - The server binds only to `127.0.0.1`, on port 8912 by default.
 - Preserve Host validation, the `X-Tagcast` POST header, Fetch Metadata checks
   for GET APIs and existing security headers.
+  Serve local HTML/JavaScript/CSS with `Cache-Control: no-store` and ignore their
+  conditional cache validators, including HEAD, so source updates cannot reuse older
+  UI files with an unchanged version/timestamp. Keep normal caching for static
+  reference data/images and the separate account-bound library cache.
 - Tokens and source keys stay server-side and must not appear in frontend API
   responses or in the repository.
 - Settings, tokens, cache and logs default to `~/.tagcast/`; `TAGCAST_HOME` can

@@ -7071,6 +7071,17 @@ test('CSV close buttons and Escape preserve the complete draft when discard is d
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/discard').length,0);
 });
 
+test('a mixed frontend update reports how to reload instead of silently losing the CSV draft', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); requestClosePlaylistImport=undefined`);
+  const before=p.run('JSON.stringify(csvImport)');
+  await p.click({'[data-close]':{dataset:{close:'playlist-import'}}});
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.equal(p.run('JSON.stringify(csvImport)'),before);
+  assert.match(p.nodes.get('#toast').textContent,/Reload this tab/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/discard').length,0);
+});
+
 test('confirmed CSV discard clears once and ignores a late match response', async () => {
   const p=await csvImportPage(); await settle(); let release;
   p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:1}');

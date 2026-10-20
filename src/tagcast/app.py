@@ -90,10 +90,26 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(500, {"error": "Something went wrong in Tagcast. See the terminal."})
 
     def end_headers(self):
+        if self._frontend_asset():
+            self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
+
+    def _frontend_asset(self):
+        path = urlparse(getattr(self, "path", "")).path
+        return not path.startswith("/api/") and (
+            path == "/" or Path(path).suffix in (".html", ".js", ".css"))
+
+    def send_head(self):
+        # Local source updates can retain the same release number or file timestamp.
+        # Always serve the current UI together instead of accepting an older cached script.
+        if self._frontend_asset():
+            for header in ("If-Modified-Since", "If-None-Match"):
+                if header in self.headers:
+                    del self.headers[header]
+        return super().send_head()
 
     # -- routes --------------------------------------------------------------
 
