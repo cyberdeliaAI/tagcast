@@ -2,11 +2,15 @@
 
 import io
 import json
+import os
+import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
+from functools import partial
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from unittest import mock
 
 from tagcast import app
@@ -85,6 +89,50 @@ class StartTests(unittest.TestCase):
         types = app.Handler.extensions_map
         self.assertEqual((types[".js"], types[".css"], types[".svg"]),
                          ("text/javascript", "text/css", "image/svg+xml"))
+
+    def test_ui_files_never_reuse_cached_versions_even_with_unchanged_timestamps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('index.html', 'app.js', 'playlist-import.js', 'style.css', 'notes.json'):
+                (root / name).write_text('Before', encoding='utf-8')
+                os.utime(root / name, (1_000_000_000, 1_000_000_000))
+            handler = type('StaticHandler', (app.Handler,), {'port': 0})
+            server = app.Server(('127.0.0.1', 0), partial(handler, directory=directory))
+            handler.port = server.server_port
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            def request(path, method='GET', etag=True):
+                connection = HTTPConnection('127.0.0.1', server.server_port, timeout=3)
+                try:
+                    headers = {'If-Modified-Since': 'Thu, 01 Jan 2037 00:00:00 GMT'}
+                    if etag:
+                        headers['If-None-Match'] = '"old-build"'
+                    connection.request(method, path, headers=headers)
+                    response = connection.getresponse()
+                    return response.status, dict(response.getheaders()), response.read()
+                finally:
+                    connection.close()
+
+            try:
+                for name in ('/', '/index.html', '/app.js', '/playlist-import.js?v=old', '/style.css'):
+                    with self.subTest(path=name):
+                        status, headers, body = request(name)
+                        self.assertEqual((status, body), (200, b'Before'))
+                        self.assertEqual(headers['Cache-Control'], 'no-store')
+                        self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
+                        self.assertEqual(headers['X-Frame-Options'], 'DENY')
+                (root / 'playlist-import.js').write_text('After!', encoding='utf-8')
+                os.utime(root / 'playlist-import.js', (1_000_000_000, 1_000_000_000))
+                self.assertEqual(request('/playlist-import.js')[2], b'After!')
+                status, headers, body = request('/playlist-import.js', 'HEAD')
+                self.assertEqual((status, headers['Cache-Control'], body), (200, 'no-store', b''))
+                self.assertEqual(request('/notes.json', etag=False)[0], 304,
+                                 'Reference data retains normal caching')
+            finally:
+                server.shutdown()
+                thread.join()
+                server.server_close()
 
     def test_favourites_routes_keep_host_header_and_fetch_metadata_protection(self):
         studio = mock.Mock()

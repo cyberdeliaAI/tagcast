@@ -1036,7 +1036,10 @@ function showHistory() {
 document.addEventListener("click", event => {
   const close = event.target.closest("[data-close]");
   if (close) {
-    if (close.dataset.close === "playlist-import") requestClosePlaylistImport();
+    if (close.dataset.close === "playlist-import") {
+      if (typeof requestClosePlaylistImport === "function") requestClosePlaylistImport();
+      else toast("Tagcast was updated. Reload this tab to finish the update; the current CSV import will be lost.");
+    }
     else $(`#${close.dataset.close}`).close();
     return;
   }
