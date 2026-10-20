@@ -320,6 +320,10 @@ and preserve a valid script order in `index.html`.
   List totals use loaded-library active playlist positions (including repeats), with
   unavailable positions and missing duration reported separately; folder IDs are never
   counted as tracks. Summarize only bounded catalogue pages, without extra downloads.
+  Playlist/folder browsing and destination choices reuse the loaded account library,
+  without a remote status request on opening, searching or paging. Upgrade an older
+  cache missing playlists once. Reload library and existing write read-backs refresh
+  that shared copy; all write preconditions still use a fresh remote revision check.
   Reviewed name/description-only edits send only changed text fields via updateplaylist,
   never tracks, retaining every native position, cover and playlist type. Bind these
   reviews to session and the complete before snapshot, serialize saves, never retry an
