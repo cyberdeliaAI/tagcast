@@ -419,6 +419,15 @@ and preserve a valid script order in `index.html`.
   each queued track's album metadata for covers and navigation across albums.
   Clear queue stops audio and cancels pending additions. Guard lazy loads against
   library changes and clears. Now playing opens without a browser history entry.
+  Now playing offers one Remove from play queue button per stored position, replacing
+  its number on hover/focus and always visible on touch. Keep it separate from the
+  row's Play button, keyboard accessible and bound to the rendered entry/revision.
+  Removing another position preserves the current audio/time and adjusts its index;
+  removing the current position selects the following entry, preserving paused state,
+  or stops audio while retaining earlier entries if none follows. Removing one of
+  several identical track IDs affects only that occurrence, including Up next.
+  Preserve focus/scroll, queue-sync player/controller ownership and the stopped state;
+  never edit saved playlists, library metadata or music files for queue removal.
 - Fullscreen Now playing reuses the existing audio element and queued metadata.
   Opening or closing never restarts audio or adds a history entry. Request native
   fullscreen only on a click; fall back to a window-filling view when unavailable.

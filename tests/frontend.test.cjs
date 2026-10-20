@@ -3427,6 +3427,125 @@ test("Now playing escapes metadata and has no route, queue jumping works, and Cl
   assert.equal(p.nodes.get("#now-playing-panel").hidden, true);
 });
 
+function queueRemoveControl(p, index) {
+  p.run(`$("#test-queue-remove").dataset = {queueRemove: ${JSON.stringify(String(index))}, queueRevision: String(nowPlayingRows.revision)}`);
+  return p.nodes.get("#test-queue-remove");
+}
+
+test("queue removal targets one occurrence and preserves the current audio, position and listening watch", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); appendToQueue(state.details.get("1")); player.index = 1; playCurrent(); setNowPlaying(true); audio.currentTime = 42; playReporting.watch = {test: "unchanged"}');
+  const audio = p.nodes.get("#audio"), source = audio.src;
+  const current = p.run('player.queue[player.index].id'), before = p.json('player.queue.map(t => t.id)');
+  const history = p.history.length, requests = p.requests.length;
+  const control = queueRemoveControl(p, 0);
+  await p.click({"[data-queue-remove]": control, "[data-queue-index]": {dataset: {queueIndex: "0"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), before.slice(1));
+  assert.equal(p.run('player.index'), 0);
+  assert.equal(p.run('player.queue[player.index].id'), current);
+  assert.equal(audio.src, source);
+  assert.equal(audio.currentTime, 42);
+  assert.equal(audio.paused, false);
+  assert.deepEqual(p.json('playReporting.watch'), {test: "unchanged"});
+  const repeated = p.run('player.queue.findIndex((t, i) => i > player.index && t.id === player.queue[0].id)');
+  assert.ok(repeated > 0);
+  await p.click({"[data-queue-remove]": queueRemoveControl(p, repeated)});
+  assert.equal(p.run('player.queue.filter(t => t.id === player.queue[0].id).length'), 1);
+  assert.equal(audio.src, source);
+  assert.equal(audio.currentTime, 42);
+  assert.equal(p.history.length, history);
+  assert.equal(p.requests.length, requests, 'Removing a loaded queue entry neither reads nor writes metadata');
+});
+
+test("removing the current queue position advances once and keeps paused playback paused", async () => {
+  for (const paused of [false, true]) {
+    const p = livePage(); await settle();
+    p.run('playTracks(state.details.get("1")); setNowPlaying(true)');
+    const next = p.run('player.queue[1].id');
+    if (paused) p.nodes.get('#audio').pause();
+    await p.click({"[data-queue-remove]": queueRemoveControl(p, 0)});
+    assert.equal(p.run('player.index'), 0);
+    assert.equal(p.run('player.queue[0].id'), next);
+    assert.match(p.nodes.get('#audio').src, new RegExp(`/api/stream/${next}\\?`));
+    assert.equal(p.nodes.get('#audio').paused, paused);
+    assert.equal(p.nodes.get('#player-title').textContent, p.run('player.queue[0].title'));
+    assert.equal(p.run('player.queue.length'), p.run('state.details.get("1").tracks.length - 1'));
+  }
+});
+
+test("removing the last current entry stops audio while retaining earlier queue entries and repeat cannot revive it", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); player.index = player.queue.length - 1; playCurrent(); player.repeat = "queue"; setNowPlaying(true)');
+  const original = p.json('player.queue.map(t => t.id)');
+  await p.click({"[data-queue-remove]": queueRemoveControl(p, original.length - 1)});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), original.slice(0, -1));
+  assert.equal(p.run('player.index'), original.length - 1);
+  assert.equal(p.nodes.get('#audio').src, undefined);
+  assert.equal(p.nodes.get('#audio').paused, true);
+  assert.equal(p.nodes.get('#player').hidden, true);
+  assert.equal(p.run('playReporting.watch'), null);
+  assert.equal(p.run('encodedLocalQueue().current_song'), 0);
+  assert.equal(p.run('encodedLocalQueue().pause'), true);
+  assert.equal(p.run('encodedLocalQueue().data.play_index'), original.length - 1);
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.nodes.get('#audio').src, undefined, 'A late ended event must not restart the retained queue');
+  p.run('applyQueueSettings({queue_sync:false})');
+  assert.equal(p.nodes.get('#player').hidden, true, 'Queue settings must not show the removed current track');
+  p.run('appendToQueue(state.details.get("2"), null, true)');
+  assert.equal(p.nodes.get('#audio').paused, false, 'An explicit new queue addition starts after the stopped end');
+  assert.equal(p.run('player.index'), original.length - 1);
+  assert.equal(p.run('player.queue[player.index].id'), p.run('String(state.details.get("2").tracks[0].id)'));
+  assert.equal(p.run('Boolean(player.queue[player.index].upNext)'), false);
+  await p.click({"[data-queue-index]": {dataset: {queueIndex: "0"}}});
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.equal(p.run('player.queue[player.index].id'), original[0]);
+  p.run('player.queue = player.queue.slice(0, 1); player.index = 0; setNowPlaying(true)');
+  await p.click({"[data-queue-remove]": queueRemoveControl(p, 0)});
+  assert.equal(p.run('player.queue.length'), 0);
+  assert.equal(p.nodes.get('#queue-clear').disabled, true);
+  assert.equal(p.run('document.activeElement === $("#now-playing-close")'), true);
+});
+
+test("queue removal preserves Up next ordering and its separate native queue encoding", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); appendToQueue(state.details.get("2"), null, true); setNowPlaying(true)');
+  const base = p.json('encodedLocalQueue().tracks'), next = p.json('encodedLocalQueue().play_next');
+  await p.click({"[data-queue-remove]": queueRemoveControl(p, 1)});
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), base);
+  assert.deepEqual(p.json('encodedLocalQueue().play_next'), next.slice(1));
+  p.run('step(1)');
+  assert.equal(p.run('Number(player.queue[player.index].id)'), next[1]);
+  assert.equal(p.run('player.queue[player.index].upNext'), true);
+  await p.click({"[data-queue-remove]": queueRemoveControl(p, p.run('player.index'))});
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), base);
+  assert.deepEqual(p.json('encodedLocalQueue().play_next'), next.slice(2));
+});
+
+test("queue removal rejects stale, detached, closed and remote-controller actions", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); setNowPlaying(true)');
+  const original = p.json('player.queue.map(t => t.id)');
+  const control = queueRemoveControl(p, 1);
+  p.run('renderNowPlaying()');
+  await p.click({"[data-queue-remove]": control});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), original);
+  queueRemoveControl(p, 1).isConnected = false;
+  await p.click({"[data-queue-remove]": control});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), original);
+  control.isConnected = true;
+  queueRemoveControl(p, 1); p.run('player.queue.unshift({...player.queue[0]})');
+  await p.click({"[data-queue-remove]": control});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), [original[0], ...original]);
+  p.run('renderNowPlaying(); setNowPlaying(false)'); queueRemoveControl(p, 1);
+  await p.click({"[data-queue-remove]": control});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), [original[0], ...original]);
+  p.run('setNowPlaying(true); queueSync.active = true; queueSync.view = {own:false,state:{role:"controller"}}; renderNowPlaying()');
+  assert.doesNotMatch(p.nodes.get('#now-playing-list').innerHTML, /data-queue-remove/);
+  queueRemoveControl(p, 1);
+  await p.click({"[data-queue-remove]": control});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), [original[0], ...original]);
+});
+
 test("queue additions retain click order and clearing during a fetch cancels late additions", async () => {
   const p = livePage(); await settle();
   p.run('state.details.delete("2")');
