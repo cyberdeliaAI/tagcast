@@ -796,7 +796,10 @@ class PlaylistImportProtocolTests(unittest.TestCase):
     def test_resumed_creation_consumes_and_removes_its_checkpoint_after_native_readback(self):
         self.check_csv_creation(paused=True)
 
-    def check_csv_creation(self, paused):
+    def test_url_snapshot_can_pause_resume_review_and_create_once_with_native_readback(self):
+        self.check_csv_creation(paused=True, url=True)
+
+    def check_csv_creation(self, paused, url=False):
         from test_client import client, mock_ibroadcast
         original = copy.deepcopy(mock_ibroadcast.STATE)
         home = tempfile.TemporaryDirectory()
@@ -809,7 +812,15 @@ class PlaylistImportProtocolTests(unittest.TestCase):
             before = copy.deepcopy(mock_ibroadcast.STATE['tracks'])
             track = studio.library.track_view(900)
             content = f'Title,Artist\n"{track["title"]}","{track["artist"]}"\nMissing CSV song,Unknown performer\n'
-            parsed = studio.playlist_import.read({'session': studio.playback_session, 'text': content, 'delimiter': ','})
+            if url:
+                source = {'columns': ['Track title', 'Artist', 'Album', 'Duration'], 'delimiter': ',', 'blanks': 0,
+                          'origin': {'provider': 'deezer', 'id': '123'}, 'name': 'URL list',
+                          'records': [{'line': 2, 'cells': [track['title'], track['artist'], '', '']},
+                                      {'line': 3, 'cells': ['Missing CSV song', 'Unknown performer', '', '']}]}
+                with patch('tagcast.playlist_import.PlaylistSources.fetch', return_value=source):
+                    parsed = studio.playlist_import.read_url({'session': studio.playback_session, 'url': 'https://deezer.com/playlist/123'})
+            else:
+                parsed = studio.playlist_import.read({'session': studio.playback_session, 'text': content, 'delimiter': ','})
             def body(data, **fields):
                 return {'session': studio.playback_session, 'id': data['id'], 'revision': data['revision'], **fields}
             matched = studio.playlist_import.match(body(parsed, mapping=parsed['mapping']))

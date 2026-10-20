@@ -6,6 +6,7 @@ import math
 import re
 
 from .library import ConflictError, LibraryError
+from .playlist_sources import valid_origin
 
 MAX_PAUSED = 10
 MAX_PAUSED_BYTES = 64 * 1024 * 1024
@@ -26,6 +27,8 @@ def valid_text(value, maximum):
 
 def valid_checkpoint(row):
     if not isinstance(row, dict):
+        return False
+    if row.get("origin") is not None and not valid_origin(row["origin"]):
         return False
     if not isinstance(row.get("copy_preference", "manual"), str) or row.get("copy_preference", "manual") not in COPY_PREFERENCES:
         return False

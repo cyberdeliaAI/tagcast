@@ -201,3 +201,11 @@ compact activity indicators are not present. Used in the Wiki's
 | `playlist-import-review.png` | Final ordered, paginated review before creation. |
 | `playlist-import-created.png` | Confirmed imported playlist. |
 | `playlist-cover-compare.png` | Separate playlist cover comparison before saving. |
+
+## Public playlist URL import (unreleased)
+
+Capture Playlist URL beside Import CSV, public Deezer/ListenBrainz (test) input,
+the fetched source with title/artist/duration defaults, and a paused/resumed URL
+snapshot. Capture an unavailable-source error with its CSV fallback. Use a mock
+library and public metadata; never show tokens or imply ListenBrainz was verified
+live where it returned a browser check.
