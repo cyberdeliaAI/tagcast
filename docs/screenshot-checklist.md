@@ -181,6 +181,11 @@ Publishing these documentation updates to GitHub does not require a release.
 
 ## Playlist import captures, 19 October 2026
 
+For the next release also capture **Pause import**, the account's **Paused imports**
+list, and a resumed import after a new upload is matched while an existing manual
+choice is retained. Include the separate saved-copy removal review. Verify restart
+persistence, the ten-import limit, and that resume requires a fresh creation review.
+
 Eight user-supplied original PNGs, copied without resizing or edits. They show the
 0.70.0 interface; changes introduced in 0.70.2, such as shuffle, playback markers and
 compact activity indicators are not present. Used in the Wiki's

@@ -144,6 +144,8 @@ class StartTests(unittest.TestCase):
         studio.collections.save_folder.return_value = {"job": "check"}
         for action in ("read", "match", "view", "export", "search", "choose", "review", "revise", "save", "discard"):
             getattr(studio.playlist_import, action).return_value = {}
+        for action in ("paused", "pause", "resume", "remove_paused"):
+            getattr(studio.playlist_import, action).return_value = {}
         studio.collections.playlist_artwork.return_value = {"job": "check"}
         studio.collections.folder_choices.return_value = {"playlists": []}
         studio.collections.rate_album.return_value = {"job": "check"}
@@ -198,6 +200,8 @@ class StartTests(unittest.TestCase):
                                  ("/api/playlist-folder", studio.collections.save_folder),
                                  *(("/api/playlist-import/" + action, getattr(studio.playlist_import, action))
                                    for action in ("read", "match", "view", "export", "search", "choose", "review", "revise", "save", "discard")),
+                                 *(("/api/playlist-import/" + path, getattr(studio.playlist_import, action))
+                                   for path, action in (("paused", "paused"), ("pause", "pause"), ("resume", "resume"), ("remove-paused", "remove_paused"))),
                                  ("/api/playlist/artwork", studio.collections.playlist_artwork),
                                  ("/api/tags/save", studio.tags.save),
                                  ("/api/album-rating", studio.collections.rate_album),

@@ -16,6 +16,7 @@ from heapq import nlargest
 
 from .library import ConflictError, LibraryError, fold, number, text, title_key
 from .metadata_export import csv_cell
+from .playlist_import_store import MAX_PAUSED, PausedImports
 
 MAX_ROWS = 10000
 MAX_TEXT = 10 * 1024 * 1024
@@ -249,6 +250,7 @@ class PlaylistImport:
         self.lock = threading.RLock()
         self.drafts = {}
         self.catalogue = None
+        self.paused_store = PausedImports(studio)
 
     def _context(self, body, draft=None, expected_library=None):
         studio = self.studio
@@ -282,6 +284,142 @@ class PlaylistImport:
         if self.catalogue is None or self.catalogue.library is not library:
             self.catalogue = TrackCatalogue(library)
         return self.catalogue
+
+    @staticmethod
+    def _paused_row(row):
+        return {key: row[key] for key in ("id", "token", "name", "description", "saved_at", "state", "phase", "unresolved")} | {
+            "total": len(row["records"]), "manual": sum(c["status"] == "manual" for c in row["choices"]),
+            "playlist": str(row.get("playlist") or "")}
+
+    def paused(self, body):
+        with self.lock:
+            self._context(body)
+            rows = self.paused_store.load(self.studio.library_user)
+            self._context(body)
+            return {"imports": [self._paused_row(r) for r in sorted(rows.values(), key=lambda r: r["saved_at"], reverse=True)],
+                    "limit": MAX_PAUSED}
+
+    def pause(self, body):
+        with self.lock:
+            draft = self._draft(body, ("mapping", "matched", "review"), source_only=True)
+            name, description = body.get("name"), body.get("description", "")
+            if not isinstance(name, str) or not name.strip() or len(name) > 200 or not isinstance(description, str) or len(description) > 2000:
+                raise LibraryError("Enter a name of 1–200 characters and description up to 2,000.")
+            mapping = body.get("mapping", draft.get("mapping", guessed_mapping(draft["columns"])))
+            unit = body.get("duration_unit", draft.get("duration_unit", "seconds"))
+            separator = body.get("artist_separator", draft.get("artist_separator", ""))
+            mapping_step = body.get("mapping_step", False)
+            if not isinstance(mapping, dict) or set(mapping) - set(FIELDS) or any(v is not None and (type(v) is not int or not 0 <= v < len(draft["columns"])) for v in mapping.values()) or unit not in ("seconds", "milliseconds") or separator not in ("", ";"):
+                raise LibraryError("Choose valid column mappings and duration units.")
+            if type(mapping_step) is not bool:
+                raise LibraryError("Choose a valid import step.")
+            mapping_step = mapping_step or draft["phase"] == "mapping" or mapping != draft.get("mapping") or unit != draft.get("duration_unit") or separator != draft.get("artist_separator")
+            show, offset = body.get("show", "unresolved"), self._page(body)
+            if show not in ("all", "unresolved", "automatic", "manual", "skipped"):
+                raise LibraryError("Choose a valid import filter.")
+            account = draft["account"]
+            rows = self.paused_store.load(account)
+            previous = draft.get("checkpoint")
+            if previous:
+                saved = self.paused_store.selected(rows, previous)
+                if saved["state"] != "paused":
+                    raise ConflictError("Playlist creation was already requested for this saved import. Check Playlists.")
+                key = saved["id"]
+            else:
+                if len(rows) >= MAX_PAUSED:
+                    raise LibraryError("Keep up to 10 paused imports per account. Remove one before pausing another.")
+                key = secrets.token_hex(16)
+            row = {"id": key, "token": secrets.token_hex(16), "saved_at": time.time(), "state": "paused",
+                   "name": name.strip(), "description": description, "phase": "mapping" if mapping_step else "matched",
+                   "columns": draft["columns"], "records": draft["records"], "blanks": draft["blanks"], "delimiter": draft["delimiter"],
+                   "mapping": mapping, "duration_unit": unit, "artist_separator": separator, "show": show, "offset": offset,
+                   "unresolved": 0 if mapping_step else self._summary(draft)["unresolved"],
+                   "choices": [({key: r[key] for key in ("position", "status", "choice", "signature")}
+                                if r["status"] in ("manual", "skipped") else r["previous_choice"])
+                               for r in ([] if mapping_step else draft.get("rows", [])) if r["status"] in ("manual", "skipped") or r.get("previous_choice")]}
+            rows[key] = row
+            self._context(body, draft, expected_library=self.studio.library)
+            self.paused_store.write(account, rows)
+            del self.drafts[draft["id"]]
+            if not self.drafts:
+                self.catalogue = None
+            return {"saved": self._paused_row(row)}
+
+    def remove_paused(self, body):
+        with self.lock:
+            self._context(body)
+            account = self.studio.library_user
+            rows = self.paused_store.load(account)
+            saved = self.paused_store.selected(rows, body)
+            del rows[saved["id"]]
+            self._context(body)
+            self.paused_store.write(account, rows)
+            return {"removed": True}
+
+    def resume(self, body):
+        with self.lock:
+            client, library = self._context(body)
+            account = self.studio.library_user
+            saved = self.paused_store.selected(self.paused_store.load(account), body)
+            if saved["state"] != "paused":
+                raise ConflictError("Playlist creation was already requested. Check Playlists before importing again.")
+            while len(self.drafts) >= 2:
+                del self.drafts[next(iter(self.drafts))]
+            key = secrets.token_hex(16)
+            draft = {"id": key, "revision": 1, "phase": "mapping", "created": time.monotonic(),
+                     "library": library, "account": account, "client": client, "session": body["session"],
+                     "combine_sets": library.combine_sets, "columns": saved["columns"], "records": saved["records"],
+                     "blanks": saved["blanks"], "delimiter": saved["delimiter"],
+                     "checkpoint": {"saved_id": saved["id"], "saved_token": saved["token"]}}
+            self.drafts[key] = draft
+            file_data = {key: draft[key] for key in ("id", "revision", "phase", "columns", "delimiter")}
+            file_data.update(sample=draft["records"][:5], total=len(draft["records"]), blank_records=draft["blanks"],
+                             mapping=saved["mapping"], duration_unit=saved["duration_unit"], artist_separator=saved["artist_separator"])
+            view = file_data
+            try:
+                if saved["phase"] != "mapping":
+                    fields = {"id": key, "revision": 1, "session": body["session"], "mapping": saved["mapping"],
+                              "duration_unit": saved["duration_unit"], "artist_separator": saved["artist_separator"]}
+                    self.match(fields)
+                    catalogue = self._index(library)
+                    for choice in saved["choices"]:
+                        row = draft["rows"][choice["position"]]
+                        track_id = choice.get("choice")
+                        if choice["status"] == "skipped":
+                            row.update(choice=None, status="skipped", signature=None)
+                        elif track_id in catalogue.members and catalogue.signature(track_id) == choice["signature"]:
+                            row.update(choice=track_id, status="manual", signature=choice["signature"])
+                        else:
+                            row.update(choice=None, signature=None, status="ambiguous" if row["candidates"] else "missing",
+                                       previous_choice=choice,
+                                       resume_warning="The previous manual choice changed or disappeared. Choose a track again.")
+                    view = self._view(draft, {"show": saved["show"], "offset": saved["offset"]})
+                self._context(body, draft)
+                return {"view": view, "file": file_data, "name": saved["name"], "description": saved["description"],
+                        "mapping": saved["mapping"], "duration_unit": saved["duration_unit"], "artist_separator": saved["artist_separator"]}
+            except Exception:
+                self.drafts.pop(key, None)
+                raise
+
+    def _checkpoint_state(self, draft, state=None, playlist=None, remove=False):
+        reference = draft.get("checkpoint")
+        if not reference:
+            return
+        account = draft["account"]
+        rows = self.paused_store.load(account)
+        row = self.paused_store.selected(rows, reference)
+        if state == "submitted" and row["state"] != "paused":
+            raise ConflictError("Playlist creation was already requested for this saved import. Check Playlists.")
+        if remove:
+            del rows[row["id"]]
+        else:
+            row["state"] = state or row["state"]
+            if state == "submitted":
+                row["name"] = draft["review"]["name"]
+                row["description"] = draft["review"]["description"]
+            if playlist:
+                row["playlist"] = playlist
+        self.paused_store.write(account, rows)
 
     def read(self, body):
         client, library = self._context(body)
@@ -372,7 +510,7 @@ class PlaylistImport:
                 "total": len(found), "offset": offset, "show": show,
                 "rows": [{**{key: row[key] for key in ("position", "line", "status", "eligible")},
                           "source": {key: row["source"][key] for key in (*FIELDS, "warnings")},
-                          "reasons": catalogue.reasons(row),
+                          "reasons": ([row["resume_warning"]] if row.get("resume_warning") else []) + catalogue.reasons(row),
                           "choice": catalogue.row(row["choice"]) if row["choice"] else None,
                           "candidates": [catalogue.candidate(row["source"], i) for i in row["candidates"]]} for row in found[offset:offset + PAGE]]}
         self._context({"session": draft["session"]}, draft)
@@ -424,6 +562,8 @@ class PlaylistImport:
             if not skip and (type(track_id) not in (int, str) or len(str(track_id)) > 32 or not str(track_id).isascii() or not str(track_id).isdigit() or int(track_id) not in catalogue.members):
                 raise LibraryError("Choose an active library track or explicitly skip this record.")
             row = draft["rows"][position]
+            row.pop("resume_warning", None)
+            row.pop("previous_choice", None)
             row.update(choice=None if skip else int(track_id), status="skipped" if skip else "manual",
                        signature=None if skip else catalogue.signature(int(track_id)))
             draft["revision"] += 1
@@ -506,17 +646,25 @@ class PlaylistImport:
                     raise ConflictError("A chosen track changed or disappeared. Match the CSV again.")
                 self._context(body, draft, expected_library=fresh)
                 # Consume before sending: an ambiguous creation must never be repeated.
+                self._checkpoint_state(draft, state="submitted")
                 draft["phase"] = "uncertain"
                 result = client._jsonrequest("createplaylist", name=review["name"], description=review["description"],
                                              make_public=False, tracks=review["tracks"])
                 playlist_id = number(result.get("playlist_id"))
                 if playlist_id <= 0 or playlist_id in fresh.playlists:
                     raise LibraryError("The new playlist ID was not confirmed. Check Playlists before importing again.")
+                self._checkpoint_state(draft, playlist=playlist_id)
 
                 def check(after):
                     row = after.playlists.get(playlist_id, {})
                     matches = studio.collections.editable(row) and text(row.get("name")) == review["name"] \
                         and text(row.get("description")) == review["description"] and row.get("tracks") == review["tracks"]
+                    if matches and draft.get("checkpoint"):
+                        with self.lock:
+                            try:
+                                self._checkpoint_state(draft, remove=True)
+                            except LibraryError:
+                                pass  # The playlist is confirmed; a retained checkpoint still cannot resend.
                     return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
 
                 job = studio._check_later(client, studio.downloads, check, include_albums=False)

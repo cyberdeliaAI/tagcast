@@ -6,6 +6,84 @@ const csvImport = {request: 0, data: null, details: null, session: "", busy: fal
 const csvFields = {title: "Track title (required)", artist: "Performing artist (required)",
   album: "Album title", album_artist: "Album artist", duration: "Duration", year: "Release year / date", track: "Track number"};
 const csvCloseReview = {request: null, focus: null};
+const csvPausedView = {rows: [], removing: null};
+
+function syncCsvPauseButton() {
+  $("#csv-import-pause").hidden = !csvImport.data || csvImport.submitted;
+  $("#csv-import-pause").disabled = csvImport.busy;
+}
+
+async function pausePlaylistImport() {
+  if (!csvImportCurrent() || !csvImport.data || csvImport.busy || csvImport.submitted) return;
+  const request = ++csvImport.request, data = csvImport.data, form = $("#csv-map-form");
+  const mapping = form ? Object.fromEntries(Object.keys(csvFields).map(key => [key, form.elements[`map_${key}`].value === "" ? null : Number(form.elements[`map_${key}`].value)])) : csvImport.mapping || csvImport.fileData.mapping;
+  const fields = {name: $("#csv-playlist-name")?.value ?? (csvImport.name || "Imported playlist"),
+    description: $("#csv-playlist-description")?.value ?? csvImport.description, mapping, mapping_step: Boolean(form),
+    duration_unit: form?.elements.duration_unit.value || csvImport.durationUnit,
+    artist_separator: form?.elements.artist_separator.value ?? csvImport.artistSeparator,
+    show: csvImport.show, offset: csvImport.offset};
+  csvImportWorking(true, "Saving this import locally…");
+  try {
+    await api("/api/playlist-import/pause", {id: data.id, revision: data.revision, session: csvImport.session, ...fields});
+    if (!csvImportCurrent(request)) return;
+    csvImport.data = null; $("#playlist-import").close();
+    toast("Import paused and saved locally. Continue from Playlists → Paused imports.");
+  } catch (error) { if (csvImportCurrent(request)) csvImportWorking(false, error.message); }
+}
+
+function renderPausedImports() {
+  const rows = csvPausedView.rows;
+  $("#csv-import-content").innerHTML = `<p>${rows.length} / 10 saved imports for this account. These local copies survive restarting Tagcast (64 MB total per account). Resuming refreshes the library and checks matches again; it does not create a playlist.</p>${rows.map(row => `<section class="history-item"><h3>${escapeHtml(row.name)}</h3><p>${row.total} CSV records · ${row.manual} manual ${row.manual === 1 ? "choice" : "choices"} · ${row.phase === "mapping" ? "Columns not matched yet" : `${row.unresolved} unresolved`} · Saved ${escapeHtml(new Date(row.saved_at * 1000).toLocaleString())}</p>${row.state === "submitted" ? '<p class="warn-box">Creation may already have been sent. Check Playlists before importing again; this saved copy cannot be sent again.</p>' : ""}${csvPausedView.removing === row.id ? `<p class="warn-box">Remove this saved import? Its local CSV and choices will be discarded. Existing playlists and music stay unchanged.</p><div class="dialog-footer"><button type="button" class="button primary" data-csv-remove-cancel>Keep saved import</button><button type="button" class="button danger" data-csv-remove-confirm="${escapeHtml(row.id)}">Remove saved import</button></div>` : `<div class="dialog-footer">${row.state === "paused" ? `<button type="button" class="button primary" data-csv-resume="${escapeHtml(row.id)}">Refresh library & resume</button>` : row.playlist ? `<button type="button" class="button" data-csv-open-created="${escapeHtml(row.playlist)}">Open playlist</button>` : ""}<button type="button" class="button danger" data-csv-remove-paused="${escapeHtml(row.id)}">Remove…</button></div>`}</section>`).join("") || '<p class="muted">No paused imports. Read a CSV, then choose Pause import to save your progress.</p>'}`;
+}
+
+async function openPausedImports() {
+  if (!live() || state.loading || document.querySelector("dialog[open]")) return;
+  openPlaylistImport();
+  if (!csvImportCurrent()) return;
+  const request = ++csvImport.request;
+  $("#csv-import-title").textContent = "Paused imports";
+  $("#csv-import-content").innerHTML = "";
+  csvImportWorking(true, "Reading saved imports…");
+  try {
+    const result = await api("/api/playlist-import/paused", {session: csvImport.session});
+    if (!csvImportCurrent(request)) return;
+    csvPausedView.rows = result.imports; csvPausedView.removing = null;
+    csvImportWorking(false); renderPausedImports();
+  } catch (error) { if (csvImportCurrent(request)) csvImportWorking(false, error.message); }
+}
+
+async function resumePausedImport(saved) {
+  if (!csvImportCurrent() || csvImport.busy || saved.state !== "paused") return;
+  const session = csvImport.session;
+  $("#playlist-import").close();
+  const loading = loadLive(), generation = libraryLoadRequest;
+  await loading;
+  if (generation !== libraryLoadRequest || session !== state.connection.playback_session || !live() || state.loading || document.querySelector("dialog[open]")) return;
+  openPlaylistImport();
+  const request = ++csvImport.request;
+  csvImportWorking(true, "Rechecking the saved import against your refreshed library…");
+  try {
+    const result = await api("/api/playlist-import/resume", {saved_id: saved.id, saved_token: saved.token, session});
+    if (!csvImportCurrent(request)) return;
+    Object.assign(csvImport, {name: result.name, description: result.description, fileData: result.file,
+      mapping: result.mapping, durationUnit: result.duration_unit, artistSeparator: result.artist_separator});
+    csvImportWorking(false);
+    if (result.view.phase === "mapping") renderCsvMapping(result.view); else renderCsvMatches(result.view);
+    setActionStatus("#csv-import-status", "Resumed. Matches were checked again; unchanged manual choices and skipped records were kept.");
+  } catch (error) { if (csvImportCurrent(request)) csvImportWorking(false, `The saved copy is still available: ${error.message}`); }
+}
+
+async function removePausedImport(saved) {
+  if (!csvImportCurrent() || csvImport.busy) return;
+  const request = ++csvImport.request;
+  csvImportWorking(true, "Removing the local saved import…");
+  try {
+    await api("/api/playlist-import/remove-paused", {saved_id: saved.id, saved_token: saved.token, session: csvImport.session});
+    if (!csvImportCurrent(request)) return;
+    csvPausedView.rows = csvPausedView.rows.filter(row => row.id !== saved.id); csvPausedView.removing = null;
+    csvImportWorking(false); renderPausedImports();
+  } catch (error) { if (csvImportCurrent(request)) csvImportWorking(false, error.message); }
+}
 
 function csvImportCurrent(request = csvImport.request) {
   return request === csvImport.request && csvImport.details === state.details
@@ -22,7 +100,7 @@ function requestClosePlaylistImport() {
     $("#csv-discard-title").textContent = csvImport.submitted ? "Close this import?" : "Discard this import?";
     $("#csv-discard-message").textContent = csvImport.submitted
       ? "Playlist creation is still running. Closing this window does not cancel it. Wait here for the result, or check Playlists before importing again."
-      : "Your column mapping, matches and manual choices will be lost. You will need to start again.";
+      : "Your unsaved column mapping, matches and manual choices will be lost. Choose Keep importing to pause and save them first.";
     $("#csv-discard-confirm").textContent = csvImport.submitted ? "Close import" : "Discard import";
     $("#csv-import-discard").showModal(); $("#csv-discard-keep").focus();
     return;
@@ -36,6 +114,7 @@ function resetPlaylistImport() {
   csvImport.resolving = null; csvImport.search = null; csvImport.fileData = null; csvImport.mapping = null;
   csvImport.name = ""; csvImport.description = "";
   csvImport.createdPlaylist = null;
+  csvPausedView.rows = []; csvPausedView.removing = null; syncCsvPauseButton();
   $("#playlist-import").close(); $("#csv-import-content").innerHTML = ""; setActionStatus("#csv-import-status", "");
 }
 
@@ -45,17 +124,19 @@ function openPlaylistImport() {
     session: state.connection.playback_session, busy: false, name: "", description: "", show: "unresolved", offset: 0,
     resolving: null, search: null, submitted: false, fileData: null, mapping: null, createdPlaylist: null});
   setActionStatus("#csv-import-status", "");
+  $("#csv-import-title").textContent = "Import a playlist"; syncCsvPauseButton();
   $("#csv-import-content").innerHTML = `<p>Choose a CSV and link its columns to track information. Matching uses your loaded library. You will review every selection before creating a new private playlist.</p>
     <form id="csv-file-form"><label>CSV file <input type="file" name="file" accept=".csv,.tsv,text/csv,text/tab-separated-values"></label>
     <div class="csv-import-fields"><label>Separator <select name="delimiter"><option value="auto">Detect automatically</option><option value=",">Comma (,)</option><option value=";">Semicolon (;)</option><option value="&#9;">Tab</option><option value="|">Pipe (|)</option></select></label>
     <label>Text encoding <select name="encoding"><option value="auto">UTF-8 / Unicode BOM</option><option value="windows-1252">Windows-1252</option><option value="utf-16le">UTF-16 little endian</option><option value="utf-16be">UTF-16 big endian</option></select></label></div>
-    <details><summary>Or paste CSV / tab-separated text</summary><label>CSV text <textarea name="pasted" rows="6" placeholder="Title,Artist&#10;Song,Artist"></textarea></label><p class="muted">When filled, this text is used instead of the file.</p></details><label class="checkline"><input type="checkbox" name="header" checked> First record contains column headings</label><p class="muted">Closing cancels this local draft. Drafts expire after one hour. Up to 5 MB, 10,000 data records and 100 columns. Tagcast unresolved CSV exports can be re-imported up to 12 MB. Quoted commas and multiline cells are supported. CSV cells are treated as text.</p>
+    <details><summary>Or paste CSV / tab-separated text</summary><label>CSV text <textarea name="pasted" rows="6" placeholder="Title,Artist&#10;Song,Artist"></textarea></label><p class="muted">When filled, this text is used instead of the file.</p></details><label class="checkline"><input type="checkbox" name="header" checked> First record contains column headings</label><p class="muted">Closing discards unsaved progress. After reading, Pause import saves a local copy for later. Unsaved drafts expire after one hour. Up to 5 MB, 10,000 data records and 100 columns. Tagcast unresolved CSV exports can be re-imported up to 12 MB. Quoted commas and multiline cells are supported. CSV cells are treated as text.</p>
     <div class="dialog-footer"><button type="button" class="button" data-close="playlist-import">Cancel</button><button class="button primary">Read CSV →</button></div></form>`;
   $("#playlist-import").showModal();
 }
 
 function csvImportWorking(busy, message = "") {
   csvImport.busy = busy;
+  syncCsvPauseButton();
   setActionStatus("#csv-import-status", message, busy);
   for (const element of $("#csv-import-content").querySelectorAll("input, select, textarea, button")) {
     if (!element.hasAttribute("data-close")) {
@@ -129,6 +210,7 @@ async function exportUnresolvedCsv() {
 
 function renderCsvMapping(data) {
   csvImport.data = data; csvImport.fileData = data;
+  syncCsvPauseButton();
   const options = chosen => '<option value="">Choose / do not use</option>' + data.columns.map((name, i) => `<option value="${i}" ${chosen === i ? "selected" : ""}>${i + 1}. ${escapeHtml(name || "(unnamed)")}</option>`).join("");
   const unit = data.duration_unit || (/\bms\b|milli/i.test(data.columns[data.mapping.duration] || "") ? "milliseconds" : "seconds");
   $("#csv-import-content").innerHTML = `<h3 tabindex="-1">1. Link columns</h3><p>${data.total} data records · ${data.blank_records} blank records omitted. Confirm the suggested columns using the preview.</p>
@@ -166,6 +248,7 @@ function csvMatchReasons(row) {
 
 function renderCsvMatches(data) {
   csvImport.data = data; csvImport.resolving = null; csvImport.search = null;
+  syncCsvPauseButton();
   csvImport.offset = data.offset; csvImport.show = data.show;
   const labels = {automatic: "Automatic match", manual: "Manually chosen", skipped: "Skipped", ambiguous: "Choose a track", missing: "No suggested match"};
   const partial = data.summary.unresolved > 0, selected = `${data.summary.unique} matched ${data.summary.unique === 1 ? "track" : "tracks"}`;
@@ -205,6 +288,7 @@ function renderCsvSearch(data, query) {
 
 function renderCsvReview(data) {
   csvImport.data = data; csvImport.resolving = null;
+  syncCsvPauseButton();
   $("#csv-import-content").innerHTML = `<h3 tabindex="-1">3. Review new private playlist</h3><h4>${escapeHtml(data.name)}</h4><p class="csv-description">${escapeHtml(data.description)}</p>${csvImportSummary(data.summary, data.omitted_unresolved)}
     ${data.omitted_unresolved ? `<p class="warn-box">${data.omitted_unresolved} unresolved CSV ${data.omitted_unresolved === 1 ? "record" : "records"} will be left out. Only the selected matches below will be added to the playlist.</p>` : ""}${csvUnresolvedExport(data)}
     <p>Create a new private playlist with ${data.total} ${data.total === 1 ? "track" : "tracks"} in this order. Skipped records are omitted. Existing playlists and music metadata stay unchanged.</p><ol class="csv-review-list" start="${data.offset + 1}">${data.tracks.map(track => `<li>${csvTrackDetails(track)}</li>`).join("")}</ol>${csvImportPagination(data.total, data.offset, "review")}
@@ -268,6 +352,21 @@ document.addEventListener("change", event => {
 });
 document.addEventListener("click", event => {
   const target = event.target;
+  if (target.closest("[data-csv-pause]")) return pausePlaylistImport();
+  if (target.closest("[data-csv-paused]")) return openPausedImports();
+  const resume = target.closest("[data-csv-resume]"), remove = target.closest("[data-csv-remove-paused]"), removeConfirm = target.closest("[data-csv-remove-confirm]");
+  if (resume || remove || removeConfirm) {
+    const id = resume?.dataset.csvResume || remove?.dataset.csvRemovePaused || removeConfirm?.dataset.csvRemoveConfirm;
+    const saved = csvPausedView.rows.find(row => row.id === id);
+    if (!saved || !csvImportCurrent() || csvImport.busy) return;
+    if (resume) return resumePausedImport(saved);
+    if (removeConfirm) return removePausedImport(saved);
+    csvPausedView.removing = id; renderPausedImports();
+    document.querySelector("[data-csv-remove-cancel]")?.focus(); return;
+  }
+  if (target.closest("[data-csv-remove-cancel]")) { csvPausedView.removing = null; renderPausedImports(); return; }
+  const created = target.closest("[data-csv-open-created]");
+  if (created && csvImportCurrent() && !csvImport.busy) { $("#playlist-import").close(); showCollections("playlists", created.dataset.csvOpenCreated); return; }
   if (target.closest("#csv-discard-confirm")) {
     const current = csvCloseReview.request !== null && csvImportCurrent(csvCloseReview.request);
     $("#csv-import-discard").close();
