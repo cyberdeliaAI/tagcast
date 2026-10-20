@@ -8,6 +8,7 @@ const audio = $("#audio");
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null};
+const nowPlayingRows = {revision: 0, entries: []};
 const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
 
 function storedPlayerDisplay(key) {
@@ -354,28 +355,58 @@ function setNowPlaying(open) {
 
 function renderNowPlaying() {
   if ($("#now-playing-panel").hidden) return;
+  const list = $("#now-playing-list"), focused = document.activeElement;
+  const focusedIndex = focused?.closest?.("#now-playing-list")
+    ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
+  const focusedEntry = nowPlayingRows.entries[focusedIndex];
+  const removeFocused = focused?.dataset.queueRemove !== undefined;
+  const editable = live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
+  nowPlayingRows.revision += 1;
+  nowPlayingRows.entries = player.queue.slice();
   const track = player.queue[player.index], album = track?.album;
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
     <h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
-    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">Add this track to playlist…</button></p>` : '<p class="empty">Play a track or add an album to your queue.</p>';
+    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">Add this track to playlist…</button></p>` : player.queue.length ? '<p class="empty">Choose a queued track to start playing.</p>' : '<p class="empty">Play a track or add an album to your queue.</p>';
   $("#now-playing-count").textContent = `${player.queue.length} ${player.queue.length === 1 ? "track" : "tracks"}`;
   $("#queue-clear").disabled = !player.queue.length;
-  $("#now-playing-list").innerHTML = player.queue.map((t, index) => `<li><button class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
-    <span class="queue-number">${index === player.index ? audio.paused ? "Ⅱ" : "▶" : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${t.upNext ? "Up next · " : ""}${escapeHtml(t.artist)} · ${escapeHtml(t.album.name)}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button></li>`).join("");
+  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
+    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : "▶" : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${t.upNext ? "Up next · " : ""}${escapeHtml(t.artist)} · ${escapeHtml(t.album.name)}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="Remove ${escapeHtml(t.title)} from play queue, position ${index + 1}" title="Remove from play queue"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
+  if (focusedEntry) {
+    const index = player.queue.indexOf(focusedEntry);
+    if (index >= 0) list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`)?.focus({preventScroll: true});
+  }
+}
+
+function removeQueueEntry(index, revision) {
+  if (!live() || $("#now-playing-panel").hidden || revision !== nowPlayingRows.revision
+      || !Number.isInteger(index) || index < 0 || index >= player.queue.length
+      || player.queue[index] !== nowPlayingRows.entries[index]) return;
+  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
+  const current = index === player.index, wasPlaying = !audio.paused && !audio.ended;
+  const removed = player.queue.splice(index, 1)[0];
+  if (index < player.index) player.index -= 1;
+  if (current) {
+    if (player.queue[index]) { audio.pause(); playCurrent(wasPlaying); }
+    else { stopPlayer({keepQueue: player.queue.length > 0}); renderStreamQuality(); }
+  } else markPlaying();
+  const next = Math.min(index, player.queue.length - 1);
+  (next >= 0 ? $("#now-playing-list").querySelector(`[data-queue-remove="${next}"]`)
+    : $("#now-playing-close"))?.focus({preventScroll: true});
+  toast(`Removed “${removed.title}” from the play queue.`);
 }
 
 function appendToQueue(album, trackId = null, next = false) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
   const tracks = trackId === null ? album.tracks : album.tracks.filter(t => String(t.id) === String(trackId));
   if (!tracks.length) throw Error("This track is no longer on that album. Reload the library.");
-  const empty = !player.queue.length, ended = audio.ended;
+  const empty = !player.queue.length, ended = audio.ended, idle = !player.queue[player.index];
   const following = Math.min(player.index + 1, player.queue.length), rows = queueTracks(album, tracks);
-  if (next && !empty && !ended) {
+  if (next && !empty && !ended && !idle) {
     let insert = following;
     while (player.queue[insert]?.upNext) insert += 1;
     player.queue.splice(insert, 0, ...rows.map(t => ({...t, upNext: true})));
   } else player.queue.push(...rows);
-  if (empty || ended || !player.queue[player.index]) { player.index = empty ? 0 : following; playCurrent(); }
+  if (empty || ended || idle) { player.index = empty ? 0 : following; playCurrent(); }
   else markPlaying();
   toast(`${next ? "Playing next:" : "Added"} ${tracks.length === 1 ? "1 track" : `${tracks.length} tracks`} to the queue.`);
 }
@@ -507,7 +538,7 @@ function step(delta) {
   player.index = next; playCurrent();
 }
 
-function stopPlayer() {
+function stopPlayer(options) {
   if (typeof closePlaybackOutput === "function") closePlaybackOutput(false);
   closeQueueActions();
   playReporting.watch = null;
@@ -516,7 +547,9 @@ function stopPlayer() {
   audio.pause(); audio.removeAttribute("src"); audio.load();
   $("#player").hidden = true; document.body.classList.remove("has-player");
   closeVisualPlayer();
-  player.queue = []; player.index = -1; player.album = null; markPlaying();
+  if (options?.keepQueue !== true) player.queue = [];
+  player.index = player.queue.length ? player.queue.length : -1;
+  player.album = null; markPlaying();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
 }
 
@@ -524,6 +557,7 @@ audio.addEventListener("ended", () => {
   samplePlayback();
   if (playReporting.watch) { playReporting.watch.active = false; playReporting.watch.completed = true; }
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
+  if (!player.queue[player.index]) return;
   if (player.repeat === "track") { playCurrent(); return; }
   if (player.repeat === "queue" && player.index >= player.queue.length - 1 && player.queue.length) {
     player.queue = player.queue.filter(t => !t.upNext); player.index = 0; playCurrent();
@@ -579,6 +613,11 @@ document.addEventListener("click", event => {
   if (!event.target.closest("#queue-action-menu")) closeQueueActions();
   const performerLink = event.target.closest("[data-performer-id]");
   if (performerLink) return showBrowse("track-artists", performerLink.dataset.performerId);
+  const remove = event.target.closest("[data-queue-remove]");
+  if (remove) {
+    if (!remove.disabled && remove.isConnected) removeQueueEntry(Number(remove.dataset.queueRemove), Number(remove.dataset.queueRevision));
+    return;
+  }
   const jump = event.target.closest("[data-queue-index]");
   if (jump) {
     const index = Number(jump.dataset.queueIndex);
