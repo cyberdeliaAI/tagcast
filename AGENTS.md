@@ -359,6 +359,8 @@ and preserve a valid script order in `index.html`.
   read-only tour; there is no topic chooser or automatic start. Scope highlights
   and explanations to that context, including distinct editor/review/chooser help. Use a native modal
   spotlight above existing dialogs, preserving drafts, playback, queue and history.
+  Dialog Help and Close share the right-aligned dialog-heading-actions group; the
+  circular Close icon uses centered CSS strokes, independent of font metrics.
   Hidden/missing controls get explanatory fallback text; never enable a feature,
   navigate, fetch data or invoke writes just to demonstrate it. Preserve keyboard
   dismissal, focus/scroll return and close Help on navigation or library replacement.
