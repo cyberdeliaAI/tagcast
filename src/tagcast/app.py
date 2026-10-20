@@ -259,6 +259,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/playlist-folder": self.studio.collections.save_folder,
             "/api/playlist/artwork": self.studio.collections.playlist_artwork,
             "/api/playlist-import/read": self.studio.playlist_import.read,
+            "/api/playlist-import/url": self.studio.playlist_import.read_url,
             "/api/playlist-import/match": self.studio.playlist_import.match,
             "/api/playlist-import/view": self.studio.playlist_import.view,
             "/api/playlist-import/export": self.studio.playlist_import.export,

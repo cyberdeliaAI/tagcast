@@ -39,6 +39,7 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
   loaded-library track matching, manual choices and reviewed single-use private playlist creation.
   `playlist_import_store.py` stores explicitly paused, account-scoped CSV checkpoints.
+  `playlist_sources.py` performs bounded explicit reads of public Deezer and test ListenBrainz playlists.
 - `src/tagcast/metadata_export.py`: explicit, read-only JSON / linked CSV ZIP snapshots of the loaded library,
   account/session/library-bound background preparation and private temporary streamed downloads.
 - `src/tagcast/tags.py`: native tag browsing and reviewed creation, rename, deletion
@@ -681,6 +682,25 @@ and preserve a valid script order in `index.html`.
   and ordered references in `playlist_folders` / `playlist_folder_items`, separate from
   ordinary `playlists` / `playlist_tracks`; preserve missing/repeated/cyclic references
   without traversal or extra provider requests. Keep artwork IDs in both export forms.
+- Playlist URL is a separate explicit input beside Import CSV, reusing the same draft,
+  matching, pause and final review. Only public Deezer playlists and experimental public
+  ListenBrainz playlists are supported; no login, audio, artwork or per-track follow-up
+  requests. Parse fixed HTTPS hosts/native IDs, discard tracking queries and never fetch
+  arbitrary URLs from input or returned cells/links. Deezer short links have at most four
+  checked redirects to known short hosts and a Deezer playlist; API pagination is validated
+  but reconstructed on its fixed host. A separate credential-free HTTP session disables
+  automatic redirects/netrc; bound time, request count, streamed bytes, rows and text.
+  Respect disabled Deezer before and during requests. Fetch one URL at a time, capture
+  client/account/session/library/combine context and reject replacement before publication.
+  Validate public visibility, complete pagination/counts and Deezer revision markers;
+  reject empty/private/oversized/changed/truncated/error/non-JSON responses entirely.
+  Retain order, repeats, unavailable positions, missing metadata and full version text;
+  never infer artist-name separators. URL defaults map title, performer and seconds only;
+  optional album/year/position remain available. Store normalized rows with only a validated
+  provider/native-ID origin in an explicitly paused checkpoint. Resume never refetches the
+  provider or restores an old approval. Older CSV checkpoints need no origin. Display the
+  source and test status, allow CSV export and keep close protection. Late URL responses
+  cannot restore a closed dialog; discard their local draft only in the same active session.
 - CSV playlist import is a page-local modal under Playlists. Read a file up to 5 MB
   or pasted CSV/TSV text, choose encoding/separator/header and map distinct title/performer
   columns plus optional album, album artist, duration (seconds/ms/mm:ss), year and track

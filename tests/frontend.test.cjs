@@ -6776,6 +6776,74 @@ test('CSV import opens only for a connected loaded library and starts no lookup 
   assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
 });
 
+function urlImportMapping() {
+  return {id:'a'.repeat(32),revision:1,phase:'mapping',columns:['Track title','Artist','Album','Duration'],
+    mapping:{title:0,artist:1,album:null,album_artist:null,duration:3,year:null,track:null},
+    total:2,blank_records:0,name:'<Public playlist>',duration_unit:'seconds',artist_separator:'',
+    origin:{provider:'deezer',id:'123'},source_url:'https://www.deezer.com/playlist/123',
+    sample:[{line:2,cells:['Song','Artist','Other album','180']}]};
+}
+
+test('Playlist URL opens without fetching and explicit Fetch uses shared mapping without touching audio or review', async () => {
+  const p=await csvImportPage(); p.nodes.get('#playlist-import').close(); await settle();
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'), count=p.requests.length;
+  await p.click({'[data-playlist-url]':{}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/id="playlist-url-form"/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/ListenBrainz is experimental/);
+  assert.equal(p.requests.length,count);
+  p.setFetch((url,options)=> {
+    assert.equal(url,'/api/playlist-import/url');
+    assert.deepEqual(JSON.parse(options.body),{url:'https://deezer.com/playlist/123',session:'csv-session'});
+    return {ok:true,json:async()=>urlImportMapping()};
+  });
+  await p.emitDocument('submit',{preventDefault(){},target:{id:'playlist-url-form',elements:{url:{value:' https://deezer.com/playlist/123 '}}}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/1. Link columns/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Public playlist from/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/href="https:\/\/www.deezer.com\/playlist\/123"/);
+  assert.equal(p.run('csvImport.name'),'<Public playlist>');
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())})`);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Playlist track 1:/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="&lt;Public playlist&gt;"/);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')||r.url.endsWith('/match')||r.url.endsWith('/review')).length,0);
+});
+
+test('URL fetch failures keep input and late replies discard only their local draft without reopening', async () => {
+  const p=await csvImportPage(); p.nodes.get('#playlist-import').close(); await settle();
+  p.run('openPlaylistUrlImport(); $("#playlist-url-input").value="https://listenbrainz.org/playlist/example"');
+  p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'The source returned a browser check. Use CSV.'})}));
+  await p.run('fetchPlaylistUrl({elements:{url:{value:$("#playlist-url-input").value}}})');
+  assert.match(p.nodes.get('#csv-import-status').textContent,/browser check/);
+  assert.equal(p.nodes.get('#playlist-url-input').value,'https://listenbrainz.org/playlist/example');
+  assert.equal(p.run('csvImport.busy'),false);
+  p.run('requestClosePlaylistImport()');
+  assert.equal(p.nodes.get('#csv-import-discard').open,true);
+  p.nodes.get('#csv-import-discard').close();
+  let finish;
+  p.setFetch((url)=>url.endsWith('/url')?new Promise(resolve=>{finish=resolve;}):{ok:true,json:async()=>({discarded:true})});
+  const pending=p.run('fetchPlaylistUrl({elements:{url:{value:"https://deezer.com/playlist/123"}}})');
+  const requests=p.requests.filter(r=>r.url.endsWith('/url')).length;
+  await p.run('fetchPlaylistUrl({elements:{url:{value:"https://deezer.com/playlist/123"}}})');
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/url')).length,requests,'One in-flight fetch');
+  p.nodes.get('#playlist-import').close();
+  finish({ok:true,json:async()=>urlImportMapping()}); await pending; await settle();
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/discard')).length,1);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0);
+});
+
+test('URL replies after an account change cannot restore data or discard another account draft', async () => {
+  const p=await csvImportPage(); p.nodes.get('#playlist-import').close(); await settle();
+  p.run('openPlaylistUrlImport()');
+  let finish;
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=p.run('fetchPlaylistUrl({elements:{url:{value:"https://deezer.com/playlist/123"}}})');
+  p.run('state.connection.playback_session="other-account"');
+  finish({ok:true,json:async()=>urlImportMapping()}); await pending;
+  assert.equal(p.run('csvImport.data'),null);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/discard')||r.url.endsWith('/save')).length,0);
+});
+
 test('CSV reader handles Unicode BOM, explicit Windows encoding and CSV column preview without following URLs', async () => {
   const p=await csvImportPage(); await settle();
   p.setFetch((url,options)=> {

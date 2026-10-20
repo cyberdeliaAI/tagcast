@@ -17,6 +17,7 @@ from heapq import nlargest
 from .library import FORMATS, ConflictError, LibraryError, fold, number, text, title_key
 from .metadata_export import csv_cell
 from .playlist_import_store import COPY_PREFERENCES, MAX_PAUSED, PausedImports
+from .playlist_sources import PlaylistSources, source_url
 
 MAX_ROWS = 10000
 MAX_TEXT = 10 * 1024 * 1024
@@ -269,6 +270,7 @@ class PlaylistImport:
         self.drafts = {}
         self.catalogue = None
         self.paused_store = PausedImports(studio)
+        self.url_fetch_lock = threading.Lock()
 
     def _context(self, body, draft=None, expected_library=None):
         studio = self.studio
@@ -307,7 +309,7 @@ class PlaylistImport:
     def _paused_row(row):
         return {key: row[key] for key in ("id", "token", "name", "description", "saved_at", "state", "phase", "unresolved")} | {
             "total": len(row["records"]), "manual": sum(c["status"] == "manual" for c in row["choices"]),
-            "playlist": str(row.get("playlist") or "")}
+            "playlist": str(row.get("playlist") or ""), "origin": row.get("origin")}
 
     def paused(self, body):
         with self.lock:
@@ -359,6 +361,8 @@ class PlaylistImport:
                                 if r["status"] in ("manual", "skipped") else r["previous_choice"])
                                for r in ([] if mapping_step else draft.get("rows", [])) if r["status"] in ("manual", "skipped") or r.get("previous_choice")]}
             rows[key] = row
+            if draft.get("origin"):
+                row["origin"] = draft["origin"]
             self._context(body, draft, expected_library=self.studio.library)
             self.paused_store.write(account, rows)
             del self.drafts[draft["id"]]
@@ -394,7 +398,11 @@ class PlaylistImport:
                      "blanks": saved["blanks"], "delimiter": saved["delimiter"],
                      "checkpoint": {"saved_id": saved["id"], "saved_token": saved["token"]}}
             self.drafts[key] = draft
+            if saved.get("origin"):
+                draft["origin"] = saved["origin"]
             file_data = {key: draft[key] for key in ("id", "revision", "phase", "columns", "delimiter")}
+            if draft.get("origin"):
+                file_data.update(origin=draft["origin"], source_url=source_url(draft["origin"]))
             file_data.update(sample=draft["records"][:5], total=len(draft["records"]), blank_records=draft["blanks"],
                              mapping=saved["mapping"], duration_unit=saved["duration_unit"], artist_separator=saved["artist_separator"], copy_preference=preference)
             view = file_data
@@ -460,6 +468,39 @@ class PlaylistImport:
             return {"id": key, "revision": 1, "phase": "mapping", "columns": columns,
                     "sample": records[:5], "total": len(records), "blank_records": blanks,
                     "mapping": guessed_mapping(columns), "delimiter": delimiter}
+
+    def read_url(self, body):
+        client, library = self._context(body)
+        context = {"client": client, "library": library, "account": self.studio.library_user,
+                   "session": body["session"], "combine_sets": library.combine_sets}
+        provider = None
+
+        def check(selected=None):
+            nonlocal provider
+            provider = selected or provider
+            self._context(body, context)
+            if provider == "deezer" and provider in self.studio.disabled_sources():
+                raise LibraryError("Deezer is disabled. Enable it in Settings before fetching a playlist.")
+
+        if not self.url_fetch_lock.acquire(blocking=False):
+            raise LibraryError("A playlist URL is already being fetched. Wait for it to finish.")
+        try:
+            data = PlaylistSources(self.studio.lookup.http, check).fetch(body.get("url"))
+            with self.lock:
+                check()
+                while len(self.drafts) >= 2:
+                    del self.drafts[next(iter(self.drafts))]
+                key = secrets.token_hex(16)
+                self.drafts[key] = {**context, **{k: data[k] for k in ("columns", "records", "blanks", "delimiter", "origin")},
+                                    "id": key, "revision": 1, "phase": "mapping", "created": time.monotonic()}
+                # Other metadata stays available, but optional album/year/position are not constraints by default.
+                mapping = {field: None for field in FIELDS} | {"title": 0, "artist": 1, "duration": 3}
+                return {"id": key, "revision": 1, "phase": "mapping", "columns": data["columns"],
+                        "sample": data["records"][:5], "total": len(data["records"]), "blank_records": 0,
+                        "mapping": mapping, "delimiter": ",", "duration_unit": "seconds", "artist_separator": "",
+                        "name": data["name"][:200], "origin": data["origin"], "source_url": source_url(data["origin"])}
+        finally:
+            self.url_fetch_lock.release()
 
     def match(self, body):
         with self.lock:
