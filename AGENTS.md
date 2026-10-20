@@ -687,9 +687,17 @@ and preserve a valid script order in `index.html`.
   number. Never evaluate cells or follow CSV URLs/Spotify/ISRCs. No metadata/audio/provider
   fetches for parsing, matching or manual search; use one lazy server-side active-membership
   catalogue and return only 50 CSV rows / 10 suggestions or 50 manual search results.
-  Full title/performer exact matching preserves version text and requires a unique copy
-  consistent with all mapped optional fields; invalid cells, duplicate copies and fuzzy/version
-  alternatives remain unresolved. Native additional performers count, composers do not.
+  By default, full title/performer exact matching preserves version text and requires a unique copy
+  consistent with all mapped optional fields; invalid cells and fuzzy/version alternatives
+  remain unresolved. Multiple eligible copies default to manual choice. An explicit per-import
+  copy_preference may select FLAC, oldest known effective track/album year, first (lowest ID),
+  or FLAC then oldest year, using the full eligible index. Unknown years come last; ties
+  fall back to lowest native track ID. Preferences never relax eligibility or CSV warnings,
+  fetch metadata/audio, or establish audio identity. Explain preference choices, allow manual
+  correction and preserve the final creation review. Column mapping explains that Album
+  title is a strict condition when used. Persist the preference in paused checkpoints;
+  older checkpoints without it use manual. Changing it resets prior matching decisions.
+  Native additional performers count, composers do not.
   Explain nonautomatic decisions on each row and compare every bounded suggestion with
   the CSV using the same eligibility checks (title/version, performer, album/album artist,
   year, track number and the three-second duration margin). Identify duplicate eligible

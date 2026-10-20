@@ -9,6 +9,13 @@ from .library import ConflictError, LibraryError
 
 MAX_PAUSED = 10
 MAX_PAUSED_BYTES = 64 * 1024 * 1024
+COPY_PREFERENCES = {
+    "manual": "Choose manually",
+    "flac": "Prefer FLAC",
+    "oldest": "Prefer oldest year",
+    "first": "Choose first match",
+    "flac_oldest": "FLAC first, then oldest year",
+}
 KEY = re.compile(r"[a-f0-9]{32}")
 INVALID_UNICODE = re.compile(r"[\ud800-\udfff]")
 
@@ -19,6 +26,8 @@ def valid_text(value, maximum):
 
 def valid_checkpoint(row):
     if not isinstance(row, dict):
+        return False
+    if not isinstance(row.get("copy_preference", "manual"), str) or row.get("copy_preference", "manual") not in COPY_PREFERENCES:
         return False
     strings = {"name": 200, "description": 2000}
     if any(not valid_text(row.get(k), limit) for k, limit in strings.items()):

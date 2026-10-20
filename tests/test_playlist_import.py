@@ -160,6 +160,65 @@ class PlaylistImportTests(unittest.TestCase):
         catalogue = TrackCatalogue(self.studio.library)
         self.assertFalse({105, 301, 401} & catalogue.members.keys())
 
+    def test_copy_preferences_choose_only_eligible_copies_in_a_stable_order(self):
+        raw = fixture()
+        raw['library']['tracks']['101'].update(type='audio/mpeg', year=1980)
+        raw['library']['tracks']['201'].update(type='audio/x-flac', year=2008)
+        raw['library']['tracks']['202'] = {**raw['library']['tracks']['201'], 'year': 1987}
+        raw['library']['albums']['11']['tracks'].append(202)
+        self.studio.library = Library(raw)
+        for policy, expected in [('manual', None), ('first', '101'), ('oldest', '101'),
+                                 ('flac', '201'), ('flac_oldest', '202')]:
+            with self.subTest(policy=policy):
+                result = self.matched('Title,Artist,Duration\nRunning Up That Hill,Kate Bush,300\n', copy_preference=policy)
+                row = result['rows'][0]
+                self.assertEqual(row['choice']['id'] if row['choice'] else None, expected)
+                self.assertEqual(row['eligible'], 3)
+                if expected:
+                    self.assertEqual(row['status'], 'automatic')
+                    self.assertIn('Originally selected using', row['reasons'][0])
+                    chosen = self.importer.choose(self.body(result, position=0, track_id=101))
+                    self.assertEqual(chosen['rows'][0]['reasons'], row['reasons'])
+        self.studio._current.assert_not_called()
+        self.studio.client._jsonrequest.assert_not_called()
+
+    def test_preferences_never_relax_mapped_fields_versions_or_invalid_cells(self):
+        for policy in ('first', 'oldest', 'flac', 'flac_oldest'):
+            for field, value in [('Album', 'Wrong album'), ('Album artist', 'Guest'),
+                                 ('Year', '2020'), ('Track number', '99'),
+                                 ('Duration', '304'), ('Duration', 'invalid')]:
+                with self.subTest(policy=policy, field=field, value=value):
+                    result = self.matched(f'Title,Artist,{field}\nRunning Up That Hill,Kate Bush,{value}\n', copy_preference=policy)
+                    self.assertIsNone(result['rows'][0]['choice'])
+            result = self.matched('Title,Artist\nRunning Up That Hill (Live),Kate Bush\n', copy_preference=policy)
+            self.assertIsNone(result['rows'][0]['choice'])
+            result = self.matched('Title,Artist\nRunning Up That Hill,Guest\n', copy_preference=policy)
+            self.assertIsNone(result['rows'][0]['choice'])
+        for value in ('random', None, [], {}):
+            with self.subTest(value=value), self.assertRaisesRegex(LibraryError, 'preference'):
+                self.matched(copy_preference=value)
+
+    def test_preferences_cover_full_index_and_handle_unknown_formats_years_and_ties(self):
+        raw = fixture()
+        track = raw['library']['tracks']['101']
+        track['year'] = 0
+        raw['library']['albums']['10']['year'] = 0
+        raw['library']['albums']['11']['year'] = 2000
+        for i in range(202, 240):
+            raw['library']['tracks'][str(i)] = {**track, 'album_id': 11}
+            raw['library']['albums']['11']['tracks'].append(i)
+        raw['library']['tracks']['239'].update(type='audio/flac', year=1985)
+        self.studio.library = Library(raw)
+        csv = 'Title,Artist\nRunning Up That Hill,Kate Bush\n'
+        for policy, expected in [('first', '101'), ('oldest', '239'), ('flac', '239'), ('flac_oldest', '239')]:
+            row = self.matched(csv, copy_preference=policy)['rows'][0]
+            self.assertEqual(row['choice']['id'], expected)
+            self.assertEqual(row['eligible'], 40)
+        self.studio.library.tracks.rows[239]['type'] = 'unknown'
+        self.assertEqual(self.matched(csv, copy_preference='flac')['rows'][0]['choice']['id'], '101')
+        self.studio.library.tracks.rows[239]['year'] = 2000
+        self.assertEqual(self.matched(csv, copy_preference='oldest')['rows'][0]['choice']['id'], '201')
+
     def test_artist_name_difference_explains_fire_without_changing_matching_or_duration_tolerance(self):
         raw = fixture()
         raw['library']['artists']['1']['name'] = 'Arthur Brown'
@@ -601,6 +660,41 @@ class PausedImportTests(unittest.TestCase):
         self.assertEqual(restored['phase'], 'matched')
         with self.assertRaises(LibraryError):
             self.importer.save(self.body(restored, approved=True, review_token=review['review_token']))
+
+    def test_paused_copy_preference_survives_restart_and_older_checkpoints_default_to_manual(self):
+        data = self.matched('Title,Artist\nRunning Up That Hill,Kate Bush\n', copy_preference='flac_oldest')
+        saved = self.paused(data)
+        self.importer = PlaylistImport(self.studio)
+        result = self.importer.resume(self.saved_body(saved))
+        self.assertEqual(result['copy_preference'], 'flac_oldest')
+        self.assertEqual(result['file']['copy_preference'], 'flac_oldest')
+        self.assertEqual(result['view']['rows'][0]['choice']['id'], '101')
+        saved = self.paused(result['view'])
+        rows = self.importer.paused_store.load('one')
+        del rows[saved['id']]['copy_preference']
+        self.importer.paused_store.write('one', rows)
+        result = self.importer.resume(self.saved_body(saved))
+        self.assertEqual(result['copy_preference'], 'manual')
+        self.assertIsNone(result['view']['rows'][0]['choice'])
+        with self.assertRaisesRegex(LibraryError, 'preference'):
+            self.paused(result['view'], copy_preference='unknown')
+        rows[saved['id']]['copy_preference'] = 'unknown'
+        self.importer.paused_store.write('one', rows)
+        with self.assertRaisesRegex(LibraryError, 'could not be read'):
+            self.importer.resume(self.saved_body(saved))
+
+    def test_unfinished_mapping_keeps_preference_and_changed_preference_resets_choices(self):
+        parsed = self.read()
+        saved = self.paused(parsed, copy_preference='oldest')
+        result = self.importer.resume(self.saved_body(saved))
+        self.assertEqual(result['view']['phase'], 'mapping')
+        self.assertEqual(result['view']['copy_preference'], 'oldest')
+        data = self.matched(copy_preference='flac')
+        data = self.importer.choose(self.body(data, position=0, track_id=102))
+        saved = self.paused(data, copy_preference='first')
+        result = self.importer.resume(self.saved_body(saved))
+        self.assertEqual(result['view']['phase'], 'mapping')
+        self.assertEqual(result['copy_preference'], 'first')
 
     def test_ten_checkpoints_are_never_evicted_and_repause_uses_compare_and_swap(self):
         saved = [self.paused() for _ in range(10)]
