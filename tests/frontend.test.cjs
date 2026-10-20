@@ -7041,6 +7041,78 @@ test('CSV final review has a separate save and uses only its server token to cre
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,1);
 });
 
+test('CSV close buttons and Escape preserve the complete draft when discard is declined', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); csvImport.name="Keep my work";
+    csvImport.description="Notes"; csvImport.offset=50; csvImport.show="manual";
+    csvImport.mapping={title:0,artist:1}; csvImport.resolving=csvImport.data.rows[1];
+    csvImport.search={query:"Find a copy",offset:50};
+    $("#playlist-import").scrollTop=240; $("#csv-playlist-name").focus();`);
+  const before=p.run('JSON.stringify({draft:csvImport,html:$("#csv-import-content").innerHTML,queue:player.queue,src:audio.src,history:state.history})');
+  for (const label of ['cross','Cancel']) {
+    await p.click({'[data-close]':{dataset:{close:'playlist-import'},label}});
+    assert.equal(p.nodes.get('#playlist-import').open,true);
+    assert.equal(p.nodes.get('#csv-import-discard').open,true);
+    assert.match(p.nodes.get('#csv-discard-message').textContent,/manual choices will be lost/);
+    assert.equal(p.run('document.activeElement === $("#csv-discard-keep")'),true);
+    await p.click({'[data-close]':{dataset:{close:'csv-import-discard'}}});
+    await p.nodes.get('#csv-import-discard').emit('close');
+    assert.equal(p.run('document.activeElement === $("#csv-playlist-name")'),true);
+  }
+  let prevented=false;
+  await p.nodes.get('#playlist-import').emit('cancel',{preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.equal(p.nodes.get('#csv-import-discard').open,true);
+  p.nodes.get('#csv-import-discard').close(); // Native Escape closes only the top dialog.
+  await p.nodes.get('#csv-import-discard').emit('close');
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.equal(p.nodes.get('#playlist-import').scrollTop,240);
+  assert.equal(p.run('JSON.stringify({draft:csvImport,html:$("#csv-import-content").innerHTML,queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/discard').length,0);
+});
+
+test('confirmed CSV discard clears once and ignores a late match response', async () => {
+  const p=await csvImportPage(); await settle(); let release;
+  p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:1}');
+  p.setFetch(url=>url.endsWith('/discard') ? {ok:true,json:async()=>({discarded:true})} : new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('csvImportCall("match",{mapping:{title:0,artist:1}})');
+  await p.click({'[data-close]':{dataset:{close:'playlist-import'}}});
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  await p.click({'#csv-discard-confirm':{}});
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  await p.nodes.get('#playlist-import').emit('close');
+  release({ok:true,json:async()=>csvMatched()}); await pending;
+  assert.equal(p.run('csvImport.data'),null);
+  assert.equal(p.nodes.get('#csv-import-content').innerHTML,'');
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/discard').length,1);
+});
+
+test('CSV close protection covers selected input and running creation but leaves empty and finished dialogs alone', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run('requestClosePlaylistImport()');
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(Boolean(p.nodes.get('#csv-import-discard').open),false);
+  p.run('openPlaylistImport(); $("#csv-file-form").elements={file:{files:[{name:"list.csv"}]}}; requestClosePlaylistImport()');
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.equal(p.nodes.get('#csv-import-discard').open,true);
+  p.nodes.get('#csv-import-discard').close(); await p.nodes.get('#csv-import-discard').emit('close');
+  p.run('$("#csv-file-form").elements={pasted:{value:"Title,Artist"}}; requestClosePlaylistImport()');
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.equal(p.nodes.get('#csv-import-discard').open,true);
+  p.nodes.get('#csv-import-discard').close(); await p.nodes.get('#csv-import-discard').emit('close');
+  p.run('csvImport.submitted=true; csvImport.busy=true; requestClosePlaylistImport()');
+  assert.match(p.nodes.get('#csv-discard-message').textContent,/does not cancel it/);
+  assert.equal(p.nodes.get('#csv-discard-confirm').textContent,'Close import');
+  p.nodes.get('#csv-import-discard').close(); await p.nodes.get('#csv-import-discard').emit('close');
+  p.run('csvImport.busy=false; requestClosePlaylistImport()');
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(p.nodes.get('#csv-import-discard').open,false);
+  p.run('$("#editor").showModal()');
+  await p.click({'[data-close]':{dataset:{close:'editor'}}});
+  assert.equal(p.nodes.get('#editor').open,false);
+  assert.equal(p.nodes.get('#csv-import-discard').open,false);
+});
+
 test('CSV close and account replacement ignore late match results and prevent saved choices crossing sessions', async () => {
   const p=await csvImportPage(); await settle(); let release;
   p.run('csvImport.data={id:"'+'a'.repeat(32)+'",revision:1}');
@@ -7079,8 +7151,9 @@ test('pasted CSV bypasses file decoding and remains plain text in a separate map
 
 test('a CSV draft closes and clears its displayed data when the active session changes', async () => {
   const p=await csvImportPage();
-  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); state.connection.playback_session='another-session'; updateChrome()`);
+  p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); requestClosePlaylistImport(); state.connection.playback_session='another-session'; updateChrome()`);
   assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(p.nodes.get('#csv-import-discard').open,false);
   assert.equal(p.nodes.get('#csv-import-content').innerHTML,'');
   assert.equal(p.run('csvImport.data'),null);
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);

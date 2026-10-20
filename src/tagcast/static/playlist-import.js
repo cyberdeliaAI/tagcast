@@ -5,13 +5,33 @@ const csvImport = {request: 0, data: null, details: null, session: "", busy: fal
   name: "", description: "", fileData: null, mapping: null, durationUnit: "seconds", artistSeparator: "", show: "unresolved", offset: 0, resolving: null, search: null, submitted: false, createdPlaylist: null};
 const csvFields = {title: "Track title (required)", artist: "Performing artist (required)",
   album: "Album title", album_artist: "Album artist", duration: "Duration", year: "Release year / date", track: "Track number"};
+const csvCloseReview = {request: null, focus: null};
 
 function csvImportCurrent(request = csvImport.request) {
   return request === csvImport.request && csvImport.details === state.details
     && csvImport.session === state.connection.playback_session && live() && $("#playlist-import").open;
 }
 
+function requestClosePlaylistImport() {
+  if (!$("#playlist-import").open || $("#csv-import-discard").open) return;
+  const form = $("#csv-file-form");
+  const progress = csvImport.data || csvImport.busy || form?.elements.file?.files?.length
+    || form?.elements.pasted?.value?.trim();
+  if (csvImportCurrent() && progress && (!csvImport.submitted || csvImport.busy)) {
+    csvCloseReview.request = csvImport.request; csvCloseReview.focus = document.activeElement;
+    $("#csv-discard-title").textContent = csvImport.submitted ? "Close this import?" : "Discard this import?";
+    $("#csv-discard-message").textContent = csvImport.submitted
+      ? "Playlist creation is still running. Closing this window does not cancel it. Wait here for the result, or check Playlists before importing again."
+      : "Your column mapping, matches and manual choices will be lost. You will need to start again.";
+    $("#csv-discard-confirm").textContent = csvImport.submitted ? "Close import" : "Discard import";
+    $("#csv-import-discard").showModal(); $("#csv-discard-keep").focus();
+    return;
+  }
+  $("#playlist-import").close();
+}
+
 function resetPlaylistImport() {
+  $("#csv-import-discard").close();
   csvImport.request += 1; csvImport.data = null; csvImport.busy = false;
   csvImport.resolving = null; csvImport.search = null; csvImport.fileData = null; csvImport.mapping = null;
   csvImport.name = ""; csvImport.description = "";
@@ -248,6 +268,12 @@ document.addEventListener("change", event => {
 });
 document.addEventListener("click", event => {
   const target = event.target;
+  if (target.closest("#csv-discard-confirm")) {
+    const current = csvCloseReview.request !== null && csvImportCurrent(csvCloseReview.request);
+    $("#csv-import-discard").close();
+    if (current) $("#playlist-import").close();
+    return;
+  }
   if (target.closest("[data-csv-export]")) return exportUnresolvedCsv();
   if (target.closest("[data-csv-import]")) return openPlaylistImport();
   if (target.closest("[data-csv-columns]") && csvImportCurrent() && !csvImport.busy && csvImport.fileData) {
@@ -269,6 +295,16 @@ document.addEventListener("click", event => {
     if (kind === "search") return csvImportCall("search", {offset, query: csvImport.search.query}, data => renderCsvSearch(data, csvImport.search.query));
     return csvImportCall("view", {offset, show: csvImport.show, review: kind === "review"}, kind === "review" ? renderCsvReview : renderCsvMatches);
   }
+});
+$("#csv-import-discard").addEventListener("close", () => {
+  const focus = csvCloseReview.focus;
+  csvCloseReview.request = null; csvCloseReview.focus = null;
+  if ($("#playlist-import").open) {
+    (focus?.isConnected && !focus.disabled ? focus : document.querySelector('[data-close="playlist-import"]'))?.focus({preventScroll: true});
+  }
+});
+$("#playlist-import").addEventListener("cancel", event => {
+  event.preventDefault(); requestClosePlaylistImport();
 });
 $("#playlist-import").addEventListener("close", () => {
   const data = csvImport.data, session = csvImport.session, created = csvImport.createdPlaylist;

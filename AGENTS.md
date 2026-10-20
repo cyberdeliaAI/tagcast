@@ -696,6 +696,11 @@ and preserve a valid script order in `index.html`.
   and combine setting. Revision checks reject concurrent choices; close clears/discards,
   library changes invalidate, late replies cannot restore a closed/replaced draft. Never
   persist CSVs, choices, credentials or source URLs to disk/history. Playback/history stay intact.
+  Once an import has input or a draft, Close, Cancel and Escape ask before discarding
+  unsent progress; declining preserves choices, text, filter, page, focus and scroll.
+  Warn separately that closing during creation does not cancel the accepted request.
+  Empty/finished dialogs and automatic account/library invalidation need no prompt;
+  programmatic success closure and the single-use save protections stay unchanged.
   Matching initially shows Unresolved records, using a server-filtered bounded page.
   Users may resolve/skip more rows or explicitly review only their selected automatic/manual
   matches, leaving unresolved rows out. Require a boolean omit_unresolved choice for a
