@@ -22,7 +22,7 @@ const HELP_TOPICS = {
   artists: {title: "Album artists", scope: "#artists-page", steps: [
     ["Browse your album artists", "Each card groups the albums credited to one album artist. The totals refer to albums in your library.", ["#artists-page .page-intro"]],
     ["Find an artist", "Search by name. The combined Filter and sort menu has separate Sort and Show sections: changing one keeps the other. Checkmarks identify both current choices. Empty filters are omitted; All album artists stays available. Sort by name, native artist rating or Random. Unrated artists stay last.", ["#artists-page .toolbar"]],
-    ["Open their albums", "Choose the artist name or card background to see their albums. Hover or focus the image to change it through the existing comparison; the image action stays visible on touch devices. Back returns to this list with your search, order and page preserved. A filled heart identifies an artist favourite; choose Favourite artists in the filter to show only these artists.", ["#artists-grid .artist-card", "#artists-grid"]],
+    ["Open their albums", "Choose an artist card to see their albums. On the artist page, hover or focus the larger photo to change it through the existing comparison; that action stays visible on touch devices. Back returns to this list with your search, order and page preserved. A filled heart identifies an artist favourite; choose Favourite artists in the filter to show only these artists.", ["#artists-grid .artist-card", "#artists-grid"]],
     ["Browse more artists", "Choose how many artists to show per page, then use Previous and Next to move through the results.", ["#artists-pagination", "#artists-per-page"]],
   ]},
   albums: {title: "Albums", scope: "#albums-page", steps: [
