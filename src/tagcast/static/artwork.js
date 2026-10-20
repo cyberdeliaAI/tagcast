@@ -25,8 +25,12 @@ function artistArtTarget() {
     artist: album.artist, before: {artwork_id: album.artist_artwork_id || 0}};
 }
 
-function artistPageTarget(name) {
-  const artist = state.albums.flatMap(albumArtistEntries).find(a => a.name === name && Number(a.id) > 0);
+function artistPageTarget(name, id = null) {
+  let artist;
+  for (const album of state.albums) {
+    artist = albumArtistEntries(album).find(a => a.name === name && Number(a.id) > 0 && (id === null || String(a.id) === id));
+    if (artist) break;
+  }
   if (!artist) return null;
   return {target: "artist", id: String(artist.id), label: name, current: (artist.image || "").replace(/-150$/, "-300"),
     artist: name, before: {artwork_id: artist.artwork_id || 0}};
@@ -216,9 +220,19 @@ async function undoArtwork(entry) {
 }
 
 document.addEventListener("click", event => {
+  const artistImage = event.target.closest("[data-artist-image]");
+  if (artistImage) {
+    const target = artistPageTarget(artistImage.dataset.artistImage, artistImage.dataset.artistImageId);
+    if (artistImage.isConnected && live() && !state.loading && !saving && !checking
+        && !document.querySelector("dialog[open]") && ["artists", "artist-favourites"].includes(state.screen)
+        && String(artistBrowse.library) === artistImage.dataset.artistLibrary
+        && target?.id === artistImage.dataset.artistImageId) openArtwork(target);
+    return;
+  }
   if (event.target.closest("#change-cover")) { openArtwork(albumArtTarget()); return; }
   if (event.target.closest("#change-artist-image")) { openArtwork(artistArtTarget()); return; }
-  if (event.target.closest("#change-artist-page-image")) { openArtwork(artistPageTarget(state.artist)); return; }
+  const pageImage = event.target.closest("#change-artist-page-image");
+  if (pageImage) { openArtwork(artistPageTarget(state.artist, pageImage.dataset.artistPageImageId || null)); return; }
   const option = event.target.closest("[data-art-choice]");
   if (option) { choose(Number(option.dataset.artChoice)); return; }
   if (event.target.closest("#art-save") && !event.target.closest("#art-save").onclick) { saveArtwork(); return; }

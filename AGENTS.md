@@ -315,6 +315,13 @@ and preserve a valid script order in `index.html`.
 - Collection, album artist and browse group totals emphasize albums, with track
   counts shown smaller underneath. Reuse existing summary and group counts;
   never download track details or add requests just to display these totals.
+- Playlist details show the duration of all active playlist positions from the loaded
+  server library, including repeats across pages; flag missing durations explicitly.
+  Playlist covers and rounded-square artist photos open the existing artwork comparison
+  through an image overlay on hover/focus, always visible on touch. Artist cards keep
+  separate native buttons for image editing and navigation, with no nested buttons.
+  Edit the native identity supplying the displayed image. The artist-page header shows
+  only its photo; its album count remains above the album list, without a track total.
 - `browse.js` provides Track artists, Composers, Genres and Release year. Index
   active displayed album membership on the server, lazily per library copy.
   Track artist/composer selections use IDs; genres use stored main/additional
