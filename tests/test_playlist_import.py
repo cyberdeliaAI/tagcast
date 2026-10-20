@@ -3,6 +3,8 @@
 import copy
 import csv
 import io
+import json
+import os
 import tempfile
 import time
 import unittest
@@ -13,6 +15,7 @@ from tagcast.library import ConflictError, Library, LibraryError
 from tagcast.playlist_import import (
     CSV_EXPORT_MARKER,
     MAX_ROWS,
+    PlaylistImport,
     TrackCatalogue,
     duration_seconds,
     parse_csv,
@@ -517,8 +520,189 @@ class PlaylistImportTests(unittest.TestCase):
         self.studio.client._jsonrequest.assert_not_called()
 
 
+class PausedImportTests(unittest.TestCase):
+    setUp = PlaylistImportTests.setUp
+    body = PlaylistImportTests.body
+    read = PlaylistImportTests.read
+    matched = PlaylistImportTests.matched
+
+    def paused(self, matched=None, **fields):
+        matched = matched or self.matched()
+        return self.importer.pause(self.body(matched, name='Saved CSV', show='all', **fields))['saved']
+
+    def saved_body(self, saved, **fields):
+        return {'saved_id': saved['id'], 'saved_token': saved['token'],
+                'session': self.studio.playback_session, **fields}
+
+    def test_pause_survives_restart_and_new_uploads_without_losing_manual_choices_or_skips(self):
+        data = self.matched('Title,Artist\nCloudbusting,Kate Bush\nNew song,Kate Bush\nRunning Up That Hill,Kate Bush\nSkip me,Kate Bush\n')
+        data = self.importer.choose(self.body(data, position=2, track_id='101'))
+        data = self.importer.choose(self.body(data, position=3, skip=True))
+        saved = self.paused(data, description='Keep these notes')
+        self.assertNotIn(data['id'], self.importer.drafts)
+        self.assertIsNone(self.importer.catalogue)
+        path = self.studio.home / self.importer.paused_store.filename('one')
+        raw = path.read_text()
+        self.assertIn('New song', raw)
+        for secret in ('playback_session', 'review_token', 'access_token', 'refresh_token', 'combine_sets', 'library'):
+            self.assertNotIn('"' + secret + '"', raw)
+        if os.name != 'nt':
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        fresh = fixture()
+        fresh['library']['tracks']['106'] = {'album_id': 10, 'artist_id': 1, 'title': 'New song', 'length': 180}
+        fresh['library']['albums']['10']['tracks'].append(106)
+        self.studio.library = Library(fresh)
+        self.studio.client = Mock()
+        self.studio.playback_session = 'after-restart'
+        self.importer = PlaylistImport(self.studio)
+        with patch('tagcast.playlist_import.time.monotonic', return_value=99999999):
+            result = self.importer.resume(self.saved_body(saved))
+        view = result['view']
+        self.assertEqual((result['name'], result['description']), ('Saved CSV', 'Keep these notes'))
+        self.assertEqual([r['status'] for r in view['rows']], ['automatic', 'automatic', 'manual', 'skipped'])
+        self.assertEqual(view['rows'][1]['choice']['id'], '106')
+        self.assertEqual((view['summary']['unresolved'], view['summary']['manual']), (0, 1))
+        self.studio.client._jsonrequest.assert_not_called()
+        self.studio._current.assert_not_called()
+        self.importer.discard({'id': view['id'], 'session': self.studio.playback_session})
+        self.assertEqual(len(self.importer.paused({'session': self.studio.playback_session})['imports']), 1)
+
+    def test_changed_manual_choice_stays_unresolved_even_after_another_pause(self):
+        data = self.matched()
+        data = self.importer.choose(self.body(data, position=0, track_id=102))
+        saved = self.paused(data)
+        fresh = fixture()
+        fresh['library']['tracks']['102']['length'] = 311
+        self.studio.library = Library(fresh)
+        result = self.importer.resume(self.saved_body(saved))['view']
+        self.assertIsNone(result['rows'][0]['choice'])
+        self.assertIn('previous manual choice changed', ' '.join(result['rows'][0]['reasons']))
+        again = self.paused(result)
+        self.assertEqual(again['id'], saved['id'])
+        result = self.importer.resume(self.saved_body(again))['view']
+        self.assertIsNone(result['rows'][0]['choice'])
+        chosen = self.importer.choose(self.body(result, position=0, track_id=102))
+        self.assertEqual(chosen['rows'][0]['status'], 'manual')
+        self.assertNotIn('previous manual choice changed', ' '.join(chosen['rows'][0]['reasons']))
+
+    def test_mapping_and_review_checkpoints_resume_without_reusing_approval(self):
+        parsed = self.read()
+        saved = self.paused(parsed, mapping={'title': 0, 'artist': None}, duration_unit='milliseconds')
+        restored = self.importer.resume(self.saved_body(saved))
+        self.assertEqual(restored['view']['phase'], 'mapping')
+        self.assertEqual(restored['mapping'], {'title': 0, 'artist': None})
+        self.assertEqual(restored['duration_unit'], 'milliseconds')
+        data = self.matched()
+        review = self.importer.review(self.body(data, name='Reviewed'))
+        saved = self.paused(review)
+        raw = (self.studio.home / self.importer.paused_store.filename('one')).read_text()
+        self.assertNotIn(review['review_token'], raw)
+        restored = self.importer.resume(self.saved_body(saved))['view']
+        self.assertEqual(restored['phase'], 'matched')
+        with self.assertRaises(LibraryError):
+            self.importer.save(self.body(restored, approved=True, review_token=review['review_token']))
+
+    def test_ten_checkpoints_are_never_evicted_and_repause_uses_compare_and_swap(self):
+        saved = [self.paused() for _ in range(10)]
+        active = self.matched()
+        with self.assertRaisesRegex(LibraryError, '10 paused'):
+            self.paused(active)
+        self.assertIn(active['id'], self.importer.drafts)
+        self.assertEqual(len(self.importer.paused({'session': 'session'})['imports']), 10)
+        with self.assertRaises(ConflictError):
+            self.importer.remove_paused(self.saved_body(saved[0], saved_token='stale'))
+        self.importer.remove_paused(self.saved_body(saved[0]))
+        self.paused(active)
+        view = self.importer.resume(self.saved_body(saved[-1]))['view']
+        updated = self.paused(view)
+        self.assertEqual(updated['id'], saved[-1]['id'])
+        self.assertNotEqual(updated['token'], saved[-1]['token'])
+        with self.assertRaises(ConflictError):
+            self.importer.resume(self.saved_body(saved[-1]))
+
+    def test_mapping_changes_never_reuse_choices_made_for_different_columns(self):
+        data = self.matched()
+        data = self.importer.choose(self.body(data, position=0, track_id=102))
+        saved = self.paused(data, mapping={'title': 1, 'artist': 0})
+        restored = self.importer.resume(self.saved_body(saved))
+        self.assertEqual(restored['view']['phase'], 'mapping')
+        self.assertEqual(restored['mapping'], {'title': 1, 'artist': 0})
+        self.assertNotIn('rows', self.importer.drafts[restored['view']['id']])
+
+    def test_saved_imports_are_account_scoped_and_do_not_follow_connection_changes(self):
+        saved = self.paused()
+        self.studio.library_user = 'another-account'
+        self.studio.playback_session = 'other-session'
+        self.assertEqual(self.importer.paused({'session': 'other-session'})['imports'], [])
+        with self.assertRaises(ConflictError):
+            self.importer.resume(self.saved_body(saved))
+        with self.assertRaises(ConflictError):
+            self.importer.paused({'session': 'session'})
+        self.studio.library_user = 'one'
+        self.assertEqual(len(self.importer.paused({'session': 'other-session'})['imports']), 1)
+
+    def test_creation_intent_survives_an_ambiguous_request_and_cannot_resume_or_resend(self):
+        saved = self.paused()
+        restored = self.importer.resume(self.saved_body(saved))['view']
+        review = self.importer.review(self.body(restored, name='Create once'))
+        self.studio.client._jsonrequest.side_effect = RuntimeError('Lost response')
+        body = self.body(review, approved=True, review_token=review['review_token'])
+        with self.assertRaises(RuntimeError):
+            self.importer.save(body)
+        with self.assertRaises(LibraryError):
+            self.importer.save(body)
+        self.importer = PlaylistImport(self.studio)
+        entry = self.importer.paused({'session': 'session'})['imports'][0]
+        self.assertEqual((entry['state'], entry['name']), ('submitted', 'Create once'))
+        with self.assertRaises(ConflictError):
+            self.importer.resume(self.saved_body(saved))
+        self.studio.client._jsonrequest.assert_called_once()
+
+    def test_concurrent_resumes_can_create_only_once_and_confirmed_readback_removes_the_checkpoint(self):
+        saved = self.paused()
+        first = self.importer.resume(self.saved_body(saved))['view']
+        second = self.importer.resume(self.saved_body(saved))['view']
+        first = self.importer.review(self.body(first, name='Create once'))
+        second = self.importer.review(self.body(second, name='Create once'))
+        self.studio.client._jsonrequest.return_value = {'playlist_id': 999}
+        self.importer.save(self.body(first, approved=True, review_token=first['review_token']))
+        with self.assertRaises(ConflictError):
+            self.importer.save(self.body(second, approved=True, review_token=second['review_token']))
+        self.studio.client._jsonrequest.assert_called_once()
+        after = fixture()
+        after['library']['playlists']['999'] = {'name': 'Create once', 'description': '', 'tracks': [102]}
+        results = self.studio._check_later.call_args.args[2](Library(after))
+        self.assertEqual(results, [{'id': '999', 'status': 'saved'}])
+        self.assertEqual(self.importer.paused({'session': 'session'})['imports'], [])
+
+    def test_storage_errors_keep_open_drafts_and_corrupt_files_are_never_overwritten(self):
+        active = self.matched()
+        with patch.object(self.studio, '_write_bytes', side_effect=OSError), self.assertRaises(LibraryError):
+            self.paused(active)
+        self.assertIn(active['id'], self.importer.drafts)
+        saved = self.paused(active)
+        path = self.studio.home / self.importer.paused_store.filename('one')
+        original = path.read_bytes()
+        for mutation in ('not json', json.dumps({'version': 1, 'account': 'wrong', 'imports': []})):
+            path.write_text(mutation)
+            with self.assertRaises(LibraryError):
+                self.importer.paused({'session': 'session'})
+            with self.assertRaises(LibraryError):
+                self.paused()
+            self.assertEqual(path.read_text(), mutation)
+        path.write_bytes(original)
+        with patch('tagcast.playlist_import_store.MAX_PAUSED_BYTES', 1), self.assertRaises(LibraryError):
+            self.importer.resume(self.saved_body(saved))
+
+
 class PlaylistImportProtocolTests(unittest.TestCase):
     def test_csv_creation_uses_oauth_and_fresh_native_readback_without_changing_music(self):
+        self.check_csv_creation(paused=False)
+
+    def test_resumed_creation_consumes_and_removes_its_checkpoint_after_native_readback(self):
+        self.check_csv_creation(paused=True)
+
+    def check_csv_creation(self, paused):
         from test_client import client, mock_ibroadcast
         original = copy.deepcopy(mock_ibroadcast.STATE)
         home = tempfile.TemporaryDirectory()
@@ -536,6 +720,11 @@ class PlaylistImportProtocolTests(unittest.TestCase):
                 return {'session': studio.playback_session, 'id': data['id'], 'revision': data['revision'], **fields}
             matched = studio.playlist_import.match(body(parsed, mapping=parsed['mapping']))
             chosen = studio.playlist_import.choose(body(matched, position=0, track_id=900))
+            if paused:
+                checkpoint = studio.playlist_import.pause(body(chosen, name='Saved protocol import'))['saved']
+                studio.playlist_import = PlaylistImport(studio)
+                chosen = studio.playlist_import.resume({'session': studio.playback_session,
+                    'saved_id': checkpoint['id'], 'saved_token': checkpoint['token']})['view']
             review = studio.playlist_import.review(body(chosen, name='Imported CSV', description='Local review', omit_unresolved=True))
             self.assertEqual(review['omitted_unresolved'], 1)
             self.assertEqual(mock_ibroadcast.STATE['writes'], [])
@@ -549,6 +738,8 @@ class PlaylistImportProtocolTests(unittest.TestCase):
             self.assertEqual([w['mode'] for w in mock_ibroadcast.STATE['writes']], ['createplaylist'])
             self.assertFalse(mock_ibroadcast.STATE['writes'][0]['make_public'])
             self.assertEqual(mock_ibroadcast.STATE['tracks'], before)
+            if paused:
+                self.assertEqual(studio.playlist_import.paused({'session': studio.playback_session})['imports'], [])
         finally:
             with studio.cache_lock:
                 pass

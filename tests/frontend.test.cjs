@@ -7041,6 +7041,92 @@ test('CSV final review has a separate save and uses only its server token to cre
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,1);
 });
 
+function pausedCsvRow(overrides={}) {
+  return {id:'b'.repeat(32),token:'c'.repeat(32),name:'My paused import',description:'Notes',
+    saved_at:1792486800,state:'paused',phase:'matched',total:2,manual:1,unresolved:1,playlist:'',...overrides};
+}
+
+test('Pause import explicitly saves local progress and closes only after success without affecting playback', async () => {
+  for (const success of [true,false]) {
+    const p=await csvImportPage(); await settle();
+    p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); csvImport.mapping={title:0,artist:1};
+      $("#csv-playlist-name").value="My paused import"; $("#csv-playlist-description").value="Notes";
+      { const query=document.querySelector.bind(document); document.querySelector=s=>s==="#csv-map-form"?null:query(s); }`);
+    assert.equal(p.nodes.get('#csv-import-pause').hidden,false);
+    const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+    p.setFetch((url,options)=> {
+      assert.equal(url,'/api/playlist-import/pause');
+      const body=JSON.parse(options.body);
+      assert.deepEqual(body.mapping,{title:0,artist:1});
+      assert.equal(body.name,'My paused import'); assert.equal(body.description,'Notes');
+      assert.equal(body.revision,2); assert.equal(body.session,'csv-session');
+      return {ok:success,status:503,json:async()=>success?{saved:pausedCsvRow()}:{error:'Local disk full'}};
+    });
+    await p.run('pausePlaylistImport()');
+    assert.equal(p.nodes.get('#playlist-import').open,!success);
+    if (!success) { assert.match(p.nodes.get('#csv-import-status').textContent,/disk full/); assert.equal(p.run('csvImport.data.revision'),2); }
+    assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+    assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/save').length,0);
+  }
+});
+
+test('Paused imports lists compact local checkpoints and requires an explicit removal review', async () => {
+  const p=await csvImportPage(); p.nodes.get('#playlist-import').close();
+  p.setFetch((url,options)=> {
+    if (url.endsWith('/paused')) return {ok:true,json:async()=>({imports:[pausedCsvRow({name:'<Saved CSV>'})],limit:10})};
+    assert.equal(url,'/api/playlist-import/remove-paused');
+    assert.deepEqual(JSON.parse(options.body),{saved_id:'b'.repeat(32),saved_token:'c'.repeat(32),session:'csv-session'});
+    return {ok:true,json:async()=>({removed:true})};
+  });
+  await p.run('openPausedImports()');
+  let html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/&lt;Saved CSV&gt;/); assert.match(html,/Refresh library & resume/);
+  assert.equal(p.nodes.get('#csv-import-pause').hidden,true);
+  await p.click({'[data-csv-remove-paused]':{dataset:{csvRemovePaused:'b'.repeat(32)}}});
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/Keep saved import/);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/remove-paused')).length,0);
+  await p.click({'[data-csv-remove-cancel]':{}});
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/remove-paused')).length,0);
+  await p.click({'[data-csv-remove-paused]':{dataset:{csvRemovePaused:'b'.repeat(32)}}});
+  await p.click({'[data-csv-remove-confirm]':{dataset:{csvRemoveConfirm:'b'.repeat(32)}}});
+  html=p.nodes.get('#csv-import-content').innerHTML;
+  assert.match(html,/No paused imports/);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/remove-paused')).length,1);
+});
+
+test('Resuming refreshes the library before restoring matches and never reuses a playlist approval', async () => {
+  const p=await csvImportPage(); await settle();
+  const row=pausedCsvRow();
+  p.run(`csvPausedView.rows=[${JSON.stringify(row)}]; globalThis.refreshFinished=false;
+    loadLive=async()=>{libraryLoadRequest++; state.details=new Map(state.details);refreshFinished=true;};`);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  p.setFetch((url,options)=> {
+    assert.equal(p.run('refreshFinished'),true); assert.equal(url,'/api/playlist-import/resume');
+    assert.deepEqual(JSON.parse(options.body),{saved_id:row.id,saved_token:row.token,session:'csv-session'});
+    return {ok:true,json:async()=>({name:row.name,description:row.description,
+      mapping:{title:0,artist:1},duration_unit:'seconds',artist_separator:'',file:{mapping:{title:0,artist:1},columns:['Title','Artist'],sample:[]},
+      view:csvMatched({show:'manual'})})};
+  });
+  await p.run(`resumePausedImport(${JSON.stringify(row)})`);
+  assert.equal(p.nodes.get('#playlist-import').open,true);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="My paused import"/);
+  assert.match(p.nodes.get('#csv-import-content').innerHTML,/value="manual" selected/);
+  assert.match(p.nodes.get('#csv-import-status').textContent,/Resumed/);
+  assert.equal(p.run('csvImport.submitted'),false);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')||r.url.endsWith('/review')).length,0);
+});
+
+test('An account change during resume refresh cannot reopen another account import', async () => {
+  const p=await csvImportPage(); await settle();
+  p.run('loadLive=()=>{libraryLoadRequest++; return new Promise(resolve=>{globalThis.finishResumeRefresh=resolve;});};');
+  const pending=p.run(`resumePausedImport(${JSON.stringify(pausedCsvRow())})`);
+  p.run('state.connection.playback_session="another-account"; finishResumeRefresh()');
+  await pending;
+  assert.equal(p.nodes.get('#playlist-import').open,false);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist-import/resume').length,0);
+});
+
 test('CSV close buttons and Escape preserve the complete draft when discard is declined', async () => {
   const p=await csvImportPage(); await settle();
   p.run(`renderCsvMatches(${JSON.stringify(csvMatched())}); csvImport.name="Keep my work";

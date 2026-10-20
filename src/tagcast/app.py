@@ -268,6 +268,10 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/playlist-import/revise": self.studio.playlist_import.revise,
             "/api/playlist-import/save": self.studio.playlist_import.save,
             "/api/playlist-import/discard": self.studio.playlist_import.discard,
+            "/api/playlist-import/paused": self.studio.playlist_import.paused,
+            "/api/playlist-import/pause": self.studio.playlist_import.pause,
+            "/api/playlist-import/resume": self.studio.playlist_import.resume,
+            "/api/playlist-import/remove-paused": self.studio.playlist_import.remove_paused,
             "/api/queue-tracks": self.studio.collections.queue_tracks,
             "/api/queue-sync": self.studio.queue_sync.action,
         }

@@ -816,3 +816,5 @@ body.help-open{overflow:hidden}
 @media(max-width:760px){.playlist-list th,.playlist-list td{padding:10px 6px}.playlist-list .playlist-cover.small{width:44px;height:44px}.playlist-list-open{gap:10px;min-width:150px}.playlist-list-time{min-width:85px}.playlist-list-number{min-width:65px}.playlist-folder-view{align-items:flex-start}}
 
 .playlist-folder-view .view-toggle button{min-height:44px}
+#collections-page .toolbar{flex-wrap:wrap}
+#collections-page .toolbar .search{flex-basis:220px}

@@ -38,6 +38,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
   loaded-library track matching, manual choices and reviewed single-use private playlist creation.
+  `playlist_import_store.py` stores explicitly paused, account-scoped CSV checkpoints.
 - `src/tagcast/metadata_export.py`: explicit, read-only JSON / linked CSV ZIP snapshots of the loaded library,
   account/session/library-bound background preparation and private temporary streamed downloads.
 - `src/tagcast/tags.py`: native tag browsing and reviewed creation, rename, deletion
@@ -699,7 +700,21 @@ and preserve a valid script order in `index.html`.
   Bind at most two in-memory drafts (one-hour expiry) to client/account/session/library copy
   and combine setting. Revision checks reject concurrent choices; close clears/discards,
   library changes invalidate, late replies cannot restore a closed/replaced draft. Never
-  persist CSVs, choices, credentials or source URLs to disk/history. Playback/history stay intact.
+  persist ordinary unsaved drafts or credentials to disk/history. Playback/history stay intact.
+  Explicit Pause import is an authorized exception: save the original parsed CSV cells,
+  column mapping, playlist text, manual choices/signatures, skips, filter and page locally.
+  Keep at most 10 checkpoints / 64 MB per account in a validated private atomic JSON file;
+  never evict a paused import, overwrite a corrupt file, or expose another account's copies.
+  Paused copies survive restart without the active draft's one-hour expiry. Resume explicitly
+  refreshes the shared library, then rematches conservatively. Retain only unchanged manual
+  identities/signatures and explicit skips; changed/missing manual choices stay unresolved
+  even through another pause. Mapping changes reset choices. No review token, credentials,
+  library object, source lookup, audio or automatic iBroadcast write is persisted/resumed.
+  Closing/discarding a resumed active draft keeps its checkpoint; removing that saved copy
+  requires a separate review and token comparison. Re-pausing replaces only that same,
+  unchanged checkpoint. Before creation persist its consumed intent, so concurrent resumes
+  and uncertain requests cannot resend it after restart. Remove the checkpoint on confirmed
+  creation; retained uncertain entries are read-only and direct users to check Playlists.
   Once an import has input or a draft, Close, Cancel and Escape ask before discarding
   unsent progress; declining preserves choices, text, filter, page, focus and scroll.
   Warn separately that closing during creation does not cancel the accepted request.
@@ -716,7 +731,8 @@ and preserve a valid script order in `index.html`.
   records, with original columns/cells/order. Use UTF-8 BOM/comma/CRLF and reversible
   spreadsheet escaping with a Tagcast format line; re-import removes only that escape.
   Ordinary files remain limited to 5 MB; identified Tagcast exports may be re-imported up
-  to 12 MB (also bounded server-side). Do not persist exports/CSVs on the server. Export is
+  to 12 MB (also bounded server-side). Export never persists a file; only explicit paused
+  checkpoints may retain parsed CSV contents locally. Export is
   read-only and revision/client/account/session/combine-bound; only this source-file read
   may survive a newer library copy, including the import's own save/read-back. Never relax
   matching or write guards. Offer export in matches, review, uncertain results and the
