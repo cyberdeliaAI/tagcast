@@ -1035,7 +1035,11 @@ function showHistory() {
 
 document.addEventListener("click", event => {
   const close = event.target.closest("[data-close]");
-  if (close) { $(`#${close.dataset.close}`).close(); return; }
+  if (close) {
+    if (close.dataset.close === "playlist-import") requestClosePlaylistImport();
+    else $(`#${close.dataset.close}`).close();
+    return;
+  }
   const artist = event.target.closest("[data-artist]");
   if (artist) { setArtist(artist.dataset.artist); return; }
   const album = event.target.closest("[data-album]");
