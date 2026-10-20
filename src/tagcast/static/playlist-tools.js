@@ -22,11 +22,25 @@ function playlistBrowseCard(data) {
   return `<button class="button playlist-card" data-playlist-open="${escapeHtml(data.id)}" ${data.kind === "unavailable" ? "disabled" : ""}>${playlistCoverImage(data, true)}<span><strong>${escapeHtml(data.name)}</strong><small>${data.kind === "folder" ? `${data.count} playlist ${data.count === 1 ? "reference" : "references"} · Folder` : data.kind === "unavailable" ? "Unavailable reference" : `${data.count} ${data.count === 1 ? "track" : "tracks"}`}</small></span></button>`;
 }
 
+function playlistViewControls() {
+  return `<div class="view-toggle" role="group" aria-label="Playlist view"><button type="button" data-playlists-view="grid" aria-label="Show playlist cards" aria-pressed="${collectionsView.view !== "list"}">▦</button><button type="button" data-playlists-view="list" aria-label="Show playlist list" aria-pressed="${collectionsView.view === "list"}">☰</button></div>`;
+}
+
+function playlistBrowseItems(rows, folder = false) {
+  const remove = p => `<button class="text-action" data-folder-remove="${escapeHtml(p.id)}" aria-label="Remove ${escapeHtml(p.name)} from folder">Remove from folder…</button>`;
+  if (collectionsView.view !== "list") return `<div class="playlist-cards">${rows.map(p => folder ? `<div class="playlist-folder-item">${playlistBrowseCard(p)}${remove(p)}</div>` : playlistBrowseCard(p)).join("")}</div>`;
+  return `<div class="playlist-list-wrap"><table class="playlist-list"><thead><tr><th>Playlist</th><th>Tracks / items</th><th>Total time</th>${folder ? '<th aria-label="Folder actions"></th>' : ""}</tr></thead><tbody>${rows.map(p => `<tr><td><button type="button" class="playlist-list-open" data-playlist-open="${escapeHtml(p.id)}" ${p.kind === "unavailable" ? "disabled" : ""}>${playlistCoverImage(p, true)}<span><strong>${escapeHtml(p.name)}</strong>${p.kind === "folder" ? '<small>Folder</small>' : p.kind === "unavailable" ? '<small>Unavailable reference</small>' : p.unavailable_count ? `<small>${p.unavailable_count} unavailable ${p.unavailable_count === 1 ? "track" : "tracks"}</small>` : ""}</span></button></td><td class="playlist-list-number">${p.kind === "folder" ? `${p.count} ${p.count === 1 ? "reference" : "references"}` : p.kind === "unavailable" ? "–" : p.active_count ?? p.count}</td><td class="playlist-list-time">${p.kind === "folder" || p.kind === "unavailable" ? "–" : playlistDuration(p).replace(/^ · /, "") || "–"}</td>${folder ? `<td>${remove(p)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+}
+
+function playlistCataloguePage(data) {
+  return `<div class="page-intro"><div><h1>Playlists<span>.</span></h1><p>Your iBroadcast playlists and folders. Search also finds playlists inside folders. System lists are managed by iBroadcast.</p></div></div><div class="toolbar">${clearableSearchInput("collection-search", 'class="collection-search" placeholder="Search playlists" aria-label="Search playlists"', collectionsView.query)}<button class="button" data-playlist-create>Create playlist…</button><button class="button" data-folder-create>Create folder…</button><button class="button" data-csv-import>Import CSV…</button>${playlistViewControls()}</div><p>${data.total} playlists and folders</p>${data.playlists.length ? playlistBrowseItems(data.playlists) : '<p class="muted">No matching playlists. Add an album or save the queue to create one.</p>'}${collectionPages(data.total, 100)}`;
+}
+
 function playlistFolderPage(data) {
   return `<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistCoverImage(data)}<div><div class="eyebrow">PLAYLIST FOLDER</div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div>
     <div class="album-detail-actions"><button class="button" data-folder-rename>Rename folder…</button><button class="button" data-folder-add>Add playlists or folders…</button><button class="button danger" data-folder-delete ${data.total || data.parent_count ? 'disabled title="Empty the folder and remove its parent references first"' : ""}>Delete empty folder…</button></div>
     ${data.parents?.length ? `<p class="muted">Also in: ${data.parents.map(p => `<button class="text-action" data-playlist-open="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`).join(", ")}</p>` : ""}
-    <p>${data.total} playlist ${data.total === 1 ? "reference" : "references"} · removing a reference keeps the playlist and its music.</p><div class="playlist-cards">${data.playlists.map(p => `<div class="playlist-folder-item">${playlistBrowseCard(p)}<button class="text-action" data-folder-remove="${escapeHtml(p.id)}" aria-label="Remove ${escapeHtml(p.name)} from folder">Remove from folder…</button></div>`).join("") || '<p class="muted">This folder is empty. Add playlists or folders when you choose.</p>'}</div>${collectionPages(data.total, 100)}`;
+    <div class="playlist-folder-view"><p>${data.total} playlist ${data.total === 1 ? "reference" : "references"} · removing a reference keeps the playlist and its music.</p>${playlistViewControls()}</div>${data.playlists.length ? playlistBrowseItems(data.playlists, true) : '<p class="muted">This folder is empty. Add playlists or folders when you choose.</p>'}${collectionPages(data.total, 100)}`;
 }
 
 function invalidatePlaylistFolder() { folderDraft.request += 1; folderDraft.body = null; }
@@ -167,6 +181,16 @@ document.addEventListener("change", event => {
 });
 document.addEventListener("click", event => {
   const target = event.target;
+  const view = target.closest("[data-playlists-view]");
+  if (view && view.isConnected && state.screen === "playlists" && live() && !state.loading
+      && collectionsView.details === state.details && collectionsView.data && (!collectionsView.playlist || collectionsView.data.is_folder)
+      && ["grid", "list"].includes(view.dataset.playlistsView)) {
+    collectionsView.view = view.dataset.playlistsView;
+    try { localStorage.setItem("tagcast-playlists-view", collectionsView.view); } catch { /* private window */ }
+    replaceCollections(collectionsView.data.is_folder ? playlistFolderPage(collectionsView.data) : playlistCataloguePage(collectionsView.data));
+    document.querySelector(`[data-playlists-view="${collectionsView.view}"]`)?.focus({preventScroll: true});
+    return;
+  }
   if (target.closest("[data-playlist-cover]")) return openPlaylistCover();
   if (target.closest("[data-folder-create]")) return openPlaylistFolder("create");
   if (target.closest("[data-folder-rename]")) return openPlaylistFolder("rename");

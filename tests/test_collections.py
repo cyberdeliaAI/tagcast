@@ -71,6 +71,95 @@ class CollectionTests(unittest.TestCase):
         view = self.studio.collections.playlists(playlist_id='888')
         self.assertEqual((view['total'], view['duration'], view['duration_missing']), (0, 0, 0))
 
+    def playlist_metadata_body(self):
+        mock_ibroadcast.STATE['playlists'][888] = {
+            'name': 'Keep every position', 'description': 'Before', 'type': None,
+            'tracks': [900, 900, 999999, 902], 'artwork_id': 77, 'system_created': False}
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        view = self.studio.collections.playlists(playlist_id='888')
+        return {'action': 'metadata', 'playlist': '888', 'before_name': view['name'],
+                'before_token': view['before_token'], 'session': self.studio.playback_session,
+                'approved': True, 'fields': {'description': 'Only this text changes'}}
+
+    def test_playlist_description_only_omits_tracks_and_preserves_all_native_positions(self):
+        body = self.playlist_metadata_body()
+        before = copy.deepcopy(mock_ibroadcast.STATE['playlists'][888])
+        with patch.object(self.studio.client, '_jsonrequest', wraps=self.studio.client._jsonrequest) as request:
+            result = self.job(self.studio.collections.save_playlist(body))
+        updates = [call for call in request.call_args_list if call.args[0] == 'updateplaylist']
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0].kwargs, {'playlist': 888, '_retry': False,
+                                           'description': 'Only this text changes'})
+        self.assertEqual(result['results'], [{'id': '888', 'status': 'saved'}])
+        self.assertEqual(mock_ibroadcast.STATE['playlists'][888],
+                         {**before, 'description': 'Only this text changes'})
+
+    def test_playlist_text_review_rejects_unapproved_stale_or_unsupported_changes(self):
+        body = self.playlist_metadata_body()
+        for changes in ({'approved': False}, {'tracks': []}, {'fields': {}},
+                        {'fields': {'artwork_id': 7}}, {'fields': {'name': ''}},
+                        {'fields': {'description': ['text']}}, {'session': 'another-session'},
+                        {'fields': {'name': 'x' * 201}}, {'fields': {'description': 'x' * 2001}},
+                        {'fields': {'description': 'Before'}}):
+            with self.subTest(changes=changes), self.assertRaises(LibraryError):
+                self.studio.collections.save_playlist({**body, **changes})
+        writes = len(mock_ibroadcast.STATE['writes'])
+        mock_ibroadcast.STATE['playlists'][888]['tracks'].append(901)
+        mock_ibroadcast.STATE['version'] += 1
+        with self.assertRaises(ConflictError):
+            self.studio.collections.save_playlist(body)
+        self.assertEqual(len(mock_ibroadcast.STATE['writes']), writes)
+
+    def test_playlist_rename_and_description_clear_are_verified_without_track_replacement(self):
+        body = self.playlist_metadata_body()
+        body['fields'] = {'name': 'Renamed – café', 'description': ''}
+        checked = self.job(self.studio.collections.save_playlist(body))
+        self.assertEqual(checked['results'], [{'id': '888', 'status': 'saved'}])
+        stored = mock_ibroadcast.STATE['playlists'][888]
+        self.assertEqual((stored['name'], stored['description']), ('Renamed – café', ''))
+        self.assertEqual(stored['tracks'], [900, 900, 999999, 902])
+        write = mock_ibroadcast.STATE['writes'][-1]
+        self.assertNotIn('tracks', write)
+        self.assertNotIn('artwork_id', write)
+
+    def test_playlist_description_is_verified_for_text_and_track_replacements(self):
+        for action in ('metadata', 'replace'):
+            with self.subTest(action=action):
+                body = self.playlist_metadata_body()
+                if action == 'replace':
+                    body.update(action='replace', name=body['before_name'],
+                                description='Only this text changes', tracks=[900, 901])
+                    body.pop('fields')
+                original = self.studio.client._jsonrequest
+
+                def ignore_description(mode, **kwargs):
+                    result = original(mode, **kwargs)
+                    if mode == 'updateplaylist':
+                        mock_ibroadcast.STATE['playlists'][888]['description'] = 'Not accepted'
+                    return result
+
+                with patch.object(self.studio.client, '_jsonrequest', side_effect=ignore_description):
+                    checked = self.job(self.studio.collections.save_playlist(body))
+                self.assertEqual(checked['results'], [{'id': '888', 'status': 'unverified'}])
+
+    def test_playlist_catalogue_times_use_active_positions_and_not_folder_references(self):
+        self.playlist_metadata_body()
+        mock_ibroadcast.STATE['tracks'][900]['length'] = 180
+        mock_ibroadcast.STATE['playlists'][889] = {
+            'name': 'Folder', 'type': 'folder', 'tracks': [888]}
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        rows = self.studio.collections.playlists(query='Keep', browse=True)['playlists']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['count'], rows[0]['active_count'], rows[0]['unavailable_count']), (4, 2, 2))
+        self.assertEqual((rows[0]['duration'], rows[0]['duration_missing']), (360, 0))
+        root = self.studio.collections.playlists(browse=True)['playlists'][0]
+        self.assertEqual(root['kind'], 'folder')
+        self.assertNotIn('duration', root)
+        child = self.studio.collections.playlists(playlist_id='889')['playlists'][0]
+        self.assertEqual(child['duration'], 360)
+
     def test_artist_rating_is_native_scalar_read_back_and_independent_of_hearts(self):
         body = {'artists': ['41'], 'name': 'Kate Bush', 'session': self.studio.playback_session,
                 'before': [0], 'rating': 4}

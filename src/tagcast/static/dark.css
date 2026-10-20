@@ -163,6 +163,7 @@
 :root[data-theme="dark"] .library-loading{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .playlist-import-dialog input:not([type=checkbox]),:root[data-theme="dark"] .playlist-import-dialog select,:root[data-theme="dark"] .playlist-import-dialog textarea{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .csv-match-reasons{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] .playlist-list tr:hover td{background:var(--palette-tint,#2d2f2a)}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -341,6 +342,7 @@
 :root:not([data-theme="light"]) .library-loading{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .playlist-import-dialog input:not([type=checkbox]),:root:not([data-theme="light"]) .playlist-import-dialog select,:root:not([data-theme="light"]) .playlist-import-dialog textarea{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .csv-match-reasons{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) .playlist-list tr:hover td{background:var(--palette-tint,#2d2f2a)}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}
