@@ -798,3 +798,21 @@ body.help-open{overflow:hidden}
 @media(max-width:600px){.csv-import-row{grid-template-columns:1fr;gap:12px}.csv-candidate{align-items:flex-start;flex-direction:column}.csv-import-fields{grid-template-columns:minmax(0,1fr)}}
 
 .playlist-import-dialog table{width:100%;border-collapse:collapse}.playlist-import-dialog td,.playlist-import-dialog th{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line)}
+
+/* Native playlist catalogue: one local choice for cards or compact rows. */
+.playlist-folder-view{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:18px 0}
+.playlist-list-wrap{overflow-x:auto}
+.playlist-list{width:100%;border-collapse:collapse;text-align:left}
+.playlist-list th{font-size:11px;font-weight:500;color:var(--muted);padding:12px;border-bottom:1px solid var(--line)}
+.playlist-list td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.playlist-list-open{display:flex;align-items:center;gap:16px;min-width:180px;width:100%;border:0;padding:0;background:none;color:var(--ink);text-align:left}
+.playlist-list-open>span{min-width:0;overflow-wrap:anywhere}
+.playlist-list-open strong,.playlist-list-open small{display:block}.playlist-list-open small{margin-top:5px;color:var(--muted);font-size:11px}
+.playlist-list-number,.playlist-list-time{font-variant-numeric:tabular-nums}.playlist-list-number{width:130px}.playlist-list-time{width:160px}
+.playlist-list tr:hover td{background:var(--palette-tint,#edf2e7)}
+.playlist-text-change{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:8px}
+.playlist-text-change p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 14px}.playlist-text-change>strong{display:block;margin-bottom:12px}
+.playlist-text-before{color:var(--muted)}
+@media(max-width:760px){.playlist-list th,.playlist-list td{padding:10px 6px}.playlist-list .playlist-cover.small{width:44px;height:44px}.playlist-list-open{gap:10px;min-width:150px}.playlist-list-time{min-width:85px}.playlist-list-number{min-width:65px}.playlist-folder-view{align-items:flex-start}}
+
+.playlist-folder-view .view-toggle button{min-height:44px}

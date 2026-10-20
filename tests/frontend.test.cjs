@@ -4424,6 +4424,47 @@ test("Playlist review keeps order, escapes labels and sends nothing before the s
   assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 1);
 });
 
+test("description-only playlist review sends only changed text and preserves playback and revised input", async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); state.connection.playback_session="text-session"; const textEdit={id:"81",name:"My list",description:"Before",before_token:"text-snapshot"};');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  await p.run('openPlaylistSave(queueTracks(state.details.get("1")), textEdit)');
+  const review=`reviewPlaylist({elements:{name:{value:"My list"},description:{value:"After <safe>"}},querySelectorAll:()=>playlistDraft.tracks.map(t=>({value:t.id,checked:true}))})`;
+  await p.run(review);
+  assert.deepEqual(p.json('playlistDraft.body'), {action:'metadata',playlist:'81',before_token:'text-snapshot',before_name:'My list',session:'text-session',approved:true,fields:{description:'After <safe>'}});
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/Track selection and order stay unchanged/);
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/Before.*After &lt;safe&gt;/s);
+  assert.doesNotMatch(p.nodes.get('#playlist-dialog-content').innerHTML,/Replace the playlist|playlist-review-tracks/);
+  await p.click({'[data-playlist-revise]':{}});
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/After &lt;safe&gt;<\/textarea>/);
+  await p.run(review);
+  p.setFetch((url,options)=> {
+    if(url==='/api/playlist') {
+      assert.deepEqual(JSON.parse(options.body).fields,{description:'After <safe>'});
+      assert.equal('tracks' in JSON.parse(options.body),false);
+      return {ok:true,json:async()=>({job:'text-check'})};
+    }
+    assert.equal(url,'/api/jobs/text-check');
+    return {ok:true,json:async()=>({state:'done',results:[{id:'81',status:'saved'}]})};
+  });
+  await p.run('savePlaylistDraft()');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test("playlist review avoids no-op writes and keeps explicit track removals separate from text edits", async () => {
+  const p=livePage(); await settle();
+  p.run('state.connection.playback_session="text-session"; const removalEdit={id:"81",name:"My list",description:"Before",before_token:"snapshot"};');
+  await p.run('openPlaylistSave(queueTracks(state.details.get("1")), removalEdit)');
+  await p.run(`reviewPlaylist({elements:{name:{value:"My list"},description:{value:"Before"}},querySelectorAll:()=>playlistDraft.tracks.map(t=>({value:t.id,checked:true}))})`);
+  assert.equal(p.run('playlistDraft.body'),null);
+  assert.match(p.nodes.get('#toast').textContent,/No playlist changes/);
+  await p.run(`reviewPlaylist({elements:{name:{value:"My list"},description:{value:"After"}},querySelectorAll:()=>playlistDraft.tracks.map((t,i)=>({value:t.id,checked:i===0}))})`);
+  assert.equal(p.run('playlistDraft.body.action'),'replace');
+  assert.equal(p.run('playlistDraft.body.tracks.length'),1);
+  assert.match(p.nodes.get('#playlist-dialog-content').innerHTML,/Replace the playlist with 1 track/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playlist').length,0);
+});
+
 test("album ratings show the requested stars immediately, then confirm and repaint without refresh", async () => {
   const p = livePage(); await settle();
   await p.run('openAlbum("1")');
@@ -6551,6 +6592,30 @@ test('playlist detail shows whole-list duration and an accessible cover action, 
   assert.equal(p.run('playlistDuration({duration:0,duration_missing:1})'),' · 1 track without duration');
   assert.equal(p.run('playlistDuration({duration:0,duration_missing:0})'),' · 0:00');
   assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('playlist list view is remembered locally and switches without requests, metadata writes or playback changes', async () => {
+  const storage={}, p=page({storage}); await settle();
+  p.run('state.mode="live"; playTracks(state.details.get("1"));');
+  const data={total:2,offset:0,playlists:[
+    {id:'81',kind:'playlist',name:'A <list>',count:4,active_count:3,unavailable_count:1,duration:7260,duration_missing:0},
+    {id:'82',kind:'folder',name:'Folder',count:2}
+  ]};
+  p.setFetch(()=>({ok:true,json:async()=>data}));
+  p.run('showCollections("playlists")'); await settle();
+  const requests=p.requests.length, before=p.run('JSON.stringify({queue:player.queue,src:audio.src,albumView:state.view,query:collectionsView.query,offset:collectionsView.offset})');
+  await p.click({'[data-playlists-view]':{isConnected:true,dataset:{playlistsView:'list'}}});
+  const html=p.nodes.get('#collections-page').innerHTML;
+  assert.match(html,/class="playlist-list"/); assert.match(html,/A &lt;list&gt;/);
+  assert.match(html,/2:01:00/); assert.match(html,/1 unavailable track/);
+  assert.match(html,/2 references/); assert.match(html,/data-playlists-view="list"[^>]+aria-pressed="true"/);
+  assert.equal(storage['tagcast-playlists-view'],'list');
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,albumView:state.view,query:collectionsView.query,offset:collectionsView.offset})'),before);
+  const restored=page({storage}); assert.equal(restored.run('collectionsView.view'),'list');
+  await p.click({'[data-playlists-view]':{isConnected:true,dataset:{playlistsView:'grid'}}});
+  assert.match(p.nodes.get('#collections-page').innerHTML,/class="playlist-cards"/);
+  assert.equal(p.requests.length,requests);
 });
 
 test('playlist browsing shows native covers and folders without treating folder references as tracks', async () => {

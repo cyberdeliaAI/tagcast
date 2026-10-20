@@ -301,6 +301,14 @@ class Collections:
         artwork_id = number(row.get("artwork_id"))
         return {"artwork_id": artwork_id, "artwork": library.art_url(artwork_id) if artwork_id else ""}
 
+    @staticmethod
+    def playlist_track_summary(library, row):
+        ids = track_ids(row.get("tracks") or [], maximum=None)
+        active = [i for i in ids if i in library.tracks and not library.tracks[i].get("trashed")]
+        lengths = [max(0, number(library.tracks[i].get("length"))) for i in active]
+        return {"active_count": len(active), "unavailable_count": len(ids) - len(active),
+                "duration": sum(lengths), "duration_missing": lengths.count(0)}
+
     def playlist_summary(self, library, playlist_id):
         row = library.playlists.get(playlist_id)
         available = row and (self.editable(row) or self.folder(row))
@@ -312,6 +320,7 @@ class Collections:
                 "kind": "folder" if self.folder(row) else "playlist",
                 "count": len(row.get("tracks") or []), "description": text(row.get("description")),
                 "before_token": self.playlist_snapshot(row, playlist_id),
+                **(self.playlist_track_summary(library, row) if self.editable(row) else {}),
                 **self.playlist_image(library, row)}
 
     def playlist_catalogue(self, library, query, offset):
@@ -570,8 +579,50 @@ class Collections:
         finally:
             studio.save_lock.release()
 
+    def update_playlist_details(self, body):
+        """Change reviewed text only; preserve every stored playlist position."""
+        fields = body.get("fields")
+        if body.get("approved") is not True or not isinstance(fields, dict) or not fields \
+                or set(fields) - {"name", "description"} or "tracks" in body:
+            raise LibraryError("Review only the playlist name or description before saving.")
+        if any(not isinstance(value, str) or len(value) > (200 if key == "name" else 2000)
+               for key, value in fields.items()) or ("name" in fields and not fields["name"].strip()):
+            raise LibraryError("Use a playlist name of 1–200 characters and description up to 2,000.")
+        playlist_id = track_ids([body.get("playlist")], 1)[0]
+        studio = self.studio
+        if not studio.save_lock.acquire(blocking=False):
+            raise LibraryError("Another save is still running.")
+        try:
+            client, library = self.library()
+            self._playlist_session(body, client)
+            row = library.playlists.get(playlist_id)
+            if not row or not self.editable(row) or not isinstance(body.get("before_token"), str):
+                raise LibraryError("Review an editable playlist before changing its details.")
+            self.check_playlist_before(row, body)
+            changed = {key: value for key, value in fields.items() if value != text(row.get(key))}
+            if not changed:
+                raise LibraryError("No playlist details changed.")
+            expected = {key: row.get(key) for key in
+                        ("name", "description", "tracks", "type", "system_created", "artwork_id")}
+            expected.update(changed)
+            client._jsonrequest("updateplaylist", playlist=playlist_id, _retry=False, **changed)
+
+            def check(after):
+                got = after.playlists.get(playlist_id, {})
+                matches = self.editable(got) and all(
+                    (text(got.get(key)) == text(value) if key in ("name", "description")
+                     else got.get(key) == value) for key, value in expected.items())
+                return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
+
+            return {"id": str(playlist_id), "job": studio._check_later(
+                client, studio.downloads, check, include_albums=False)}
+        finally:
+            studio.save_lock.release()
+
     def save_playlist(self, body):
         action = body.get("action")
+        if action == "metadata":
+            return self.update_playlist_details(body)
         if action == "delete":
             return self.delete_playlist(body)
         name, description = text(body.get("name")).strip(), text(body.get("description")).strip()
@@ -606,12 +657,19 @@ class Collections:
                 expected = list(dict.fromkeys([*(row.get("tracks") or []), *ids])) if action == "append" else ids
                 payload = {"playlist": playlist_id, "tracks": ids}
                 if action == "replace":
-                    payload.update(name=name or text(row.get("name")), description=description)
+                    name = name or text(row.get("name"))
+                    if name != text(row.get("name")):
+                        payload["name"] = name
+                    if description != text(row.get("description")):
+                        payload["description"] = description
+                    if ids == row.get("tracks"):
+                        payload.pop("tracks")
                 client._jsonrequest("appendplaylist" if action == "append" else "updateplaylist", **payload)
 
             def check(after):
                 row = after.playlists.get(playlist_id, {})
-                matches = row.get("tracks") == expected and (action == "append" or text(row.get("name")) == name)
+                matches = row.get("tracks") == expected and (action == "append" or (
+                    text(row.get("name")) == name and text(row.get("description")) == description))
                 return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
 
             return {"id": str(playlist_id), "job": studio._check_later(client, studio.downloads, check, include_albums=False)}

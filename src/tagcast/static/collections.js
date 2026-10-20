@@ -2,6 +2,7 @@
 
 // Local album favourites and native collections stay separate from metadata drafts and History.
 const collectionsView = {request: 0, query: "", offset: 0, playlist: null, data: null, loading: false, busy: false, rating: null, favourite: null};
+try { collectionsView.view = localStorage.getItem("tagcast-playlists-view") === "list" ? "list" : "grid"; } catch { collectionsView.view = "grid"; }
 const playlistDraft = {body: null, details: null, session: "", selected: null, request: 0};
 
 async function collectionJob(response, current) {
@@ -162,7 +163,7 @@ async function renderCollections() {
       page.innerHTML = playlistFolderPage(data);
     } else if (collectionsView.playlist) {
       page.innerHTML = `<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistEditableCover(data)}<div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ ${data.large ? "Play this page" : "Play playlist"}</button><button type="button" class="button" data-playlist-shuffle ${data.tracks.length ? "" : "disabled"}>${data.large ? "Shuffle this page" : "Shuffle playlist"}</button><button class="button" data-playlist-edit ${data.large ? 'disabled title="Full replacement is limited to 10,000 tracks"' : ""}>Edit playlist…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks${playlistDuration(data)} · in playlist order</p>${data.large ? '<p class="muted">Large playlist: browse 100 tracks per page. Playback and shuffle use only this page. Full-content editing is limited to 10,000 tracks; adding tracks and reviewed deletion remain available.</p>' : ""}<table class="album-tracks album-tracklist track-results"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr data-row="${escapeHtml(t.id)}"><td class="track-number">${trackNumberControl(t, t.position + 1, `data-playlist-position="${escapeHtml(t.position)}"`, true)}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td>${queueButton(t.album_id, t)}</td></tr>`).join("")}</tbody></table>${collectionPages(data.total, 100)}`;
-    } else replaceCollections(`<div class="page-intro"><div><h1>Playlists<span>.</span></h1><p>Your iBroadcast playlists and folders. Search also finds playlists inside folders. System lists are managed by iBroadcast.</p></div></div><div class="toolbar">${clearableSearchInput("collection-search", 'class="collection-search" placeholder="Search playlists" aria-label="Search playlists"', collectionsView.query)}<button class="button" data-playlist-create>Create playlist…</button><button class="button" data-folder-create>Create folder…</button><button class="button" data-csv-import>Import CSV…</button></div><p>${data.total} playlists and folders</p><div class="playlist-cards">${data.playlists.map(playlistBrowseCard).join("") || '<p class="muted">No matching playlists. Add an album or save the queue to create one.</p>'}</div>${collectionPages(data.total, 100)}`);
+    } else replaceCollections(playlistCataloguePage(data));
     markPlaying();
     if (typeof syncHistory === "function") syncHistory();
   } catch (error) { if (request === collectionsView.request && details === state.details) page.innerHTML = `<p class="error-box">${escapeHtml(error.message)}</p>`; }
@@ -185,7 +186,7 @@ function showCollections(screen, id = null, saved = {}) {
   showScreen(screen);
 }
 
-async function openPlaylistSave(tracks = [], edit = null, destination = null) {
+async function openPlaylistSave(tracks = [], edit = null, destination = null, revised = null) {
   if (!live() || collectionsView.busy) return;
   if (typeof invalidatePlaylistFolder === "function") invalidatePlaylistFolder();
   const request = ++playlistDraft.request, details = state.details, session = state.connection.playback_session;
@@ -199,7 +200,7 @@ async function openPlaylistSave(tracks = [], edit = null, destination = null) {
     if (request !== playlistDraft.request || details !== state.details || session !== state.connection.playback_session || !$("#playlist-dialog").open) return;
     playlistDraft.tracks = unique;
     playlistDraft.choices = choices.playlists;
-    $("#playlist-dialog-content").innerHTML = `<form id="playlist-form">${edit ? "" : `<label>Destination <select name="destination"><option value="new">New private playlist</option>${choices.playlists.map(p => `<option value="${p.id}" ${destination === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></label><div class="clearable-field"><label for="playlist-destination-query">Find playlist by name</label>${clearableSearchInput("playlist-destination-query", 'name="playlist_query" maxlength="200"')}</div><button type="button" class="button small" data-playlist-find>Find playlists</button>`}<label>Name <input name="name" maxlength="200" value="${escapeHtml(edit?.name || "")}"></label><label>Description <textarea name="description" maxlength="2000">${escapeHtml(edit?.description || "")}</textarea></label><p>${unique.length} ${unique.length === 1 ? "track" : "tracks"}${unique.length !== tracks.length ? ' · repeated queue entries kept once, in their first position' : ''}. Albums keep their track order.</p><div class="playlist-review-tracks">${unique.map((t, i) => `<label class="checkline"><input type="checkbox" name="track" value="${t.id}" checked> ${i + 1}. ${escapeHtml(t.title)} · ${escapeHtml(t.artist)}</label>`).join("")}</div><div class="dialog-footer"><button type="button" class="button" data-close="playlist-dialog">Cancel</button><button class="button primary">Prepare review →</button></div></form>`;
+    $("#playlist-dialog-content").innerHTML = `<form id="playlist-form">${edit ? "" : `<label>Destination <select name="destination"><option value="new">New private playlist</option>${choices.playlists.map(p => `<option value="${p.id}" ${destination === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></label><div class="clearable-field"><label for="playlist-destination-query">Find playlist by name</label>${clearableSearchInput("playlist-destination-query", 'name="playlist_query" maxlength="200"')}</div><button type="button" class="button small" data-playlist-find>Find playlists</button>`}<label>Name <input name="name" maxlength="200" value="${escapeHtml(revised?.name ?? edit?.name ?? "")}"></label><label>Description <textarea name="description" maxlength="2000">${escapeHtml(revised?.description ?? edit?.description ?? "")}</textarea></label><p>${edit ? `${edit.stored_total ?? edit.total ?? tracks.length} playlist positions · ${unique.length} available unique tracks shown. Leaving all checked preserves every stored position. Unchecking a track prepares a full replacement, keeping each selected track ID once.` : `${unique.length} ${unique.length === 1 ? "track" : "tracks"}${unique.length !== tracks.length ? " · repeated queue entries kept once, in their first position" : ""}. Albums keep their track order.`}</p><div class="playlist-review-tracks">${unique.map((t, i) => `<label class="checkline"><input type="checkbox" name="track" value="${t.id}" ${!revised || revised.selected.includes(String(t.id)) ? "checked" : ""}> ${i + 1}. ${escapeHtml(t.title)} · ${escapeHtml(t.artist)}</label>`).join("")}</div><div class="dialog-footer"><button type="button" class="button" data-close="playlist-dialog">Cancel</button><button class="button primary">Prepare review →</button></div></form>`;
   } catch (error) { if (request === playlistDraft.request && details === state.details && session === state.connection.playback_session) $("#playlist-dialog-content").innerHTML = `<p class="error-box">${escapeHtml(error.message)}</p>`; }
 }
 
@@ -225,7 +226,7 @@ async function reviewPlaylist(form) {
   const selected = new Set([...form.querySelectorAll('input[name="track"]')].filter(t => t.checked).map(t => t.value));
   const ids = playlistDraft.tracks.filter(t => selected.has(t.id)).map(t => Number(t.id));
   const edit = playlistDraft.selected;
-  const body = {action: edit ? "replace" : destination === "new" ? "create" : "append", tracks: ids,
+  let body = {action: edit ? "replace" : destination === "new" ? "create" : "append", tracks: ids,
     name: form.elements.name.value.trim(), description: form.elements.description.value.trim()};
   if (destination !== "new") {
     const current = edit || await api(`/api/playlists?id=${encodeURIComponent(destination)}`);
@@ -235,9 +236,22 @@ async function reviewPlaylist(form) {
     if (!body.name || body.action === "append") body.name = current.name;
   }
   if (!body.name) { toast("Enter a playlist name."); return; }
+  let textReview = "";
+  if (edit && ids.length === playlistDraft.tracks.length) {
+    const fields = {};
+    for (const key of ["name", "description"]) {
+      if (form.elements[key].value !== (edit[key] || "") && body[key] !== (edit[key] || "")) fields[key] = body[key];
+    }
+    if (!Object.keys(fields).length) { playlistDraft.body = null; toast("No playlist changes to save."); return; }
+    body = {action: "metadata", playlist: edit.id, before_token: edit.before_token, before_name: edit.name,
+      session: playlistDraft.session, approved: true, fields};
+    textReview = `<h3>${escapeHtml(edit.name)}</h3><p>Update playlist details. Track selection and order stay unchanged.</p>${Object.entries(fields).map(([key, value]) => `<div class="playlist-text-change"><strong>${key === "name" ? "Name" : "Description"}</strong><div class="playlist-text-before"><span class="muted">Before</span><p>${escapeHtml(edit[key] || "(empty)")}</p></div><div><span class="muted">After</span><p>${escapeHtml(value || "(empty)")}</p></div></div>`).join("")}`;
+  }
   if (request !== playlistDraft.request || playlistDraft.details !== state.details || playlistDraft.session !== state.connection.playback_session) { toast("The connection or review changed. Open a new review."); return; }
+  playlistDraft.formValues = {name: form.elements.name.value, description: form.elements.description.value,
+    selected: [...selected], destination};
   playlistDraft.body = body;
-  $("#playlist-dialog-content").innerHTML = `<h3>${escapeHtml(body.name)}</h3><p>${body.action === "replace" ? "Replace the playlist with" : body.action === "append" ? "Append to this playlist:" : "Create a private playlist with"} ${ids.length} ${ids.length === 1 ? "track" : "tracks"}. ${body.action === "replace" ? "Unchecked tracks are removed from this playlist; they stay in your library." : "Existing tracks are kept once by iBroadcast."}</p><div class="playlist-review-tracks">${playlistDraft.tracks.filter(t => selected.has(t.id)).map(t => `<p>${escapeHtml(t.title)} · ${escapeHtml(t.artist)}</p>`).join("")}</div><div class="dialog-footer"><button class="button" data-playlist-revise>← Edit review</button><button class="button primary" data-playlist-save>Save to iBroadcast</button></div>`;
+  $("#playlist-dialog-content").innerHTML = `${textReview || `<h3>${escapeHtml(body.name)}</h3><p>${body.action === "replace" ? "Replace the playlist with" : body.action === "append" ? "Append to this playlist:" : "Create a private playlist with"} ${ids.length} ${ids.length === 1 ? "track" : "tracks"}. ${body.action === "replace" ? "Unchecked tracks are removed from this playlist; they stay in your library." : "Existing tracks are kept once by iBroadcast."}</p><div class="playlist-review-tracks">${playlistDraft.tracks.filter(t => selected.has(t.id)).map(t => `<p>${escapeHtml(t.title)} · ${escapeHtml(t.artist)}</p>`).join("")}</div>`}<div class="dialog-footer"><button class="button" data-playlist-revise>← Edit review</button><button class="button primary" data-playlist-save>Save to iBroadcast</button></div>`;
 }
 
 async function savePlaylistDraft() {
@@ -305,7 +319,7 @@ document.addEventListener("click", async event => {
   if (target.closest("[data-playlist-create]")) openPlaylistSave();
   if (target.closest("[data-playlist-delete]") && collectionsView.data) return openPlaylistDelete(collectionsView.data.id);
   if (target.closest("[data-playlist-save]")) savePlaylistDraft();
-  if (target.closest("[data-playlist-revise]")) openPlaylistSave(playlistDraft.tracks, playlistDraft.selected);
+  if (target.closest("[data-playlist-revise]")) openPlaylistSave(playlistDraft.tracks, playlistDraft.selected, playlistDraft.formValues?.destination === "new" ? null : playlistDraft.formValues?.destination, playlistDraft.formValues);
   const play = target.closest("[data-playlist-play], [data-playlist-shuffle], [data-playlist-position], [data-playlist-edit]");
   if (play && collectionsView.data) {
     const data = collectionsView.data, details = state.details, session = state.connection.playback_session;

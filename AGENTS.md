@@ -315,6 +315,16 @@ and preserve a valid script order in `index.html`.
 - Collection, album artist and browse group totals emphasize albums, with track
   counts shown smaller underneath. Reuse existing summary and group counts;
   never download track details or add requests just to display these totals.
+- Playlist browsing offers browser-local cards/list layout, independent of album layout.
+  Switching uses the current response, preserving search, paging, navigation and audio.
+  List totals use loaded-library active playlist positions (including repeats), with
+  unavailable positions and missing duration reported separately; folder IDs are never
+  counted as tracks. Summarize only bounded catalogue pages, without extra downloads.
+  Reviewed name/description-only edits send only changed text fields via updateplaylist,
+  never tracks, retaining every native position, cover and playlist type. Bind these
+  reviews to session and the complete before snapshot, serialize saves, never retry an
+  ambiguous write, and read back both text fields plus unchanged membership and artwork.
+  Unchecking tracks retains the separate full replacement review and its limits.
 - Playlist details show the duration of all active playlist positions from the loaded
   server library, including repeats across pages; flag missing durations explicitly.
   Playlist covers and the larger rounded-square artist-page photo open the existing
