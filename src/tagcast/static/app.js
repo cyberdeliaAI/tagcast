@@ -440,8 +440,11 @@ function artistGroups() {
   const groups = new Map(), ratings = new Map();
   for (const album of albumShelf()) for (const name of new Set(albumArtistEntries(album).map(a => a.name))) {
     const artist = albumArtistEntries(album).find(a => a.name === name);
-    const group = groups.get(name) || {count: 0, image: artist.image || "", ids: new Set()};
-    group.image ||= artist.image || ""; group.count += 1; groups.set(name, group);
+    const group = groups.get(name) || {count: 0, image: "", imageArtistId: null, ids: new Set()};
+    if (!group.image && artist.image) {
+      group.image = artist.image; group.imageArtistId = Number(artist.id) > 0 ? String(artist.id) : null;
+    }
+    group.count += 1; groups.set(name, group);
   }
   for (const album of state.albums) for (const artist of albumArtistEntries(album)) {
     if (Number(artist.id) > 0) { groups.get(artist.name)?.ids.add(String(artist.id)); ratings.set(String(artist.id), artist.rating || 0); }
@@ -562,10 +565,11 @@ function renderArtistPanel() {
   panel.hidden = !state.artist;
   if (!state.artist) return;
   const people = albums.flatMap(albumArtistEntries).filter(a => a.name === state.artist);
-  const image = people.find(a => a.image)?.image || "";
+  const imageArtist = people.find(a => a.image), image = imageArtist?.image || "";
+  const imageArtistId = Number(imageArtist?.id) > 0 ? String(imageArtist.id) : String(people.find(a => Number(a.id) > 0)?.id || "");
   const canChange = live() && people.some(a => Number(a.id) > 0);
-  const tracks = albums.reduce((sum, a) => sum + a.track_count, 0);
-  panel.innerHTML = `<div class="artist-photo">${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<span>${escapeHtml(initials(state.artist))}</span></div><div class="artist-meta"><strong>${albums.length.toLocaleString("en")}</strong><span>${albums.length === 1 ? "album" : "albums"}</span><small>${tracks.toLocaleString("en")} ${tracks === 1 ? "track" : "tracks"}</small>${canChange ? `<button class="text-action" id="change-artist-page-image">${image ? "Change image" : "Add an image"}</button>` : ""}</div>`;
+  const photo = `${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<span>${escapeHtml(initials(state.artist))}</span>`;
+  panel.innerHTML = `${canChange ? `<button type="button" class="artist-photo image-edit-button" id="change-artist-page-image" data-artist-page-image-id="${escapeHtml(imageArtistId)}" aria-label="${image ? "Change" : "Add"} image for ${escapeHtml(state.artist)}">${photo}<span class="image-edit-label">${image ? "Change image" : "Add image"}</span></button>` : `<div class="artist-photo">${photo}</div>`}`;
 }
 
 // The album after this one in the current list, for working through a filter.

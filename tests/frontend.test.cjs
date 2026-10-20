@@ -2035,6 +2035,60 @@ test("artist cards use an available image, safe metadata and initials when an im
   assert.match(html, /loading="lazy" referrerpolicy="no-referrer"/);
 });
 
+test("artist image controls open the comparison independently of browsing and reject stale cards", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); showArtistBrowse()');
+  const before = p.run('JSON.stringify({screen:state.screen,artist:state.artist,queue:player.queue,src:audio.src,history:state.history})');
+  const html = p.nodes.get('#artists-grid').innerHTML;
+  assert.match(html, /data-artist-image="Kate Bush"/);
+  assert.match(html, /class="artist-card-open" data-browse-artist="Kate Bush"/);
+  const id = p.run('artistGroups().find(([name]) => name === \"Kate Bush\")[1].ids[0]');
+  const control = {isConnected:true, dataset:{artistImage:'Kate Bush', artistImageId:id, artistLibrary:String(p.run('artistBrowse.library'))}};
+  p.setFetch(() => ({ok:true,json:async()=>({options:[]})}));
+  await p.click({'[data-artist-image]':control});
+  assert.equal(p.run('art.target.id'), id);
+  assert.equal(p.nodes.get('#artwork').open, true);
+  assert.match(p.nodes.get('#artwork-content').innerHTML, /Replaces this artist.*everywhere in iBroadcast/);
+  assert.equal(p.run('JSON.stringify({screen:state.screen,artist:state.artist,queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length, 0);
+  p.nodes.get('#artwork').close();
+  p.run('art.target = null; resetArtistBrowse()');
+  await p.click({'[data-artist-image]':control});
+  assert.equal(p.run('art.target'), null);
+  control.dataset.artistLibrary = String(p.run('artistBrowse.library'));
+  control.isConnected = false;
+  await p.click({'[data-artist-image]':control});
+  assert.equal(p.run('art.target'), null);
+});
+
+test("artist header puts its image action on the photo and demo cards keep navigation only", async () => {
+  const p = livePage(); await settle();
+  p.run('setArtist("Kate Bush")');
+  const html = p.nodes.get('#artist-panel').innerHTML;
+  assert.match(html, /<button type="button" class="artist-photo image-edit-button" id="change-artist-page-image"/);
+  assert.equal((html.match(/Change image/g)||[]).length, 2, 'One accessible label and one overlay label');
+  assert.doesNotMatch(html, /artist-meta|albums<|tracks</, 'The redundant header counts are removed');
+  assert.match(p.nodes.get('#results-count').textContent, /2 albums by Kate Bush/);
+  p.run('state.mode="demo"; showArtistBrowse()');
+  assert.doesNotMatch(p.nodes.get('#artists-grid').innerHTML, /data-artist-image=/);
+  assert.match(p.nodes.get('#artists-grid').innerHTML, /data-browse-artist=/);
+});
+
+test("artist card image editing uses the identity supplying the photo when native names are shared", async () => {
+  const p=livePage(); await settle();
+  p.run(`state.albums = [
+    {...state.albums[0],id:"a",artist:"Shared name",artist_id:"10",artist_image:""},
+    {...state.albums[0],id:"b",artist:"Shared name",artist_id:"11",artist_image:"https://example.test/eleven-150"}
+  ]; showArtistBrowse()`);
+  assert.match(p.nodes.get('#artists-grid').innerHTML,/data-artist-image-id="11"/);
+  p.setFetch(()=>({ok:true,json:async()=>({options:[]})}));
+  await p.click({'[data-artist-image]':{isConnected:true,dataset:{artistImage:'Shared name',artistImageId:'11',artistLibrary:String(p.run('artistBrowse.library'))}}});
+  assert.equal(p.run('art.target.id'),'11');
+  assert.equal(p.run('art.target.current'),'https://example.test/eleven-300');
+  p.nodes.get('#artwork').close(); p.run('setArtist(\"Shared name\")');
+  assert.match(p.nodes.get('#artist-panel').innerHTML,/data-artist-page-image-id=\"11\"/);
+});
+
 test("Random album artists keeps one complete order across pages, filters and Back without loading tracks", async () => {
   const p = livePage(); await settle();
   p.run(`playTracks(state.details.get("1"), "100");
@@ -3028,7 +3082,7 @@ test("browse counts include albums for all four groups and count a disc set once
   p.run('const countDetails = state.details; state.details = new Map(); state.artist = "Duo"; state.screen = "albums"; state.mode = "live"; render()');
   assert.equal(p.nodes.get("#total-albums").textContent, "1");
   assert.equal(p.nodes.get("#total-tracks").textContent, "2 tracks");
-  assert.match(p.nodes.get("#artist-panel").innerHTML, /<strong>1<\/strong><span>album<\/span><small>2 tracks<\/small>/);
+  assert.doesNotMatch(p.nodes.get("#artist-panel").innerHTML, /artist-meta|tracks<|albums?</, "Artist header keeps only the photo; counts remain above the album list");
   assert.equal(p.requests.length, requests, "Headers never download track details to count them");
   p.run('state.details = countDetails; state.artist = null; state.mode = "demo"');
   for (const [kind, key] of [["genres", "rock"], ["track-artists", "9"], ["composers", "55"], ["years", "2000"]]) {
@@ -6496,6 +6550,26 @@ test("reopening Settings ignores an older in-flight export status reply", async 
   release({ok:true,json:async()=>({id,state:'preparing',format:'json'})}); await settle();
   assert.equal(p.run('metadataExportView.busy'),false);
   assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download JSON/);
+});
+
+test('playlist detail shows whole-list duration and an accessible cover action, including missing images and durations', async () => {
+  const p=page(); await settle(); p.run('state.mode="live"');
+  const data={id:'81',name:'Long <list>',description:'',tracks:['100'],rows:[],total:750,offset:100,duration:187200,duration_missing:0};
+  p.setFetch(()=>({ok:true,json:async()=>data}));
+  p.run('showCollections("playlists","81")'); await settle();
+  let html=p.nodes.get('#collections-page').innerHTML;
+  assert.match(html,/750 tracks · 52:00:00 · in playlist order/);
+  assert.match(html,/class="image-edit-button playlist-cover-edit" data-playlist-cover aria-label="Change cover for Long &lt;list&gt;"/);
+  assert.match(html,/playlist-placeholder/);
+  assert.equal((html.match(/data-playlist-cover/g)||[]).length,1);
+  assert.doesNotMatch(html,/Change cover…/);
+  Object.assign(data,{duration:180,duration_missing:2,artwork:'https://example.invalid/cover.jpg'});
+  await p.run('renderCollections()'); html=p.nodes.get('#collections-page').innerHTML;
+  assert.match(html,/3:00 known · 2 tracks without duration/);
+  assert.match(html,/src="https:\/\/example.invalid\/cover.jpg"/);
+  assert.equal(p.run('playlistDuration({duration:0,duration_missing:1})'),' · 1 track without duration');
+  assert.equal(p.run('playlistDuration({duration:0,duration_missing:0})'),' · 0:00');
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });
 
 test('playlist browsing shows native covers and folders without treating folder references as tracks', async () => {

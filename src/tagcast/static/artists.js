@@ -251,9 +251,10 @@ function orderArtistGroups(groups, sort) {
 
 function artistCard([name, group]) {
   const image = group.image ? `<img src="${escapeHtml(group.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-  return `<button class="artist-card" data-browse-artist="${escapeHtml(name)}" aria-label="Open albums by ${escapeHtml(name)}">
-    <span class="artist-card-photo">${image}<span>${escapeHtml(initials(name))}</span></span>
-    <strong>${escapeHtml(name)}${favouriteArtistGroup(group) ? ` <span class="artist-card-favourite" aria-label="Favourite artist">${heartIcon}</span>` : ""}</strong><span class="artist-card-count">${group.count.toLocaleString("en")} ${group.count === 1 ? "album" : "albums"}</span></button>`;
+  const imageArtistId = live() ? group.imageArtistId || group.ids?.[0] : null;
+  return `<div class="artist-card">
+    <div class="artist-card-photo">${image}<span>${escapeHtml(initials(name))}</span>${imageArtistId ? `<button type="button" class="image-edit-button artist-card-edit" data-artist-image="${escapeHtml(name)}" data-artist-image-id="${escapeHtml(imageArtistId)}" data-artist-library="${artistBrowse.library}" aria-label="${image ? "Change" : "Add"} image for ${escapeHtml(name)}"><span class="image-edit-label">${image ? "Change image" : "Add image"}</span></button>` : ""}</div>
+    <button type="button" class="artist-card-open" data-browse-artist="${escapeHtml(name)}" aria-label="Open albums by ${escapeHtml(name)}"><strong>${escapeHtml(name)}${favouriteArtistGroup(group) ? ` <span class="artist-card-favourite" aria-label="Favourite artist">${heartIcon}</span>` : ""}</strong><span class="artist-card-count">${group.count.toLocaleString("en")} ${group.count === 1 ? "album" : "albums"}</span></button></div>`;
 }
 
 function renderFavouriteArtists() {

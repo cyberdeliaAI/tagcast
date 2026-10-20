@@ -263,6 +263,8 @@ class Collections:
             ids = [i for i in track_ids(row.get("tracks") or [], maximum=None)
                    if i in library.tracks and not library.tracks[i].get("trashed")]
             large = len(row.get("tracks") or []) > 10000
+            # Count playlist positions, including repeats, across every page of active tracks.
+            lengths = [max(0, number(library.tracks[i].get("length"))) for i in ids]
             rows = []
             for index, i in enumerate(ids[offset:offset + 100], offset):
                 try:
@@ -277,7 +279,8 @@ class Collections:
                     "before": [] if large else row.get("tracks") or [],
                     "before_token": self.playlist_snapshot(row, playlist_id), "large": large,
                     "stored_total": len(row.get("tracks") or []),
-                    "rows": rows, "offset": offset, "total": len(ids)}
+                    "rows": rows, "offset": offset, "total": len(ids),
+                    "duration": sum(lengths), "duration_missing": lengths.count(0)}
         if browse:
             return self.playlist_catalogue(library, query, offset)
         words = fold(query).split()

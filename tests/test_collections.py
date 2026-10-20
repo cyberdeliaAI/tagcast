@@ -44,6 +44,33 @@ class CollectionTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('Read-back did not finish')
 
+    def test_playlist_duration_counts_every_active_position_without_extra_library_reads(self):
+        mock_ibroadcast.STATE['playlists'][888] = {
+            'name': 'Long list', 'tracks': [900] * 101 + [901, 903, 904, 999999]}
+        mock_ibroadcast.STATE['tracks'][900]['length'] = 180
+        mock_ibroadcast.STATE['tracks'][901]['length'] = 61
+        mock_ibroadcast.STATE['tracks'][903]['length'] = None
+        mock_ibroadcast.STATE['tracks'][904].update(length=999, trashed=True)
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        with patch.object(self.studio.client, 'fetch_library', side_effect=AssertionError('No download')):
+            first = self.studio.collections.playlists(playlist_id='888')
+            second = self.studio.collections.playlists(playlist_id='888', offset='100')
+        self.assertEqual(first['total'], 103)
+        self.assertEqual(len(first['rows']), 100)
+        self.assertEqual(len(second['rows']), 3)
+        self.assertEqual(first['duration'], 101 * 180 + 61)
+        self.assertEqual(second['duration'], first['duration'])
+        self.assertEqual(first['duration_missing'], 1)
+        self.assertEqual(second['duration_missing'], 1)
+
+    def test_empty_playlist_duration_is_zero(self):
+        mock_ibroadcast.STATE['playlists'][888] = {'name': 'Empty', 'tracks': []}
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        view = self.studio.collections.playlists(playlist_id='888')
+        self.assertEqual((view['total'], view['duration'], view['duration_missing']), (0, 0, 0))
+
     def test_artist_rating_is_native_scalar_read_back_and_independent_of_hearts(self):
         body = {'artists': ['41'], 'name': 'Kate Bush', 'session': self.studio.playback_session,
                 'before': [0], 'rating': 4}

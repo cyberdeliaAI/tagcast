@@ -7,6 +7,17 @@ function playlistCoverImage(data, small = false) {
     : `<span class="playlist-cover playlist-placeholder ${small ? "small" : ""}" aria-hidden="true">${data.kind === "folder" || data.is_folder ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>' : "♫"}</span>`;
 }
 
+function playlistEditableCover(data) {
+  return `<button type="button" class="image-edit-button playlist-cover-edit" data-playlist-cover aria-label="Change cover for ${escapeHtml(data.name)}">${playlistCoverImage(data)}<span class="image-edit-label">Change cover</span></button>`;
+}
+
+function playlistDuration(data) {
+  if (!Number.isFinite(data.duration) || data.duration < 0) return "";
+  const missing = data.duration_missing || 0;
+  if (missing) return `${data.duration ? ` · ${trackDuration(data.duration)} known` : ""} · ${missing} ${missing === 1 ? "track" : "tracks"} without duration`;
+  return ` · ${data.duration ? trackDuration(data.duration) : "0:00"}`;
+}
+
 function playlistBrowseCard(data) {
   return `<button class="button playlist-card" data-playlist-open="${escapeHtml(data.id)}" ${data.kind === "unavailable" ? "disabled" : ""}>${playlistCoverImage(data, true)}<span><strong>${escapeHtml(data.name)}</strong><small>${data.kind === "folder" ? `${data.count} playlist ${data.count === 1 ? "reference" : "references"} · Folder` : data.kind === "unavailable" ? "Unavailable reference" : `${data.count} ${data.count === 1 ? "track" : "tracks"}`}</small></span></button>`;
 }

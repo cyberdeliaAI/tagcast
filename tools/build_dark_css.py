@@ -18,7 +18,7 @@ STATIC = Path(__file__).resolve().parent.parent / "src" / "tagcast" / "static"
 # Already dark, or colours that sit on artwork: keep as they are.
 KEEP = re.compile(r"^\s*(\.sidebar|\.brand|img\.brand|\.nav|\.artist-search|\.artist-list|\.artist-button|"
                   r"\.artist-more|\.artist-avatar|\.status-dot|\.sidebar-bottom|\.text-button|\.player|\.chart-tip|"
-                  r"\.toast|\.cover|\.thumb|\.suggestion-art span|\.cover-button>span|\.art-tile span)")
+                  r"\.toast|\.image-edit-label|\.cover|\.thumb|\.suggestion-art span|\.cover-button>span|\.art-tile span)")
 
 # Variables that belong to the (already dark) sidebar.
 KEEP_VARIABLES = ("--sidebar", "--accent")

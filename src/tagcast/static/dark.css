@@ -115,7 +115,6 @@
 :root[data-theme="dark"] .top-list li{border-top:1px solid var(--palette-line,#2d2e2b)}
 :root[data-theme="dark"] .top-list li:before{color:var(--palette-muted,#89907f)}
 :root[data-theme="dark"] .artist-photo{background:var(--palette-tint,#4f554d);color:var(--palette-ink,#b2cbba);box-shadow:0 4px 14px #1d332a1a}
-:root[data-theme="dark"] .artist-meta span{color:var(--palette-link,#959e90)}
 :root[data-theme="dark"] .artist-favourite:hover{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] .favourites-tabs{background:var(--palette-soft,#2b2c2a)}
 :root[data-theme="dark"] .favourites-tabs button[aria-selected="true"]{background:var(--palette-surface,#1b2520);box-shadow:0 1px 4px #0002}
@@ -158,6 +157,7 @@
 :root[data-theme="dark"] .browse-options-menu{background:var(--palette-surface,#1b2520);box-shadow:0 8px 25px #0002}
 :root[data-theme="dark"] .browse-options-title{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .browse-options-menu button:hover:not(:disabled),:root[data-theme="dark"] .browse-options-menu button:focus-visible{background:var(--palette-tint,#2d2f2a)}
+:root[data-theme="dark"] .image-edit-button.artist-photo{background:var(--palette-tint,#4f554d)}
 :root[data-theme="dark"] .playlist-placeholder{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] #playlist-folder-form input:not([type=checkbox]),:root[data-theme="dark"] #playlist-folder-form textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
 :root[data-theme="dark"] .library-loading{background:var(--palette-surface,#1b2520)}
@@ -293,7 +293,6 @@
 :root:not([data-theme="light"]) .top-list li{border-top:1px solid var(--palette-line,#2d2e2b)}
 :root:not([data-theme="light"]) .top-list li:before{color:var(--palette-muted,#89907f)}
 :root:not([data-theme="light"]) .artist-photo{background:var(--palette-tint,#4f554d);color:var(--palette-ink,#b2cbba);box-shadow:0 4px 14px #1d332a1a}
-:root:not([data-theme="light"]) .artist-meta span{color:var(--palette-link,#959e90)}
 :root:not([data-theme="light"]) .artist-favourite:hover{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) .favourites-tabs{background:var(--palette-soft,#2b2c2a)}
 :root:not([data-theme="light"]) .favourites-tabs button[aria-selected="true"]{background:var(--palette-surface,#1b2520);box-shadow:0 1px 4px #0002}
@@ -336,6 +335,7 @@
 :root:not([data-theme="light"]) .browse-options-menu{background:var(--palette-surface,#1b2520);box-shadow:0 8px 25px #0002}
 :root:not([data-theme="light"]) .browse-options-title{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .browse-options-menu button:hover:not(:disabled),:root:not([data-theme="light"]) .browse-options-menu button:focus-visible{background:var(--palette-tint,#2d2f2a)}
+:root:not([data-theme="light"]) .image-edit-button.artist-photo{background:var(--palette-tint,#4f554d)}
 :root:not([data-theme="light"]) .playlist-placeholder{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) #playlist-folder-form input:not([type=checkbox]),:root:not([data-theme="light"]) #playlist-folder-form textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
 :root:not([data-theme="light"]) .library-loading{background:var(--palette-surface,#1b2520)}
