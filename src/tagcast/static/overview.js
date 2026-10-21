@@ -29,6 +29,7 @@ function showScreen(name) {
   if (typeof closeCoverLightbox === "function") closeCoverLightbox();
   if (typeof closeLyricsViewer === "function") closeLyricsViewer(false);
   if (typeof cancelAlbumLyricsCheck === "function") cancelAlbumLyricsCheck();
+  if (typeof resetPlaylistOrder === "function") resetPlaylistOrder();
   if (name !== "browse" && typeof browseView !== "undefined") {
     clearTimeout(browseTimer); browseView.request += 1; browseView.loading = false;
   }

@@ -179,6 +179,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.queue_sync.view)
         elif url.path == "/api/playlists":
             self._run(lambda: self.studio.collections.playlists(query.get("q"), query.get("id"), query.get("offset", "0"), query.get("browse") == "1"))
+        elif url.path == "/api/playlist/order":
+            self._run(lambda: self.studio.collections.playlist_order_view({
+                **{k: query.get(k) for k in ("playlist", "before_token", "before_name", "session")},
+                "positions": query.get("positions", "").split(",")}))
         elif url.path == "/api/playlist-folder/choices":
             self._run(lambda: self.studio.collections.folder_choices(query.get("q"), query.get("offset", "0")))
         elif url.path == "/api/album-favourites":

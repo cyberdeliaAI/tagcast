@@ -626,10 +626,87 @@ class Collections:
         finally:
             studio.save_lock.release()
 
+    def playlist_order_record(self, body, client, library):
+        self._playlist_session(body, client)
+        if library is not self.studio.library:
+            raise ConflictError("The library changed. Reopen the playlist order editor.")
+        playlist_id = track_ids([body.get("playlist")], 1)[0]
+        row = library.playlists.get(playlist_id)
+        if not row or not self.editable(row) or not isinstance(body.get("before_token"), str):
+            raise LibraryError("Open an editable playlist before changing its order.")
+        self.check_playlist_before(row, body)
+        if len(row.get("tracks") or []) > 10000:
+            raise LibraryError("Playlist reordering is limited to 10,000 saved positions.")
+        return playlist_id, row
+
+    def playlist_order_view(self, body):
+        """Read at most one page of original positions, including unavailable copies."""
+        client, library = self.library(cached=True)
+        with self.studio.lock:
+            _, row = self.playlist_order_record(body, client, library)
+            positions = body.get("positions")
+            if not isinstance(positions, list) or not 1 <= len(positions) <= 100 or any(
+                    not isinstance(p, str) or not p.isascii() or not p.isdigit() for p in positions):
+                raise LibraryError("Choose up to 100 saved playlist positions.")
+            positions = [int(p) for p in positions]
+            ids = track_ids(row.get("tracks") or [])
+            if len(set(positions)) != len(positions) or any(p >= len(ids) for p in positions):
+                raise LibraryError("These playlist positions are no longer available.")
+            rows = []
+            for position in positions:
+                track_id = ids[position]
+                try:
+                    track = library.track_row(track_id, library.active_track_album(track_id))
+                    rows.append({**track, "source_position": position, "available": True})
+                except LibraryError:
+                    rows.append({"id": str(track_id), "title": "Unavailable track", "artist": "",
+                                 "source_position": position, "available": False})
+            return {"rows": rows}
+
+    def reorder_playlist(self, body):
+        """Permute stored positions only; never deduplicate or replace playlist metadata."""
+        if body.get("approved") is not True or "tracks" in body:
+            raise LibraryError("Review and confirm the new playlist order first.")
+        positions = body.get("positions")
+        if not isinstance(positions, list) or not 2 <= len(positions) <= 10000 or any(
+                type(p) is not int for p in positions) or sorted(positions) != list(range(len(positions))):
+            raise LibraryError("Keep every saved playlist position exactly once.")
+        if positions == list(range(len(positions))):
+            raise LibraryError("The playlist order has not changed.")
+        studio = self.studio
+        if not studio.save_lock.acquire(blocking=False):
+            raise LibraryError("Another save is still running.")
+        try:
+            client, library = self.library()
+            with studio.lock:
+                playlist_id, row = self.playlist_order_record(body, client, library)
+                original = track_ids(row.get("tracks") or [])
+                if len(original) != len(positions):
+                    raise ConflictError("The playlist membership changed. Open a new order review.")
+                expected = [original[p] for p in positions]
+                if expected == original:
+                    raise LibraryError("The playlist order has not changed.")
+                metadata = {k: row.get(k) for k in
+                            ("name", "description", "type", "system_created", "artwork_id")}
+            client._jsonrequest("updateplaylist", playlist=playlist_id, tracks=expected, _retry=False)
+
+            def check(after):
+                got = after.playlists.get(playlist_id, {})
+                matches = self.editable(got) and got.get("tracks") == expected and all(
+                    got.get(key) == value for key, value in metadata.items())
+                return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
+
+            return {"id": str(playlist_id), "job": studio._check_later(
+                client, studio.downloads, check, include_albums=False)}
+        finally:
+            studio.save_lock.release()
+
     def save_playlist(self, body):
         action = body.get("action")
         if action == "metadata":
             return self.update_playlist_details(body)
+        if action == "reorder":
+            return self.reorder_playlist(body)
         if action == "delete":
             return self.delete_playlist(body)
         name, description = text(body.get("name")).strip(), text(body.get("description")).strip()

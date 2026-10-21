@@ -238,3 +238,15 @@ Restart the disposable server with the same settings folder and verify that labe
 return from the account-bound local cache without native userdata requests, also
 after visiting enough tracks to evict the album from the bounded memory cache. Cached
 edits must read fresh userdata before review and preserve the draft on conflicts.
+
+## Playlist order (unreleased)
+
+Use a disposable mock playlist with repeated and unavailable positions, including
+more than 100 positions. Capture Reorder tracks, the drag handles/insertion line,
+Move to position and an unsaved cross-page move with the destination focused and
+visible. Save order and Cancel must remain visible at the bottom of the dialog.
+Check actual dragging, Up/Down on a focused handle, valid/invalid destination input,
+page boundaries, retained repetitions, cancellation and stale/uncertain saves.
+Saving must send one tracks-only update and confirm the exact order plus unchanged
+playlist metadata/artwork. Playback and its queue must remain intact. Use only mock
+writes; do not reorder the real user's library for screenshots.

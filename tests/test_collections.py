@@ -71,6 +71,106 @@ class CollectionTests(unittest.TestCase):
         view = self.studio.collections.playlists(playlist_id='888')
         self.assertEqual((view['total'], view['duration'], view['duration_missing']), (0, 0, 0))
 
+    def playlist_order_body(self, tracks=None):
+        mock_ibroadcast.STATE['playlists'][888] = {
+            'name': 'Original name', 'description': 'Keep description', 'artwork_id': 77,
+            'tracks': tracks if tracks is not None else [900, 901, 900, 999999, 902], 'type': None}
+        mock_ibroadcast.STATE['version'] += 1
+        self.studio.load_library(refresh=True)
+        view = self.studio.collections.playlists(playlist_id='888')
+        return {'action': 'reorder', 'playlist': '888', 'before_token': view['before_token'],
+                'before_name': view['name'], 'session': self.studio.playback_session, 'approved': True,
+                'positions': [3, 2, 1, 4, 0]}
+
+    def test_playlist_order_pages_read_only_loaded_positions_including_repeats_and_unavailable(self):
+        body = self.playlist_order_body()
+        with patch.object(self.studio.client, '_jsonrequest', side_effect=AssertionError('No native request')):
+            result = self.studio.collections.playlist_order_view({**body, 'positions': ['2', '0', '3', '4']})
+        self.assertEqual([r['source_position'] for r in result['rows']], [2, 0, 3, 4])
+        self.assertEqual([r['id'] for r in result['rows']], ['900', '900', '999999', '902'])
+        self.assertEqual([r['available'] for r in result['rows']], [True, True, False, False])
+        self.assertFalse(mock_ibroadcast.STATE['writes'])
+        for positions in ([], ['0'] * 101, ['0', '0'], ['-1'], ['5'], ['bad'], [True], ['１']):
+            with self.subTest(positions=positions), self.assertRaises(LibraryError):
+                self.studio.collections.playlist_order_view({**body, 'positions': positions})
+
+    def test_playlist_order_save_preserves_every_position_and_metadata_then_reads_back(self):
+        body = self.playlist_order_body()
+        before = copy.deepcopy(mock_ibroadcast.STATE['playlists'][888])
+        original = self.studio.client._jsonrequest
+        with patch.object(self.studio.client, '_jsonrequest', wraps=original) as requests:
+            self.assertEqual(self.job(self.studio.collections.save_playlist(body))['results'],
+                             [{'id': '888', 'status': 'saved'}])
+        sent = [c for c in requests.call_args_list if c.args[0] == 'updateplaylist']
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].kwargs, {'playlist': 888, 'tracks': [999999, 900, 901, 902, 900], '_retry': False})
+        after = mock_ibroadcast.STATE['playlists'][888]
+        self.assertEqual(after['tracks'], [999999, 900, 901, 902, 900])
+        self.assertEqual({k: v for k, v in after.items() if k != 'tracks'},
+                         {k: v for k, v in before.items() if k != 'tracks'})
+        with self.assertRaises(ConflictError):
+            self.studio.collections.save_playlist(body)
+
+    def test_playlist_order_cannot_add_drop_duplicate_or_forge_review_positions(self):
+        body = self.playlist_order_body()
+        for changes in ({'approved': False}, {'before_token': None}, {'session': 'stale'},
+                        {'tracks': [900]}, {'positions': [0, 1, 2, 3, 4]}, {'positions': [2, 1, 0, 3, 4]},
+                        {'positions': [4, 3, 2, 0]},
+                        {'positions': [4, 3, 2, 1, 1]}, {'positions': [4, 3, 2, 1, True]},
+                        {'positions': [4, 3, 2, 1, -1]}, {'positions': ['4', '3', '2', '1', '0']},
+                        {'positions': [5, 4, 3, 2, 1, 0]}, {'positions': list(range(10001))}):
+            with self.subTest(changes=changes), self.assertRaises(LibraryError):
+                self.studio.collections.save_playlist({**body, **changes})
+        self.assertFalse(mock_ibroadcast.STATE['writes'])
+        self.studio.save_lock.acquire()
+        try:
+            with self.assertRaisesRegex(LibraryError, 'Another save'):
+                self.studio.collections.save_playlist(body)
+        finally:
+            self.studio.save_lock.release()
+
+    def test_playlist_order_rejects_changed_metadata_membership_and_protected_lists(self):
+        for changes in ({'name': 'Renamed'}, {'description': 'Changed'}, {'artwork_id': 99},
+                        {'tracks': [900, 901]}, {'type': 'folder'}, {'system_created': True}):
+            with self.subTest(changes=changes):
+                body = self.playlist_order_body()
+                mock_ibroadcast.STATE['playlists'][888].update(changes)
+                mock_ibroadcast.STATE['version'] += 1
+                with self.assertRaises(LibraryError):
+                    self.studio.collections.save_playlist(body)
+        self.assertFalse(mock_ibroadcast.STATE['writes'])
+
+    def test_playlist_order_ambiguous_write_is_sent_once_and_readback_checks_metadata(self):
+        body = self.playlist_order_body()
+        original = self.studio.client._jsonrequest
+        def uncertain(mode, **kwargs):
+            if mode == 'updateplaylist':
+                self.assertIs(kwargs['_retry'], False)
+                raise client.ApiError('Connection lost after send')
+            return original(mode, **kwargs)
+        with patch.object(self.studio.client, '_jsonrequest', side_effect=uncertain) as requests:
+            with self.assertRaises(client.ApiError):
+                self.studio.collections.save_playlist(body)
+        self.assertEqual(sum(c.args[0] == 'updateplaylist' for c in requests.call_args_list), 1)
+        def changed(mode, **kwargs):
+            result = original(mode, **kwargs)
+            if mode == 'updateplaylist':
+                mock_ibroadcast.STATE['playlists'][888]['artwork_id'] = 123
+            return result
+        with patch.object(self.studio.client, '_jsonrequest', side_effect=changed):
+            checked = self.job(self.studio.collections.save_playlist(body))
+        self.assertEqual(checked['results'], [{'id': '888', 'status': 'unverified'}])
+
+    def test_playlist_order_pages_stay_bounded_at_the_ten_thousand_position_limit(self):
+        body = self.playlist_order_body([900] * 9999 + [901])
+        page = self.studio.collections.playlist_order_view({**body, 'positions': [str(i) for i in range(9900, 10000)]})
+        self.assertEqual(len(page['rows']), 100)
+        self.assertEqual(page['rows'][-1]['source_position'], 9999)
+        body = self.playlist_order_body([900] * 10001)
+        with self.assertRaisesRegex(LibraryError, '10,000'):
+            self.studio.collections.playlist_order_view({**body, 'positions': ['0']})
+        self.assertFalse(mock_ibroadcast.STATE['writes'])
+
     def test_playlist_browsing_reuses_loaded_library_without_remote_status_checks(self):
         self.playlist_metadata_body()
         mock_ibroadcast.STATE['playlists'][889] = {

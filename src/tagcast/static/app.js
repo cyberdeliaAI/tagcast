@@ -167,6 +167,7 @@ function useLocal(albums, mode) {
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetTrackLyrics === "function") resetTrackLyrics();
+  if (typeof resetPlaylistOrder === "function") resetPlaylistOrder();
   if (typeof resetBrowse === "function") resetBrowse();
   if (typeof resetFavourites === "function") resetFavourites();
   if (typeof resetPlaylistImport === "function") resetPlaylistImport();
