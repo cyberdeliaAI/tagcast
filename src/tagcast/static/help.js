@@ -3,6 +3,10 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  "playlist-order": {title: "Playlist order", scope: "#playlist-order", steps: [
+    ["Move saved positions", "Drag a handle to the insertion line for a nearby move. With the handle focused, use Up or Down. Move to position accepts any position in the whole playlist, including another page. Repeated and unavailable tracks remain separate positions.", ["#playlist-order-content"]],
+    ["Save or cancel", "Save order sends only the reviewed order, then checks it in iBroadcast. Cancel or Close discards the local changes. The playing queue stays intact. If the playlist changed elsewhere, reopen it before trying again; uncertain writes are not repeated.", ["#playlist-order-save", "#playlist-order-cancel"]],
+  ]},
   "lyrics-viewer": {title: "Track lyrics", scope: "#lyrics-viewer", steps: [
     ["Known lyrics", "The Lyrics label appears only after Tagcast has found text for this track. Opening this window uses that text without starting playback or fetching lyrics. No label can also mean the track has not been checked yet.", ["#lyrics-viewer-content"]],
     ["Text source", "The source is shown below the text: lyrics saved in iBroadcast, or a public LRCLIB result. Close or press Escape to return to the album.", ["#lyrics-viewer-content .lyrics-source", "#lyrics-viewer-close"]],
@@ -161,6 +165,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
+  if ($("#playlist-order").open) return "playlist-order";
   if ($("#playlist-import").open) return "playlist-import";
   if ($("#audio-output-dialog").open) return "audio-output";
   if ($("#tag-dialog").open) return "tags";

@@ -166,6 +166,7 @@
 :root[data-theme="dark"] .playlist-list tr:hover td{background:var(--palette-tint,#2d2f2a)}
 :root[data-theme="dark"] .editor-track-list .editing-track{background: var(--palette-tint,#2b2d29)}
 :root[data-theme="dark"] .track-lyrics textarea{background: var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] .playlist-order-table th{background: var(--palette-surface,#1b2520)}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -347,6 +348,7 @@
 :root:not([data-theme="light"]) .playlist-list tr:hover td{background:var(--palette-tint,#2d2f2a)}
 :root:not([data-theme="light"]) .editor-track-list .editing-track{background: var(--palette-tint,#2b2d29)}
 :root:not([data-theme="light"]) .track-lyrics textarea{background: var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) .playlist-order-table th{background: var(--palette-surface,#1b2520)}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

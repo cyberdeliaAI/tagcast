@@ -69,7 +69,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import", "#playlist-order"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
@@ -8034,4 +8034,130 @@ test('bulk artist editing keeps its existing shared fields without individual tr
   assert.equal(p.run('editing.bulk'),true);
   assert.doesNotMatch(p.nodes.get('#editor-content').innerHTML,/id="editor-tabs"|id="editor-tracks-panel"/);
   assert.match(p.nodes.get('#editor-content').innerHTML,/Edit selected albums/);
+});
+
+async function playlistOrderPage({size=4,offset=0}={}) {
+  const p=page(); await settle();
+  const before=size===4?[100,101,100,99999]:Array.from({length:size},(_,i)=>100+i);
+  const data={id:'81',name:'Order <example>',before_token:'review-token',before,
+    tracks:before,rows:[],total:size,stored_total:size,offset,description:'Keep',duration:180};
+  p.run(`state.mode="live"; state.connection.playback_session="order-session"; playTracks(state.details.get("1")); state.screen="playlists"; collectionsView.playlist="81"; collectionsView.data=${JSON.stringify(data)}; collectionsView.offset=${offset}`);
+  p.setFetch((url)=>{
+    if(url.startsWith('/api/playlist/order?')) {
+      const positions=new URL(url,'http://localhost').searchParams.get('positions').split(',').map(Number);
+      return {ok:true,json:async()=>({rows:positions.map(source=>({id:String(before[source]),source_position:source,
+        available:source!==3,title:source===3?'Unavailable track':`Track <${source}>`,artist:'Preview artist'}))})};
+    }
+    if(url.startsWith('/api/playlists?')) return {ok:true,json:async()=>data};
+    throw Error('Unexpected request '+url);
+  });
+  return {p,data};
+}
+
+test('playlist order is a separate local draft, preserving repeats, unavailable positions and playback on cancel', async()=>{
+  const {p}=await playlistOrderPage();
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,before:collectionsView.data.before,history:state.history})');
+  p.run('openPlaylistOrder()'); await settle();
+  assert.match(p.nodes.get('#playlist-order-content').innerHTML,/Track &lt;0&gt;/);
+  assert.match(p.nodes.get('#playlist-order-content').innerHTML,/Unavailable track/);
+  assert.equal(p.nodes.get('#playlist-order-save').disabled,true);
+  assert.equal(p.run('currentHelpContext()'),'playlist-order');
+  p.run('movePlaylistOrder(0,2)'); await settle();
+  assert.deepEqual(p.json('playlistOrder.draft.order'),[1,2,0,3]);
+  assert.equal(p.nodes.get('#playlist-order-save').disabled,false);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  p.run('closePlaylistOrder()');
+  assert.equal(p.nodes.get('#playlist-order').open,false);
+  assert.equal(p.run('playlistOrder.draft'),null);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,before:collectionsView.data.before,history:state.history})'),before);
+});
+
+test('Move to position crosses bounded pages and keeps every original position exactly once', async()=>{
+  const {p}=await playlistOrderPage({size:1200,offset:800});
+  p.run('openPlaylistOrder()'); await settle();
+  await p.click({'[data-order-move]':{dataset:{orderMove:'850'}}});
+  assert.match(p.nodes.get('#playlist-order-content').innerHTML,/id="playlist-order-move"/);
+  await p.emitDocument('submit',{target:{id:'playlist-order-move',elements:{position:{value:'10'}}},preventDefault(){}});
+  await settle();
+  assert.equal(p.run('playlistOrder.draft.order[9]'),850);
+  assert.equal(p.run('playlistOrder.draft.offset'),0);
+  assert.equal(p.run('new Set(playlistOrder.draft.order).size'),1200);
+  assert.equal(p.run('playlistOrder.draft.rows.size'),100);
+  assert.equal(p.run('collectionsView.data.before[850]'),950);
+  const reads=p.requests.filter(r=>r.url.startsWith('/api/playlist/order?'));
+  assert.equal(reads.length,2);
+  for(const read of reads) assert.equal(new URL(read.url,'http://localhost').searchParams.get('positions').split(',').length,100);
+  assert.match(p.nodes.get('#playlist-order-status').textContent,/position 10/);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  const order=p.run('JSON.stringify(playlistOrder.draft.order)');
+  for(const position of [-1,0,1201,1.5]) {
+    p.run('playlistOrder.draft.move=850');
+    await p.emitDocument('submit',{target:{id:'playlist-order-move',elements:{position:{value:String(position)}}},preventDefault(){}});
+    assert.equal(p.run('JSON.stringify(playlistOrder.draft.order)'),order);
+  }
+});
+
+test('playlist handles support keyboard and drag insertion without accepting external drops', async()=>{
+  const {p}=await playlistOrderPage(); p.run('openPlaylistOrder()'); await settle();
+  const handle={dataset:{orderHandle:'0'}};
+  const target={closest:selector=>selector==='[data-order-handle]'?handle:null};
+  await p.emitDocument('keydown',{key:'ArrowDown',target,preventDefault(){}}); await settle();
+  assert.deepEqual(p.json('playlistOrder.draft.order'),[1,0,2,3]);
+  const row={dataset:{orderRow:'3'},getBoundingClientRect:()=>({top:100,height:40}),classList:{add(){},remove(){}}};
+  const drop={target:{closest:selector=>selector==='[data-order-row]'?row:null},clientY:139,preventDefault(){},dataTransfer:{}};
+  await p.emitDocument('drop',drop); assert.deepEqual(p.json('playlistOrder.draft.order'),[1,0,2,3]);
+  await p.emitDocument('dragstart',{target,dataTransfer:{setData(){}}});
+  await p.emitDocument('dragover',drop); await p.emitDocument('drop',drop); await settle();
+  assert.deepEqual(p.json('playlistOrder.draft.order'),[1,2,3,0]);
+  assert.equal(p.run('playlistOrder.drag'),null);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('playlist order saves once with positions only and waits for full confirmation without touching playback', async()=>{
+  const {p,data}=await playlistOrderPage(); p.run('openPlaylistOrder()'); await settle();
+  p.run('movePlaylistOrder(3,0)'); await settle();
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  let send,read; const bodies=[];
+  p.setFetch((url,options)=>{
+    if(url==='/api/playlist') { bodies.push(JSON.parse(options.body)); return new Promise(resolve=>send=resolve); }
+    if(url==='/api/jobs/order-job') return new Promise(resolve=>read=resolve);
+    if(url.startsWith('/api/playlists?')) return {ok:true,json:async()=>data};
+    throw Error('Unexpected request '+url);
+  });
+  const saving=p.run('savePlaylistOrder()');
+  p.run('savePlaylistOrder(); closePlaylistOrder()');
+  assert.equal(bodies.length,1); assert.equal(p.nodes.get('#playlist-order').open,true);
+  assert.deepEqual(bodies[0],{action:'reorder',playlist:'81',before_token:'review-token',before_name:'Order <example>',session:'order-session',positions:[3,0,1,2],approved:true});
+  send({ok:true,json:async()=>({job:'order-job'})}); await settle();
+  assert.match(p.nodes.get('#playlist-order-status').textContent,/Checking playlist order/);
+  read({ok:true,json:async()=>({state:'done',results:[{id:'81',status:'saved'}]})}); await saving; await settle();
+  assert.equal(p.nodes.get('#playlist-order').open,false);
+  assert.equal(p.run('collectionsView.busy'),false);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+});
+
+test('uncertain order saves cannot repeat and stale or cancelled page replies cannot restore drafts', async()=>{
+  for(const kind of ['network','unverified']) {
+    const {p}=await playlistOrderPage(); p.run('openPlaylistOrder()'); await settle(); p.run('movePlaylistOrder(3,0)');
+    let posts=0;
+    p.setFetch(url=>{
+      if(url==='/api/playlist') { posts++; if(kind==='network') throw Error('Connection lost'); return {ok:true,json:async()=>({job:'order-job'})}; }
+      return {ok:true,json:async()=>({state:'done',results:[{id:'81',status:'unverified'}]})};
+    });
+    await p.run('savePlaylistOrder()'); await p.run('savePlaylistOrder()');
+    assert.equal(posts,1);
+    assert.match(p.nodes.get('#playlist-order-status').textContent,/will not be sent again/);
+    assert.equal(p.nodes.get('#playlist-order-save').disabled,true);
+  }
+  for(const change of ['cancel','navigation','library','session']) {
+    const {p}=await playlistOrderPage(); let release;
+    p.setFetch(()=>new Promise(resolve=>release=resolve)); p.run('openPlaylistOrder()');
+    if(change==='cancel') p.run('closePlaylistOrder()');
+    if(change==='navigation') p.run('showScreen("albums")');
+    if(change==='library') p.run('useLocal(demoLibrary(),"demo")');
+    if(change==='session') p.run('state.connection.playback_session="other-session"');
+    release({ok:true,json:async()=>({rows:[]})}); await settle();
+    assert.equal(p.run('Boolean(playlistOrderCurrent())'),false);
+    assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  }
 });

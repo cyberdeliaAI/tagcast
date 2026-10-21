@@ -56,7 +56,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   saves preserve all other native userdata and read back without ambiguous retries.
 - `src/tagcast/static/`: HTML, CSS, SVG and shared JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
-  `album-info.js`, `lyrics.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
+  `album-info.js`, `lyrics.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-order.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -382,6 +382,19 @@ their shared browsing/player state; a fast local response can otherwise race the
   reviews to session and the complete before snapshot, serialize saves, never retry an
   ambiguous write, and read back both text fields plus unchanged membership and artwork.
   Unchecking tracks retains the separate full replacement review and its limits.
+- Playlist reordering is a separate local dialog/draft, limited to 2–10,000 stored
+  positions. Keep repeated and unavailable positions distinct using their original
+  indices; never deduplicate or validate unavailable IDs as new additions. Drag handles
+  show before/after insertion lines; Up/Down and Move to position provide keyboard/touch
+  and cross-page alternatives. Show at most 100 row details and retain only that page's
+  metadata, fetched from the loaded library without remote status reads. Focus/reveal
+  the moved position. Save order is explicit and sends a complete index permutation
+  plus the account/session/full playlist snapshot; recheck fresh native state, serialize
+  writes, send updateplaylist with tracks only and no retry, and verify exact order,
+  repeats, membership, name/description/type/system/artwork. Reject folders/system lists,
+  stale snapshots, missing/duplicate indices and unchanged order. Cancel/Close discards
+  local moves, navigation/library replacement invalidates late results, and uncertain
+  sends cannot replay. No playback, queue, metadata history or music-file changes.
 - Playlist details show the duration of all active playlist positions from the loaded
   server library, including repeats across pages; flag missing durations explicitly.
   Playlist covers and the larger rounded-square artist-page photo open the existing
