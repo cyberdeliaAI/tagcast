@@ -494,7 +494,12 @@ class FanartTv(Source):
                  "url": f"https://fanart.tv/artist/{mbid}"} for t in thumbs[:4] if t.get("url")]
 
 
-SOURCES = [MusicBrainz, Deezer, ITunes, Discogs, LastFm, TheAudioDB, FanartTv]
+class LRCLIB(Source):
+    name, label = "lrclib", "LRCLIB · lyrics"
+    albums = False
+
+
+SOURCES = [MusicBrainz, Deezer, ITunes, Discogs, LastFm, TheAudioDB, FanartTv, LRCLIB]
 KEYS = {cls.key: cls for cls in SOURCES if cls.key}
 
 

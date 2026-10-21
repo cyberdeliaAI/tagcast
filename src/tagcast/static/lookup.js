@@ -9,7 +9,9 @@ const sourceLabel = name => lookup.sources.find(s => s.name === name)?.label || 
 function applyLookupSources(sources) {
   const choices = rows => JSON.stringify(rows.map(s => [s.name, s.enabled, s.selected]));
   const changed = lookup.sources.length && choices(lookup.sources) !== choices(sources);
+  const lyricsChanged = lookup.sources.length && lookup.sources.find(s => s.name === "lrclib")?.enabled !== sources.find(s => s.name === "lrclib")?.enabled;
   lookup.sources = sources;
+  if (lyricsChanged && typeof invalidateLyricsSource === "function") invalidateLyricsSource();
   if (!changed) return;
   // Do not let answers started before a settings change repopulate either chooser.
   for (const channel of Object.keys(lookup.tokens)) lookup.tokens[channel] += 1;
@@ -141,6 +143,7 @@ function coverChoices() {
 
 function openSettings() {
   const keyed = lookup.sources.filter(s => s.key);
+  const freeAccount = live() && state.connection.premium === false;
   $("#settings-content").innerHTML = `<section class="interface-settings"><h3>Interface</h3>
     <p class="muted">The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
     <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
@@ -154,8 +157,8 @@ function openSettings() {
     <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
     + (!lookup.sources.length ? '<p class="muted">Playback and source settings need the Tagcast server.</p>' : `
     <form id="settings-form"><section class="playback-settings"><h3>Playback</h3>
-    <label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
-    <p class="muted">Applies to the next track. File format (FLAC/MP3) is separate from streaming quality. Free accounts use 128 kbps. All other choices, including 96 kbps and Original, require Premium. Unsupported Original audio falls back to MP3 128 kbps.</p>
+    ${freeAccount ? '<p>Streaming quality · MP3 128 kbps</p><p class="muted">Playback quality for this account. File format (FLAC/MP3) is separate from streaming quality.</p>' : `<label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
+    <p class="muted">Applies to the next track. File format (FLAC/MP3) is separate from streaming quality. Free accounts use 128 kbps. All other choices, including 96 kbps and Original, require Premium. Unsupported Original audio falls back to MP3 128 kbps.</p>`}
     <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}> Record played tracks in iBroadcast</label>
     <p class="muted">Off by default. When enabled, Tagcast sends a track ID and timestamp after more than ten seconds of actual playback. Pausing and seeking do not count. Earlier plays and skips are not sent.</p>
     <p class="muted">Enabling also shows Recently played, using iBroadcast’s recent tracks playlist. Plays are separate from Change history. An uncertain request is not retried automatically.${playReporting.error ? ` <span class="error-text">${escapeHtml(playReporting.error)}</span>` : ""}</p></section>
@@ -174,9 +177,9 @@ function openSettings() {
     <label class="checkline"><input type="checkbox" name="album_information" ${albumInformation.enabled ? "checked" : ""}> Show album information from TheAudioDB</label>
     <p class="muted">Off by default. When you visit an album, Tagcast sends its album artist and full title to TheAudioDB if no current local text is available. English text is saved on this computer and checked again after 30 days, when revisited. Only one exact artist/title match is used; information is not available for every album or edition. Available 1001 Albums texts take priority even when the discovery page is disabled or has never been analysed; those albums do not look up or show TheAudioDB text.</p></section>
     <section class="source-settings"><h3>Online sources &amp; keys</h3>
-    <p class="muted">Choose sources for metadata and image suggestions. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
+    <p class="muted">Choose sources for metadata, image suggestions and lyrics. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
     ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ' <span class="muted">· Needs a key</span>' : ""}</label>`).join("")}
-    <p class="muted">TheAudioDB artist biographies and album information use their separate switches above.</p>
+    <p class="muted">TheAudioDB artist biographies and album information use their separate switches above. LRCLIB is contacted only when you choose Find lyrics; track title, artist and duration are sent, and results are cached on this computer.</p>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
@@ -253,4 +256,5 @@ document.addEventListener("submit", event => {
     event.preventDefault(); saveSettings(event.target);
   }
 });
-loadSettings();
+// Settings handlers use state initialized by the later deferred feature scripts.
+document.addEventListener("DOMContentLoaded", loadSettings, {once: true});

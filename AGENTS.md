@@ -51,9 +51,12 @@ The application consists of a Python server and a plain JavaScript frontend.
   album artist and held in a separate bounded local SQLite cache.
 - `src/tagcast/album_info.py`: opt-in TheAudioDB album background text for a visited
   album, with strict artist/full-title matching and a separate bounded SQLite cache.
-- `src/tagcast/static/`: HTML, CSS, SVG and twenty-six JavaScript files:
+- `src/tagcast/lyrics.py`: lazy native `gettrackuserdata` reads, an account/track-bound
+  native text cache and a separate public LRCLIB SQLite cache; separately reviewed, single-use lyrics
+  saves preserve all other native userdata and read back without ambiguous retries.
+- `src/tagcast/static/`: HTML, CSS, SVG and shared JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
-  `album-info.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
+  `album-info.js`, `lyrics.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
   `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
@@ -81,6 +84,8 @@ The application consists of a Python server and a plain JavaScript frontend.
 
 The JavaScript files share a single global scope. Keep top-level names unique
 and preserve a valid script order in `index.html`.
+Start live boot and settings loading on DOMContentLoaded, after all deferred scripts have initialized
+their shared browsing/player state; a fast local response can otherwise race them.
 
 ## Technology and coding conventions
 
@@ -156,8 +161,9 @@ and preserve a valid script order in `index.html`.
   from its metadata. Invalidate remembered origins when the loaded library changes.
   The hero aligns cover/title at the top, groups distinct genre/tag chips with a persistent
   + Tag control, and uses neutral unset rating controls; Clear appears only for rated discs.
-  More album actions contains Move to trash, opening the existing reviewed selection only
-  on explicit choice. Menu dismissal/navigation never selects tracks or affects playback.
+  More album actions contains Check album lyrics and Move to trash, opening the
+  existing reviewed trash selection only on explicit choice. Menu dismissal/navigation
+  never selects tracks or affects playback.
   A known release year in the hero opens the existing years browse group; unknown
   years stay plain text. Preserve the same displayed set year and existing browse semantics.
   At mobile widths (760px and below), show the cover at full available width above
@@ -174,6 +180,40 @@ and preserve a valid script order in `index.html`.
   Invalidate the chooser on library/draft/catalogue replacement.
 - Online suggestions fill the editor; metadata writes follow only after review.
   Artwork has a separate comparison and explicit save.
+- Track lyrics have a separate textarea/review/save, independent of ordinary metadata
+  patches. Now playing and the visited track read native userdata lazily; never scan
+  lyrics automatically or read audio. Native lyrics take priority. LRCLIB is explicit, follows its source
+  switch and validates full title/artist and known duration without dropping version
+  text. Public results enter the bounded 30-day SQLite cache. Native lyrics text and
+  empty results persist separately in native-lyrics.sqlite3 (5,000 rows / 20 MiB text,
+  no timed expiry), keyed by account, native track ID and exact track/album identity.
+  Other native/custom userdata and review tokens stay in memory. Premium saves bind one track/account/session and the full
+  userdata snapshot, recheck fresh membership/userdata, preserve unknown custom fields,
+  consume the review before sending once and verify text plus unchanged custom data.
+  No automatic retry or metadata Undo; blank reviewed lyrics remove only that field.
+  Album track titles show a subtle Lyrics button only for already-known, nonempty
+  text in the current account/session/library cache. Its modal reads that same text
+  without requests, playback or history changes; preserve focus and source attribution.
+  Refresh only label slots when text arrives; hide missing, stale or invalidated results.
+  Free accounts retain native/public reading and explicit LRCLIB lookup, while lyrics
+  editing/copy/review/save controls and Premium streaming choices are hidden.
+  Explicit Check album lyrics in the album's More menu reads only the open album/set,
+  at most 100 distinct loaded tracks, one at a time. Reuse successful/negative results
+  without a timer in the bounded memory cache, backed by the separate native text cache; no
+  provider searches, writes, playlist checks or automatic scans. Coalesce a concurrent
+  per-track read, update label slots/progress without rebuilding the album, and stop
+  before the next request on Stop, navigation, replacement, source changes or errors.
+  A library/account/session replacement invalidates browser memory, while unchanged
+  account/track identities can reuse saved text across restarts. Opening one album
+  reads only its bounded local cache, never iBroadcast/providers; restore only current
+  identities without replacing fresher/in-flight results. Restore again on a new album
+  visit after memory eviction; do not retain an unbounded per-album restoration index.
+  Source invalidation releases pending browser reads; late replies cannot clear or
+  overwrite a newer read. Explicit per-track Check
+  iBroadcast again bypasses the native cache. A disk-cached edit first rereads native
+  userdata, preserves the typed draft and blocks review if lyrics changed; review/save
+  still use fresh complete snapshots. Invalidate saved text before sending any lyrics
+  write, restore only confirmed read-back, and retain no stale cache after uncertainty.
 - Tracks go to iBroadcast's trash (`trash`) from the album page after its trash
   review, from a reviewed selection of complete albums in the album overview or an artist's page, or
   through the dedicated reviewed duplicate-copy batch workflow. The server
@@ -227,6 +267,13 @@ and preserve a valid script order in `index.html`.
   or analysing. The page-local modal preserves playback, history, focus and scroll.
 - A normal editor metadata save remains limited to one album or one album artist.
   Only changed, supported fields are sent.
+- A single-album/set editor has Edit album / Edit tracks tabs in the existing dialog.
+  Keep both panels in the same metadata form, preserve DOM inputs and drafts on tab
+  changes, and include both in the existing review. Tabs make no requests/history or
+  playback changes; keep keyboard arrows/Home/End and reveal invalid fields before
+  validation. Track selection uses an independently scrolling list beside one form,
+  stacked on mobile, retaining disc headings and the separate lyrics review. Bulk
+  artist editing keeps its shared fields without individual-track tabs.
 - Compare `before` values with the current library view before writes.
   Verify accepted writes afterwards through a fresh library download.
   Preserve the distinction between sent, confirmed, unconfirmed, failed,

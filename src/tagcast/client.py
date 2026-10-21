@@ -40,6 +40,7 @@ from .library import (
     verify,
     write_requests,
 )
+from .lyrics import Lyrics
 from .metadata_export import MetadataExport
 from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
@@ -350,6 +351,7 @@ class Studio:
         self.collections = Collections(self)
         self.playlist_import = PlaylistImport(self)
         self.metadata_export = MetadataExport(self)
+        self.lyrics = Lyrics(self)
         self.tags = Tags(self)
         self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on

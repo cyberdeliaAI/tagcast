@@ -818,3 +818,26 @@ body.help-open{overflow:hidden}
 .playlist-folder-view .view-toggle button{min-height:44px}
 #collections-page .toolbar{flex-wrap:wrap}
 #collections-page .toolbar .search{flex-basis:220px}
+.track-lyrics { margin-block: 1.25rem; }
+.editor-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); position: sticky; top: 0; z-index: 3; }
+.edit-layout.editing-tracks { grid-template-columns: minmax(0,1fr); }
+.editor-track-workspace { display: grid; grid-template-columns: minmax(260px,2fr) minmax(0,3fr); gap: 24px; align-items: start; }
+.editor-track-list { position: sticky; top: 64px; max-height: min(55vh,32rem); overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.editor-track-list .track-table { margin: 0; }
+.editor-track-list .track-table th,.editor-track-list .track-table td { padding: 12px 10px; }
+.editor-track-list .track-table td:nth-child(3) { font-size: 11px; overflow-wrap: anywhere; }
+.editor-track-list .editing-track { background: var(--palette-tint,#f0f3ea); }
+.editor-track-list .track-edit[aria-pressed="true"] { font-weight: 700; color: var(--ink); }
+.editor-track-workspace .track-inline { margin-top: 0; }
+.editor-track-workspace #track-inline { scroll-margin-top: 84px; }
+@media(max-width:760px) { .editor-track-workspace { grid-template-columns: minmax(0,1fr); gap: 16px; } .editor-track-list { position: static; max-height: 16rem; } }
+.track-lyrics .field { display: flex; flex-direction: column; gap: .5rem; }
+.track-lyrics textarea { width: 100%; box-sizing: border-box; min-height: 10rem; resize: vertical; font: inherit; line-height: 1.6; color: var(--ink); background: var(--palette-surface,#fff); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.lyrics-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; max-height: 26rem; overflow-y: auto; margin-block: 1rem; }
+.lyrics-source { font-size: .85rem; }
+.lyrics-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.lyrics-review { width: min(42rem, calc(100vw - 3rem)); }
+.album-tracklist td>strong { display: inline; }
+.lyrics-label { display: inline-block; margin-inline-start: .5rem; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; font-weight: 400; line-height: 1.4; vertical-align: middle; cursor: pointer; }
+.lyrics-label:is(:hover,:focus-visible) { color: var(--ink); border-color: currentColor; }
+@media (hover: none), (pointer: coarse) { .lyrics-label { padding: 8px; } }

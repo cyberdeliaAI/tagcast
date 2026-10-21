@@ -3,6 +3,14 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  "lyrics-viewer": {title: "Track lyrics", scope: "#lyrics-viewer", steps: [
+    ["Known lyrics", "The Lyrics label appears only after Tagcast has found text for this track. Opening this window uses that text without starting playback or fetching lyrics. No label can also mean the track has not been checked yet.", ["#lyrics-viewer-content"]],
+    ["Text source", "The source is shown below the text: lyrics saved in iBroadcast, or a public LRCLIB result. Close or press Escape to return to the album.", ["#lyrics-viewer-content .lyrics-source", "#lyrics-viewer-close"]],
+  ]},
+  "lyrics-review": {title: "Track lyrics", scope: "#lyrics-review", steps: [
+    ["Review the text", "Compare Before and After. This changes only one track’s lyrics stored in iBroadcast; other additional metadata is preserved. A blank After removes the lyrics. Original music-file tags are unchanged.", ["#lyrics-review-content"]],
+    ["Save once and check", "Save lyrics requires iBroadcast Premium. Tagcast checks the track and its complete additional metadata again, sends once and reads the lyrics back. An uncertain save requires checking iBroadcast before reviewing again.", ["#lyrics-save", "#lyrics-save-status"]],
+  ]},
   "audio-output": {title: "Sound", scope: "#audio-output-dialog", steps: [
     ["Adjust player volume", "The slider and Mute control the current player, even when your browser hides its own volume controls. Arrow keys adjust the focused slider. Your system or speaker may also have its own volume control. Playback and the queue stay in place.", [".audio-volume-controls", "#audio-volume-note"]],
     ["Choose where to listen", "System default follows your computer’s sound settings. This selection changes only this browser player; the same audio and queue keep running.", ["#audio-output-current"]],
@@ -39,14 +47,22 @@ const HELP_TOPICS = {
     ["Play or queue", "Play album starts from the beginning and replaces the queue. The + menu offers Add to queue and Play next, preserving disc and track order. Add to playlist saves the album after a review.", ["#album-page .album-detail-actions"]],
     ["Choose a track", "A track number becomes Play on hover or keyboard focus and starts listening from that track. The playing row has a speaker and a quiet highlight. Extra performers, composer credits and tags appear only when present; the album artist is not repeated. The heading shows the common file format; amber labels identify different formats. Row actions appear on hover or keyboard focus, and stay visible on touch devices. An active heart or thumbs-down stays visible. Hearts set the native track rating to 5, thumbs-down to 1; click the active control to clear it. Dislikes do not skip or trash tracks. Use # for track tags or + for queue and playlist actions.", ["#album-page .album-tracks"]],
     ["Edit this album", "Edit opens a draft with online suggestions. Review the changes before saving. A multi-disc set also has an Edit disc option for each disc.", ["#album-page [data-edit-album]"]],
+    ["Check album lyrics", "Choose More album actions (⋯) → Check album lyrics to read this album’s native lyrics one track at a time, up to 100 tracks. Results, including empty results, are saved locally for your account and survive restarts. Opening an album restores known labels from that local cache. Use Check iBroadcast again on a track to refresh changed text. Labels open known text without playback. Stop checking or leave the album to stop further reads. No LRCLIB searches or playlist checks run automatically.", ["#album-page [data-album-more]", "#album-lyrics-check"], "Album lyrics checks need a connected account."],
     ["Reviewed trash selection", "Open More album actions (⋯), then Move to trash to choose tracks. Duplicated marks repeated track numbers on the same disc, even when the titles differ. The album overview shows the same label. Upload dates and suggested keep/trash labels help compare copies: prefer FLAC over MP3, then the newest upload in the same format. Select suggested copies fills the checkboxes; uncertain versions remain manual. Select extra copies only chooses matching titles and keeps the first. Review the exact selection before confirming. Trashed tracks leave the library in every iBroadcast app.", ["#album-page [data-album-more]"], "Moving tracks to the trash is available with a connected account."],
   ]},
   editing: {title: "Edit metadata", scope: "#editor", steps: [
     ["Your editing selection", "This header identifies the album, discs or albums by one artist included in the draft. Nothing is saved just by opening the editor.", ["#editor .album-header"]],
     ["Edit your draft", "Change the title, primary album artist, additional album artists, year or genres. Type in artist, genre or composer fields to search existing library names, or use the arrow to browse. Selecting a genre or composer adds one whole label; typed semicolons still separate new labels. Click a name or use Up/Down and Enter; Escape closes the list. You can still type a new name. Keep each album artist separate. Various Artists clears additional album credits in the review while keeping track artists. Genres allow 200 characters per label and 20 labels per track; invalid input stays in the field. Applying the year to tracks is a separate choice.", ["#metadata-form .fields"], "These fields appear in the album editor."],
     ["Compare suggestions", "Online sources can suggest metadata and artwork. Metadata suggestions fill your draft. Cover changes have their own comparison and save action.", ["#editor .sources", "#change-cover"], "Online suggestions are available when editing a single album."],
-    ["Check individual tracks", "Edit a track to change its primary artist and additional artists or credits. Roles include artist, band, composer, lyricist, conductor, publisher, involved person, original lyricist and original artist. Optional credit phrases and existing artist IDs are preserved until changed. Individual full-credit edits take precedence over album-wide composers.", ["#editor .track-table"], "Individual track fields appear when editing a single album or set."],
+    ["Album and track tabs", "Edit album contains shared album fields and online suggestions. Choose Edit tracks for the track list, individual credits and lyrics. Switching tabs retains both drafts and makes no requests. Review draft includes metadata changes from both tabs. Lyrics keep their separate review and save.", ["#editor-tabs"], "Individual track editing is available for one album or disc set; bulk artist editing keeps its shared fields."],
     ["Review before saving", "Choose Review draft to compare the before and after values. You can then keep editing or explicitly save the reviewed changes to iBroadcast.", ["#review-button"]],
+  ]},
+  "editing-tracks": {title: "Edit tracks", scope: "#editor", steps: [
+    ["Choose what to edit", "Edit tracks keeps the track list beside one track’s form. Edit album returns to shared fields and suggestions. Switching tabs preserves entered values and never saves or starts a lookup.", ["#editor-tabs"]],
+    ["Select a track", "Choose Edit beside a title. The list scrolls independently; disc headings are preserved for multi-disc sets. Selecting another track keeps the previous track’s valid changes in the draft.", ["#editor-tracks-panel .editor-track-list"]],
+    ["Track details and credits", "Edit title, primary artist, year, number, genres and additional credits. Keep each performer and role separate. Individual changes take precedence over album-wide track edits. Review draft includes metadata changes from both tabs.", ["#track-inline"], "Choose a track to show its form."],
+    ["Lyrics", "The track lyrics field reads iBroadcast first. Find lyrics explicitly searches LRCLIB if none are stored. Use these lyrics fills the separate field; Review lyrics and Save lyrics to iBroadcast require a separate confirmation and Premium. Original file tags stay unchanged.", ["#track-lyrics"], "Choose a track to read its lyrics."],
+    ["Review all metadata", "Review draft compares all album and track metadata changes before saving. Switching tabs does not change the save scope or start playback.", ["#review-button"]],
   ]},
   review: {title: "Review your draft", scope: "#review", steps: [
     ["Check before and after", "Read the proposed changes and check which albums and tracks they affect. Only changed, supported fields are sent.", ["#review-changes", "#review-intro"]],
@@ -148,10 +164,12 @@ function currentHelpContext() {
   if ($("#playlist-import").open) return "playlist-import";
   if ($("#audio-output-dialog").open) return "audio-output";
   if ($("#tag-dialog").open) return "tags";
+  if ($("#lyrics-review").open) return "lyrics-review";
+  if ($("#lyrics-viewer").open) return "lyrics-viewer";
   if ($("#playlist-dialog").open) return "playlist-review";
   if ($("#artwork").open && art.target?.target === "playlist") return "playlist-cover";
   for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
-    if ($(`#${id}`).open) return context;
+    if ($(`#${id}`).open) return context === "editing" && editing?.tab === "tracks" ? "editing-tracks" : context;
   }
   if (state.screen === "album-guide") return "guide";
   if (state.screen === "playlists" && collectionsView.playlist) return collectionsView.data?.is_folder ? "playlist-folder" : "playlist";

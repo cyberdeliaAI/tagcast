@@ -209,3 +209,32 @@ the fetched source with title/artist/duration defaults, and a paused/resumed URL
 snapshot. Capture an unavailable-source error with its CSV fallback. Use a mock
 library and public metadata; never show tokens or imply ListenBrainz was verified
 live where it returned a browser check.
+
+## Track lyrics (unreleased)
+
+The single-album editor now has Edit album / Edit tracks tabs in the Favourites
+style. Capture each tab, the twenty-track scrollable list beside the selected
+track form, retained album/track drafts after switching and a shared metadata
+review. Also check keyboard tabs and the stacked narrow-screen layout.
+
+Use a disposable mock library with invented lyrics. Capture native iBroadcast text
+in Now playing, the separate editable track textarea, an explicit LRCLIB result
+with attribution and Use these lyrics, and the Before/After review. Check ordinary
+line breaks, scrolling, keyboard focus, unchanged playback and source-disabled/error
+states. Save only in the mock environment and verify that unrelated userdata stays
+intact. Embedded music-file lyrics tags are not read or modified by Tagcast.
+Capture the subtle Lyrics label after a track title once text has been read, then
+its read-only modal with source attribution. Check Escape/focus return, no playback
+and no native/provider lyrics requests on album opening or label clicks. Opening
+an album can read the local saved cache; the label viewer uses memory only. Free-account
+screens should retain text/search but omit editing/review/save and Premium quality
+choices. Use only invented text in screenshots.
+Capture More album actions with Check album lyrics and Move to trash, then a
+completed album check and its new Lyrics labels. Verify one request at a time,
+memory/disk cache reuse without timed expiry, explicit per-track refresh, Stop and
+cancellation on navigation/errors or source changes during a pending read. The
+check is album-only (up to 100 distinct tracks); playlists have no such action.
+Restart the disposable server with the same settings folder and verify that labels
+return from the account-bound local cache without native userdata requests, also
+after visiting enough tracks to evict the album from the bounded memory cache. Cached
+edits must read fresh userdata before review and preserve the draft on conflicts.

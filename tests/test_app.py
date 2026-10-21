@@ -176,6 +176,10 @@ class StartTests(unittest.TestCase):
         studio.collections.artist_favourites.return_value = {"artists": []}
         studio.artist_bios.view.return_value = {"enabled": False}
         studio.album_info.view.return_value = {"enabled": False}
+        studio.lyrics.view.return_value = {"status": "missing"}
+        studio.lyrics.cached_album.return_value = {"tracks": []}
+        studio.lyrics.prepare.return_value = {"id": "lyrics-review"}
+        studio.lyrics.save.return_value = {"status": "saved"}
         studio.status.return_value = {"configured": True, "using_default_client": True}
         handler = type("TestHandler", (app.Handler,), {"studio": studio, "port": 0})
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -210,6 +214,9 @@ class StartTests(unittest.TestCase):
                                  ("/api/artist-favourite", studio.collections.favourite_artist),
                                  ("/api/artist-biography", studio.artist_bios.view),
                                  ("/api/album-information", studio.album_info.view),
+                                 ("/api/lyrics", studio.lyrics.view),
+                                 ("/api/lyrics/review", studio.lyrics.prepare),
+                                 ("/api/lyrics/save", studio.lyrics.save),
                                  ("/api/queue-tracks", studio.collections.queue_tracks),
                                  ("/api/config/default", studio.use_default_client),
                                  ("/api/album-guide/analyse", studio.album_guide.analyse),
@@ -225,6 +232,13 @@ class StartTests(unittest.TestCase):
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)
             studio.album_guide.notes_for_album.assert_called_once_with("1", "test-session", None, None)
+            self.assertEqual(request("GET", "/api/lyrics?track_id=1&title=Track&artist=Artist&session=test-session", {"Sec-Fetch-Site": "cross-site"}), 403)
+            self.assertEqual(request("GET", "/api/lyrics?track_id=1&title=Track&artist=Artist&session=test-session"), 200)
+            studio.lyrics.view.assert_called_with({'track_id': '1', 'title': 'Track', 'artist': 'Artist', 'session': 'test-session', 'refresh': False})
+            self.assertEqual(request("GET", "/api/lyrics/cache?album_ids=1,2&session=test-session", {"Sec-Fetch-Site": "cross-site"}), 403)
+            self.assertEqual(request("GET", "/api/lyrics/cache?album_ids=1,2&session=test-session", {"Host": "elsewhere.test"}), 403)
+            self.assertEqual(request("GET", "/api/lyrics/cache?album_ids=1,2&session=test-session"), 200)
+            studio.lyrics.cached_album.assert_called_once_with({'album_ids': ['1', '2'], 'session': 'test-session'})
             self.assertEqual(request("POST", "/api/play"), 403)
             self.assertEqual(request("POST", "/api/play", {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)
             studio.record_play.assert_not_called()
