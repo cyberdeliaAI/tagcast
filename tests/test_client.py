@@ -1192,6 +1192,40 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(studio.album_details(["74"])[0]["tracks"][0]["composers"], ["Roger Waters", "Kate Bush"])
         mock_ibroadcast.STATE["tracks"][904]["additional"] = []
 
+    def test_reviewed_lyrics_save_uses_native_userdata_and_preserves_custom_fields(self):
+        studio = self.connect()
+        studio.load_library()
+        previous = mock_ibroadcast.STATE["tracks"][900].get("userdata")
+        previous_premium = mock_ibroadcast.STATE["premium"]
+        mock_ibroadcast.STATE["premium"] = True
+        rows = [{"type": "custom", "name": "Notes", "value": "Keep this"},
+                {"type": "lyrics", "value": "Existing test verse"}]
+        mock_ibroadcast.STATE["tracks"][900]["userdata"] = rows
+        studio.premium = True
+        try:
+            track = studio.library.track_view(900)
+            body = {"session": studio.playback_session, "track_id": "900",
+                    "title": track["title"], "artist": track["artist"]}
+            data = studio.lyrics.view(body)
+            self.assertEqual(data["text"], "Existing test verse")
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+            review = studio.lyrics.prepare({**body, "before_token": data["before_token"],
+                                           "lyrics": "Edited test verse"})
+            result = studio.lyrics.save({"id": review["id"], "approved": True})
+            self.assertEqual(result["status"], "saved")
+            writes = mock_ibroadcast.STATE["writes"]
+            self.assertEqual(len(writes), 1)
+            self.assertEqual(writes[0]["mode"], "update_track")
+            self.assertEqual(writes[0]["tracks"], [{"file_id": 900, "userdata": [
+                rows[0], {"type": "lyrics", "value": "Edited test verse"}]}])
+            self.assertEqual(studio.lyrics.view(body)["text"], "Edited test verse")
+        finally:
+            mock_ibroadcast.STATE["premium"] = previous_premium
+            if previous is None:
+                mock_ibroadcast.STATE["tracks"][900].pop("userdata", None)
+            else:
+                mock_ibroadcast.STATE["tracks"][900]["userdata"] = previous
+
 
 if __name__ == "__main__":
     unittest.main()

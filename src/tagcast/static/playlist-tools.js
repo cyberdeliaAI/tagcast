@@ -19,7 +19,9 @@ function playlistDuration(data) {
 }
 
 function playlistBrowseCard(data) {
-  return `<button class="button playlist-card" data-playlist-open="${escapeHtml(data.id)}" ${data.kind === "unavailable" ? "disabled" : ""}>${playlistCoverImage(data, true)}<span><strong>${escapeHtml(data.name)}</strong><small>${data.kind === "folder" ? `${data.count} playlist ${data.count === 1 ? "reference" : "references"} · Folder` : data.kind === "unavailable" ? "Unavailable reference" : `${data.count} ${data.count === 1 ? "track" : "tracks"}`}</small></span></button>`;
+  const count = data.active_count ?? data.count;
+  const unavailable = data.unavailable_count ? ` · ${data.unavailable_count} unavailable` : "";
+  return `<button class="button playlist-card" data-playlist-open="${escapeHtml(data.id)}" ${data.kind === "unavailable" ? "disabled" : ""}>${playlistCoverImage(data, true)}<span><strong>${escapeHtml(data.name)}</strong><small>${data.kind === "folder" ? `${data.count} playlist ${data.count === 1 ? "reference" : "references"} · Folder` : data.kind === "unavailable" ? "Unavailable reference" : `${count} ${count === 1 ? "track" : "tracks"}${playlistDuration(data).replace(/^ · /, " / ")}${unavailable}`}</small></span></button>`;
 }
 
 function playlistViewControls() {

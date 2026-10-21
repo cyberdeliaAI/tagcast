@@ -9,7 +9,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
-function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio} = {}) {
+function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
   const timers = new Map(), windowEvents = new Map();
@@ -34,6 +34,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   let respondUpdates = null;
   let respondNotes = null;
   let respondAlbumNotes = null;
+  let respondLyricsCache = null;
   let playbackClock = 0;
   function element() {
     const classes = new Set();
@@ -73,6 +74,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
   document.querySelector("#sort").value = "artist";
+  document.querySelector("#now-playing-panel").hidden = true;
   const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
@@ -90,6 +92,8 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
         : {ok: true, json: async () => ({schema: 1, entries: []})};
       if (url.startsWith("/api/album-guide/album?")) return respondAlbumNotes ? respondAlbumNotes(url, options)
         : {ok:true,json:async()=>({entries:[]})};
+      if (url.startsWith("/api/lyrics/cache?")) return respondLyricsCache ? respondLyricsCache(url, options)
+        : {ok:true,json:async()=>({tracks:[]})};
       if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
@@ -102,6 +106,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   for (const [, source] of pageHTML.matchAll(/<script>([\s\S]*?)<\/script>/g)) vm.runInContext(source, context);
   const scripts = [...pageHTML.matchAll(/<script src="([^"]+)"/g)];
   for (const [, file] of scripts) vm.runInContext(readFileSync(path.join(staticDir, file), "utf8"), context, {filename: file});
+  if (!deferReady) for (const handler of documentEvents.get("DOMContentLoaded") || []) handler();
   return {run: source => vm.runInContext(source, context), nodes, requests, downloads, history, location,
     setPlaybackClock(value) { playbackClock = value; },
     setFetch(handler) { respond = handler; },
@@ -109,6 +114,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     setUpdateFetch(handler) { respondUpdates = handler; },
     setNotesFetch(handler) { respondNotes = handler; },
     setAlbumNotesFetch(handler) { respondAlbumNotes = handler; },
+    setLyricsCacheFetch(handler) { respondLyricsCache = handler; },
     flushTimers(delay) {
       for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
     },
@@ -129,6 +135,21 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     },
     json: source => JSON.parse(vm.runInContext(`JSON.stringify(${source})`, context))};
 }
+
+test('startup settings wait for all deferred feature scripts before applying preferences', async () => {
+  const p=page({deferReady:true}); await settle();
+  assert.equal(p.requests.length,0,'No live startup response can race later deferred scripts');
+  p.setFetch(url=>{
+    assert.equal(url,'/api/settings');
+    return {ok:true,json:async()=>({sources:[],artist_biographies:true,album_information:true,
+      album_guide:true,auto_updates:false})};
+  });
+  await p.emitDocument('DOMContentLoaded'); await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/settings').length,1);
+  assert.equal(p.run('artistProfile.enabled'),true);
+  assert.equal(p.run('albumInformation.enabled'),true);
+  assert.equal(p.run('albumGuide.enabled'),true);
+});
 
 test("new installations sign in with a code without client ID setup", async () => {
   const p = page(); await settle();
@@ -2834,7 +2855,7 @@ test('Trash suggestions group two complete uploads and prefer older FLAC over ne
   assert.match(html, /Move 10 tracks to the trash/);
   assert.match(html, /MP3.*Uploaded 2026-09-23 22:48:19/);
   assert.doesNotMatch(html, /2022-04-05|old-0/);
-  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/album-guide/album?')), 'Only album opening checks local text; suggestions never fetch audio/details or write');
+  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/album-guide/album?')||r.url.startsWith('/api/lyrics/cache?')), 'Only album opening checks local text; suggestions never fetch audio/details or write');
   assert.deepEqual(p.json('player.queue'), queue);
   assert.equal(p.nodes.get('#audio').src, source);
   assert.equal(p.nodes.get('#audio').paused, false);
@@ -4815,10 +4836,10 @@ test("album rows omit their album artist, retain distinct credits and keep plain
   const count = p.requests.length;
   await p.run('openAlbum("1")');
   const row = p.nodes.get('#album-page').innerHTML.match(/<tr data-row="100">([\s\S]*?)<\/tr>/)[1];
-  assert.match(row,/<td><strong>Shine On You Crazy Diamond \(Parts I–V\)<\/strong><\/td>/);
+  assert.match(row,/<td><strong>Shine On You Crazy Diamond \(Parts I–V\)<\/strong><span data-lyrics-label="100" hidden><\/span><\/td>/);
   assert.doesNotMatch(row,/album-track-meta|>Pink Floyd<|class="track-tags"/);
   assert.match(row,/data-track-tags="100"/,'Untagged tracks retain tag management in their actions');
-  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/album-guide/album?')));
+  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/album-guide/album?')||r.url.startsWith('/api/lyrics/cache?')));
 });
 
 test("album format summaries distinguish a common format, ties and missing file metadata", async () => {
@@ -4836,7 +4857,7 @@ test("album format summaries distinguish a common format, ties and missing file 
   assert.equal((html.match(/track-format-exception/g)||[]).length,1);
   assert.match(html,/title="File format: MP3 · album mainly FLAC">MP3/);
   assert.doesNotMatch(html,/class="track-format"/,'Repeated file labels are absent from ordinary time cells');
-  assert.ok(p.requests.slice(before).every(r=>r.url.startsWith('/api/album-guide/album?')));
+  assert.ok(p.requests.slice(before).every(r=>r.url.startsWith('/api/album-guide/album?')||r.url.startsWith('/api/lyrics/cache?')));
 });
 
 test("track tags and unusual formats add metadata without a repeated album artist or an empty row", async () => {
@@ -5965,10 +5986,11 @@ test('a late provider response cannot repaint a different album and Back reuses 
   await p.run('openAlbum(state.albums[2].id)'); await settle();
   finish({ok:true,json:async()=>albumInformationReply({description:'First album text.'})}); await settle();
   assert.doesNotMatch(p.nodes.get('#album-information').innerHTML,/First album text/);
-  const requests=p.requests.length;
+  const remoteReads=()=>p.requests.filter(r=>!r.url.startsWith('/api/lyrics/cache?')).length;
+  const requests=remoteReads();
   p.history.back(); await settle();
   assert.match(p.nodes.get('#album-information').innerHTML,/First album text/);
-  assert.equal(p.requests.length,requests);
+  assert.equal(remoteReads(),requests,'Back may restore the local lyrics cache without repeating provider reads');
 });
 
 test('album information recovers only the visible same album after a metadata cache replacement', async () => {
@@ -6129,12 +6151,13 @@ test('local text priority survives Back and discovery setting changes without fe
   p.setNotesFetch(()=>({ok:true,json:async()=>({schema:1,entries:[localAlbumNote]})}));
   await p.run('openAlbum("1")'); await settle();
   p.run('guideNotes.open.add(1); guideDisplay.matching=false; applyAlbumInformationSettings({album_information:true}); applyAlbumGuideSettings({album_guide:true}); showScreen("albums")');
-  const count=p.requests.length;
+  const remoteReads=()=>p.requests.filter(r=>!r.url.startsWith('/api/lyrics/cache?')).length;
+  const count=remoteReads();
   p.history.back(); await settle();
   assert.match(p.nodes.get('#album-guide-notes').innerHTML,/<details[^>]* open>/);
   assert.match(p.nodes.get('#album-guide-notes').innerHTML,/Preferred 1001 text/);
   p.run('applyAlbumGuideSettings({album_guide:false})'); await settle();
-  assert.equal(p.requests.length,count);
+  assert.equal(remoteReads(),count,'Local lyrics-cache restoration does not fetch album background text');
   assert.equal(p.nodes.get('#album-guide-notes').hidden,false);
   assert.equal(p.nodes.get('#album-information').hidden,true);
   assert.equal(p.requests.filter(r=>r.url==='/api/album-information').length,0);
@@ -6615,6 +6638,10 @@ test('playlist list view is remembered locally and switches without requests, me
   const restored=page({storage}); assert.equal(restored.run('collectionsView.view'),'list');
   await p.click({'[data-playlists-view]':{isConnected:true,dataset:{playlistsView:'grid'}}});
   assert.match(p.nodes.get('#collections-page').innerHTML,/class="playlist-cards"/);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/3 tracks \/ 2:01:00 · 1 unavailable/);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/2 playlist references · Folder/);
+  assert.match(p.run('playlistBrowseCard({id:"83",kind:"playlist",name:"Partial",count:3,duration:180,duration_missing:2})'),/3 tracks \/ 3:00 known · 2 tracks without duration/);
+  assert.match(p.run('playlistBrowseCard({id:"84",kind:"playlist",name:"Missing",count:1,active_count:0,unavailable_count:1,duration:0})'),/0 tracks \/ 0:00 · 1 unavailable/);
   assert.equal(p.requests.length,requests);
 });
 
@@ -7594,4 +7621,417 @@ test('compact progress respects reduced motion and remains separate from full li
   assert.equal(p.nodes.get('#mode-badge').getAttribute('data-working'),'false');
   const css=readFileSync(path.join(staticDir,'style.css'),'utf8');
   assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{\.operation-status\[data-working="true"\]::before,[\s\S]*?animation:none/);
+});
+
+test('opening an album restores only saved lyrics locally, without track requests or playback', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="restored-session";');
+  p.setLyricsCacheFetch(()=>({ok:true,json:async()=>({tracks:[{
+    selection:p.json('lyricsSelection(state.details.get("1").tracks[0])'),
+    data:{status:'ready',source:'ibroadcast',text:'Saved preview verse',native_text:'Saved preview verse',can_save:true,persisted:true}
+  }]})}));
+  await p.run('openAlbum("1")'); await settle();
+  p.run('renderAlbumView()');
+  assert.match(p.nodes.get('#album-page').innerHTML,/data-lyrics-view="100"/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics/cache?')).length,1);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics?')).length,0);
+  assert.equal(p.run('player.queue.length'),0);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('late disk-cache results cannot replace newer native text or a different library', async () => {
+  for (const replace of [false,true]) {
+    const p=page(); await settle();
+    p.run('state.mode="live"; state.connection.playback_session="restored-session";');
+    let release;
+    p.setLyricsCacheFetch(()=>new Promise(resolve=>{release=resolve;}));
+    await p.run('openAlbum("1")');
+    const selection=p.json('lyricsSelection(state.details.get("1").tracks[0])');
+    if (replace) p.run('state.details=new Map(state.details); resetTrackLyrics()');
+    else p.run('lyricsEntry(lyricsSelection(state.details.get("1").tracks[0])).data={status:"ready",source:"ibroadcast",text:"Fresh text"}');
+    release({ok:true,json:async()=>({tracks:[{selection,data:{status:'ready',source:'ibroadcast',text:'Old text',persisted:true}}]})});
+    await settle();
+    assert.equal(p.run('trackLyrics.entries.size'),replace?0:1);
+    if (!replace) assert.equal(p.run('[...trackLyrics.entries.values()][0].data.text'),'Fresh text');
+  }
+});
+
+test('revisiting an album restores saved labels after the bounded memory cache evicts them', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="restored-session";');
+  const selection=p.json('lyricsSelection(state.details.get("1").tracks[0])');
+  p.setLyricsCacheFetch(()=>({ok:true,json:async()=>({tracks:[{selection,
+    data:{status:'ready',source:'ibroadcast',text:'Saved preview verse',persisted:true}
+  }]})}));
+  await p.run('openAlbum("1")'); await settle();
+  p.run('for(let i=0;i<100;i++) lyricsEntry({track_id:String(1000+i),title:"Other",artist:"Artist",session:"restored-session"}); showScreen("albums")');
+  assert.equal(p.run('knownTrackLyrics(state.details.get("1").tracks[0])'),null);
+  await p.run('openAlbum("1")'); await settle();
+  assert.equal(p.run('knownTrackLyrics(state.details.get("1").tracks[0]).text'),'Saved preview verse');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics/cache?')).length,2);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics?')).length,0);
+});
+
+test('changing lyrics sources during a read starts a fresh read and keeps late completion separate', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; playTracks(state.details.get("1"));');
+  const pending=[];
+  p.setFetch(()=>new Promise(resolve=>pending.push(resolve)));
+  p.run('setNowPlaying(true); lyricsEntry(visibleLyricsSelection("player")).draft="Keep my draft"; invalidateLyricsSource()');
+  assert.equal(pending.length,2);
+  const reply=text=>({ok:true,json:async()=>({status:'ready',source:'ibroadcast',text,native_text:text,can_save:true,can_lookup:false})});
+  pending[0](reply('Old source result')); await settle();
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("player")).loading'),true);
+  p.run('loadTrackLyrics(visibleLyricsSelection("player"),lyricsEntry(visibleLyricsSelection("player")))');
+  assert.equal(pending.length,2,'The current request remains coalesced after an old request finishes');
+  pending[1](reply('Current result')); await settle();
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("player")).data.text'),'Current result');
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("player")).draft'),'Keep my draft');
+});
+
+test('reviewing disk-cached lyrics first checks current native text and preserves a changed draft', async () => {
+  for (const changed of [false,true]) {
+    const p=page(); await settle();
+    p.run('state.mode="live"; state.connection.premium=true; state.connection.playback_session="restored-session"; editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()}; const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{}; $("#editor").showModal(); const restoredSelection=lyricsSelection(editing.originals[0].tracks[0]); const restoredEntry=lyricsEntry(restoredSelection); restoredEntry.data={status:"ready",source:"ibroadcast",text:"Saved verse",native_text:"Saved verse",persisted:true,can_save:true}; restoredEntry.draft="My edited verse"; editTrack(String(editing.originals[0].tracks[0].id))');
+    p.setFetch((url,options)=>{
+      if (url.startsWith('/api/lyrics?')) {
+        assert.match(url,/refresh=1/);
+        return {ok:true,json:async()=>({status:'ready',source:'ibroadcast',native_text:changed?'Changed elsewhere':'Saved verse',text:'Current verse',can_save:true,before_token:'fresh-token'})};
+      }
+      assert.equal(url,'/api/lyrics/review');
+      assert.equal(JSON.parse(options.body).before_token,'fresh-token');
+      assert.equal(JSON.parse(options.body).lyrics,'My edited verse');
+      return {ok:true,json:async()=>({id:'new-review',title:'Preview',before:'Saved verse',after:'My edited verse'})};
+    });
+    await p.run('reviewTrackLyrics(restoredSelection,restoredEntry)');
+    assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/review').length,changed?0:1);
+    assert.equal(p.run('restoredEntry.draft'),'My edited verse');
+    if (changed) assert.match(p.nodes.get('#track-lyrics').innerHTML,/changed since the saved cache/);
+    assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,0);
+  }
+});
+
+test('album lyrics check starts explicitly, runs serially and keeps results until invalidation or explicit refresh', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="album-lyrics-session"; playTracks(state.details.get("1"));');
+  await p.run('openAlbum("1")'); await settle();
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,history:history.length})');
+  const total=p.run('state.details.get("1").tracks.length');
+  const trigger=p.run('document.querySelector("[data-album-more]")');
+  await p.click({'[data-album-more]':trigger});
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-trash'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'Home',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
+  let active=0,maxActive=0;
+  p.setFetch(async url=>{
+    assert.match(url,/^\/api\/lyrics\?/); assert.match(url,/refresh=[01]/);
+    maxActive=Math.max(maxActive,++active);
+    await new Promise(resolve=>setImmediate(resolve)); active--;
+    const ready=new URL('http://test'+url).searchParams.get('track_id')==='100';
+    return {ok:true,json:async()=>({status:ready?'ready':'not_cached',source:'ibroadcast',text:ready?'Album preview verse':'',can_lookup:!ready,can_save:false})};
+  });
+  await p.nodes.get('#album-action-lyrics').emit('click');
+  for (let i=0;i<=total;i++) await settle();
+  assert.equal(maxActive,1);
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,total);
+  assert.equal(p.run('albumLyricsCheck.found'),1);
+  assert.match(p.nodes.get('#album-lyrics-status').textContent,/Lyrics available for 1/);
+  assert.equal(p.nodes.get('#album-lyrics-stop').hidden,true);
+  const count=p.requests.length;
+  await p.run('checkAlbumLyrics()');
+  assert.equal(p.requests.length,count);
+  p.setPlaybackClock(30*86400000);
+  await p.run('checkAlbumLyrics()');
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,total,'Positive and empty results do not expire on a timer');
+  await p.run('loadTrackLyrics(lyricsSelection(state.details.get("1").tracks[0]),lyricsEntry(lyricsSelection(state.details.get("1").tracks[0])),false,true)');
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,total+1,'Explicit per-track refresh still fetches fresh native text');
+  await p.run('checkAlbumLyrics()');
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,total+1);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,history:history.length})'),before);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  p.run('showScreen("playlists")');
+  await p.run('checkAlbumLyrics()');
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,total+1,'There is no playlist check');
+});
+
+test('album lyrics checking stops on navigation, explicit Stop, errors and replacement without continuing requests', async () => {
+  for (const action of ['navigation','stop','replacement','error']) {
+    const p=page(); await settle();
+    p.run('state.mode="live"; state.connection.playback_session="album-lyrics-session";');
+    await p.run('openAlbum("1")'); await settle();
+    let release;
+    p.setFetch(url=>url.startsWith('/api/lyrics')?new Promise(resolve=>{release=resolve;})
+      :{ok:true,json:async()=>({playlists:[],count:0})});
+    const work=p.run('checkAlbumLyrics()');
+    assert.equal(p.run('albumLyricsCheck.running'),true);
+    assert.match(p.nodes.get('#album-lyrics-status').textContent,/0 of/);
+    if (action==='navigation') p.run('showScreen("playlists")');
+    if (action==='stop') await p.click({'#album-lyrics-stop':{}});
+    if (action==='replacement') p.run('state.details=new Map(state.details); resetTrackLyrics()');
+    release(action==='error'?{ok:false,status:503,json:async()=>({error:'Temporary error'})}
+      :{ok:true,json:async()=>({status:'ready',source:'ibroadcast',text:'Preview verse'})});
+    await work; await settle();
+    assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,1,action);
+    if (action==='error') assert.match(p.nodes.get('#album-lyrics-status').textContent,/stopped.*Temporary error/i);
+    if (action==='stop') assert.match(p.nodes.get('#album-lyrics-status').textContent,/Stopped after/);
+    if (action==='replacement') assert.equal(p.run('trackLyrics.entries.size'),0);
+  }
+});
+
+test('album checking coalesces an open track read and never exceeds the existing 100-track cache bound', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="album-lyrics-session"; playTracks(state.details.get("1"));');
+  await p.run('openAlbum("1")'); await settle();
+  let release;
+  p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+  const work=p.run('checkAlbumLyrics()');
+  p.run('setNowPlaying(true)'); await settle();
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,1);
+  p.run('stopAlbumLyricsCheck()');
+  release({ok:true,json:async()=>({status:'ready',source:'ibroadcast',text:'Preview verse'})});
+  await work; await settle();
+  assert.match(p.nodes.get('#now-playing-lyrics').innerHTML,/Preview verse/);
+  p.run('setNowPlaying(false); state.details.get("1").tracks=Array.from({length:101},(_,i)=>({id:String(1000+i),title:"Preview "+i,artist:"Preview"}));');
+  await p.run('checkAlbumLyrics()');
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,1);
+  assert.match(p.nodes.get('#toast').textContent,/up to 100 tracks/);
+});
+
+test('album Lyrics labels reuse known text and open a read-only dialog without requests or playback', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; playTracks(state.details.get("1"));');
+  await p.run('openAlbum("1")'); await settle();
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/data-lyrics-view=/);
+  assert.equal(p.run('trackLyrics.entries.size'),0);
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
+  p.setFetch(()=>({ok:true,json:async()=>({status:'ready',source:'ibroadcast',text:'<b>Preview verse</b>\nNext line',native_text:'Preview verse',can_save:true,can_lookup:false})}));
+  p.run('setNowPlaying(true)'); await settle();
+  p.run('setNowPlaying(false); renderAlbumView()');
+  assert.match(p.nodes.get('#album-page').innerHTML,/data-lyrics-view="100"[^>]*title="Lyrics saved in iBroadcast"/);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,paused:audio.paused,time:audio.currentTime,history:history.length})');
+  const reads=p.requests.length;
+  const trigger={dataset:{lyricsView:'100'},isConnected:true,focus(){this.focused=true;}};
+  await p.click({'[data-lyrics-view]':trigger});
+  assert.equal(p.nodes.get('#lyrics-viewer').open,true);
+  assert.match(p.nodes.get('#lyrics-viewer-content').innerHTML,/&lt;b&gt;Preview verse&lt;\/b&gt;\nNext line/);
+  assert.doesNotMatch(p.nodes.get('#lyrics-viewer-content').innerHTML,/<b>|textarea|data-play|data-lyrics-action/);
+  assert.equal(p.run('currentHelpContext()'),'lyrics-viewer');
+  await p.nodes.get('#lyrics-viewer').emit('cancel',{preventDefault(){}});
+  assert.equal(p.nodes.get('#lyrics-viewer').open,false);
+  assert.equal(trigger.focused,true);
+  assert.equal(p.requests.length,reads);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,paused:audio.paused,time:audio.currentTime,history:history.length})'),before);
+});
+
+test('Lyrics labels update in place and reject missing, stale, disabled-source or replaced-library text', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session";');
+  await p.run('openAlbum("1")'); await settle();
+  const slot={dataset:{lyricsLabel:'100'},innerHTML:'',hidden:true};
+  p.nodes.get('#album-page').querySelectorAll=selector=>selector==='[data-lyrics-label]'?[slot]:[];
+  const albumHTML=p.nodes.get('#album-page').innerHTML;
+  p.run('const badgeSelection=lyricsSelection(state.details.get("1").tracks[0]); const badgeEntry=lyricsEntry(badgeSelection); badgeEntry.data={status:"ready",source:"lrclib",text:"Public preview"}; refreshAlbumLyricsLabels()');
+  assert.equal(slot.hidden,false);
+  assert.match(slot.innerHTML,/Lyrics available from LRCLIB/);
+  assert.equal(p.nodes.get('#album-page').innerHTML,albumHTML,'Only the label changes, not album controls or focus');
+  await p.click({'[data-lyrics-view]':{dataset:{lyricsView:'100'}}});
+  assert.match(p.nodes.get('#lyrics-viewer-content').innerHTML,/https:\/\/lrclib.net\/|Public preview/);
+  p.run('showScreen("albums")');
+  assert.equal(p.nodes.get('#lyrics-viewer').open,false);
+  await p.run('openAlbum("1")');
+  for (const status of ['missing','instrumental','not_cached']) {
+    p.run(`badgeEntry.data.status=${JSON.stringify(status)}; refreshAlbumLyricsLabels()`);
+    assert.equal(slot.hidden,true);
+  }
+  p.run('badgeEntry.data.status="ready"; state.connection.playback_session="other-session"; refreshAlbumLyricsLabels()');
+  assert.equal(slot.hidden,true);
+  await p.click({'[data-lyrics-view]':{dataset:{lyricsView:'100'}}});
+  assert.equal(p.nodes.get('#lyrics-viewer').open,false);
+  p.run('state.connection.playback_session="lyrics-session"; refreshAlbumLyricsLabels()');
+  assert.equal(slot.hidden,false);
+  p.run('invalidateLyricsSource()');
+  assert.equal(slot.hidden,true);
+  p.run('badgeEntry.data={status:"ready",source:"ibroadcast",text:"Old library"}; state.details=new Map(state.details); refreshAlbumLyricsLabels()');
+  assert.equal(slot.hidden,true);
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
+});
+
+test('free accounts can read native and public lyrics but have no lyrics editing or Premium quality controls', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.premium=false; state.connection.playback_session="lyrics-session"; editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()}; const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{}; $("#editor").showModal();');
+  let response={status:'ready',source:'ibroadcast',text:'Stored preview',native_text:'Stored preview',can_save:false,can_lookup:false};
+  p.setFetch(()=>({ok:true,json:async()=>response}));
+  p.run('editTrack(String(editing.originals[0].tracks[0].id))'); await settle();
+  assert.match(p.nodes.get('#track-lyrics').innerHTML,/Stored preview/);
+  assert.doesNotMatch(p.nodes.get('#track-lyrics').innerHTML,/textarea|Review lyrics|Use these lyrics|Save lyrics|Premium/);
+  response={status:'not_cached',source:'ibroadcast',text:'',native_text:'',can_save:false,can_lookup:true};
+  await p.run('loadTrackLyrics(visibleLyricsSelection("track"),lyricsEntry(visibleLyricsSelection("track")))');
+  assert.match(p.nodes.get('#track-lyrics').innerHTML,/Find lyrics on LRCLIB/);
+  response={status:'ready',source:'lrclib',text:'Public preview',native_text:'',can_save:false,can_lookup:false};
+  await p.run('loadTrackLyrics(visibleLyricsSelection("track"),lyricsEntry(visibleLyricsSelection("track")),true)');
+  assert.match(p.nodes.get('#track-lyrics').innerHTML,/Public preview|LRCLIB/);
+  assert.doesNotMatch(p.nodes.get('#track-lyrics').innerHTML,/textarea|Review lyrics|Use these lyrics/);
+  p.run('lyricsEntry(visibleLyricsSelection("track")).data.can_save=true; renderLyrics("track")');
+  await p.run('reviewTrackLyrics(visibleLyricsSelection("track"),lyricsEntry(visibleLyricsSelection("track")))');
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/review').length,0,'Known free account overrides old cached capability');
+  p.run('lookup.sources=[{name:"lrclib",enabled:true,selected:true}]; lookup.streamQuality="orig"; openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML,/MP3 128 kbps/);
+  assert.doesNotMatch(p.nodes.get('#settings-content').innerHTML,/name="stream_quality"|Original file \(Premium\)|MP3 320/);
+  assert.equal(p.run('lookup.streamQuality'),'orig','Opening settings does not rewrite a saved preference');
+  p.run('state.connection.premium=true; openSettings(); renderLyrics("track")');
+  assert.match(p.nodes.get('#settings-content').innerHTML,/name="stream_quality"|Original file \(Premium\)/);
+  assert.match(p.nodes.get('#track-lyrics').innerHTML,/textarea|Review lyrics/);
+});
+
+test('Now playing reads native lyrics lazily, escapes text and leaves audio and queue intact', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; playTracks(state.details.get("1"));');
+  assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  p.setFetch(()=>({ok:true,json:async()=>({status:'ready',source:'ibroadcast',text:'<script>Verse</script>\nNext',native_text:'Verse',can_save:true,can_lookup:false,before_token:'before'})}));
+  p.run('setNowPlaying(true)'); await settle();
+  const html=p.nodes.get('#now-playing-lyrics').innerHTML;
+  assert.match(html,/&lt;script&gt;Verse&lt;\/script&gt;/);
+  assert.doesNotMatch(html,/<script>|Find lyrics/);
+  assert.match(html,/<summary>iBroadcast<\/summary>/);
+  p.run('renderNowPlaying()'); await settle();
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics?')).length,1);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('LRCLIB lookup is explicit and a late reply cannot fill a replacement library', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; playTracks(state.details.get("1"));');
+  p.setFetch(()=>({ok:true,json:async()=>({status:'not_cached',source:'ibroadcast',native_text:'',text:'',can_save:true,can_lookup:true,before_token:'before'})}));
+  p.run('setNowPlaying(true)'); await settle();
+  assert.match(p.nodes.get('#now-playing-lyrics').innerHTML,/Find lyrics on LRCLIB/);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  p.setFetch(()=>({ok:true,json:async()=>({status:'ready',source:'lrclib',text:'Public verse',native_text:'',can_save:true,can_lookup:false,before_token:'before'})}));
+  await p.run('loadTrackLyrics(visibleLyricsSelection("player"), lyricsEntry(visibleLyricsSelection("player")), true)');
+  assert.match(p.nodes.get('#now-playing-lyrics').innerHTML,/Public verse|LRCLIB/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics').length,1);
+  let release;
+  p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+  p.run('loadTrackLyrics(visibleLyricsSelection("player"), lyricsEntry(visibleLyricsSelection("player")), true)');
+  const html=p.nodes.get('#now-playing-lyrics').innerHTML;
+  p.run('state.details=new Map(); resetTrackLyrics()');
+  release({ok:true,json:async()=>({status:'ready',source:'lrclib',text:'Stale verse'})}); await settle();
+  assert.equal(p.nodes.get('#now-playing-lyrics').innerHTML,html);
+  assert.equal(p.run('trackLyrics.entries.size'),0);
+});
+
+test('track lyrics use a separate editable field and explicit review, without normal metadata patches', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()}; const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{}; $("#editor").showModal();');
+  p.setFetch((url)=>({ok:true,json:async()=>url==='/api/lyrics/review'
+    ? {id:'lyrics-review-id',title:'Track',before:'Old verse',after:'New verse'}
+    : {status:'ready',source:'ibroadcast',text:'Old verse',native_text:'Old verse',can_save:true,can_lookup:false,before_token:'before'}}));
+  p.run('editTrack(String(editing.originals[0].tracks[0].id))'); await settle();
+  const html=p.nodes.get('#track-lyrics').innerHTML;
+  assert.match(html,/textarea id="track-lyrics-text"/);
+  assert.match(html,/Old verse/);
+  assert.doesNotMatch(html,/data-key="lyrics"/);
+  p.run('lyricsEntry(visibleLyricsSelection("track")).draft="New verse"');
+  const beforeClick=p.nodes.get('#track-inline').innerHTML;
+  p.run('let lyricsReopened=0; const lyricsOriginalEdit=editTrack; editTrack=()=>{lyricsReopened+=1;}');
+  await p.click({'[data-track]':p.nodes.get('#track-inline')});
+  assert.equal(p.run('lyricsReopened'),0);
+  p.run('editTrack=lyricsOriginalEdit');
+  assert.equal(p.nodes.get('#track-inline').innerHTML,beforeClick,'Clicks inside the track pane must not reopen the editor');
+  await p.run('reviewTrackLyrics(visibleLyricsSelection("track"), lyricsEntry(visibleLyricsSelection("track")))');
+  assert.equal(p.nodes.get('#lyrics-review').open,true);
+  assert.match(p.nodes.get('#lyrics-review-content').innerHTML,/Old verse|New verse/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,0);
+  p.setFetch(()=>({ok:true,json:async()=>({status:'saved'})}));
+  await p.run('saveTrackLyrics()'); await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+  assert.deepEqual(p.json('editing.trackPatches'),{});
+  assert.equal(p.run('trackLyrics.busy'),false);
+});
+
+test('changing the lyrics source invalidates public results while preserving a typed native draft', async () => {
+  const p=page(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; playTracks(state.details.get("1"));');
+  p.setFetch(()=>({ok:true,json:async()=>({status:'not_cached',source:'ibroadcast',native_text:'',text:'',can_save:true,can_lookup:false,before_token:'before'})}));
+  p.run('setNowPlaying(true)'); await settle();
+  p.run('lyricsEntry(visibleLyricsSelection("player")).draft="Keep typed lyrics"; lookup.sources=[{name:"lrclib",enabled:true,selected:true}]; applyLookupSources([{name:"lrclib",enabled:false,selected:false}]);');
+  await settle();
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("player")).draft'),'Keep typed lyrics');
+  assert.doesNotMatch(p.nodes.get('#now-playing-lyrics').innerHTML,/Find lyrics on LRCLIB/);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('editor tabs keep both drafts in one review without requests, playback or history changes', async () => {
+  const p=page(); await settle();
+  await p.run('openEditor([state.albums[0].id])');
+  const html=p.nodes.get('#editor-content').innerHTML;
+  assert.match(html,/id="editor-tabs"[^>]*role="tablist"/);
+  assert.match(html,/id="editor-tracks-panel"[^>]*hidden/);
+  assert.equal(p.nodes.get('#editor-album-panel').hidden,false);
+  assert.equal(p.nodes.get('#editor-tracks-panel').hidden,true);
+  const input={value:'Changed album title',type:'text',disabled:false};
+  p.nodes.get('#metadata-form').elements={namedItem:key=>key==='name'?input:null};
+  p.run('$("#track-inline")');
+  const pane=p.nodes.get('#track-inline');
+  pane.dataset.track=p.run('String(editing.originals[0].tracks[0].id)');
+  const trackInput={value:'Changed track title',type:'text',dataset:{key:'title'}};
+  pane.querySelectorAll=selector=>selector==='input[data-key]'?[trackInput]:[];
+  pane.innerHTML='Keep the existing track form';
+  p.run('editing.dirty.add("name")');
+  const requests=p.requests.length, history=p.history.length;
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
+  await p.click({'[data-editor-tab]':{dataset:{editorTab:'tracks'}}});
+  assert.equal(p.run('editing.tab'),'tracks');
+  assert.equal(p.nodes.get('#editor-album-panel').hidden,true);
+  assert.equal(p.nodes.get('#editor-tracks-panel').hidden,false);
+  assert.equal(p.nodes.get('#editor-layout').classList.contains('editing-tracks'),true);
+  await p.click({'[data-editor-tab]':{dataset:{editorTab:'album'}}});
+  assert.equal(pane.innerHTML,'Keep the existing track form');
+  assert.equal(trackInput.value,'Changed track title');
+  assert.equal(input.value,'Changed album title');
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.history.length,history);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src})'),before);
+  p.run('buildReview()');
+  assert.equal(p.run('pending.changes.length'),2);
+  assert.equal(p.run('pending.changes.find(c=>c.kind==="album").fields.name.after'),'Changed album title');
+  assert.equal(p.run('pending.changes.find(c=>c.kind==="track").fields.title.after'),'Changed track title');
+});
+
+test('editor tabs support keyboard focus and reveal the correct panel for invalid fields', async () => {
+  const p=page(); await settle(); await p.run('openEditor([state.albums[0].id])');
+  const key=async(key,tab)=>p.emitDocument('keydown',{key,target:{closest:selector=>selector==='#editor-tabs [data-editor-tab]'?{dataset:{editorTab:tab}}:null},preventDefault(){}});
+  await key('ArrowRight','album');
+  assert.equal(p.run('editing.tab'),'tracks');
+  assert.equal(p.nodes.get('#editor-tab-tracks').getAttribute('aria-selected'),'true');
+  assert.equal(p.nodes.get('#editor-tab-tracks').getAttribute('tabindex'),'0');
+  assert.equal(p.nodes.get('#editor-tab-album').getAttribute('tabindex'),'-1');
+  assert.equal(p.run('document.activeElement === $("#editor-tab-tracks")'),true);
+  assert.equal(p.run('currentHelpContext()'),'editing-tracks');
+  await key('Home','tracks'); assert.equal(p.run('editing.tab'),'album');
+  await key('End','album'); assert.equal(p.run('editing.tab'),'tracks');
+  const form=p.nodes.get('#metadata-form');
+  form.checkValidity=()=>false; form.reportValidity=()=>false;
+  form.querySelector=selector=>selector===':invalid'?{closest:()=>null}:null;
+  p.run('buildReview()'); assert.equal(p.run('editing.tab'),'album');
+  const pane=p.nodes.get('#track-inline');
+  pane.dataset.track=p.run('String(editing.originals[0].tracks[0].id)');
+  pane.querySelectorAll=()=>[{value:'',type:'text',dataset:{key:'title'}}];
+  p.run('buildReview()'); assert.equal(p.run('editing.tab'),'tracks');
+  assert.equal(p.run('pending'),null);
+});
+
+test('bulk artist editing keeps its existing shared fields without individual track tabs', async () => {
+  const p=page(); await settle();
+  p.run('setArtist(state.albums[0].artist)');
+  const ids=p.json('state.albums.filter(a=>a.artist===state.artist).map(a=>a.id)');
+  assert.ok(ids.length>1);
+  await p.run(`openEditor(${JSON.stringify(ids)})`);
+  assert.equal(p.run('editing.bulk'),true);
+  assert.doesNotMatch(p.nodes.get('#editor-content').innerHTML,/id="editor-tabs"|id="editor-tracks-panel"/);
+  assert.match(p.nodes.get('#editor-content').innerHTML,/Edit selected albums/);
 });

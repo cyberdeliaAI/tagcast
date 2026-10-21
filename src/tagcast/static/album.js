@@ -21,14 +21,20 @@ function openAlbumActions(trigger) {
   albumActions.trigger = trigger; albumActions.details = state.details; albumActions.id = albumView.id;
   trigger.setAttribute("aria-expanded", "true");
   const menu = $("#album-action-menu"); menu.hidden = false;
+  $("#album-action-lyrics").textContent = albumLyricsCheck?.running ? "Stop checking lyrics" : "Check album lyrics";
   const anchor = trigger.getBoundingClientRect(), size = menu.getBoundingClientRect();
   const width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
   menu.style.left = `${Math.max(8, Math.min(anchor.right - size.width, width - size.width - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 6 + size.height <= height - 8
     ? anchor.bottom + 6 : anchor.top - size.height - 6, height - size.height - 8))}px`;
-  $("#album-action-trash").focus();
+  $("#album-action-lyrics").focus();
 }
 
+$("#album-action-lyrics").addEventListener("click", () => {
+  const {trigger, details, id} = albumActions;
+  closeAlbumActions(true);
+  if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id) checkAlbumLyrics();
+});
 $("#album-action-trash").addEventListener("click", () => {
   const {trigger, details, id} = albumActions;
   closeAlbumActions(true);
@@ -39,7 +45,11 @@ $("#album-action-menu").addEventListener("keydown", event => {
     closeAlbumActions(true);
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-    event.preventDefault(); $("#album-action-trash").focus();
+    event.preventDefault();
+    const items = [$("#album-action-lyrics"), $("#album-action-trash")];
+    const index = items.indexOf(document.activeElement);
+    items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+      : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
   }
 });
 document.addEventListener("keydown", event => {
@@ -265,12 +275,15 @@ function renderAlbumView() {
     <section id="album-guide-notes" aria-label="Album background" hidden></section>
     <section id="album-information" class="album-information artist-biography" aria-label="TheAudioDB album information" hidden></section>
     <div class="tracks-heading"><h2>Tracks</h2><span class="muted track-list-summary">${album.tracks.length} ${album.tracks.length === 1 ? "track" : "tracks"}${total}${formats.label ? ` · ${escapeHtml(formats.label)}` : ""}${canPlay ? "" : " · Local preview"}</span></div>
+    <div id="album-lyrics-check" class="lyrics-actions" hidden><span id="album-lyrics-status" class="muted" role="status" aria-live="polite"></span><button type="button" class="text-action" id="album-lyrics-stop" hidden>Stop checking</button></div>
     ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks album-tracklist ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title</th><th class="track-time">Time</th><th class="track-heart" aria-label="Track actions"></th></tr></thead><tbody>
       ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>Disc ${d.disc || "?"}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">Edit disc ${d.disc || "?"}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}${albumTrackNumber(t, album.id, canPlay)}</td>
-        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(d), repeated.get(d))}</strong>${albumTrackMetadata(album, t, formats)}${trashAdvice ? trashTrackNote(t, trashAdvice) : ""}</td><td class="track-time">${trackDuration(t.length)}${albumView.trash ? trackFormatLabel(t) : ""}</td><td class="track-heart"><div class="track-row-actions">${typeof trackTagControls === "function" ? trackTagControls(album, t) : ""}${queueButton(album.id, t)}${heartButton(t)}</div></td></tr>`).join("")).join("")}
+        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(d), repeated.get(d))}</strong>${albumLyricsLabel(t)}${albumTrackMetadata(album, t, formats)}${trashAdvice ? trashTrackNote(t, trashAdvice) : ""}</td><td class="track-time">${trackDuration(t.length)}${albumView.trash ? trackFormatLabel(t) : ""}</td><td class="track-heart"><div class="track-row-actions">${typeof trackTagControls === "function" ? trackTagControls(album, t) : ""}${queueButton(album.id, t)}${heartButton(t)}</div></td></tr>`).join("")).join("")}
     </tbody></table>`;
   if (typeof syncHistory === "function") syncHistory();
   markPlaying();
+  renderAlbumLyricsCheck();
+  restoreAlbumLyrics();
   if (typeof loadGuideAlbumNotes === "function") loadGuideAlbumNotes();
   if (typeof renderAlbumInformation === "function") renderAlbumInformation(informationFocus);
 }

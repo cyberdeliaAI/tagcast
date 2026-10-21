@@ -143,6 +143,13 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.account_settings)
         elif url.path == "/api/settings":
             self._run(self.studio.settings)
+        elif url.path == "/api/lyrics":
+            self._run(lambda: self.studio.lyrics.view({
+                **{k: query.get(k) for k in ("track_id", "title", "artist", "session")},
+                "refresh": query.get("refresh") == "1"}))
+        elif url.path == "/api/lyrics/cache":
+            self._run(lambda: self.studio.lyrics.cached_album({
+                "album_ids": query.get("album_ids", "").split(","), "session": query.get("session")}))
         elif url.path == "/api/metadata-export/status":
             self._run(lambda: self.studio.metadata_export.status(query.get("id"), query.get("session")))
         elif url.path == "/api/metadata-export/download":
@@ -234,6 +241,9 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/cleanup/start": lambda b: self.studio.cleanup.start(b.get("id"), b.get("excluded")),
             "/api/cleanup/stop": lambda b: self.studio.cleanup.cancel(b.get("id")),
             "/api/settings": self.studio.save_settings,
+            "/api/lyrics": self.studio.lyrics.view,
+            "/api/lyrics/review": self.studio.lyrics.prepare,
+            "/api/lyrics/save": self.studio.lyrics.save,
             "/api/metadata-export": self.studio.metadata_export.start,
             "/api/metadata-export/cancel": self.studio.metadata_export.cancel,
             "/api/album-guide/analyse": lambda b: self.studio.album_guide.analyse(),

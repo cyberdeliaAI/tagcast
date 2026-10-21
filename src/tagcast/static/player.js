@@ -366,7 +366,8 @@ function renderNowPlaying() {
   const track = player.queue[player.index], album = track?.album;
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
     <h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
-    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">Add this track to playlist…</button></p>` : player.queue.length ? '<p class="empty">Choose a queued track to start playing.</p>' : '<p class="empty">Play a track or add an album to your queue.</p>';
+    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">Add this track to playlist…</button></p><section id="now-playing-lyrics" class="track-lyrics" hidden></section>` : player.queue.length ? '<p class="empty">Choose a queued track to start playing.</p>' : '<p class="empty">Play a track or add an album to your queue.</p>';
+  renderLyrics("player", lyricsSelection(track));
   $("#now-playing-count").textContent = `${player.queue.length} ${player.queue.length === 1 ? "track" : "tracks"}`;
   $("#queue-clear").disabled = !player.queue.length;
   list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
