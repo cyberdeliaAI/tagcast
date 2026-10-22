@@ -875,3 +875,17 @@ body.help-open{overflow:hidden}
 .playlist-track-remove:hover:not(:disabled){background:var(--paper);color:#a33c32}
 
 #playlist-order>.playlist-order-search{flex-shrink:0;width:min(560px,100%);margin-bottom:8px}
+
+/* Album sidecars remain a local draft until individual lyrics saves are reviewed. */
+.lyrics-import-dialog { width: min(1180px, calc(100vw - 40px)); }
+.lyrics-import-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
+.lyrics-import-columns > * { min-width: 0; }
+.lyrics-import-list { max-height: 42vh; overflow: auto; padding: 4px; }
+.lyrics-import-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.lyrics-import-choice { display: block; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; margin-bottom: 8px; }
+.lyrics-import-row .lyrics-import-choice { margin-bottom: 0; }
+.lyrics-import-choice small { display: block; margin-top: 4px; font-weight: normal; }
+.lyrics-import-choice[aria-pressed="true"] { outline: 2px solid var(--green); outline-offset: -2px; }
+.lyrics-import-review { border-top: 1px solid var(--line); padding: 16px 0; }
+.lyrics-import-review .lyrics-text { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .lyrics-import-columns { grid-template-columns: 1fr; } .lyrics-import-list { max-height: 30vh; } }

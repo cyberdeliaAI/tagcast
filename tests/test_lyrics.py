@@ -334,6 +334,77 @@ class LyricsTests(unittest.TestCase):
         self.assertFalse(any(c.args[0] == 'update_track' for c in self.studio.client._jsonrequest.call_args_list))
 
 
+
+    def import_body(self, replace=False):
+        album = self.studio.library.album_view(10)
+        scope = {"combine_sets": bool(self.studio.library.combine_sets), "albums": [{
+            "id": album["id"], "name": album["name"], "artist": album["artist"],
+            "tracks": sorted(({key: t[key] for key in ("id", "title", "artist", "track")}
+                              for t in album["tracks"]), key=lambda t: int(t["id"]))}]}
+        data = self.service.view({**self.body, 'refresh': True})
+        return {**self.body, "album_scope": scope, "replace_existing": replace,
+                "before_token": data["before_token"], "lyrics": "Imported text"}
+
+    def test_album_import_uses_existing_single_use_save_and_preserves_unknown_userdata(self):
+        body = self.import_body()
+        prepared = self.service.prepare(body)
+        self.assertEqual(prepared['before'], '')
+        self.assertEqual(prepared['after'], 'Imported text')
+        result = self.service.save({'id': prepared['id'], 'approved': True})
+        self.assertEqual(result['status'], 'saved')
+        self.assertEqual(self.rows[0]['unknown'], 12)
+        writes = [c for c in self.studio.client._jsonrequest.call_args_list if c.args[0] == 'update_track']
+        self.assertEqual(len(writes), 1)
+        with self.assertRaises(ConflictError):
+            self.service.save({'id': prepared['id'], 'approved': True})
+
+    def test_album_import_requires_explicit_replacement_of_existing_lyrics(self):
+        self.rows.append({'type': 'lyrics', 'value': 'Existing text'})
+        body = self.import_body()
+        with self.assertRaisesRegex(ConflictError, 'replacement'):
+            self.service.prepare(body)
+        prepared = self.service.prepare({**body, 'replace_existing': True})
+        self.assertEqual(prepared['before'], 'Existing text')
+        self.assertEqual(prepared['after'], 'Imported text')
+        for value in (None, 'true', 1):
+            with self.subTest(value=value), self.assertRaises(LibraryError):
+                self.service.prepare({**body, 'replace_existing': value})
+
+    def test_album_import_scope_rejects_missing_members_stale_identity_and_foreign_tracks(self):
+        body = self.import_body()
+        for change in ('missing', 'number', 'title', 'foreign', 'combine', 'duplicate', 'multiple'):
+            damaged = copy.deepcopy(body)
+            album = damaged['album_scope']['albums'][0]
+            if change == 'missing':
+                album['tracks'].pop()
+            elif change == 'number':
+                album['tracks'][0]['track'] = 20
+            elif change == 'title':
+                album['name'] = 'Different'
+            elif change == 'foreign':
+                damaged['track_id'] = '102'
+            elif change == 'combine':
+                damaged['album_scope']['combine_sets'] = not damaged['album_scope']['combine_sets']
+            elif change == 'multiple':
+                album['id'] = '11'
+            else:
+                damaged['album_scope']['albums'].append(copy.deepcopy(album))
+            with self.subTest(change=change), self.assertRaises(LibraryError):
+                self.service.prepare(damaged)
+        self.assertFalse(any(c.args[0] == 'update_track' for c in self.studio.client._jsonrequest.call_args_list))
+
+    def test_album_import_rechecks_full_album_after_fresh_remote_revision_before_send(self):
+        body = self.import_body()
+        prepared = self.service.prepare(body)
+        def changed(*_):
+            self.studio.library.tracks[101]._row[5] = 99
+        # A different track's number changing also invalidates the reviewed matching scope.
+        self.studio._current.side_effect = changed
+        with self.assertRaises(ConflictError):
+            self.service.save({'id': prepared['id'], 'approved': True})
+        self.assertFalse(any(c.args[0] == 'update_track' for c in self.studio.client._jsonrequest.call_args_list))
+
+
 class LRCLIBTests(unittest.TestCase):
     def fetch(self, payload, status=200):
         response = Mock(status_code=status)

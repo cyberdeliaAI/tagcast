@@ -6,6 +6,7 @@ let albumLyricsCheck = null;
 
 function resetTrackLyrics() {
   cancelAlbumLyricsCheck();
+  if (typeof resetAlbumLyricsImport === "function") resetAlbumLyricsImport();
   trackLyrics.revision += 1; trackLyrics.entries.clear(); trackLyrics.review = null;
   trackLyrics.cacheRead = null;
   $("#lyrics-review").close();
@@ -14,6 +15,7 @@ function resetTrackLyrics() {
 
 function invalidateLyricsSource() {
   cancelAlbumLyricsCheck();
+  if (typeof resetAlbumLyricsImport === "function") resetAlbumLyricsImport();
   trackLyrics.revision += 1; trackLyrics.review = null;
   trackLyrics.cacheRead = null;
   $("#lyrics-review").close();

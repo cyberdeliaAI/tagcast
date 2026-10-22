@@ -18,6 +18,8 @@ Public Deezer playlist import (plus experimental ListenBrainz), persistent pause
 imports, playlist search/reordering and reviewed track removal, separate album/track
 editor tabs, persistent lyrics and the [Reddit community](https://www.reddit.com/r/Tagcast/).
 
+In development: [import album lyrics from LRC/TXT files](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes#import-album-lyrics-from-lrc-or-txt-files), with automatic matching and review before saving. This is not included in the 0.75.0 downloads.
+
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
 ![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/2026-10-22/album-details.png)

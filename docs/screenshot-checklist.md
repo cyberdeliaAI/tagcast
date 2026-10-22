@@ -1,6 +1,15 @@
 # Screenshot refresh checklist
 
-## Current development round — 22 October 2026
+## Unreleased album lyrics import — 22 October 2026
+
+Four additional original captures document the album Import lyrics menu, two-column
+LRC/TXT matching, review ready before saving and an active save/read-back. See the
+[separate inventory and SHA-256 manifest](screenshots/2026-10-22-lyrics-import/README.md).
+They retain the test build’s 0.75.0 badge, but the feature is not in those released
+downloads. The last image confirms one track only; it is not a completed-album result.
+Original 2560 × 1600 PNGs are copied byte for byte without edits.
+
+## Earlier development round — 22 October 2026
 
 **62 original PNGs**, including seven public Deezer import/pause/resume captures, are indexed
 in [the dated inventory](screenshots/2026-10-22/README.md) with a SHA-256 manifest.

@@ -22,6 +22,7 @@ function openAlbumActions(trigger) {
   trigger.setAttribute("aria-expanded", "true");
   const menu = $("#album-action-menu"); menu.hidden = false;
   $("#album-action-lyrics").textContent = albumLyricsCheck?.running ? "Stop checking lyrics" : "Check album lyrics";
+  $("#album-action-lyrics-import").hidden = state.connection.premium === false;
   const anchor = trigger.getBoundingClientRect(), size = menu.getBoundingClientRect();
   const width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
   menu.style.left = `${Math.max(8, Math.min(anchor.right - size.width, width - size.width - 8))}px`;
@@ -35,6 +36,11 @@ $("#album-action-lyrics").addEventListener("click", () => {
   closeAlbumActions(true);
   if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id) checkAlbumLyrics();
 });
+$("#album-action-lyrics-import").addEventListener("click", () => {
+  const {trigger, details, id} = albumActions;
+  closeAlbumActions(true);
+  if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id) openAlbumLyricsImport();
+});
 $("#album-action-trash").addEventListener("click", () => {
   const {trigger, details, id} = albumActions;
   closeAlbumActions(true);
@@ -46,7 +52,7 @@ $("#album-action-menu").addEventListener("keydown", event => {
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     event.preventDefault();
-    const items = [$("#album-action-lyrics"), $("#album-action-trash")];
+    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-trash")].filter(item => !item.hidden);
     const index = items.indexOf(document.activeElement);
     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
       : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();

@@ -7727,6 +7727,8 @@ test('album lyrics check starts explicitly, runs serially and keeps results unti
   assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics-import'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-trash'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'Home',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
@@ -8341,4 +8343,199 @@ test('late or cancelled order searches cannot restore results and zero matches s
   await typePlaylistOrderSearch(p,'old'); p.run('closePlaylistOrder()');
   old({ok:true,json:async()=>({positions:[204]})}); await settle();
   assert.equal(p.run('playlistOrder.draft'),null); assert.equal(p.nodes.get('#playlist-order').open,false);
+});
+
+async function albumLyricsImportPage() {
+  const p=page(); await settle();
+  p.run(`state.mode="live"; state.connection.premium=true; state.connection.playback_session="import-session";
+    state.screen="album"; albumView.id="1"; albumView.request=17;
+    state.details.get("1").tracks=[{id:"100",title:"Song One",artist:"Artist A",track:1},
+      {id:"101",title:"Song Two",artist:"Artist A",track:2}];
+    function sidecar(name,text){const bytes=new TextEncoder().encode(text);return {name,size:bytes.length,arrayBuffer:async()=>bytes.buffer};}
+    openAlbumLyricsImport();`);
+  return p;
+}
+
+function lyricsImportResponses(p, {before={}, save}={}) {
+  p.setFetch(async (url, options) => {
+    if(url.startsWith('/api/lyrics?')) {
+      const id=new URL('http://test'+url).searchParams.get('track_id');
+      return {ok:true,json:async()=>({native_text:before[id]||'',before_token:'token-'+id,can_save:true})};
+    }
+    const body=JSON.parse(options.body);
+    if(url==='/api/lyrics/review') return {ok:true,json:async()=>({id:'review-'+body.track_id,
+      before:before[body.track_id]||'',after:body.lyrics})};
+    assert.equal(url,'/api/lyrics/save');
+    if(save) return save(body);
+    return {ok:true,json:async()=>({status:'saved'})};
+  });
+}
+
+test('lyrics sidecar matching keeps version identity and uses both number and title', async () => {
+  const p=await albumLyricsImportPage();
+  assert.deepEqual(p.json('lyricsImportFilename("01 - SONG_One.lrc")'),{disc:null,track:1,title:'song one'});
+  assert.deepEqual(p.json('lyricsImportFilename("CD2 - 03 - Track Title.txt")'),{disc:2,track:3,title:'track title'});
+  assert.deepEqual(p.json('lyricsImportFilename("2-03 - Track Title.txt")'),{disc:2,track:3,title:'track title'});
+  await p.run('addAlbumLyricsFiles([sidecar("01 - SONG_One.lrc","[00:01.00]First line"),sidecar("02 - Song Two (Live).txt","Other version"),sidecar("Song Two.txt","No number")])');
+  assert.deepEqual(p.json('[...albumLyricsImport.pairs]'),[['100','0']]);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics')).length,0);
+});
+
+test('lyrics import shows two columns, escapes local text and removes timing without playback', async () => {
+  const p=await albumLyricsImportPage();
+  const before=p.json('({queue:player.queue,src:audio.src,history:history.length})');
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.lrc","[ar:Example]\\r\\n[00:01.00][00:02.00]<00:01.500><script>Example</script>\\r\\n[00:03.00]Next")])');
+  assert.equal(p.run('albumLyricsImport.files[0].text'),'<script>Example</script>\nNext');
+  await p.click({'[data-lyrics-import-file]':{dataset:{lyricsImportFile:'0'}}});
+  const html=p.nodes.get('#lyrics-import-content').innerHTML;
+  assert.match(html,/Album tracks|LRC \/ TXT files/);
+  assert.match(html,/&lt;script&gt;Example&lt;\/script&gt;/);
+  assert.doesNotMatch(html,/<script>Example/);
+  assert.deepEqual(p.json('({queue:player.queue,src:audio.src,history:history.length})'),before);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('duplicate filenames and multi-disc duplicate positions stay manual', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First"),sidecar("01 - Song One.lrc","[00:01.0]Second")])');
+  assert.equal(p.run('albumLyricsImport.pairs.size'),0);
+  p.run('albumLyricsImport.files=[]; albumLyricsImport.nextFile=0; albumLyricsImport.tracks[1]={...albumLyricsImport.tracks[0],id:"101",disc:2}; albumLyricsImport.tracks[0].disc=1;');
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","Ambiguous")])');
+  assert.equal(p.run('albumLyricsImport.pairs.size'),0);
+  await p.run('addAlbumLyricsFiles([sidecar("CD2 - 01 - Song One.txt","Disc two")])');
+  assert.equal(p.run('albumLyricsImport.pairs.size'),0,'The extra undistinguished candidate prevents an automatic choice');
+  p.run('albumLyricsImport.files=albumLyricsImport.files.slice(1); autoMatchAlbumLyrics(albumLyricsImport)');
+  assert.deepEqual(p.json('[...albumLyricsImport.pairs]'),[['101','1']]);
+});
+
+test('manual links can override suggestions, use each file once and explicitly unlink', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("Different name.txt","Manual text")])');
+  await p.click({'[data-lyrics-import-file]':{dataset:{lyricsImportFile:'0'}}});
+  await p.click({'#lyrics-import-link':{}});
+  assert.deepEqual(p.json('[...albumLyricsImport.pairs]'),[['100','0']]);
+  await p.click({'[data-lyrics-import-track]':{dataset:{lyricsImportTrack:'101'}}});
+  await p.click({'#lyrics-import-link':{}});
+  assert.deepEqual(p.json('[...albumLyricsImport.pairs]'),[['101','0']]);
+  await p.click({'[data-lyrics-import-unlink]':{dataset:{lyricsImportUnlink:'101'}}});
+  assert.equal(p.run('albumLyricsImport.pairs.size'),0);
+});
+
+test('invalid, empty, oversized and incorrectly encoded lyrics do not become writable imports', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("bad.mp3","Audio"),sidecar("empty.lrc","[ar:Artist]"),sidecar("large.txt","x".repeat(50001)),{name:"bad.txt",size:1,arrayBuffer:async()=>new Uint8Array([255]).buffer}])');
+  assert.equal(p.run('albumLyricsImport.files.filter(f=>f.error).length'),4);
+  assert.equal(p.run('albumLyricsImport.pairs.size'),0);
+  assert.equal(p.nodes.get('#lyrics-import-review').disabled,true);
+  assert.equal(p.run('lyricsImportDecode(new Uint8Array([255,254,65,0]).buffer)'),'A');
+  assert.equal(p.run('lyricsImportDecode(new Uint8Array([254,255,0,65]).buffer)'),'A');
+  await p.run('addAlbumLyricsFiles(Array.from({length:101},()=>sidecar("01 - Song One.txt","Too many")))');
+  assert.equal(p.run('albumLyricsImport.files.length'),4);
+});
+
+test('review reads only linked native lyrics freshly and defaults to preserving existing text', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","Imported first"),sidecar("02 - Song Two.txt","Imported second")])');
+  lyricsImportResponses(p,{before:{100:'Existing lyrics'}});
+  await p.run('reviewAlbumLyricsImport()');
+  assert.deepEqual(p.json('albumLyricsImport.rows.map(r=>r.status)'),['Keep existing lyrics','Ready']);
+  assert.match(p.nodes.get('#lyrics-import-content').innerHTML,/Existing lyrics|Imported first|Replace existing lyrics/);
+  const reads=p.requests.filter(r=>r.url.startsWith('/api/lyrics?'));
+  assert.equal(reads.length,2);
+  assert.ok(reads.every(r=>r.url.includes('refresh=1')));
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  assert.equal(p.run('currentHelpContext()'),'lyrics-import');
+});
+
+test('explicit save serializes native single-track reviews, preserves scope and skips kept tracks', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","Imported first"),sidecar("02 - Song Two.txt","Imported second")])');
+  lyricsImportResponses(p,{before:{100:'Keep this'}});
+  await p.run('reviewAlbumLyricsImport()');
+  await p.run('saveAlbumLyricsImport()');
+  const prepares=p.requests.filter(r=>r.url==='/api/lyrics/review');
+  assert.equal(prepares.length,1);
+  const body=JSON.parse(prepares[0].options.body);
+  assert.equal(body.track_id,'101'); assert.equal(body.before_token,'token-101');
+  assert.equal(body.replace_existing,false); assert.equal(body.album_scope.albums[0].tracks.length,2);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+  assert.deepEqual(p.json('albumLyricsImport.rows.map(r=>r.status)'),['Keep existing lyrics','Saved and confirmed']);
+  assert.equal(p.run('trackLyrics.busy'),false);
+  assert.equal(p.run('knownTrackLyrics(albumLyricsImport.tracks[1]).text'),'Imported second');
+});
+
+test('replacement is per track and included in the guarded native review', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","Replacement")])');
+  lyricsImportResponses(p,{before:{100:'Original'}}); await p.run('reviewAlbumLyricsImport()');
+  p.nodes.get('#lyrics-import-content').querySelector=()=>({textContent:''});
+  await p.change({dataset:{lyricsImportReplace:'0'},checked:true,matches:()=>false,closest:()=>null});
+  assert.equal(p.run('albumLyricsImport.rows[0].status'),'Replace existing lyrics');
+  await p.run('saveAlbumLyricsImport()');
+  const request=p.requests.find(r=>r.url==='/api/lyrics/review');
+  assert.equal(JSON.parse(request.options.body).replace_existing,true);
+});
+
+test('an unconfirmed import stops remaining saves and cannot replay the review', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First"),sidecar("02 - Song Two.txt","Second")])');
+  lyricsImportResponses(p,{save:()=>({ok:true,json:async()=>({status:'unverified'})})});
+  await p.run('reviewAlbumLyricsImport()'); await p.run('saveAlbumLyricsImport()');
+  assert.deepEqual(p.json('albumLyricsImport.rows.map(r=>r.status)'),['Unconfirmed · check iBroadcast','Not sent']);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+  await p.run('saveAlbumLyricsImport()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+});
+
+test('stopping import finishes the current save/read-back and leaves subsequent tracks unsent', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First"),sidecar("02 - Song Two.txt","Second")])');
+  lyricsImportResponses(p,{save:()=>{p.run('albumLyricsImport.stop=true');return {ok:true,json:async()=>({status:'saved'})};}});
+  await p.run('reviewAlbumLyricsImport()'); await p.run('saveAlbumLyricsImport()');
+  assert.deepEqual(p.json('albumLyricsImport.rows.map(r=>r.status)'),['Saved and confirmed','Not sent']);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+});
+
+test('replaced library invalidates import and rejects late native reads', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First")])');
+  let release;
+  p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+  const pending=p.run('reviewAlbumLyricsImport()'); await settle();
+  p.run('state.details=new Map(state.details); resetTrackLyrics()');
+  release({ok:true,json:async()=>({native_text:'',can_save:true,before_token:'late'})}); await pending;
+  assert.equal(p.run('albumLyricsImport'),null);
+  assert.equal(p.nodes.get('#lyrics-import').open,false);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('free accounts cannot open a lyrics import and navigation discards its local files', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First")])');
+  p.run('showScreen("artists")');
+  assert.equal(p.run('albumLyricsImport'),null);
+  p.run('state.screen="album"; state.connection.premium=false; openAlbumLyricsImport()');
+  assert.equal(p.run('albumLyricsImport'),null);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('removing an imported file frees its link without reusing file identities', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First"),sidecar("02 - Song Two.txt","Second")])');
+  await p.click({'[data-lyrics-import-remove]':{dataset:{lyricsImportRemove:'0'}}});
+  assert.deepEqual(p.json('[...albumLyricsImport.pairs]'),[['101','1']]);
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","New first")])');
+  assert.deepEqual(p.json('albumLyricsImport.files.map(f=>f.id)'),['1','2']);
+  assert.equal(p.run('albumLyricsImport.pairs.get("100")'),'2');
+});
+
+test('discard confirmation preserves the import when declined and closes it on explicit acceptance', async () => {
+  const p=await albumLyricsImportPage();
+  await p.run('addAlbumLyricsFiles([sidecar("01 - Song One.txt","First")])');
+  p.run('confirm=()=>false; closeAlbumLyricsImport()');
+  assert.equal(p.run('albumLyricsImport.files.length'),1);
+  assert.equal(p.nodes.get('#lyrics-import').open,true);
+  p.run('confirm=()=>true; closeAlbumLyricsImport()');
+  assert.equal(p.run('albumLyricsImport'),null);
+  assert.equal(p.nodes.get('#lyrics-import').open,false);
 });

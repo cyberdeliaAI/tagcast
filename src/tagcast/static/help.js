@@ -12,6 +12,11 @@ const HELP_TOPICS = {
     ["Known lyrics", "The Lyrics label appears only after Tagcast has found text for this track. Opening this window uses that text without starting playback or fetching lyrics. No label can also mean the track has not been checked yet.", ["#lyrics-viewer-content"]],
     ["Text source", "The source is shown below the text: lyrics saved in iBroadcast, or a public LRCLIB result. Close or press Escape to return to the album.", ["#lyrics-viewer-content .lyrics-source", "#lyrics-viewer-close"]],
   ]},
+  "lyrics-import": {title: "Import album lyrics", scope: "#lyrics-import", steps: [
+    ["Choose sidecar files", "Select or drop up to 100 UTF-8 or UTF-16 LRC/TXT files, at most 5 MB in total. The left column shows this album’s tracks; the right column shows imported files. Reading files stays local until review. Original music and lyrics files stay unchanged.", ["#lyrics-import-content"]],
+    ["Check the links", "Unique track-number and title matches are linked automatically. A disc prefix can distinguish multi-disc positions. Select a track and a file, then Link selected track and file to correct a match. Unlink keeps a track out of the import. Ambiguous matches stay manual. LRC timing markers are removed; ordinary lyrics text is saved.", ["#lyrics-import-content"]],
+    ["Review before saving", "Review linked lyrics checks fresh iBroadcast lyrics for linked tracks only. Compare Before and After. Existing text is kept unless you choose Replace existing lyrics for that track. Save reviewed lyrics requires Premium and sends individual changes in sequence, preserving other userdata. Stop finishes the current request and its check. Errors or unconfirmed results stop remaining writes, with no automatic retries.", ["#lyrics-import-review", "#lyrics-import-save", "#lyrics-import-status"]],
+  ]},
   "lyrics-review": {title: "Track lyrics", scope: "#lyrics-review", steps: [
     ["Review the text", "Compare Before and After. This changes only one track’s lyrics stored in iBroadcast; other additional metadata is preserved. A blank After removes the lyrics. Original music-file tags are unchanged.", ["#lyrics-review-content"]],
     ["Save once and check", "Save lyrics requires iBroadcast Premium. Tagcast checks the track and its complete additional metadata again, sends once and reads the lyrics back. An uncertain save requires checking iBroadcast before reviewing again.", ["#lyrics-save", "#lyrics-save-status"]],
@@ -166,6 +171,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
+  if ($("#lyrics-import").open) return "lyrics-import";
   if ($("#playlist-order").open) return "playlist-order";
   if ($("#playlist-import").open) return "playlist-import";
   if ($("#audio-output-dialog").open) return "audio-output";

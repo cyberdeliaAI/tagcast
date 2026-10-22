@@ -214,6 +214,23 @@ their shared browsing/player state; a fast local response can otherwise race the
   userdata, preserves the typed draft and blocks review if lyrics changed; review/save
   still use fresh complete snapshots. Invalidate saved text before sending any lyrics
   write, restore only confirmed read-back, and retain no stale cache after uncertainty.
+- Album lyrics sidecar import is an explicitly reviewed album-local extension to
+  individual lyrics saves. Keep tracks on the left, selected LRC/TXT files on the
+  right, and match only unique track-number/full-title combinations (optional disc
+  prefixes); preserve version text and leave ambiguities manual. Files, links and
+  text stay in browser memory until explicit review. Bound to 100 tracks/files,
+  5 MB total, 500 KB/file and 50,000 text characters. Decode UTF-8/BOM-marked UTF-16;
+  remove timing/metadata markers and store ordinary text. Review fresh native text
+  for linked tracks only, keep existing lyrics by default and require per-track
+  replacement choices. Reuse existing single-use per-track prepare/save gates,
+  with a complete displayed album/set membership/identity/combine snapshot checked
+  before writes. Serialize browser requests, preserve unknown userdata, read back
+  each write, stop after conflicts/errors/unconfirmed results or explicit Stop,
+  and distinguish confirmed/kept/unchanged/blocked/not-sent/unconfirmed results.
+  Never automatically retry uncertain saves, contact LRCLIB, read audio or write
+  local music files. Invalidate late reads/results on library/account/navigation
+  changes; warn before discarding unsaved imports, preserve focus/history/playback,
+  keep local Help and respect free-account save restrictions.
 - Tracks go to iBroadcast's trash (`trash`) from the album page after its trash
   review, from a reviewed selection of complete albums in the album overview or an artist's page, or
   through the dedicated reviewed duplicate-copy batch workflow. The server
