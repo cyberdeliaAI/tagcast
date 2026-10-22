@@ -37,7 +37,8 @@ Available for macOS, Windows and Linux. [Project](https://github.com/cyberdeliaA
 | 1001 Albums background texts | — | [App screenshot](screenshots/1001-albums-background.png) |
 
 The new app screenshots are byte-for-byte copies of the contributor's 22 October
-2026 development/test captures, ahead of the 0.70.2 desktop release. The Sinatra
+2026 development/test captures, made before the 0.75.0 release and retaining the
+earlier 0.70.2 version badge. The Sinatra
 background-text capture remains from 16 October, with its original attribution.
 See the [complete dated inventory](../docs/screenshots/2026-10-22/README.md).
 

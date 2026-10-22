@@ -4,10 +4,10 @@
 Originals in Pictures/Screenshots are untouched. No resizing, cropping or redaction
 has been applied; the contributor's Overview redaction is preserved.
 
-These captures show a local development/test build with a 0.70.2 footer. Some
-features are ahead of the published 0.70.2 desktop downloads; the footer alone does
-not establish feature availability. Search and row removal in playlists, and search
-inside the order editor, are shown here as development previews.
+These captures show a local development/test build with a 0.70.2 footer, before
+release. The displayed playlist, import, editor and lyrics additions are included
+in Tagcast 0.75.0. The original badge is preserved; it does not mean these controls
+were available in the earlier 0.70.2 desktop downloads.
 
 The six Deezer images document URL input, a fetched 50-record snapshot, matching,
 manual alternatives and a paused checkpoint. A follow-up shows the resumed import

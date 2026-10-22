@@ -6,8 +6,8 @@
 in [the dated inventory](screenshots/2026-10-22/README.md) with a SHA-256 manifest.
 All are 2560 × 1600 and copied byte for byte. Originals are untouched; the supplied
 Overview redaction is preserved. The README and current Wiki gallery use the new
-round, clearly labelled as a development/test interface ahead of the 0.70.2 desktop
-download. Earlier images remain for released-interface examples and missing views.
+round, labelled as development/test captures made before release. The displayed
+additions are included in 0.75.0; the original 0.70.2 badge is preserved. Earlier images remain for released-interface examples and missing views.
 
 This round covers the album/track tabs, lyrics review and Now playing, artist image
 comparison/biography, all Favourites tabs, playlist details/search/removal, the
