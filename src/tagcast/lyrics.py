@@ -145,7 +145,11 @@ class Lyrics:
         # Complete native userdata stays in memory.
         path.touch(mode=0o600, exist_ok=True)
         db = sqlite3.connect(path, timeout=2)
-        db.execute("CREATE TABLE IF NOT EXISTS lyrics (identity TEXT PRIMARY KEY, data TEXT, expires REAL, saved REAL)")
+        try:
+            db.execute("CREATE TABLE IF NOT EXISTS lyrics (identity TEXT PRIMARY KEY, data TEXT, expires REAL, saved REAL)")
+        except sqlite3.Error:
+            db.close()
+            raise
         return db
 
     def _native_db(self):
@@ -153,7 +157,11 @@ class Lyrics:
         path = self.studio.home / "native-lyrics.sqlite3"
         path.touch(mode=0o600, exist_ok=True)
         db = sqlite3.connect(path, timeout=2)
-        db.execute("CREATE TABLE IF NOT EXISTS native_lyrics (account TEXT, track_id TEXT, identity TEXT, lyrics TEXT, saved REAL, PRIMARY KEY(account, track_id))")
+        try:
+            db.execute("CREATE TABLE IF NOT EXISTS native_lyrics (account TEXT, track_id TEXT, identity TEXT, lyrics TEXT, saved REAL, PRIMARY KEY(account, track_id))")
+        except sqlite3.Error:
+            db.close()
+            raise
         return db
 
     def _native_key(self, selection):

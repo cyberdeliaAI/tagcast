@@ -13,16 +13,16 @@ run Tagcast in your browser with **Python**. Both share the same editor and play
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [0.70.2](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.2):**
-Playlist shuffle and now-playing markers, clear buttons in search fields,
-optional online source selection and compact activity feedback while saving
-and checking changes.
+**New in [0.75.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.75.0):**
+Public Deezer playlist import (plus experimental ListenBrainz), persistent paused
+imports, playlist search/reordering and reviewed track removal, separate album/track
+editor tabs, persistent lyrics and the [Reddit community](https://www.reddit.com/r/Tagcast/).
 
-[Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
+[Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
 ![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/2026-10-22/album-details.png)
 
-*Development capture, 22 October 2026; some controls are ahead of the 0.70.2 desktop download.*
+*Captured on 22 October 2026 before release; the footer shows the earlier development version.*
 
 ## What you can do
 
@@ -34,7 +34,7 @@ and checking changes.
   composers and artwork, assisted
   by online sources and a before/after review.
 - **Organise:** native iBroadcast tags, independent local album and artist favourites,
-  native star ratings, private playlists, folders, covers and CSV import.
+  native star ratings, private playlists, folders, covers, CSV and public playlist URL import.
 - **Clean up:** find missing metadata, review duplicate suggestions or select
   complete albums for iBroadcast's trash. Nothing is permanently deleted.
 - **Export:** full loaded-library metadata as JSON or linked CSVs in a ZIP.
@@ -46,14 +46,14 @@ and checking changes.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 0.70.2](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.70.2):
+[Tagcast 0.75.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.75.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.70.2/tagcast-0.70.2-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
@@ -126,9 +126,8 @@ organised into focused pages:
 
 The [full gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots) shows
 browsing, tags, editing, cleanup, playback, Settings and mobile views. The latest
-captures were supplied on 22 October 2026 from a development/test build. Some
-controls are ahead of the 0.70.2 desktop download; earlier-interface examples stay
-labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
+captures were supplied on 22 October 2026 before the 0.75.0 release and retain
+their earlier version badge; earlier-interface examples stay labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
 
 <details>
 <summary>Album/track editor, playlists and retained cleanup/fullscreen examples</summary>
@@ -160,6 +159,12 @@ on its port rather than loading the old interface.
 For Homebrew: `brew update`, then `brew upgrade --cask cyberdeliaAI/apps/tagcast`.
 Tagcast's update check only notifies; it never installs updates automatically.
 [Update instructions](https://github.com/cyberdeliaAI/tagcast/wiki/Getting-started#updating-tagcast).
+
+## Community
+
+Join **[r/Tagcast on Reddit](https://www.reddit.com/r/Tagcast/)** to ask questions,
+share ideas and discuss Tagcast with other listeners. For bug reports, use
+[GitHub Issues](https://github.com/cyberdeliaAI/tagcast/issues).
 
 ## Development
 

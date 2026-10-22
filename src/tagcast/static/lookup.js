@@ -155,6 +155,9 @@ function openSettings() {
     + `<section class="history-settings"><h3>Change history</h3>
     <p class="muted">Download the change history saved in this browser as a JSON file for your records.</p>
     <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
+    + `<section class="history-settings"><h3>Community</h3>
+    <p class="muted">Ask questions, share ideas and discuss Tagcast with other listeners.</p>
+    <a class="button small" href="https://www.reddit.com/r/Tagcast/" target="_blank" rel="noopener noreferrer">Join r/Tagcast on Reddit ↗</a></section>`
     + (!lookup.sources.length ? '<p class="muted">Playback and source settings need the Tagcast server.</p>' : `
     <form id="settings-form"><section class="playback-settings"><h3>Playback</h3>
     ${freeAccount ? '<p>Streaming quality · MP3 128 kbps</p><p class="muted">Playback quality for this account. File format (FLAC/MP3) is separate from streaming quality.</p>' : `<label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>

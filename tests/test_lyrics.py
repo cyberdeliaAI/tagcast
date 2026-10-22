@@ -138,6 +138,35 @@ class LyricsTests(unittest.TestCase):
             self.service.cached_album({'album_ids': [str(selection[4][1])], 'session': 'session-one'})
         self.studio.client._jsonrequest.assert_not_called()
 
+    def test_corrupt_cache_initialization_closes_both_database_connections(self):
+        connections = []
+
+        class TrackedConnection(sqlite3.Connection):
+            closed = False
+
+            def close(self):
+                self.closed = True
+                super().close()
+
+        connect = sqlite3.connect
+
+        def tracked_connect(*args, **kwargs):
+            db = connect(*args, **kwargs, factory=TrackedConnection)
+            connections.append(db)
+            return db
+
+        for filename, open_db in [('native-lyrics.sqlite3', self.service._native_db),
+                                  ('lyrics.sqlite3', self.service._db)]:
+            with self.subTest(cache=filename):
+                path = self.studio.home / filename
+                path.write_bytes(b'Not a SQLite database')
+                with patch('tagcast.lyrics.sqlite3.connect', side_effect=tracked_connect):
+                    with self.assertRaises(sqlite3.DatabaseError):
+                        open_db()
+                self.assertTrue(connections[-1].closed)
+                path.unlink()
+        self.studio.client._jsonrequest.assert_not_called()
+
     def test_late_native_reads_are_not_persisted_for_a_replaced_account(self):
         self.rows.append({'type': 'lyrics', 'value': 'Private example'})
         original = self.request
