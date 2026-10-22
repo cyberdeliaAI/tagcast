@@ -2,7 +2,7 @@
 
 ## Current development round — 22 October 2026
 
-**61 original PNGs**, including seven public Deezer import/pause/resume captures, are indexed
+**62 original PNGs**, including seven public Deezer import/pause/resume captures, are indexed
 in [the dated inventory](screenshots/2026-10-22/README.md) with a SHA-256 manifest.
 All are 2560 × 1600 and copied byte for byte. Originals are untouched; the supplied
 Overview redaction is preserved. The README and current Wiki gallery use the new
@@ -20,12 +20,13 @@ Cleanup captures are empty previews or an unsubmitted form; earlier approved-run
 examples are retained. Importing these files made no iBroadcast
 requests or library writes. Media screenshots are updated separately and the ZIP rebuilt.
 
-### Remaining optional captures in this development round
+### Coverage decisions — capture round complete
 
-- Search results inside Reorder tracks and the open Move to position dialog.
-- A playlist review changing only its description, with Before/After and no replacement list.
-- Final Deezer playlist creation review; a completed result only during an intended import.
-- Import close/discard confirmation and review of removing a paused local copy.
+The main workflows are illustrated, including playlist artist search with two
+matches at their original positions. No further captures are requested. Secondary
+states remain documented in text: filtered reorder results and Move to position,
+text-only playlist review, final Deezer creation review, import close confirmation
+and removal of a paused local copy. These are optional illustrations, not blockers.
 
 The 12.23.28 image shows a full playlist replacement review, not a text-only edit.
 Existing earlier captures remain usable for fullscreen, sound output, mobile,

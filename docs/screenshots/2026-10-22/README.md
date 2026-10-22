@@ -1,6 +1,6 @@
 # Development screenshots — 22 October 2026
 
-61 contributor-supplied original PNGs, each 2560 × 1600 pixels, copied byte for byte.
+62 contributor-supplied original PNGs, each 2560 × 1600 pixels, copied byte for byte.
 Originals in Pictures/Screenshots are untouched. No resizing, cropping or redaction
 has been applied; the contributor's Overview redaction is preserved.
 
@@ -29,6 +29,9 @@ The masked source-key fields show no key values.
 Earlier captures remain in the parent folder for released-interface examples,
 mobile/fullscreen views and workflows absent from this round. The full Wiki gallery
 links to this round separately from those older examples.
+
+The capture round is complete. Remaining secondary dialogs are documented in text;
+no further screenshots are requested.
 
 ## Original-file inventory
 
@@ -97,3 +100,4 @@ links to this round separately from those older examples.
 | 12.25.07 | [playlist-order-checking.png](playlist-order-checking.png) | Playlist order save during the iBroadcast checking phase with editing controls disabled |
 | 12.25.54 | [playlist-order-result.png](playlist-order-result.png) | Playlist details after reordering with Over De Muur shown first |
 | 12.27.19 | [deezer-import-resumed.png](deezer-import-resumed.png) | Resumed Deezer import with one retained manual choice, two automatic matches and 47 unresolved records |
+| 12.30.59 | [playlist-search-artist-results.png](playlist-search-artist-results.png) | Playlist artist search for electr with two Electric Light Orchestra matches at original positions 155 and 508 |
