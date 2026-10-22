@@ -2,7 +2,7 @@
 
 ## Current development round — 22 October 2026
 
-**50 original PNGs**, including six public Deezer import/pause captures, are indexed
+**61 original PNGs**, including seven public Deezer import/pause/resume captures, are indexed
 in [the dated inventory](screenshots/2026-10-22/README.md) with a SHA-256 manifest.
 All are 2560 × 1600 and copied byte for byte. Originals are untouched; the supplied
 Overview redaction is preserved. The README and current Wiki gallery use the new
@@ -11,11 +11,26 @@ download. Earlier images remain for released-interface examples and missing view
 
 This round covers the album/track tabs, lyrics review and Now playing, artist image
 comparison/biography, all Favourites tabs, playlist details/search/removal, the
-order editor with search, and separate Deezer URL/mapping/matching/choice/pause steps.
-It does not show a successful resume, final Deezer creation or ListenBrainz live
-success. Cleanup captures are empty previews or an unsubmitted form; earlier
-approved-running examples are retained. Importing these files made no iBroadcast
+order editor with search, and separate Deezer URL/mapping/matching/choice/pause/resume
+steps. Follow-ups show a retained manual choice after resume, playlist search results,
+single-occurrence removal and full replacement reviews, explicit album lyrics checks
+and the read-only viewer. Reordering includes original, unsaved move, checking and
+result states. It does not show final Deezer creation or ListenBrainz live success.
+Cleanup captures are empty previews or an unsubmitted form; earlier approved-running
+examples are retained. Importing these files made no iBroadcast
 requests or library writes. Media screenshots are updated separately and the ZIP rebuilt.
+
+### Remaining optional captures in this development round
+
+- Search results inside Reorder tracks and the open Move to position dialog.
+- A playlist review changing only its description, with Before/After and no replacement list.
+- Final Deezer playlist creation review; a completed result only during an intended import.
+- Import close/discard confirmation and review of removing a paused local copy.
+
+The 12.23.28 image shows a full playlist replacement review, not a text-only edit.
+Existing earlier captures remain usable for fullscreen, sound output, mobile,
+multi-disc albums, metadata review, tags and History. No writes are requested just
+for documentation captures.
 
 ## Earlier capture round — 16 October 2026
 
