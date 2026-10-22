@@ -492,6 +492,14 @@
       "caption": "Resumed Deezer import with one retained manual choice, two automatic matches and 47 unresolved records",
       "original": "Screenshot 2026-10-22 at 12.27.19.png",
       "sha256": "574ce047547e67ffaecad478a577d2744d136c7c2764f612e40299a4cca91c3f"
+    },
+    {
+      "capture": "12.30.59",
+      "file": "playlist-search-artist-results.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist artist search for electr with two Electric Light Orchestra matches at original positions 155 and 508",
+      "original": "Screenshot 2026-10-22 at 12.30.59.png",
+      "sha256": "70f4b9e7b7c167cf1117afc2cd64160f2458a12309b3c8af354001705dcfff71"
     }
   ]
 }
