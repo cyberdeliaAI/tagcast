@@ -20,7 +20,9 @@ and checking changes.
 
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
-![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/album-details.png)
+![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/2026-10-22/album-details.png)
+
+*Development capture, 22 October 2026; some controls are ahead of the 0.70.2 desktop download.*
 
 ## What you can do
 
@@ -123,14 +125,21 @@ organised into focused pages:
 ## Screenshots
 
 The [full gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots) shows
-browsing, tags, editing, cleanup, playback, Settings and mobile views. Most captures
-were supplied while preparing 0.50.0; retained earlier-interface examples are
+browsing, tags, editing, cleanup, playback, Settings and mobile views. The latest
+captures were supplied on 22 October 2026 from a development/test build. Some
+controls are ahead of the 0.70.2 desktop download; earlier-interface examples stay
 labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
 
 <details>
-<summary>Metadata editor, album artist cleanup and fullscreen player</summary>
+<summary>Album/track editor, playlists and retained cleanup/fullscreen examples</summary>
 
-![Metadata editor with album fields, genres and online source suggestions](docs/screenshots/editor.png)
+![Edit album tab with metadata fields and online source suggestions](docs/screenshots/2026-10-22/editor-album-tab.png)
+
+![Edit tracks tab with individual track fields and a separate lyrics workflow](docs/screenshots/2026-10-22/editor-tracks-lyrics.png)
+
+![Playlist cards with track counts and total duration](docs/screenshots/2026-10-22/playlists.png)
+
+![Playlist order editor with search and separate Save order and Cancel controls](docs/screenshots/2026-10-22/playlist-order.png)
 
 **Album artist cleanup:** reviewed semicolon splitting into a primary
 artist and separate additional artists. This capture shows an approved run in progress.

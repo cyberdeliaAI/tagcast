@@ -13,6 +13,24 @@ def track_ids(values, maximum=10000):
     return [int(i) for i in values]
 
 
+def playlist_track_search_text(library, track_id):
+    """Search loaded metadata only; unavailable saved positions remain distinguishable."""
+    track = library.tracks.get(track_id)
+    if not track or track.get("trashed"):
+        return fold(f"Unavailable track ID {track_id}")
+    album = library.albums.get(number(track.get("album_id")))
+    if album is None:
+        try:
+            album = library.albums[library.active_track_album(track_id)]
+        except LibraryError:
+            return fold(f"Unavailable track ID {track_id}")
+    return fold(" ".join([
+        text(track.get("title")), library.artist_name(track.get("artist_id")),
+        text(album.get("name")),
+        *(library.artist_name(a) for a in library.album_artist_ids(album)),
+    ]))
+
+
 class Collections:
     def __init__(self, studio):
         self.studio = studio
@@ -267,26 +285,38 @@ class Collections:
                 return self.folder_view(library, number(playlist_id), offset)
             if not row or not self.editable(row):
                 raise LibraryError("This playlist is unavailable or managed by iBroadcast.")
-            ids = [i for i in track_ids(row.get("tracks") or [], maximum=None)
-                   if i in library.tracks and not library.tracks[i].get("trashed")]
+            active = [(position, i) for position, i in enumerate(
+                track_ids(row.get("tracks") or [], maximum=None))
+                if i in library.tracks and not library.tracks[i].get("trashed")]
+            ids = [i for _, i in active]
             large = len(row.get("tracks") or []) > 10000
             # Count playlist positions, including repeats, across every page of active tracks.
             lengths = [max(0, number(library.tracks[i].get("length"))) for i in ids]
+            words = fold(query).split()
+            matches, searched = [], {}
+            for index, i in enumerate(ids):
+                if words and i not in searched:
+                    haystack = playlist_track_search_text(library, i)
+                    searched[i] = all(word in haystack for word in words)
+                if not words or searched.get(i):
+                    matches.append((index, i))
+            page = matches[offset:offset + 100]
             rows = []
-            for index, i in enumerate(ids[offset:offset + 100], offset):
+            for index, i in page:
                 try:
                     rows.append({**library.track_row(i, library.active_track_album(i)),
-                                 "position": index})
+                                 "position": index, "stored_position": active[index][0]})
                 except LibraryError:
                     continue
             return {"id": str(number(playlist_id)), "name": text(row.get("name")),
                     "description": text(row.get("description")),
                     **self.playlist_image(library, row),
-                    "tracks": ids[offset:offset + 100] if large else ids,
+                    "tracks": [i for _, i in page] if large else ids,
                     "before": [] if large else row.get("tracks") or [],
                     "before_token": self.playlist_snapshot(row, playlist_id), "large": large,
                     "stored_total": len(row.get("tracks") or []),
                     "rows": rows, "offset": offset, "total": len(ids),
+                    "matched_total": len(matches), "page_positions": [index for index, _ in page],
                     "duration": sum(lengths), "duration_missing": lengths.count(0)}
         if browse:
             return self.playlist_catalogue(library, query, offset)
@@ -644,6 +674,18 @@ class Collections:
         client, library = self.library(cached=True)
         with self.studio.lock:
             _, row = self.playlist_order_record(body, client, library)
+            query = body.get("query")
+            if query is not None:
+                if not isinstance(query, str) or len(query) > 200:
+                    raise LibraryError("Use a playlist search of up to 200 characters.")
+                words, searched, matches = fold(query).split(), {}, []
+                for position, track_id in enumerate(track_ids(row.get("tracks") or [])):
+                    if track_id not in searched:
+                        haystack = playlist_track_search_text(library, track_id)
+                        searched[track_id] = all(word in haystack for word in words)
+                    if searched[track_id]:
+                        matches.append(position)
+                return {"positions": matches}
             positions = body.get("positions")
             if not isinstance(positions, list) or not 1 <= len(positions) <= 100 or any(
                     not isinstance(p, str) or not p.isascii() or not p.isdigit() for p in positions):
@@ -701,12 +743,48 @@ class Collections:
         finally:
             studio.save_lock.release()
 
+    def remove_playlist_track(self, body):
+        """Remove exactly one reviewed stored position, preserving every other copy."""
+        position = body.get("position")
+        if body.get("approved") is not True or type(position) is not int or position < 0 \
+                or "tracks" in body:
+            raise LibraryError("Review one playlist position before removing it.")
+        track_id = track_ids([body.get("track")], 1)[0]
+        studio = self.studio
+        if not studio.save_lock.acquire(blocking=False):
+            raise LibraryError("Another save is still running.")
+        try:
+            client, library = self.library()
+            with studio.lock:
+                playlist_id, row = self.playlist_order_record(body, client, library)
+                original = track_ids(row.get("tracks") or [])
+                if position >= len(original) or original[position] != track_id:
+                    raise ConflictError("This playlist position changed. Prepare a new review.")
+                library.active_track_album(track_id)
+                expected = original[:position] + original[position + 1:]
+                metadata = {k: row.get(k) for k in
+                            ("name", "description", "type", "system_created", "artwork_id")}
+            client._jsonrequest("updateplaylist", playlist=playlist_id, tracks=expected, _retry=False)
+
+            def check(after):
+                got = after.playlists.get(playlist_id, {})
+                matches = self.editable(got) and got.get("tracks") == expected and all(
+                    got.get(key) == value for key, value in metadata.items())
+                return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
+
+            return {"id": str(playlist_id), "job": studio._check_later(
+                client, studio.downloads, check, include_albums=False)}
+        finally:
+            studio.save_lock.release()
+
     def save_playlist(self, body):
         action = body.get("action")
         if action == "metadata":
             return self.update_playlist_details(body)
         if action == "reorder":
             return self.reorder_playlist(body)
+        if action == "remove-track":
+            return self.remove_playlist_track(body)
         if action == "delete":
             return self.delete_playlist(body)
         name, description = text(body.get("name")).strip(), text(body.get("description")).strip()

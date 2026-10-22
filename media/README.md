@@ -12,7 +12,7 @@ Logos, screenshots and a social preview for articles, app listings and links to 
 ## About Tagcast
 
 Tagcast is an independent metadata editor and album player for iBroadcast, developed
-by Cyberdelia. It runs on your computer, with its interface in your browser. Browse
+by Cyberdelia. It runs on your computer, in its own desktop window or your browser. Browse
 your collection, play albums, review metadata changes and manage artwork, playlists
 and tags. Your local music files are never changed.
 
@@ -28,8 +28,18 @@ Available for macOS, Windows and Linux. [Project](https://github.com/cyberdeliaA
 | Logo with light lettering, for dark backgrounds | [Vector](logos/tagcast-lockup-light.svg) | [1600 × 448](logos/tagcast-lockup-light.png) |
 | Monochrome icon | [Vector](logos/tagcast-icon-monochrome.svg) | [1024](logos/tagcast-icon-monochrome.png) |
 | GitHub / social preview | [Editable source](social/tagcast-social-preview.svg) | [1280 × 640](social/tagcast-social-preview.png) |
+| Album details (22 October development build) | — | [App screenshot](screenshots/album-details.png) |
+| Album editor tabs (22 October development build) | — | [App screenshot](screenshots/editor-album-tab.png) |
+| Playlists with durations (22 October development build) | — | [App screenshot](screenshots/playlists.png) |
+| Playlist details and search (22 October development build) | — | [App screenshot](screenshots/playlist-details.png) |
+| Playlist ordering and search (22 October development build) | — | [App screenshot](screenshots/playlist-order.png) |
 | Native iBroadcast tags | — | [App screenshot](screenshots/album-tags.png) |
 | 1001 Albums background texts | — | [App screenshot](screenshots/1001-albums-background.png) |
+
+The new app screenshots are byte-for-byte copies of the contributor's 22 October
+2026 development/test captures, ahead of the 0.70.2 desktop release. The Sinatra
+background-text capture remains from 16 October, with its original attribution.
+See the [complete dated inventory](../docs/screenshots/2026-10-22/README.md).
 
 PNG logos have transparent corners/backgrounds. SVG wordmarks use Arial with a
 Helvetica/sans-serif fallback; use the PNG when exact lettering is required.

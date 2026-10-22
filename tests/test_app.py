@@ -245,7 +245,14 @@ class StartTests(unittest.TestCase):
             self.assertEqual(request("GET", order_url), 200)
             studio.collections.playlist_order_view.assert_called_once_with({
                 "playlist": "81", "before_name": "Example", "before_token": "token",
-                "session": "test-session", "positions": ["0", "2"]})
+                "session": "test-session", "positions": ["0", "2"], "query": None})
+            search_url = "/api/playlist/order?playlist=81&before_name=Example&before_token=token&session=test-session&q=running"
+            self.assertEqual(request("GET", search_url, {"Sec-Fetch-Site": "cross-site"}), 403)
+            self.assertEqual(request("GET", search_url, {"Host": "elsewhere.test"}), 403)
+            self.assertEqual(request("GET", search_url), 200)
+            studio.collections.playlist_order_view.assert_called_with({
+                "playlist": "81", "before_name": "Example", "before_token": "token",
+                "session": "test-session", "positions": [""], "query": "running"})
             studio.lyrics.cached_album.assert_called_once_with({'album_ids': ['1', '2'], 'session': 'test-session'})
             self.assertEqual(request("POST", "/api/play"), 403)
             self.assertEqual(request("POST", "/api/play", {"X-Tagcast": "1", "Host": "elsewhere.test"}), 403)

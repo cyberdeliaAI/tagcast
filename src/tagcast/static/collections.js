@@ -156,13 +156,13 @@ async function renderCollections() {
   collectionsView.loading = true;
   if (!collectionsView.data) page.innerHTML = '<p class="muted" role="status">Loading playlists…</p>';
   try {
-    const data = await api(`/api/playlists?${collectionsView.playlist ? `id=${encodeURIComponent(collectionsView.playlist)}` : `q=${encodeURIComponent(collectionsView.query)}&browse=1`}&offset=${collectionsView.offset}`);
+    const data = await api(`/api/playlists?${collectionsView.playlist ? `id=${encodeURIComponent(collectionsView.playlist)}${collectionsView.query ? `&q=${encodeURIComponent(collectionsView.query)}` : ""}` : `q=${encodeURIComponent(collectionsView.query)}&browse=1`}&offset=${collectionsView.offset}`);
     if (request !== collectionsView.request || details !== state.details || state.screen !== "playlists") return;
     collectionsView.data = data;
     if (data.is_folder) {
       page.innerHTML = playlistFolderPage(data);
     } else if (collectionsView.playlist) {
-      page.innerHTML = `<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistEditableCover(data)}<div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ ${data.large ? "Play this page" : "Play playlist"}</button><button type="button" class="button" data-playlist-shuffle ${data.tracks.length ? "" : "disabled"}>${data.large ? "Shuffle this page" : "Shuffle playlist"}</button><button class="button" data-playlist-edit ${data.large ? 'disabled title="Full replacement is limited to 10,000 tracks"' : ""}>Edit playlist…</button><button type="button" class="button" data-playlist-reorder ${data.large || (data.stored_total ?? data.before?.length ?? data.total) < 2 ? 'disabled title="Reordering requires 2–10,000 saved positions"' : ""}>Reorder tracks…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks${playlistDuration(data)} · in playlist order</p>${data.large ? '<p class="muted">Large playlist: browse 100 tracks per page. Playback and shuffle use only this page. Full-content editing is limited to 10,000 tracks; adding tracks and reviewed deletion remain available.</p>' : ""}<table class="album-tracks album-tracklist track-results"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr data-row="${escapeHtml(t.id)}"><td class="track-number">${trackNumberControl(t, t.position + 1, `data-playlist-position="${escapeHtml(t.position)}"`, true)}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td>${queueButton(t.album_id, t)}</td></tr>`).join("")}</tbody></table>${collectionPages(data.total, 100)}`;
+      replaceCollections(`<button class="button small page-back" data-playlist-back>← Playlists</button><div class="page-intro playlist-intro">${playlistEditableCover(data)}<div><h1>${escapeHtml(data.name)}</h1><p>${escapeHtml(data.description)}</p></div></div><div class="album-detail-actions"><button class="button primary" data-playlist-play ${data.tracks.length ? "" : "disabled"}>▶ ${data.large ? "Play this page" : "Play playlist"}</button><button type="button" class="button" data-playlist-shuffle ${data.tracks.length ? "" : "disabled"}>${data.large ? "Shuffle this page" : "Shuffle playlist"}</button><button class="button" data-playlist-edit ${data.large ? 'disabled title="Full replacement is limited to 10,000 tracks"' : ""}>Edit playlist…</button><button type="button" class="button" data-playlist-reorder ${data.large || (data.stored_total ?? data.before?.length ?? data.total) < 2 ? 'disabled title="Reordering requires 2–10,000 saved positions"' : ""}>Reorder tracks…</button><button class="button" data-playlist-add-queue>Add current queue…</button><button class="button danger" data-playlist-delete>Delete playlist…</button></div><p>${data.total} tracks${playlistDuration(data)} · in playlist order</p>${clearableSearchInput("collection-search", 'class="collection-search" maxlength="200" placeholder="Search this playlist by title, artist or album" aria-label="Search this playlist"', collectionsView.query)}${collectionsView.query ? `<p role="status">${data.matched_total ?? data.total} matching ${(data.matched_total ?? data.total) === 1 ? "track" : "tracks"} · original playlist positions</p>` : ""}${data.large ? '<p class="muted">Large playlist: browse 100 tracks per page. Playback and shuffle use only this page. Full-content editing is limited to 10,000 tracks; adding tracks and reviewed deletion remain available.</p>' : ""}<table class="album-tracks album-tracklist track-results"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>Title / Artist</th><th>Album</th><th>Time</th><th aria-label="Queue and playlist actions"></th></tr></thead><tbody>${data.rows.map(t => `<tr data-row="${escapeHtml(t.id)}"><td class="track-number">${trackNumberControl(t, t.position + 1, `data-playlist-position="${escapeHtml(t.position)}"`, true)}</td><td><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)}</small></td><td><button class="text-action" data-album="${t.album_id}">${escapeHtml(t.album)}</button></td><td>${trackDuration(t.length)}${trackFormatLabel(t)}</td><td><div class="playlist-track-actions">${queueButton(t.album_id, t)}${playlistRemoveButton(data, t)}</div></td></tr>`).join("") || `<tr><td colspan="5" class="muted">${collectionsView.query ? "No tracks match this search." : "This playlist has no available tracks."}</td></tr>`}</tbody></table>${collectionPages(data.matched_total ?? data.total, 100)}`);
     } else replaceCollections(playlistCataloguePage(data));
     markPlaying();
     if (typeof syncHistory === "function") syncHistory();
@@ -202,6 +202,27 @@ async function openPlaylistSave(tracks = [], edit = null, destination = null, re
     playlistDraft.choices = choices.playlists;
     $("#playlist-dialog-content").innerHTML = `<form id="playlist-form">${edit ? "" : `<label>Destination <select name="destination"><option value="new">New private playlist</option>${choices.playlists.map(p => `<option value="${p.id}" ${destination === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></label><div class="clearable-field"><label for="playlist-destination-query">Find playlist by name</label>${clearableSearchInput("playlist-destination-query", 'name="playlist_query" maxlength="200"')}</div><button type="button" class="button small" data-playlist-find>Find playlists</button>`}<label>Name <input name="name" maxlength="200" value="${escapeHtml(revised?.name ?? edit?.name ?? "")}"></label><label>Description <textarea name="description" maxlength="2000">${escapeHtml(revised?.description ?? edit?.description ?? "")}</textarea></label><p>${edit ? `${edit.stored_total ?? edit.total ?? tracks.length} playlist positions · ${unique.length} available unique tracks shown. Leaving all checked preserves every stored position. Unchecking a track prepares a full replacement, keeping each selected track ID once.` : `${unique.length} ${unique.length === 1 ? "track" : "tracks"}${unique.length !== tracks.length ? " · repeated queue entries kept once, in their first position" : ""}. Albums keep their track order.`}</p><div class="playlist-review-tracks">${unique.map((t, i) => `<label class="checkline"><input type="checkbox" name="track" value="${t.id}" ${!revised || revised.selected.includes(String(t.id)) ? "checked" : ""}> ${i + 1}. ${escapeHtml(t.title)} · ${escapeHtml(t.artist)}</label>`).join("")}</div><div class="dialog-footer"><button type="button" class="button" data-close="playlist-dialog">Cancel</button><button class="button primary">Prepare review →</button></div></form>`;
   } catch (error) { if (request === playlistDraft.request && details === state.details && session === state.connection.playback_session) $("#playlist-dialog-content").innerHTML = `<p class="error-box">${escapeHtml(error.message)}</p>`; }
+}
+
+function playlistRemoveButton(data, track) {
+  if (!Number.isInteger(track.stored_position)) return "";
+  return `<button type="button" class="playlist-track-remove" data-playlist-remove="${track.stored_position}" aria-label="Remove ${escapeHtml(track.title)} from playlist, position ${track.position + 1}" title="${data.large ? "Removing tracks is limited to playlists with up to 10,000 saved positions" : "Remove from playlist"}" ${data.large ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>`;
+}
+
+function openPlaylistTrackRemove(position) {
+  const data = collectionsView.data;
+  if (!live() || state.loading || collectionsView.loading || collectionsView.busy || !data
+      || data.large || data.is_folder || !data.before_token || document.querySelector("dialog[open]")) return;
+  const track = data.rows.find(row => row.stored_position === position);
+  if (!track || !Number.isInteger(position) || Number(data.before?.[position]) !== Number(track.id)) return;
+  if (typeof invalidatePlaylistFolder === "function") invalidatePlaylistFolder();
+  playlistDraft.request += 1;
+  Object.assign(playlistDraft, {details: state.details, session: state.connection.playback_session, selected: null,
+    body: {action: "remove-track", playlist: data.id, position, track: Number(track.id), approved: true,
+      before_token: data.before_token, before_name: data.name, session: state.connection.playback_session}});
+  $("#playlist-dialog-title").textContent = "Remove from playlist";
+  $("#playlist-dialog-content").innerHTML = `<h3>${escapeHtml(track.title)}</h3><p>${escapeHtml(track.artist)} · ${escapeHtml(track.album)}</p><p>Remove position ${track.position + 1} from <strong>${escapeHtml(data.name)}</strong>? Only this occurrence is removed. The track stays in your music library and the current play queue.</p><div class="dialog-footer"><button type="button" class="button" data-close="playlist-dialog">Keep track</button><button type="button" class="button danger" data-playlist-save>Remove from playlist</button></div>`;
+  $("#playlist-dialog").showModal();
 }
 
 async function openPlaylistDelete(id) {
@@ -270,9 +291,15 @@ async function savePlaylistDraft() {
     saveButton.textContent = "Checking iBroadcast…";
     const job = await collectionJob(response, current);
     if (job.results.some(r => r.status !== "saved")) throw Error("Playlist sent, but read-back differs. Check Playlists before trying again.");
-    $("#playlist-dialog").close(); toast(body.action === "delete" ? "Playlist deleted and confirmed in iBroadcast." : "Playlist saved and confirmed in iBroadcast.");
+    $("#playlist-dialog").close(); toast(body.action === "delete" ? "Playlist deleted and confirmed in iBroadcast." : body.action === "remove-track" ? "Track removed from playlist and confirmed in iBroadcast." : "Playlist saved and confirmed in iBroadcast.");
     if (state.screen === "playlists") {
-      if (body.action === "delete") showCollections("playlists"); else renderCollections();
+      if (body.action === "delete") showCollections("playlists");
+      else if (body.action === "remove-track") {
+        collectionsView.offset = Math.min(collectionsView.offset, Math.max(0,
+          Math.ceil(((collectionsView.data?.matched_total ?? collectionsView.data?.total ?? 1) - 1) / 100) - 1) * 100);
+        await renderCollections();
+        if (current() && state.screen === "playlists" && collectionsView.playlist === body.playlist) $("#collection-search")?.focus({preventScroll: true});
+      } else renderCollections();
     }
   } catch (error) { if (current()) { toast(`Check the playlist before trying again: ${error.message}`); $("#playlist-dialog").close(); if (body.action === "delete" && state.screen === "playlists") showCollections("playlists"); } }
   finally { collectionsView.busy = false; saveButton.setAttribute("aria-busy", "false"); }
@@ -303,6 +330,8 @@ document.addEventListener("click", async event => {
   }
   const track = target.closest("[data-playlist-track]");
   if (track) return openTrackPlaylist(track.dataset.playlistSource, track.dataset.playlistTrack);
+  const remove = target.closest("[data-playlist-remove]");
+  if (remove) return openPlaylistTrackRemove(Number(remove.dataset.playlistRemove));
   const open = target.closest("[data-playlist-open]");
   if (open) showCollections("playlists", open.dataset.playlistOpen);
   if (target.closest("[data-playlist-back]")) goBack("playlists");
@@ -342,7 +371,9 @@ document.addEventListener("click", async event => {
         [rows[i], rows[j]] = [rows[j], rows[i]];
       }
       player.shuffle = shuffle; player.queue = rows;
-      player.index = play.hasAttribute("data-playlist-position") ? Math.max(0, (Number(play.dataset.playlistPosition) || 0) - (data.large ? data.offset : 0)) : 0; playCurrent();
+      player.index = play.hasAttribute("data-playlist-position") ? Math.max(0, (Number(play.dataset.playlistPosition) || 0) - (data.large ? data.offset : 0)) : 0;
+      if (data.large && data.page_positions && play.hasAttribute("data-playlist-position")) player.index = Math.max(0, data.page_positions.indexOf(Number(play.dataset.playlistPosition)));
+      playCurrent();
     } catch (error) { if (current()) toast(error.message); }
   }
 });

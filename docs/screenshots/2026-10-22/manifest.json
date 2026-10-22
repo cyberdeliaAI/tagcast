@@ -1,0 +1,409 @@
+{
+  "capture_date": "2026-10-22",
+  "dimensions": [
+    2560,
+    1600
+  ],
+  "images": [
+    {
+      "capture": "11.40.44",
+      "file": "album-artists-forest.png",
+      "group": "Artists and albums",
+      "caption": "Album artist cards with rounded-square photos and the sidebar separator",
+      "original": "Screenshot 2026-10-22 at 11.40.44.png",
+      "sha256": "9f8689f271bb9352df0f34fb6d33ae985ca6d9047e1d9db0f336b10e1bebd048"
+    },
+    {
+      "capture": "11.41.08",
+      "file": "albums-forest.png",
+      "group": "Artists and albums",
+      "caption": "Album collection with filters, sorting and compact playback controls",
+      "original": "Screenshot 2026-10-22 at 11.41.08.png",
+      "sha256": "832af7cfb23cc6f3df0bd264a12de4c9779555ae1cdac492ec6c1f2d87be2ac2"
+    },
+    {
+      "capture": "11.41.19",
+      "file": "albums-random-forest.png",
+      "group": "Artists and albums",
+      "caption": "Album collection with random ordering",
+      "original": "Screenshot 2026-10-22 at 11.41.19.png",
+      "sha256": "ba4634f315282e9636d21afcb84f6e07e0a6ed0d495989ea7800f8d8bb13e807"
+    },
+    {
+      "capture": "11.41.44",
+      "file": "artist-albums-forest.png",
+      "group": "Artists and albums",
+      "caption": "Badbadnotgood artist page with a larger photo above its albums",
+      "original": "Screenshot 2026-10-22 at 11.41.44.png",
+      "sha256": "b8b7b4dd71a333ebb1f6ec55897c61768ab50b3e71c066869f21acee4efaf39d"
+    },
+    {
+      "capture": "11.41.53",
+      "file": "artist-biography-ibroadcast.png",
+      "group": "Artists and albums",
+      "caption": "Expanded TheAudioDB artist biography in the iBroadcast-inspired palette",
+      "original": "Screenshot 2026-10-22 at 11.41.53.png",
+      "sha256": "9936c7626dc994553072fcb9e413679af9c5282eddb365d27961ca60e71d1637"
+    },
+    {
+      "capture": "11.42.12",
+      "file": "artist-image-compare.png",
+      "group": "Artists and albums",
+      "caption": "Separate artist-image comparison with suggested replacements",
+      "original": "Screenshot 2026-10-22 at 11.42.12.png",
+      "sha256": "ec4efa64621ebafabcc9eeb0a6ed2687d2dbedd0161aef17ac62f6d150a14759"
+    },
+    {
+      "capture": "11.42.26",
+      "file": "artist-image-checking.png",
+      "group": "Artists and albums",
+      "caption": "Changed artist photo with the Checking saves indicator still active",
+      "original": "Screenshot 2026-10-22 at 11.42.26.png",
+      "sha256": "9582592cf4a3fb9e4df35394ced80687183375e1a20453ff2a8f850d43818815"
+    },
+    {
+      "capture": "11.42.50",
+      "file": "album-details.png",
+      "group": "Artists and albums",
+      "caption": "Living In The Background album details, genres, ratings and track list",
+      "original": "Screenshot 2026-10-22 at 11.42.50.png",
+      "sha256": "433a9614f9ca63dc7143226365b0cbab08b0bf8d9d35cddaab5a0cd3ff8396da"
+    },
+    {
+      "capture": "11.43.13",
+      "file": "editor-album-tab.png",
+      "group": "Editing and lyrics",
+      "caption": "Edit album tab with metadata fields and online suggestions",
+      "original": "Screenshot 2026-10-22 at 11.43.13.png",
+      "sha256": "16d6029e8b89ad8769ce129f9b47b2ae172111eaf510dbedf1c24f42b0e4e5ed"
+    },
+    {
+      "capture": "11.43.52",
+      "file": "editor-tracks-lyrics.png",
+      "group": "Editing and lyrics",
+      "caption": "Edit tracks tab with a scrollable track list, lyrics field and explicit LRCLIB result",
+      "original": "Screenshot 2026-10-22 at 11.43.52.png",
+      "sha256": "cdf1454d1b6f0725049b35645b111a96f8c9af2d3c0c533296f060c80dfed490"
+    },
+    {
+      "capture": "11.44.02",
+      "file": "lyrics-review.png",
+      "group": "Editing and lyrics",
+      "caption": "Separate track lyrics review before saving",
+      "original": "Screenshot 2026-10-22 at 11.44.02.png",
+      "sha256": "7919848d38a0e88e4addcbc624116262775e432f76a3847e7b45d840a32b4c50"
+    },
+    {
+      "capture": "11.44.32",
+      "file": "now-playing-lyrics.png",
+      "group": "Editing and lyrics",
+      "caption": "Native iBroadcast lyrics in Now playing and a known Lyrics label on the track",
+      "original": "Screenshot 2026-10-22 at 11.44.32.png",
+      "sha256": "708002e64eb33ee26a53d0062e035c2df3df154a865ee0f721cbb4fff3567ac1"
+    },
+    {
+      "capture": "11.45.26",
+      "file": "track-artists.png",
+      "group": "Browsing and discovery",
+      "caption": "Track artist overview with album totals",
+      "original": "Screenshot 2026-10-22 at 11.45.26.png",
+      "sha256": "ab4054f69633e344334f143b7d3688f2facbff1e72f8560eb877711c6f1cbae1"
+    },
+    {
+      "capture": "11.45.39",
+      "file": "composers.png",
+      "group": "Browsing and discovery",
+      "caption": "Composer overview with compact album totals",
+      "original": "Screenshot 2026-10-22 at 11.45.39.png",
+      "sha256": "2e0f4871380a12df26afe0c9fe9cf682d7e5eaf120d2bb5840c84e4ea5e960c2"
+    },
+    {
+      "capture": "11.45.50",
+      "file": "genres-forest.png",
+      "group": "Browsing and discovery",
+      "caption": "Genre overview with album and track counts",
+      "original": "Screenshot 2026-10-22 at 11.45.50.png",
+      "sha256": "7a4c268e7167d039e04a518332c50f4afcc405e9244afd5738a982461fb61c7d"
+    },
+    {
+      "capture": "11.46.07",
+      "file": "genre-albums-forest.png",
+      "group": "Browsing and discovery",
+      "caption": "Albums in the African Music genre",
+      "original": "Screenshot 2026-10-22 at 11.46.07.png",
+      "sha256": "f0f8a6ec87168def0efbb3fb2d74a67400696686072d56fb6126013906aa0f51"
+    },
+    {
+      "capture": "11.46.22",
+      "file": "tags-forest.png",
+      "group": "Browsing and discovery",
+      "caption": "Native iBroadcast tags, separate from genres",
+      "original": "Screenshot 2026-10-22 at 11.46.22.png",
+      "sha256": "5014434e9ec6a8c831e32e00b70a3b7edee225a35f779846a4a2e28978e8159e"
+    },
+    {
+      "capture": "11.46.29",
+      "file": "tag-albums-forest.png",
+      "group": "Browsing and discovery",
+      "caption": "Albums reached through the Emusic tag",
+      "original": "Screenshot 2026-10-22 at 11.46.29.png",
+      "sha256": "f4218096a56d0b594feaa9bf3a122692a36d8ae863a3852e618c46d3ffcffff4"
+    },
+    {
+      "capture": "11.46.40",
+      "file": "album-tags.png",
+      "group": "Browsing and discovery",
+      "caption": "Live Wire / Blues Power reached through a tag with the origin breadcrumb and tag chips",
+      "original": "Screenshot 2026-10-22 at 11.46.40.png",
+      "sha256": "f8acb7ab0a04eb287fb56d70bc28860b7829a9033bc40d0feb77624d4d695568"
+    },
+    {
+      "capture": "11.46.52",
+      "file": "release-years-warm.png",
+      "group": "Browsing and discovery",
+      "caption": "Release-year overview in the Warm palette",
+      "original": "Screenshot 2026-10-22 at 11.46.52.png",
+      "sha256": "a9b810adcdca03cab058a7d4bdbfd3cec995fe9a83a6b24323874c92e295a5bc"
+    },
+    {
+      "capture": "11.47.00",
+      "file": "year-albums-warm.png",
+      "group": "Browsing and discovery",
+      "caption": "Albums released in 2016",
+      "original": "Screenshot 2026-10-22 at 11.47.00.png",
+      "sha256": "6ed6157e177425ebb697ef0c3032ee73a6b73e477fcb0822a04db9fb997c252f"
+    },
+    {
+      "capture": "11.47.07",
+      "file": "decades-warm.png",
+      "group": "Browsing and discovery",
+      "caption": "Decade overview in the Warm palette",
+      "original": "Screenshot 2026-10-22 at 11.47.07.png",
+      "sha256": "4a853d9411a68a57b2fca13cd86d33e01f0009fcbb24dbd842b20bf634e4f3d1"
+    },
+    {
+      "capture": "11.47.17",
+      "file": "decade-albums-ocean.png",
+      "group": "Browsing and discovery",
+      "caption": "1970s album discovery with its introduction and random selection",
+      "original": "Screenshot 2026-10-22 at 11.47.17.png",
+      "sha256": "a8806c27ed6ca1424cff39129bf4b45e40d7cb58b94948d837f68914c3cde11c"
+    },
+    {
+      "capture": "11.47.33",
+      "file": "tracks-search.png",
+      "group": "Favourites and listening history",
+      "caption": "Track search with format, queue and rating controls",
+      "original": "Screenshot 2026-10-22 at 11.47.33.png",
+      "sha256": "46a8a3e9ae9952c3bee2939000d2faeb3e6ba47020f55f0ab0febfd0df0ee0a2"
+    },
+    {
+      "capture": "11.47.47",
+      "file": "favourites-tracks.png",
+      "group": "Favourites and listening history",
+      "caption": "Favourites hub with the Tracks tab selected",
+      "original": "Screenshot 2026-10-22 at 11.47.47.png",
+      "sha256": "d3b3992045317e7eb7e7a06d25b932e4d646e0455f09a1de8cce15405257f25e"
+    },
+    {
+      "capture": "11.48.07",
+      "file": "favourites-albums.png",
+      "group": "Favourites and listening history",
+      "caption": "Favourites hub with the Albums tab selected",
+      "original": "Screenshot 2026-10-22 at 11.48.07.png",
+      "sha256": "6912c8d167305e41d2d9ebf1af926213c6cc0b387b91f67ed84c7d9b72cecbd3"
+    },
+    {
+      "capture": "11.48.13",
+      "file": "favourites-artists.png",
+      "group": "Favourites and listening history",
+      "caption": "Favourites hub with the Album artists tab selected",
+      "original": "Screenshot 2026-10-22 at 11.48.13.png",
+      "sha256": "190683e909e07acbc0d12c648b90ab750269accd1782890ad4ba66fecc59f7e1"
+    },
+    {
+      "capture": "11.48.22",
+      "file": "playlists.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist cards with track counts and total duration",
+      "original": "Screenshot 2026-10-22 at 11.48.22.png",
+      "sha256": "a6fba6fd44b06f99d3f05d572aa341c0a02302633b9b5e4d6c806be24249bed2"
+    },
+    {
+      "capture": "11.48.31",
+      "file": "playlist-details.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist details with search, duration, queue actions and row-removal crosses",
+      "original": "Screenshot 2026-10-22 at 11.48.31.png",
+      "sha256": "515cc62043a8fd35dff1f2d98081a8471159dbf20e9372d99766672f2edf59c1"
+    },
+    {
+      "capture": "11.48.42",
+      "file": "playlist-edit.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist text and membership editor before review",
+      "original": "Screenshot 2026-10-22 at 11.48.42.png",
+      "sha256": "0ca4c285e593059c267daa449b23a46b41c137bdc5172aa805caf9c898f34891"
+    },
+    {
+      "capture": "11.48.51",
+      "file": "playlist-order.png",
+      "group": "Playlists and ordering",
+      "caption": "Separate playlist order editor with search, drag handles, Move to position, Save order and Cancel",
+      "original": "Screenshot 2026-10-22 at 11.48.51.png",
+      "sha256": "1369f52a71ac014897994444c2eb078fc8a32ab445e7cf0fb9275c2c6f4d2aad"
+    },
+    {
+      "capture": "11.49.08",
+      "file": "recently-played.png",
+      "group": "Favourites and listening history",
+      "caption": "Recently played tracks with search and playback controls",
+      "original": "Screenshot 2026-10-22 at 11.49.08.png",
+      "sha256": "406f811c0ffc85207834dd0b45ea8964d52067f8562fbf4df0ab0ac95ba804b0"
+    },
+    {
+      "capture": "11.49.18",
+      "file": "album-guide-found.png",
+      "group": "1001 Albums",
+      "caption": "1001 Albums reference list with matched library albums",
+      "original": "Screenshot 2026-10-22 at 11.49.18.png",
+      "sha256": "c59ac329e7ee11b705e41b4e89999e44707dca0588d72c3fb3e582f4ecc8d520"
+    },
+    {
+      "capture": "11.49.24",
+      "file": "album-guide-1970s.png",
+      "group": "1001 Albums",
+      "caption": "1001 Albums reference list filtered to the 1970s",
+      "original": "Screenshot 2026-10-22 at 11.49.24.png",
+      "sha256": "2399b38a3b99e9670167894b7d5ca781463d082bed2df81e48bcc64fad7f374b"
+    },
+    {
+      "capture": "11.50.36",
+      "file": "overview.png",
+      "group": "Overview and cleanup",
+      "caption": "Overview with collection totals, metadata health and contributor-redacted account fields",
+      "original": "Screenshot 2026-10-22 at 11.50.36.png",
+      "sha256": "47e09235ba513ac06c13c0fc8a9ccb6855d96d37f5d8519e67125da52995b240"
+    },
+    {
+      "capture": "11.50.57",
+      "file": "cleanup-composers.png",
+      "group": "Overview and cleanup",
+      "caption": "Composer cleanup preview with no proposed changes",
+      "original": "Screenshot 2026-10-22 at 11.50.57.png",
+      "sha256": "a61796b2a9cdbb5f120ca30250b2a5abd46cc5699c6c50aefc916f9bd22064cc"
+    },
+    {
+      "capture": "11.51.11",
+      "file": "cleanup-album-artists.png",
+      "group": "Overview and cleanup",
+      "caption": "Album artist cleanup preview with no proposed changes",
+      "original": "Screenshot 2026-10-22 at 11.51.11.png",
+      "sha256": "8ae87ef7c9e37ad2ca2e1c69525f75ec9715d9233391d907124504dffcd4e9f1"
+    },
+    {
+      "capture": "11.51.43",
+      "file": "cleanup-genre-labels.png",
+      "group": "Overview and cleanup",
+      "caption": "Exact genre-label replacement form before preparing its preview",
+      "original": "Screenshot 2026-10-22 at 11.51.43.png",
+      "sha256": "3ff4bc7fe01f1b43d7f7db201ca4b934b723f28715e2131be22a5c4c14f184f4"
+    },
+    {
+      "capture": "11.52.00",
+      "file": "settings-interface-light.png",
+      "group": "Settings",
+      "caption": "Light appearance with interface preferences and metadata export settings",
+      "original": "Screenshot 2026-10-22 at 11.52.00.png",
+      "sha256": "d1beb01a46d94a2368002e83de733a39d570053e35369a7d666902f11d76c3d4"
+    },
+    {
+      "capture": "11.52.06",
+      "file": "settings-sidebar-light.png",
+      "group": "Settings",
+      "caption": "Expanded sidebar shortcut visibility and ordering preferences",
+      "original": "Screenshot 2026-10-22 at 11.52.06.png",
+      "sha256": "884de908c1679c4bc3181f976fd25210105a12241d607993264034d382c3b083"
+    },
+    {
+      "capture": "11.52.26",
+      "file": "settings-export.png",
+      "group": "Settings",
+      "caption": "Metadata export and Change history settings",
+      "original": "Screenshot 2026-10-22 at 11.52.26.png",
+      "sha256": "589a8a3548ef31cda883031c8453dedbce65e2a151a850c4be0d4818db9a0fce"
+    },
+    {
+      "capture": "11.52.34",
+      "file": "settings-discovery.png",
+      "group": "Settings",
+      "caption": "1001 Albums, artist biography and album information switches",
+      "original": "Screenshot 2026-10-22 at 11.52.34.png",
+      "sha256": "2fb5e7318de2225788e9583a6e218a13312dd956698927599a39d0b7bc811a20"
+    },
+    {
+      "capture": "11.52.44",
+      "file": "settings-sources.png",
+      "group": "Settings",
+      "caption": "Online source switches including LRCLIB, with saved keys masked",
+      "original": "Screenshot 2026-10-22 at 11.52.44.png",
+      "sha256": "4a6b72ed3c4a7ebcff5cd94fbbf5758bf2ab862b98fdd02eb3e5a256d62cfcf2"
+    },
+    {
+      "capture": "11.52.53",
+      "file": "artist-biography.png",
+      "group": "Artists and albums",
+      "caption": "10cc artist biography with TheAudioDB attribution",
+      "original": "Screenshot 2026-10-22 at 11.52.53.png",
+      "sha256": "ac8af283ea7bf40514385e87d222fa4cfdb05942eba30ed1e0eee166704d1419"
+    },
+    {
+      "capture": "11.57.30",
+      "file": "deezer-import-url.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Public Deezer playlist URL before the explicit fetch",
+      "original": "Screenshot 2026-10-22 at 11.57.30.png",
+      "sha256": "29ee4d167e53955dcae551ec394b7ba41d99ef673874411f99f52a16f72e5b47"
+    },
+    {
+      "capture": "11.57.42",
+      "file": "deezer-import-columns.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Fetched 50-track Deezer snapshot with title, artist and duration mapped and Album left optional",
+      "original": "Screenshot 2026-10-22 at 11.57.42.png",
+      "sha256": "1a6eb4226dee9b013b00cb517ae9aa6fb1a074c0ff21b7dc24545ce97a60e2e9"
+    },
+    {
+      "capture": "11.57.49",
+      "file": "deezer-import-options.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Copy preferences, duration units and preview of fetched Deezer records",
+      "original": "Screenshot 2026-10-22 at 11.57.49.png",
+      "sha256": "9c1c9864bfdca80b102d6554d69e2e51f879fb2ff2644baecc917bbedf45fc10"
+    },
+    {
+      "capture": "11.58.02",
+      "file": "deezer-import-matches.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Two automatic matches and 48 unresolved source records with match explanations",
+      "original": "Screenshot 2026-10-22 at 11.58.02.png",
+      "sha256": "ac71fa651e8532180078157c8eb15784475cc91e386dc134321808bf68566abc"
+    },
+    {
+      "capture": "11.58.10",
+      "file": "deezer-import-choose-track.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Manual library-track comparison with title, performer and duration differences",
+      "original": "Screenshot 2026-10-22 at 11.58.10.png",
+      "sha256": "6547428bd0eb5bbfad0f77fdbe54c92335d4a8ee5fd380b51deba3ea0b3d10e1"
+    },
+    {
+      "capture": "11.58.32",
+      "file": "paused-imports.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Saved Deezer and CSV checkpoints with explicit Refresh library and resume controls",
+      "original": "Screenshot 2026-10-22 at 11.58.32.png",
+      "sha256": "25d0ff2510c71d92a03fd5daa531983af85a623fa6241149717fb0abef893baa"
+    }
+  ]
+}

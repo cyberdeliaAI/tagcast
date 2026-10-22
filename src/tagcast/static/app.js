@@ -45,6 +45,24 @@ const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"
 const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
+const libraryLoadingMessages = [
+  "Summoning your library from the void. Robes optional.",
+  "Convincing the cloud to give your music back…",
+  "Looking behind the digital sofa for your albums…",
+  "Counting your albums. No judgement. Mostly.",
+  "Untangling the world’s longest imaginary headphone cable…",
+  "Asking the server to stop humming and send the tracks…",
+  "Fetching your albums. Apparently ‘a few records’ means several thousand.",
+  "Waking up the cloud hamsters. One of them hit snooze.",
+];
+let libraryLoadingMessageIndex = -1;
+
+function nextLibraryLoadingMessage() {
+  libraryLoadingMessageIndex = libraryLoadingMessageIndex < 0
+    ? Math.floor(Math.random() * libraryLoadingMessages.length)
+    : (libraryLoadingMessageIndex + 1) % libraryLoadingMessages.length;
+  return libraryLoadingMessages[libraryLoadingMessageIndex];
+}
 
 function setLibraryNotice(visible) {
   libraryNotice.visible = visible;
@@ -1290,7 +1308,7 @@ async function loadLive(refresh = false) {
   state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
-  $("#library-loading-detail").textContent = refresh ? "Downloading a fresh copy of your collection. Large libraries can take a little while." : "Checking for changes and retrieving your collection. Large libraries can take a little while.";
+  $("#library-loading-detail").textContent = `${nextLibraryLoadingMessage()} ${refresh ? "Downloading a fresh copy of your collection. " : ""}Large libraries can take a little while.`;
   updateChrome(); render();
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
