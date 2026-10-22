@@ -386,7 +386,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   positions. Keep repeated and unavailable positions distinct using their original
   indices; never deduplicate or validate unavailable IDs as new additions. Drag handles
   show before/after insertion lines; Up/Down and Move to position provide keyboard/touch
-  and cross-page alternatives. Show at most 100 row details and retain only that page's
+  and cross-page alternatives. Search this draft by title/artist/album through loaded
+  server metadata, returning only original position IDs and at most 100 row details.
+  Apply matches to the current local permutation, preserving unsaved moves and hidden
+  positions. Result numbers, arrows, drag and Move to position use the complete draft.
+  Search never saves or reads remote state; reject late queries/pages and retain focus.
+  Show at most 100 row details and retain only that page's
   metadata, fetched from the loaded library without remote status reads. Focus/reveal
   the moved position. Save order is explicit and sends a complete index permutation
   plus the account/session/full playlist snapshot; recheck fresh native state, serialize
@@ -395,6 +400,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   stale snapshots, missing/duplicate indices and unchanged order. Cancel/Close discards
   local moves, navigation/library replacement invalidates late results, and uncertain
   sends cannot replay. No playback, queue, metadata history or music-file changes.
+- Playlist row removal reviews one original stored position and track ID, not a filtered
+  row index or every matching ID. Preserve repeats, unavailable positions, all other order
+  and playlist metadata. Bind to the full account/session snapshot, recheck native state,
+  serialize the tracks-only update without retries and verify the exact result. Limit to
+  10,000 stored positions; retain search/paging and leave library tracks and playback alone.
+- Playlist detail search filters title, artist and album across all loaded playlist positions
+  on the server, returning at most 100 row details. Preserve original active position numbers,
+  repeats, full totals/duration and full-playlist editing/playback; above 10,000 positions,
+  playback uses only the displayed result page. Search makes no remote library/status reads
+  or writes, preserves focus/history and rejects stale replies.
 - Playlist details show the duration of all active playlist positions from the loaded
   server library, including repeats across pages; flag missing durations explicitly.
   Playlist covers and the larger rounded-square artist-page photo open the existing

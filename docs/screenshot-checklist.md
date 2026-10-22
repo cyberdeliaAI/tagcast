@@ -1,6 +1,25 @@
 # Screenshot refresh checklist
 
-This capture round documents the interface prepared for Tagcast 0.50.0.
+## Current development round — 22 October 2026
+
+**50 original PNGs**, including six public Deezer import/pause captures, are indexed
+in [the dated inventory](screenshots/2026-10-22/README.md) with a SHA-256 manifest.
+All are 2560 × 1600 and copied byte for byte. Originals are untouched; the supplied
+Overview redaction is preserved. The README and current Wiki gallery use the new
+round, clearly labelled as a development/test interface ahead of the 0.70.2 desktop
+download. Earlier images remain for released-interface examples and missing views.
+
+This round covers the album/track tabs, lyrics review and Now playing, artist image
+comparison/biography, all Favourites tabs, playlist details/search/removal, the
+order editor with search, and separate Deezer URL/mapping/matching/choice/pause steps.
+It does not show a successful resume, final Deezer creation or ListenBrainz live
+success. Cleanup captures are empty previews or an unsubmitted form; earlier
+approved-running examples are retained. Importing these files made no iBroadcast
+requests or library writes. Media screenshots are updated separately and the ZIP rebuilt.
+
+## Earlier capture round — 16 October 2026
+
+This earlier capture round documents the interface prepared for Tagcast 0.50.0.
 Some screenshots still show the previous development version beside Settings;
 the original pixels are preserved.
 The supplied set contains **41 original PNGs captured on 16 October 2026**.
@@ -250,3 +269,11 @@ page boundaries, retained repetitions, cancellation and stale/uncertain saves.
 Saving must send one tracks-only update and confirm the exact order plus unchanged
 playlist metadata/artwork. Playback and its queue must remain intact. Use only mock
 writes; do not reorder the real user's library for screenshots.
+
+## Current gallery coverage
+
+The 22 October originals supply the editor tabs, lyrics, public URL import, paused
+imports and order-dialog search images requested in the earlier development
+checklists above. Those checklists remain behavioral QA guidance, not claims that
+every listed state was captured. See the dated inventory for the exact supplied
+states. No additional captures or live library writes are requested.

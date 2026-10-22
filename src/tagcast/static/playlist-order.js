@@ -5,6 +5,7 @@ const playlistOrder = {draft: null, generation: 0, focus: null, drag: null};
 
 function resetPlaylistOrder(restoreFocus = false) {
   const focus = playlistOrder.focus;
+  clearTimeout(playlistOrder.draft?.timer);
   playlistOrder.generation += 1; playlistOrder.draft = null; playlistOrder.drag = null;
   playlistOrder.focus = null;
   $("#playlist-order").close(); $("#playlist-order-content").innerHTML = "";
@@ -32,30 +33,36 @@ function openPlaylistOrder() {
     before: data.before.slice(), order: data.before.map((_, i) => i), rows: new Map(),
     details: state.details, session: state.connection.playback_session, generation: playlistOrder.generation,
     offset: Math.min(collectionsView.offset, Math.floor((data.before.length - 1) / 100) * 100),
-    request: 0, loading: false, busy: false, sent: false, error: "", message: "", move: null};
+    query: "", matches: null, request: 0, loading: false, busy: false, sent: false, error: "", message: "", move: null};
   playlistOrder.draft = draft;
+  $("#playlist-order-search").value = ""; syncSearchClearButtons();
   $("#playlist-order-title").textContent = data.name;
   $("#playlist-order").showModal(); loadPlaylistOrderPage();
+}
+
+function playlistOrderSources(d) {
+  return d.matches ? d.order.filter(source => d.matches.has(source)) : d.order;
 }
 
 function renderPlaylistOrder() {
   const d = playlistOrder.draft;
   if (!playlistOrderCurrent(d)) return;
   const disabled = d.loading || d.busy || d.sent;
-  const positions = d.order.slice(d.offset, d.offset + 100);
+  const sources = playlistOrderSources(d), positions = sources.slice(d.offset, d.offset + 100);
   const changes = d.order.filter((source, i) => source !== i).length;
   const moving = d.move === null ? null : d.rows.get(d.move);
   const moveForm = moving ? `<form id="playlist-order-move" class="playlist-order-move"><label class="field"><span>Move ${escapeHtml(moving.title)} to position</span><input name="position" type="number" min="1" max="${d.order.length}" step="1" required value="${d.order.indexOf(d.move) + 1}" aria-label="New playlist position"></label><button class="button small primary" ${disabled ? "disabled" : ""}>Move</button><button type="button" class="button small" data-order-move-cancel>Cancel move</button></form>` : "";
-  $("#playlist-order-content").innerHTML = `<p>${d.order.length} saved positions · ${changes ? `${changes} positions changed` : "Original order"}</p>${moveForm}${d.loading ? '<p class="operation-status muted" data-working="true">Loading playlist positions…</p>' : d.error && !d.sent ? '<button type="button" class="button small" data-order-retry>Retry reading positions</button>' : `<div class="playlist-order-table"><table class="album-tracks"><thead><tr><th aria-label="Move track"></th><th>#</th><th>Title / Artist</th><th>Actions</th></tr></thead><tbody>${positions.map((source, i) => {
+  $("#playlist-order-content").innerHTML = `<p>${d.order.length} saved positions · ${changes ? `${changes} positions changed` : "Original order"}</p>${d.query.trim() && d.matches ? `<p role="status">${sources.length} matching ${sources.length === 1 ? "position" : "positions"} · numbers refer to the complete playlist</p>` : ""}${moveForm}${d.loading ? '<p class="operation-status muted" data-working="true">Loading playlist positions…</p>' : d.error && !d.sent ? '<button type="button" class="button small" data-order-retry>Retry reading positions</button>' : `<div class="playlist-order-table"><table class="album-tracks"><thead><tr><th aria-label="Move track"></th><th>#</th><th>Title / Artist</th><th>Actions</th></tr></thead><tbody>${positions.map(source => {
     const track = d.rows.get(source);
     if (!track) return "";
-    const position = d.offset + i;
+    const position = d.order.indexOf(source);
     return `<tr data-order-row="${source}"><td><button type="button" class="playlist-order-handle" draggable="${!disabled}" data-order-handle="${source}" aria-label="Move ${escapeHtml(track.title)}, position ${position + 1} of ${d.order.length}" aria-describedby="playlist-order-hint" title="Drag to move; use ↑ / ↓ with the keyboard" ${disabled ? "disabled" : ""}>⠿</button></td><td>${position + 1}</td><td><strong>${escapeHtml(track.title)}</strong><small>${track.available ? escapeHtml(track.artist) : `Track ID ${escapeHtml(track.id)} · Retained in playlist`}${source !== position ? ` · Was #${source + 1}` : ""}</small></td><td><button type="button" class="text-action" data-order-move="${source}" ${disabled ? "disabled" : ""}>Move to position…</button></td></tr>`;
-  }).join("")}</tbody></table></div>`}<div class="pagination"><button type="button" class="button small" data-order-page="-100" ${disabled || !d.offset ? "disabled" : ""}>← Previous</button><span>${Math.floor(d.offset / 100) + 1} / ${Math.ceil(d.order.length / 100)}</span><button type="button" class="button small" data-order-page="100" ${disabled || d.offset + 100 >= d.order.length ? "disabled" : ""}>Next →</button></div>`;
+  }).join("") || '<tr><td colspan="4" class="muted">No playlist positions match this search.</td></tr>'}</tbody></table></div>`}<div class="pagination"><button type="button" class="button small" data-order-page="-100" ${disabled || !d.offset ? "disabled" : ""}>← Previous</button><span>${Math.floor(d.offset / 100) + 1} / ${Math.max(1, Math.ceil(sources.length / 100))}</span><button type="button" class="button small" data-order-page="100" ${disabled || d.offset + 100 >= sources.length ? "disabled" : ""}>Next →</button></div>`;
   const status = $("#playlist-order-status");
   status.textContent = d.error || d.message;
   status.classList.toggle("error-text", Boolean(d.error));
   status.classList.toggle("operation-status", d.busy); status.dataset.working = String(d.busy);
+  $("#playlist-order-search").disabled = d.busy || d.sent; syncSearchClearButtons();
   $("#playlist-order-save").disabled = disabled || Boolean(d.error) || !playlistOrderChanged(d);
   for (const button of $("#playlist-order").querySelectorAll("[data-order-close]")) button.disabled = d.busy;
   $("#playlist-order-cancel").textContent = d.sent ? "Close" : "Cancel";
@@ -66,11 +73,40 @@ function renderPlaylistOrder() {
   }
 }
 
+async function searchPlaylistOrder() {
+  const d = playlistOrder.draft;
+  if (!playlistOrderCurrent(d) || d.busy || d.sent) return;
+  const query = d.query, request = ++d.request;
+  d.loading = true; d.error = ""; renderPlaylistOrder();
+  try {
+    const response = await api(`/api/playlist/order?${new URLSearchParams({playlist: d.id,
+      before_token: d.before_token, before_name: d.name, session: d.session, q: query})}`);
+    if (!playlistOrderCurrent(d) || request !== d.request || query !== d.query) return;
+    if (!Array.isArray(response.positions) || response.positions.length > d.order.length
+        || new Set(response.positions).size !== response.positions.length
+        || response.positions.some(p => !Number.isInteger(p) || p < 0 || p >= d.order.length)) {
+      throw Error("Playlist search changed. Close and reopen the order editor.");
+    }
+    d.matches = new Set(response.positions); d.loading = false;
+    loadPlaylistOrderPage();
+  } catch (error) {
+    if (playlistOrderCurrent(d) && request === d.request) {
+      d.loading = false; d.error = error.message; d.rows.clear(); renderPlaylistOrder();
+    }
+  }
+}
+
 async function loadPlaylistOrderPage() {
   const d = playlistOrder.draft;
   if (!playlistOrderCurrent(d) || d.busy || d.sent) return;
-  const positions = d.order.slice(d.offset, d.offset + 100);
-  if (positions.every(p => d.rows.has(p))) { renderPlaylistOrder(); return; }
+  if (d.query.trim() && !d.matches) return searchPlaylistOrder();
+  const sources = playlistOrderSources(d);
+  d.offset = Math.min(d.offset, Math.max(0, Math.ceil(sources.length / 100) - 1) * 100);
+  const positions = sources.slice(d.offset, d.offset + 100);
+  if (positions.every(p => d.rows.has(p))) {
+    d.loading = false; d.error = "";
+    d.rows = new Map(positions.map(p => [p, d.rows.get(p)])); renderPlaylistOrder(); return;
+  }
   const request = ++d.request;
   d.loading = true; d.error = ""; renderPlaylistOrder();
   try {
@@ -96,7 +132,7 @@ function movePlaylistOrder(source, destination) {
   if (from < 0 || from === destination) return;
   const title = d.rows.get(source)?.title || "Track";
   d.order.splice(from, 1); d.order.splice(destination, 0, source);
-  d.offset = Math.floor(destination / 100) * 100; d.move = null; d.focusSource = source;
+  d.offset = Math.floor(playlistOrderSources(d).indexOf(source) / 100) * 100; d.move = null; d.focusSource = source;
   d.message = `Moved ${title} to position ${destination + 1}. Changes are not saved yet.`;
   playlistOrder.drag = null; loadPlaylistOrderPage();
 }
@@ -149,6 +185,16 @@ function clearPlaylistOrderDrop() {
   }
 }
 
+document.addEventListener("input", event => {
+  if (event.target.id !== "playlist-order-search") return;
+  const d = playlistOrder.draft;
+  if (!playlistOrderCurrent(d) || d.busy || d.sent) return;
+  clearTimeout(d.timer); d.request += 1; d.query = event.target.value;
+  d.matches = null; d.offset = 0; d.move = null; d.error = ""; d.loading = true;
+  delete d.focusSource; playlistOrder.drag = null; renderPlaylistOrder();
+  d.timer = setTimeout(() => { if (playlistOrderCurrent(d)) loadPlaylistOrderPage(); }, 300);
+});
+
 document.addEventListener("click", event => {
   const target = event.target;
   if (target.closest("[data-playlist-reorder]")) return openPlaylistOrder();
@@ -157,7 +203,7 @@ document.addEventListener("click", event => {
   const d = playlistOrder.draft;
   if (!playlistOrderCurrent(d) || d.loading || d.busy || d.sent) return;
   const page = target.closest("[data-order-page]"), move = target.closest("[data-order-move]");
-  if (page) { d.offset = Math.max(0, Math.min(Math.floor((d.order.length - 1) / 100) * 100, d.offset + Number(page.dataset.orderPage))); d.move = null; loadPlaylistOrderPage(); }
+  if (page) { d.offset = Math.max(0, Math.min(Math.max(0, Math.ceil(playlistOrderSources(d).length / 100) - 1) * 100, d.offset + Number(page.dataset.orderPage))); d.move = null; loadPlaylistOrderPage(); }
   if (move) {
     d.move = Number(move.dataset.orderMove); renderPlaylistOrder();
     $("#playlist-order-move input")?.focus({preventScroll: true}); $("#playlist-order-move input")?.select?.();
