@@ -99,6 +99,38 @@ class Lyrics:
         self.failures = {}
         self.last_lookup = 0
 
+    def _import_scope(self, body, library):
+        """Bind each individually reviewed import write to one complete displayed album."""
+        if "album_scope" not in body:
+            return
+        scope = body["album_scope"]
+        albums = scope.get("albums") if isinstance(scope, dict) else None
+        if not isinstance(albums, list) or not 1 <= len(albums) <= 20 \
+                or type(scope.get("combine_sets")) is not bool \
+                or scope["combine_sets"] != bool(library.combine_sets):
+            raise ConflictError("The album import scope changed. Reopen the import.")
+        ids = [a.get("id") if isinstance(a, dict) else None for a in albums]
+        if any(not isinstance(i, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", i) for i in ids) \
+                or len(set(ids)) != len(ids):
+            raise LibraryError("Choose one complete album for lyrics import.")
+        library._browse_index("genres")
+        groups = {library._browse_albums.get(int(i)) for i in ids}
+        if None in groups or len(groups) != 1 \
+                or any(str(i) not in ids for i, group in library._browse_albums.items()
+                       if group in groups):
+            raise ConflictError("The displayed album changed. Reopen the lyrics import.")
+        actual = []
+        for album_id in ids:
+            album = library.album_view(int(album_id))
+            actual.append({"id": album_id, "name": album["name"], "artist": album["artist"],
+                           "tracks": sorted(({key: t[key] for key in ("id", "title", "artist", "track")}
+                                             for t in album["tracks"]), key=lambda t: int(t["id"]))})
+        tracks = [t for a in actual for t in a["tracks"]]
+        if not 1 <= len(tracks) <= 100 or body.get("track_id") not in {t["id"] for t in tracks}:
+            raise LibraryError("Import lyrics for up to 100 tracks of this album.")
+        if albums != actual:
+            raise ConflictError("Album tracks or their matching details changed. Reopen the import.")
+
     def _selection(self, body):
         studio = self.studio
         client = studio._require_client()
@@ -106,6 +138,7 @@ class Lyrics:
         track_id = body.get("track_id")
         if not library or body.get("session") != studio.playback_session or not body.get("session"):
             raise ConflictError("The account or library changed. Reopen the track.")
+        self._import_scope(body, library)
         if not isinstance(track_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", track_id):
             raise LibraryError("Choose one track for lyrics.")
         album_id = library.active_track_album(int(track_id))
@@ -348,12 +381,19 @@ class Lyrics:
 
     def prepare(self, body):
         after = lyric_text(body.get("lyrics"))
+        if "album_scope" in body and not after.strip():
+            raise LibraryError("Import nonempty lyrics; remove lyrics through the individual track review.")
         with self.lock:
             with self.studio.lock:
                 selection = self._selection(body)
                 if not self.studio.premium:
                     raise LibraryError("Saving lyrics to iBroadcast requires Premium.")
             rows, before = self._userdata(selection[0], body["track_id"])
+            if "album_scope" in body:
+                if type(body.get("replace_existing")) is not bool:
+                    raise LibraryError("Choose whether to replace existing lyrics for this track.")
+                if before.strip() and not body["replace_existing"]:
+                    raise ConflictError("Existing lyrics are kept unless replacement is explicitly reviewed.")
             if body.get("before_token") != self._token(selection, body, rows):
                 self.native.pop(body["track_id"], None)
                 self._native_forget(selection)

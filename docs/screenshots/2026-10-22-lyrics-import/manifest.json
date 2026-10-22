@@ -1,0 +1,38 @@
+{
+  "capture_date": "2026-10-22",
+  "dimensions": [
+    2560,
+    1600
+  ],
+  "availability": "Unreleased album lyrics import on main; not included in 0.75.0 downloads.",
+  "images": [
+    {
+      "capture": "22.26.26",
+      "file": "lyrics-import-menu.png",
+      "caption": "Open Import lyrics from the album More menu",
+      "original": "Screenshot 2026-10-22 at 22.26.26.png",
+      "sha256": "c448f002b2dcce64e4697b14c897613a139f9eb5a7966e7a2aeb5d16e7957b67"
+    },
+    {
+      "capture": "22.26.52",
+      "file": "lyrics-import-matching.png",
+      "caption": "Album tracks on the left and LRC/TXT files on the right, with ten links and one track without an import",
+      "original": "Screenshot 2026-10-22 at 22.26.52.png",
+      "sha256": "62ffd4fa3efa69c2e3e886314e2200c3890dcc2c58ea6ed38e71fb379f9d4b6b"
+    },
+    {
+      "capture": "22.27.16",
+      "file": "lyrics-import-review.png",
+      "caption": "Review ready before saving, with Before / After disclosures and the explicit Save reviewed lyrics button",
+      "original": "Screenshot 2026-10-22 at 22.27.16.png",
+      "sha256": "1567dac440adeeff3cbb18ffd48b179e37d7aea32eba8727602c305b08d40d43"
+    },
+    {
+      "capture": "22.27.23",
+      "file": "lyrics-import-saving.png",
+      "caption": "Save in progress: the first track is confirmed, the second is being checked and later tracks have not been sent",
+      "original": "Screenshot 2026-10-22 at 22.27.23.png",
+      "sha256": "42a93650dbee0f06242977ab91340af22e8999b6d3bf3b3eb48ee3f0e1b89b8c"
+    }
+  ]
+}
