@@ -1,6 +1,6 @@
 # Development screenshots — 22 October 2026
 
-50 contributor-supplied original PNGs, each 2560 × 1600 pixels, copied byte for byte.
+61 contributor-supplied original PNGs, each 2560 × 1600 pixels, copied byte for byte.
 Originals in Pictures/Screenshots are untouched. No resizing, cropping or redaction
 has been applied; the contributor's Overview redaction is preserved.
 
@@ -10,10 +10,16 @@ not establish feature availability. Search and row removal in playlists, and sea
 inside the order editor, are shown here as development previews.
 
 The six Deezer images document URL input, a fetched 50-record snapshot, matching,
-manual alternatives and a paused checkpoint. They do not show final playlist
-creation or a completed resume. The source remains Deezer; ListenBrainz live-fetch
+manual alternatives and a paused checkpoint. A follow-up shows the resumed import
+with its retained manual choice. They do not show final playlist creation. The source remains Deezer; ListenBrainz live-fetch
 success is not established by these images. Cleanup captures show empty previews
 or an unsubmitted replacement form, not newly executed cleanup writes.
+
+Follow-up captures also show playlist search results, a single-occurrence removal
+review, a full 266-track replacement review, and original/moved/checking/result
+states of playlist reordering. The replacement review is not a text-only edit;
+the checking image alone does not establish a confirmed save. Album captures show
+the explicit lyrics check, completed labels and the read-only native lyrics viewer.
 
 Album art, lyrics, provider text and iBroadcast branding retain their respective
 owners' rights. TheAudioDB and LRCLIB attributions visible in the captures are
@@ -80,3 +86,14 @@ links to this round separately from those older examples.
 | 11.58.02 | [deezer-import-matches.png](deezer-import-matches.png) | Two automatic matches and 48 unresolved source records with match explanations |
 | 11.58.10 | [deezer-import-choose-track.png](deezer-import-choose-track.png) | Manual library-track comparison with title, performer and duration differences |
 | 11.58.32 | [paused-imports.png](paused-imports.png) | Saved Deezer and CSV checkpoints with explicit Refresh library and resume controls |
+| 12.21.41 | [playlist-search-results.png](playlist-search-results.png) | Playlist search for Radio Ga Ga with one match at original position 33 |
+| 12.21.49 | [playlist-remove-review.png](playlist-remove-review.png) | Review removing one playlist occurrence while keeping the library track and play queue |
+| 12.22.26 | [album-lyrics-menu.png](album-lyrics-menu.png) | Explicit Check album lyrics action in the album More menu |
+| 12.22.33 | [album-lyrics-checked.png](album-lyrics-checked.png) | Completed seven-track album lyrics check with known Lyrics labels |
+| 12.22.39 | [lyrics-viewer.png](lyrics-viewer.png) | Read-only lyrics viewer showing text saved in iBroadcast |
+| 12.23.28 | [playlist-replacement-review.png](playlist-replacement-review.png) | Full playlist replacement review retaining 266 selected tracks before saving |
+| 12.24.50 | [playlist-order-original.png](playlist-order-original.png) | Original 266-position order with separate search, paging, Save order and Cancel controls |
+| 12.25.01 | [playlist-order-moved.png](playlist-order-moved.png) | Unsaved move of Over De Muur from position 3 to position 1 with three changed positions |
+| 12.25.07 | [playlist-order-checking.png](playlist-order-checking.png) | Playlist order save during the iBroadcast checking phase with editing controls disabled |
+| 12.25.54 | [playlist-order-result.png](playlist-order-result.png) | Playlist details after reordering with Over De Muur shown first |
+| 12.27.19 | [deezer-import-resumed.png](deezer-import-resumed.png) | Resumed Deezer import with one retained manual choice, two automatic matches and 47 unresolved records |

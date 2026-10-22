@@ -404,6 +404,94 @@
       "caption": "Saved Deezer and CSV checkpoints with explicit Refresh library and resume controls",
       "original": "Screenshot 2026-10-22 at 11.58.32.png",
       "sha256": "25d0ff2510c71d92a03fd5daa531983af85a623fa6241149717fb0abef893baa"
+    },
+    {
+      "capture": "12.21.41",
+      "file": "playlist-search-results.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist search for Radio Ga Ga with one match at original position 33",
+      "original": "Screenshot 2026-10-22 at 12.21.41.png",
+      "sha256": "1eba66f0ff4c355dbd5976c9627d9016fc33ddb19f94418a5700bcf0cfd62b34"
+    },
+    {
+      "capture": "12.21.49",
+      "file": "playlist-remove-review.png",
+      "group": "Playlists and ordering",
+      "caption": "Review removing one playlist occurrence while keeping the library track and play queue",
+      "original": "Screenshot 2026-10-22 at 12.21.49.png",
+      "sha256": "b86a957da281b402a5ca4e21d5de02b2d1e3119b7e2148e74ea4405db9111308"
+    },
+    {
+      "capture": "12.22.26",
+      "file": "album-lyrics-menu.png",
+      "group": "Editing and lyrics",
+      "caption": "Explicit Check album lyrics action in the album More menu",
+      "original": "Screenshot 2026-10-22 at 12.22.26.png",
+      "sha256": "c1779001359ddd57ce3ddec390a633dbe0427ec023574d00a83f44e88c8745e0"
+    },
+    {
+      "capture": "12.22.33",
+      "file": "album-lyrics-checked.png",
+      "group": "Editing and lyrics",
+      "caption": "Completed seven-track album lyrics check with known Lyrics labels",
+      "original": "Screenshot 2026-10-22 at 12.22.33.png",
+      "sha256": "61bce121c235f748f939e7248958d2ba67836cb61eb75b8abc7e619a7977a7d6"
+    },
+    {
+      "capture": "12.22.39",
+      "file": "lyrics-viewer.png",
+      "group": "Editing and lyrics",
+      "caption": "Read-only lyrics viewer showing text saved in iBroadcast",
+      "original": "Screenshot 2026-10-22 at 12.22.39.png",
+      "sha256": "c61016d244d8ac89a60cccaba062303c0ac64cfaad85106b919889f268fc29f8"
+    },
+    {
+      "capture": "12.23.28",
+      "file": "playlist-replacement-review.png",
+      "group": "Playlists and ordering",
+      "caption": "Full playlist replacement review retaining 266 selected tracks before saving",
+      "original": "Screenshot 2026-10-22 at 12.23.28.png",
+      "sha256": "4d634a8e9fc0632c4d6389e856543606484cc26a34b85e7ec264b0c34b73a280"
+    },
+    {
+      "capture": "12.24.50",
+      "file": "playlist-order-original.png",
+      "group": "Playlists and ordering",
+      "caption": "Original 266-position order with separate search, paging, Save order and Cancel controls",
+      "original": "Screenshot 2026-10-22 at 12.24.50.png",
+      "sha256": "530584b98d6c34cfa0a3fdf940b0efea43fec60d92a8c230f1131e3bc80f8db4"
+    },
+    {
+      "capture": "12.25.01",
+      "file": "playlist-order-moved.png",
+      "group": "Playlists and ordering",
+      "caption": "Unsaved move of Over De Muur from position 3 to position 1 with three changed positions",
+      "original": "Screenshot 2026-10-22 at 12.25.01.png",
+      "sha256": "454cccc6ba04a783ebcc6df7ade334d1c285b5dcf8aa9b5590de96f88e01b595"
+    },
+    {
+      "capture": "12.25.07",
+      "file": "playlist-order-checking.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist order save during the iBroadcast checking phase with editing controls disabled",
+      "original": "Screenshot 2026-10-22 at 12.25.07.png",
+      "sha256": "296d0cf59e9aefbaddfd4d0a5df5eb41338ec59b0262772e7f49d2c1b2fafd56"
+    },
+    {
+      "capture": "12.25.54",
+      "file": "playlist-order-result.png",
+      "group": "Playlists and ordering",
+      "caption": "Playlist details after reordering with Over De Muur shown first",
+      "original": "Screenshot 2026-10-22 at 12.25.54.png",
+      "sha256": "174972335ba65524b970128848e911141e694545abb4a1ce44f5e7ce36c07d5a"
+    },
+    {
+      "capture": "12.27.19",
+      "file": "deezer-import-resumed.png",
+      "group": "Public Deezer import and pause",
+      "caption": "Resumed Deezer import with one retained manual choice, two automatic matches and 47 unresolved records",
+      "original": "Screenshot 2026-10-22 at 12.27.19.png",
+      "sha256": "574ce047547e67ffaecad478a577d2744d136c7c2764f612e40299a4cca91c3f"
     }
   ]
 }
