@@ -10,6 +10,12 @@ Fix metadata, find covers and artist images, review your changes, then save them
 to iBroadcast. Use the **Electron desktop app** on macOS, Windows or Linux, or
 run Tagcast in your browser with **Python**. Both share the same editor and player.
 
+**Why Electron?**
+
+Electron gives Tagcast a consistent desktop environment across macOS, Windows and
+Linux. This helps us focus on reliable playback and safe metadata editing, while
+keeping the interface shared with the browser version.
+
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
