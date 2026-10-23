@@ -74,7 +74,9 @@ Every extracted application check starts the actual app with temporary Tagcast
 settings and an isolated Chromium profile, outside the checkout in a path with
 spaces. It checks shared assets, a disconnected account, sandboxing, context
 isolation, owned-server shutdown and CLI help/version. macOS signatures are
-verified and SHA-256 companions written after a successful check. These checks
+verified and SHA-256 companions written after a successful check. PR builds retain
+that ad-hoc integrity signature without a signing certificate or key; certificate
+signing is not enabled by this override. These checks
 never sign in to a live account or issue iBroadcast writes.
 
 ## Earlier downloads
