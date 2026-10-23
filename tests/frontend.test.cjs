@@ -8623,3 +8623,37 @@ test('discard confirmation preserves the import when declined and closes it on e
   assert.equal(p.run('albumLyricsImport'),null);
   assert.equal(p.nodes.get('#lyrics-import').open,false);
 });
+
+test("import duration presentation follows mapped units without changing source records", () => {
+  const p = page();
+  p.run('csvImport.durationUnit="seconds"');
+  assert.equal(p.run('csvSourceDuration("203.0")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("203,5")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("3:23")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("not a duration")'), "not a duration");
+  assert.equal(p.run('csvSourceDuration("0")'), "0");
+  assert.equal(p.run('csvSourceDuration("86401")'), "86401");
+  p.run('csvImport.durationUnit="milliseconds"');
+  assert.equal(p.run('csvSourceDuration("203000")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("3:23")'), "3:23");
+  p.run('globalThis.durationRow={position:0,line:2,source:{title:"Song",artist:"Artist",album:"",duration:"203000",year:0,warnings:[]}}');
+  assert.match(p.run('csvSource(durationRow)'), / · 3:23/);
+  assert.equal(p.run('durationRow.source.duration'), "203000");
+});
+
+test("empty cleanup previews omit selection and paging while preserving report actions", async () => {
+  const p = livePage(); await settle();
+  p.nodes.set("#cleanup-selected", null);
+  p.run('cleanupView.data={id:"empty",state:"preview",category:"genres",albums:0,tracks:0,groups:[],counts:{},batch_tracks:200,batch_albums:20}; renderCleanup()');
+  let html = p.nodes.get('#cleanup-content').innerHTML;
+  assert.match(html, /No changes found for this preview/);
+  assert.match(html, /id="cleanup-export"/);
+  assert.doesNotMatch(html, /data-cleanup-page|id="cleanup-select-all"|id="cleanup-approved"|id="cleanup-start"/);
+  p.run('cleanupView.data.albums=1; cleanupView.data.tracks=1; renderCleanup()');
+  html = p.nodes.get('#cleanup-content').innerHTML;
+  assert.match(html, /id="cleanup-approved"/);
+  assert.doesNotMatch(html, /data-cleanup-page/);
+  p.run('cleanupView.data.albums=26; renderCleanup()');
+  assert.match(p.nodes.get('#cleanup-content').innerHTML, /data-cleanup-page="25"/);
+  assert.match(p.nodes.get('#cleanup-content').innerHTML, /1 \/ 2/);
+});

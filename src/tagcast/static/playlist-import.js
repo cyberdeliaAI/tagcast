@@ -269,16 +269,23 @@ function csvTrackDetails(track) {
 }
 
 function csvImportSummary(summary, omittedUnresolved = 0) {
-  return `<p class="csv-import-summary">${summary.automatic} automatic · ${summary.manual} manually chosen · <strong>${summary.unresolved} unresolved${omittedUnresolved ? " (left out)" : ""}</strong> · ${summary.skipped} skipped</p><p class="muted">${summary.unique} distinct tracks. ${summary.duplicates} repeated selections will be kept once, in their first ${csvInputLabel()} position. ${summary.blank_records} blank ${csvInputLabel()} records omitted.</p>`;
+  return `<p class="csv-import-summary">${summary.automatic} automatic · ${summary.manual} manually chosen · <strong>${summary.unresolved} unresolved${omittedUnresolved ? " (left out)" : ""}</strong> · ${summary.skipped} skipped</p><p class="muted">${summary.unique} distinct ${summary.unique === 1 ? "track" : "tracks"}. ${summary.duplicates} repeated selections will be kept once, in their first ${csvInputLabel()} position. ${summary.blank_records} blank ${csvInputLabel()} records omitted.</p>`;
 }
 
 function csvImportPagination(total, offset, kind) {
   return `<div class="pagination"><button type="button" class="button small" data-csv-page="${kind}" data-offset="${Math.max(0, offset - 50)}" ${offset === 0 ? "disabled" : ""}>← Previous</button><span>${total ? offset + 1 : 0}–${Math.min(offset + 50, total)} of ${total}</span><button type="button" class="button small" data-csv-page="${kind}" data-offset="${offset + 50}" ${offset + 50 >= total ? "disabled" : ""}>Next →</button></div>`;
 }
 
+// Presentation only: keep the original mapped value and matching decisions untouched.
+function csvSourceDuration(value) {
+  const raw = String(value || ""), numeric = /^\d+(?:[.,]\d+)?$/.test(raw.trim());
+  const seconds = numeric ? Number(raw.replace(",", ".")) / (csvImport.durationUnit === "milliseconds" ? 1000 : 1) : 0;
+  return seconds > 0 && seconds <= 86400 ? trackDuration(seconds) : raw;
+}
+
 function csvSource(row) {
   const source = row.source;
-  return `<div class="csv-source"><strong>${csvImport.fileData?.origin ? `Playlist track ${row.position + 1}:` : `CSV ${row.position + 1} (line ${row.line}):`} ${escapeHtml(source.title || "Missing title")}</strong><span>${escapeHtml(source.artist || "Missing artist")}</span><small>${escapeHtml(source.album)}${source.duration ? ` · ${escapeHtml(source.duration)}` : ""}${source.year ? ` · ${escapeHtml(source.year)}` : ""}</small>${source.warnings.map(w => `<p class="warn-box">${escapeHtml(w)}</p>`).join("")}</div>`;
+  return `<div class="csv-source"><strong>${csvImport.fileData?.origin ? `Playlist track ${row.position + 1}:` : `CSV ${row.position + 1} (line ${row.line}):`} ${escapeHtml(source.title || "Missing title")}</strong><span>${escapeHtml(source.artist || "Missing artist")}</span><small>${escapeHtml(source.album)}${source.duration ? ` · ${escapeHtml(csvSourceDuration(source.duration))}` : ""}${source.year ? ` · ${escapeHtml(source.year)}` : ""}</small>${source.warnings.map(w => `<p class="warn-box">${escapeHtml(w)}</p>`).join("")}</div>`;
 }
 
 function csvMatchReasons(row) {
