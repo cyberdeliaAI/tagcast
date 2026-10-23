@@ -26,7 +26,7 @@ overviews and better narrow-window playback and keyboard focus.
 
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
-![Tagcast 0.80.0 album page showing Deodato’s Prelude and the compact player](docs/screenshots/2026-10-23-album/album-details.png)
+![Tagcast 0.80.0 album page showing Ananda Shankar, multiple genres, ratings, album information and the compact player](docs/screenshots/2026-10-23-album/album-details-ananda-shankar.png)
 
 *Tagcast 0.80.0 — album details and compact player, captured on 23 October 2026.*
 
