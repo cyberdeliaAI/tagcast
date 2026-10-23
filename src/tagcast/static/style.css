@@ -126,13 +126,13 @@ body.busy,body.busy *{cursor:progress!important}
 
 /* ---- artwork dialog -------------------------------------------------------- */
 .artwork-dialog{width:min(860px,96vw)}
-.art-compare{display:flex;align-items:center;gap:22px;margin:18px 0 6px}
+.art-compare{display:flex;align-items:flex-start;gap:22px;margin:18px 0 6px}
 .art-compare figure{margin:0;flex:1;max-width:300px}
-.art-compare figcaption{font-size:9px;letter-spacing:1.6px;color:var(--palette-muted,#8a9683);font-weight:600;margin-bottom:8px;text-transform:uppercase}
+.art-compare figcaption{font-size:9px;letter-spacing:1.6px;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase}
 .art-compare img,.art-empty{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;background:var(--palette-tint,#eef1ea)}
 .art-empty{display:grid;place-items:center;color:var(--palette-muted,#647068);font-size:12px;border:1px dashed var(--palette-line,#cfd8c8)}
 .art-compare small{display:block;font-size:11px;color:var(--muted);margin-top:7px;min-height:16px}
-.art-arrow{font-size:24px;color:var(--palette-muted,#9cae8f)}
+.art-arrow{align-self:center;font-size:24px;color:var(--palette-muted,#9cae8f)}
 .art-heading{font-size:13px;margin:22px 0 10px}
 .art-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
 .art-tile{border:2px solid transparent;border-radius:8px;padding:0;background:var(--palette-surface,#fff);overflow:hidden;text-align:left}
