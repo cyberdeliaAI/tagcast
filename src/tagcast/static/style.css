@@ -362,6 +362,11 @@ body.has-player main{padding-bottom:80px}
 .album-tracks small{display:block;color:var(--muted);margin-top:5px;font-size:11px}
 .disc-icons{display:inline-flex;align-items:center;gap:3px;vertical-align:-3px}.disc-icons svg{width:15px;height:15px;fill:currentColor;fill-opacity:.15;fill-rule:evenodd;stroke:currentColor;stroke-width:1.2}.disc-icons small{margin-left:3px;font-size:inherit}
 .track-open{border:0;background:none;padding:0;color:inherit;text-align:left;font:inherit}.track-open:hover{color:var(--green);text-decoration:underline}.track-results .track-number{width:52px}.track-results .track-year{width:70px;color:var(--muted);font-variant-numeric:tabular-nums}@media(max-width:760px){.track-results .track-year{display:none}}
+/* Keep narrow track searches readable without widening the page or other track lists. */
+#tracks-list{max-width:100%;overflow-x:auto;scroll-padding-inline:8px}
+#tracks-list:focus-visible{outline:3px solid var(--palette-focus,#759345);outline-offset:3px}
+#tracks-list .track-results{min-width:680px}
+#tracks-list .track-results strong{overflow-wrap:break-word}
 .trash-check{margin:0 8px 0 0;accent-color:var(--green);vertical-align:middle}.album-tracks.trash-mode .track-number{width:104px}.trash-bar{margin:0 0 14px}.trash-row{font-size:12px;margin:7px 0}
 .album-tracks tr.disc-row td{padding:20px 16px 8px;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
 .album-tracks tr.disc-gap td{height:32px;padding:0;background:var(--paper);border-left:hidden;border-right:hidden}
