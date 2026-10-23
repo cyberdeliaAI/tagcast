@@ -943,6 +943,7 @@ body.help-open{overflow:hidden}
 .lyrics-import-choice { display: block; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; margin-bottom: 8px; }
 .lyrics-import-row .lyrics-import-choice { margin-bottom: 0; }
 .lyrics-import-choice small { display: block; margin-top: 4px; font-weight: normal; }
+.lyrics-import-dialog textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.6; color: var(--ink); background: var(--palette-surface,#fff); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
 .lyrics-import-choice[aria-pressed="true"] { outline: 2px solid var(--green); outline-offset: -2px; }
 .lyrics-import-review { border-top: 1px solid var(--line); padding: 16px 0; }
 .lyrics-import-review .lyrics-text { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
