@@ -72,7 +72,8 @@ def main():
     args = parser.parse_args()
     info = release_info()
     npm_version = info["tag"][1:]
-    if json.loads((ROOT / "electron/package.json").read_text())["version"] != npm_version:
+    package = json.loads((ROOT / "electron/package.json").read_text())
+    if package["version"] != npm_version:
         parser.error("Electron and Python versions must match")
     npm = shutil.which("npm.cmd" if sys.platform == "win32" else "npm")
     if not npm:
@@ -88,6 +89,9 @@ def main():
     node = shutil.which("node")
     subprocess.run([node, "node_modules/electron/install.js"], check=True, cwd=ROOT / "electron")
     env = dict(os.environ, CSC_IDENTITY_AUTO_DISCOVERY="false")
+    if sys.platform == "darwin" and package["build"]["mac"].get("identity") == "-":
+        # Ad-hoc signing uses no certificate and must also seal PR builds after hardening.
+        env["CSC_FOR_PULL_REQUEST"] = "true"
     subprocess.run([npm, "run", "pack"], check=True,
                    cwd=ROOT / "electron", env=env)
     directory = unpacked_app()

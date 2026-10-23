@@ -2923,6 +2923,28 @@ test("Tracks searches every track by title, artist, album or composer and opens 
   assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /class="found"/, "Opened another way, nothing is marked");
 });
 
+test("Tracks only adds a scroll-region Tab stop when it overflows, without moving focus", async () => {
+  const p = page(); await settle();
+  await p.nodes.get("#show-tracks").emit("click");
+  const list = p.nodes.get("#tracks-list"), search = p.nodes.get("#tracks-search");
+  search.focus();
+  const requests = p.requests.length, hash = p.location.hash;
+  for (const [width, content, expected] of [[365, 680, "0"], [921, 921, "-1"],
+                                          [474, 680, "0"], [365, 365, "-1"],
+                                          [0, 680, "-1"]]) {
+    list.clientWidth = width; list.scrollWidth = content;
+    p.run("renderTrackSearch()");
+    assert.equal(list.getAttribute("tabindex"), expected);
+    assert.equal(p.run("document.activeElement"), search);
+  }
+  list.focus(); list.clientWidth = list.scrollWidth = 921;
+  p.run("updateTrackSearchScrollFocus()");
+  assert.equal(list.getAttribute("tabindex"), "-1");
+  assert.equal(p.run("document.activeElement"), list, "Resize must not steal existing focus");
+  assert.equal(p.requests.length, requests, "Focus updates make no requests");
+  assert.equal(p.location.hash, hash, "Focus updates do not navigate");
+});
+
 test("a connected library is searched by the server, and a found track plays its album from there", async () => {
   const storage = {};
   const p = page({storage});
@@ -8600,4 +8622,56 @@ test('discard confirmation preserves the import when declined and closes it on e
   p.run('confirm=()=>true; closeAlbumLyricsImport()');
   assert.equal(p.run('albumLyricsImport'),null);
   assert.equal(p.nodes.get('#lyrics-import').open,false);
+});
+
+test("import duration presentation follows mapped units without changing source records", () => {
+  const p = page();
+  p.run('csvImport.durationUnit="seconds"');
+  assert.equal(p.run('csvSourceDuration("203.0")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("203,5")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("3:23")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("not a duration")'), "not a duration");
+  assert.equal(p.run('csvSourceDuration("0")'), "0");
+  assert.equal(p.run('csvSourceDuration("86401")'), "86401");
+  p.run('csvImport.durationUnit="milliseconds"');
+  assert.equal(p.run('csvSourceDuration("203000")'), "3:23");
+  assert.equal(p.run('csvSourceDuration("3:23")'), "3:23");
+  p.run('globalThis.durationRow={position:0,line:2,source:{title:"Song",artist:"Artist",album:"",duration:"203000",year:0,warnings:[]}}');
+  assert.match(p.run('csvSource(durationRow)'), / · 3:23/);
+  assert.equal(p.run('durationRow.source.duration'), "203000");
+});
+
+test("empty cleanup previews omit selection and paging while preserving report actions", async () => {
+  const p = livePage(); await settle();
+  p.nodes.set("#cleanup-selected", null);
+  p.run('cleanupView.data={id:"empty",state:"preview",category:"genres",albums:0,tracks:0,groups:[],counts:{},batch_tracks:200,batch_albums:20}; renderCleanup()');
+  let html = p.nodes.get('#cleanup-content').innerHTML;
+  assert.match(html, /No changes found for this preview/);
+  assert.match(html, /id="cleanup-export"/);
+  assert.doesNotMatch(html, /data-cleanup-page|id="cleanup-select-all"|id="cleanup-approved"|id="cleanup-start"/);
+  p.run('cleanupView.data.albums=1; cleanupView.data.tracks=1; renderCleanup()');
+  html = p.nodes.get('#cleanup-content').innerHTML;
+  assert.match(html, /id="cleanup-approved"/);
+  assert.doesNotMatch(html, /data-cleanup-page/);
+  p.run('cleanupView.data.albums=26; renderCleanup()');
+  assert.match(p.nodes.get('#cleanup-content').innerHTML, /data-cleanup-page="25"/);
+  assert.match(p.nodes.get('#cleanup-content').innerHTML, /1 \/ 2/);
+});
+
+test("a direct Overview address refreshes its initial disconnected placeholder after library loading", async () => {
+  const p = page({hash:"#/overview",deferReady:true}); await settle();
+  assert.match(p.nodes.get('#overview-page').innerHTML, /Connect your iBroadcast account/);
+  const stats = {albums:2, tracks:3, health:{}, formats:[], uploads:[], top_tracks:[], top_albums:[], top_artists:[]};
+  p.setStatusFetch(() => ({ok:true,json:async()=>({connected:true,playback_session:"overview-fixture"})}));
+  p.setFetch(url => ({ok:true,json:async()=>url.startsWith('/api/library')
+    ? {albums:[],artists:[],source:"cache"}
+    : url === '/api/overview' ? {account:{username:"Overview fixture",preferences:{},linked:{}},stats} : {sources:[]}}));
+  await p.emitDocument('DOMContentLoaded'); await settle();
+  assert.equal(p.location.hash, '#/overview');
+  assert.match(p.nodes.get('#overview-page').innerHTML, /Overview fixture/);
+  assert.doesNotMatch(p.nodes.get('#overview-page').innerHTML, /Connect your iBroadcast account/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/overview').length,1);
+  p.run('render(); render()'); await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/overview').length,1, 'Ordinary renders do not poll Overview');
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });

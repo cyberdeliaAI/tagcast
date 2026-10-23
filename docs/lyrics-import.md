@@ -1,6 +1,6 @@
 # Album lyrics file import
 
-Unreleased development feature, separate from the published 0.75.0 downloads.
+Available in Tagcast 0.80.0 in the Electron app and Python/browser version.
 
 Open an album and choose **More album actions (⋯) → Import lyrics…**. The left
 column shows the complete album's tracks. On the right, choose or drop `.lrc`
@@ -50,8 +50,10 @@ audio reads, local music-file edits, or metadata-history/Undo entries.
 
 ## Screenshots
 
-These original test captures show the unreleased feature; the 0.75.0 badge does
-not indicate availability in the published desktop downloads.
+The current sample-library capture shows matching in 0.80.0. The earlier original
+test captures retain their 0.75.0 badge; lyrics import first ships in 0.80.0.
+
+![Current two-column lyrics import with matched LRC files](screenshots/2026-10-23/lyrics-import.jpg)
 
 **Open Import lyrics from the album More menu.**
 

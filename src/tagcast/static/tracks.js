@@ -64,6 +64,12 @@ function foundTrackRow(t) {
     <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(t.album_id, t)}${heartButton(t)}</td></tr>`;
 }
 
+function updateTrackSearchScrollFocus() {
+  const list = $("#tracks-list");
+  // Keep existing focus during resize, but only join the Tab order when scrolling is needed.
+  list.setAttribute("tabindex", list.clientWidth > 0 && list.scrollWidth > list.clientWidth ? "0" : "-1");
+}
+
 function renderTrackSearch() {
   if (state.screen !== "tracks") return;
   // A library that loaded or changed since the last search is searched again.
@@ -83,6 +89,7 @@ function renderTrackSearch() {
     : trackSearch.loading ? '<div class="empty" role="status"><span class="spinner"></span>Searching your tracks…</div>'
     : `<div class="empty">No tracks match “${escapeHtml(query)}”.</div>`;
   $("#tracks-pagination").innerHTML = maxPage > 0 && !state.loading && query.length >= 2 ? `<button class="button small" data-track-page="-1" ${trackSearch.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${trackSearch.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-track-page="1" ${trackSearch.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+  updateTrackSearchScrollFocus();
   markPlaying();
   if (typeof syncHistory === "function") syncHistory();
 }
@@ -127,6 +134,15 @@ $("#tracks-per-page").addEventListener("change", event => {
   trackSearch.page = Math.floor(trackSearch.page * trackSearch.pageSize / size); trackSearch.pageSize = size;
   rememberPageSize("tagcast-tracks-per-page", size); renderTrackSearch();
 });
+$("#tracks-list").addEventListener("focusin", event => {
+  const list = event.currentTarget, control = event.target.closest("button");
+  if (control && list.scrollWidth > list.clientWidth) {
+    control.scrollIntoView({block: "nearest", inline: "nearest"});
+  }
+});
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(updateTrackSearchScrollFocus).observe($("#tracks-list"));
+} else window.addEventListener("resize", updateTrackSearchScrollFocus);
 document.addEventListener("click", event => {
   const play = event.target.closest("[data-track-play]");
   if (play) { playFoundTrack(play.dataset.trackPlay, play.dataset.trackAlbum); return; }

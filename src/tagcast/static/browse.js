@@ -170,6 +170,7 @@ function renderBrowse() {
   if (state.screen !== "browse") return;
   if (!state.loading && !browseView.loading && (browseView.details !== state.details || !browseView.loaded && !browseView.error)) { loadBrowse(); return; }
   const config = browseKinds[browseView.kind], detail = browseView.key !== null;
+  $("#browse-page").dataset.kind = browseView.kind;
   $("#browse-tag-actions").hidden = browseView.kind !== "tags" || !live();
   $("#browse-tag-rename").hidden = !detail;
   $("#browse-tag-delete").hidden = !detail;

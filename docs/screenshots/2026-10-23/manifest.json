@@ -1,0 +1,55 @@
+{
+  "version": "0.80.0",
+  "capture_date": "2026-10-23",
+  "source": "Browser screenshots of static assets extracted from the verified macOS arm64 release archive",
+  "archive_sha256": "88dcf624a47fbbd0a4138c8fa22a03948f265237a73edff3761d9831ae5d549c",
+  "data": "Separate fictional sample library and lyrics; no personal account",
+  "image_edits": false,
+  "images": [
+    {
+      "file": "editor-album.jpg",
+      "caption": "Album editor and online-source queries with fictional sample suggestions",
+      "width": 1420,
+      "height": 960,
+      "palette": "Ocean Dark",
+      "sha256": "1683fc5c1c32e322b7d8534a57f35f95457c12eb87f685357c6f66b32150b447",
+      "captured_at": "2026-10-23T16:48:58.550970+00:00"
+    },
+    {
+      "file": "editor-tracks.jpg",
+      "caption": "Track editor with independent list, long title and retained credit controls",
+      "width": 1420,
+      "height": 960,
+      "palette": "Ocean Dark",
+      "sha256": "ed52bc87c97efc99ef2288a533d08eb0ae311351ea43994c863facd338d1ba46",
+      "captured_at": "2026-10-23T16:49:18.127304+00:00"
+    },
+    {
+      "file": "lyrics-import.jpg",
+      "caption": "Album tracks and three linked LRC files with an ordinary-text preview before review",
+      "width": 1420,
+      "height": 1080,
+      "palette": "Ocean Dark",
+      "sha256": "ffbda5867696a4d0e9ad7a78a92d25b95e64d73e6c8985c59e341d98ac63fda1",
+      "captured_at": "2026-10-23T17:23:19.795616+00:00"
+    },
+    {
+      "file": "genres-forest-light.jpg",
+      "caption": "Compact genre cards and visible keyboard search focus",
+      "width": 1420,
+      "height": 960,
+      "palette": "Forest Light",
+      "sha256": "46c45f6f04bdbdc2054c5fee7cd626334e5a47c257c67fd145dc42823a379119",
+      "captured_at": "2026-10-23T17:17:56.710980+00:00"
+    },
+    {
+      "file": "tracks-compact-player.jpg",
+      "caption": "Tracks at 768px with a long title and all compact player controls",
+      "width": 768,
+      "height": 800,
+      "palette": "Ocean Dark",
+      "sha256": "ca868e1b004fd5510080799377aa7fa6073cc1587f7482cbf8c4e8cbae358e85",
+      "captured_at": "2026-10-23T17:18:27.791958+00:00"
+    }
+  ]
+}
