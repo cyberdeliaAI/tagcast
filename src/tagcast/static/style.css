@@ -854,7 +854,10 @@ body.help-open{overflow:hidden}
 #collections-page .toolbar{flex-wrap:wrap}
 #collections-page .toolbar .search{flex-basis:220px}
 .track-lyrics { margin-block: 1.25rem; }
-.editor-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); position: sticky; top: 0; z-index: 3; }
+.editor-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); width: fit-content; max-width: 100%; padding: 3px; margin-bottom: 16px; position: sticky; top: 0; z-index: 3; }
+.editor-tabs button { min-height: 36px; padding: 8px 14px; }
+.editor-tabs button span { display: inline; margin: 0 0 0 5px; }
+@media(pointer:coarse) { .editor-tabs button { min-height: 44px; } }
 .edit-layout.editing-tracks { grid-template-columns: minmax(0,1fr); }
 .editor-track-workspace { display: grid; grid-template-columns: minmax(260px,2fr) minmax(0,3fr); gap: 24px; align-items: start; }
 .editor-track-list { position: sticky; top: 64px; max-height: min(55vh,32rem); overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
