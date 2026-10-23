@@ -8657,3 +8657,21 @@ test("empty cleanup previews omit selection and paging while preserving report a
   assert.match(p.nodes.get('#cleanup-content').innerHTML, /data-cleanup-page="25"/);
   assert.match(p.nodes.get('#cleanup-content').innerHTML, /1 \/ 2/);
 });
+
+test("a direct Overview address refreshes its initial disconnected placeholder after library loading", async () => {
+  const p = page({hash:"#/overview",deferReady:true}); await settle();
+  assert.match(p.nodes.get('#overview-page').innerHTML, /Connect your iBroadcast account/);
+  const stats = {albums:2, tracks:3, health:{}, formats:[], uploads:[], top_tracks:[], top_albums:[], top_artists:[]};
+  p.setStatusFetch(() => ({ok:true,json:async()=>({connected:true,playback_session:"overview-fixture"})}));
+  p.setFetch(url => ({ok:true,json:async()=>url.startsWith('/api/library')
+    ? {albums:[],artists:[],source:"cache"}
+    : url === '/api/overview' ? {account:{username:"Overview fixture",preferences:{},linked:{}},stats} : {sources:[]}}));
+  await p.emitDocument('DOMContentLoaded'); await settle();
+  assert.equal(p.location.hash, '#/overview');
+  assert.match(p.nodes.get('#overview-page').innerHTML, /Overview fixture/);
+  assert.doesNotMatch(p.nodes.get('#overview-page').innerHTML, /Connect your iBroadcast account/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/overview').length,1);
+  p.run('render(); render()'); await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/overview').length,1, 'Ordinary renders do not poll Overview');
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
