@@ -2923,6 +2923,28 @@ test("Tracks searches every track by title, artist, album or composer and opens 
   assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /class="found"/, "Opened another way, nothing is marked");
 });
 
+test("Tracks only adds a scroll-region Tab stop when it overflows, without moving focus", async () => {
+  const p = page(); await settle();
+  await p.nodes.get("#show-tracks").emit("click");
+  const list = p.nodes.get("#tracks-list"), search = p.nodes.get("#tracks-search");
+  search.focus();
+  const requests = p.requests.length, hash = p.location.hash;
+  for (const [width, content, expected] of [[365, 680, "0"], [921, 921, "-1"],
+                                          [474, 680, "0"], [365, 365, "-1"],
+                                          [0, 680, "-1"]]) {
+    list.clientWidth = width; list.scrollWidth = content;
+    p.run("renderTrackSearch()");
+    assert.equal(list.getAttribute("tabindex"), expected);
+    assert.equal(p.run("document.activeElement"), search);
+  }
+  list.focus(); list.clientWidth = list.scrollWidth = 921;
+  p.run("updateTrackSearchScrollFocus()");
+  assert.equal(list.getAttribute("tabindex"), "-1");
+  assert.equal(p.run("document.activeElement"), list, "Resize must not steal existing focus");
+  assert.equal(p.requests.length, requests, "Focus updates make no requests");
+  assert.equal(p.location.hash, hash, "Focus updates do not navigate");
+});
+
 test("a connected library is searched by the server, and a found track plays its album from there", async () => {
   const storage = {};
   const p = page({storage});

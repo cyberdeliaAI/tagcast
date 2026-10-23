@@ -133,7 +133,7 @@
       <div class="page-intro"><div><div class="eyebrow">EVERY SONG, ON EVERY ALBUM</div><h1>Tracks<span>.</span></h1><p>Search all your tracks by title, artist, album or composer. Play one, or open its album.</p></div></div>
       <div class="toolbar"><div class="search search-with-clear"><span>⌕</span><input id="tracks-search" placeholder="Search titles, artists, albums or composers" aria-label="Search tracks"><button type="button" class="search-clear" data-search-clear="tracks-search" aria-controls="tracks-search" aria-label="Clear search" title="Clear search" hidden><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8m0-8-8 8"/></svg></button></div><select id="tracks-per-page" aria-label="Tracks per page"><option value="50">50 per page</option><option value="100">100 per page</option><option value="200">200 per page</option></select></div>
       <div class="results-line"><span id="tracks-results" role="status"></span></div>
-      <div id="tracks-list"></div>
+      <div id="tracks-list" role="region" aria-label="Track search results"></div>
       <div id="tracks-pagination" class="pagination"></div>
     </section>
     <section id="favourites-page" hidden role="tabpanel" aria-labelledby="favourites-tab-tracks" tabindex="0">
