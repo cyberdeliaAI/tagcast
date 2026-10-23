@@ -1,12 +1,22 @@
 # Screenshot refresh checklist
 
-## Unreleased album lyrics import — 22 October 2026
+## Tagcast 0.80.0 — 23 October 2026
+
+Five current screenshots cover the album editor, track editor, album lyrics import,
+Forest Light genre cards/search focus and the 768px compact player. They use a
+separate fictional sample library and the verified release archive's shared assets;
+no personal account or music metadata writes were used. Personal Overview details
+remain absent; the earlier redacted Overview image is retained unchanged.
+See the [dated inventory and SHA-256 manifest](screenshots/2026-10-23/README.md).
+
+<a id="unreleased-album-lyrics-import--22-october-2026"></a>
+
+## Album lyrics import test captures — 22 October 2026
 
 Four additional original captures document the album Import lyrics menu, two-column
 LRC/TXT matching, review ready before saving and an active save/read-back. See the
 [separate inventory and SHA-256 manifest](screenshots/2026-10-22-lyrics-import/README.md).
-They retain the test build’s 0.75.0 badge, but the feature is not in those released
-downloads. The last image confirms one track only; it is not a completed-album result.
+They retain the test build’s 0.75.0 badge; the feature first ships in 0.80.0. The last image confirms one track only; it is not a completed-album result.
 Original 2560 × 1600 PNGs are copied byte for byte without edits.
 
 ## Earlier development round — 22 October 2026
@@ -246,7 +256,9 @@ compact activity indicators are not present. Used in the Wiki's
 | `playlist-import-created.png` | Confirmed imported playlist. |
 | `playlist-cover-compare.png` | Separate playlist cover comparison before saving. |
 
-## Public playlist URL import (unreleased)
+<a id="public-playlist-url-import-unreleased"></a>
+
+## Public playlist URL import QA guidance
 
 Capture Playlist URL beside Import CSV, public Deezer/ListenBrainz (test) input,
 the fetched source with title/artist/duration defaults, and a paused/resumed URL
@@ -254,10 +266,11 @@ snapshot. Capture an unavailable-source error with its CSV fallback. Use a mock
 library and public metadata; never show tokens or imply ListenBrainz was verified
 live where it returned a browser check.
 
-## Track lyrics (unreleased)
+<a id="track-lyrics-unreleased"></a>
 
-The single-album editor now has Edit album / Edit tracks tabs in the Favourites
-style. Capture each tab, the twenty-track scrollable list beside the selected
+## Track lyrics QA guidance
+
+The single-album editor has compact Edit album / Edit tracks tabs. Capture each tab, the twenty-track scrollable list beside the selected
 track form, retained album/track drafts after switching and a shared metadata
 review. Also check keyboard tabs and the stacked narrow-screen layout.
 
@@ -283,7 +296,9 @@ return from the account-bound local cache without native userdata requests, also
 after visiting enough tracks to evict the album from the bounded memory cache. Cached
 edits must read fresh userdata before review and preserve the draft on conflicts.
 
-## Playlist order (unreleased)
+<a id="playlist-order-unreleased"></a>
+
+## Playlist order QA guidance
 
 Use a disposable mock playlist with repeated and unavailable positions, including
 more than 100 positions. Capture Reorder tracks, the drag handles/insertion line,
