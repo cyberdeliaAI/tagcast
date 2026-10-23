@@ -1,7 +1,7 @@
 {
   "name": "tagcast-desktop",
   "productName": "Tagcast",
-  "version": "0.75.0",
+  "version": "0.80.0",
   "description": "Tagcast for iBroadcast, in its own desktop window.",
   "author": "Cyberdelia",
   "license": "MIT",

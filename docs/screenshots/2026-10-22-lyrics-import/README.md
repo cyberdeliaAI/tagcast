@@ -4,8 +4,8 @@ Four contributor-supplied original PNGs, each 2560 × 1600, copied byte for byte
 The source files in Pictures/Screenshots are unchanged. No resizing, cropping or
 other image edits have been applied.
 
-These show the unreleased LRC/TXT album import in a local test build. Its 0.75.0
-footer is retained; this feature is not in the published 0.75.0 downloads.
+These show the LRC/TXT album import in a local development build. Its 0.75.0
+footer is retained; this feature first ships in 0.80.0.
 The matching capture has ten linked files and one track without an import. The last
 capture shows an active save, not completion of the whole album: one track is
 confirmed, one is being checked and later tracks have not been sent.

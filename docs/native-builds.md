@@ -1,6 +1,6 @@
 # Standalone downloads and builds
 
-Tagcast 0.70.2 packages the shared Python server and editor/player in an Electron
+Tagcast 0.80.0 packages the shared Python server and editor/player in an Electron
 desktop app. No separate browser, Python or Node.js installation is required.
 Python/source installs and the bundled terminal CLI retain browser use. See
 [Electron desktop and Python/browser use](electron.md) for the shared-code design.
@@ -9,10 +9,10 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-0.70.2-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-0.70.2-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-0.70.2-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-0.70.2-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| macOS, Apple Silicon | `tagcast-0.80.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-0.80.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-0.80.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-0.80.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -74,7 +74,9 @@ Every extracted application check starts the actual app with temporary Tagcast
 settings and an isolated Chromium profile, outside the checkout in a path with
 spaces. It checks shared assets, a disconnected account, sandboxing, context
 isolation, owned-server shutdown and CLI help/version. macOS signatures are
-verified and SHA-256 companions written after a successful check. These checks
+verified and SHA-256 companions written after a successful check. PR builds retain
+that ad-hoc integrity signature without a signing certificate or key; certificate
+signing is not enabled by this override. These checks
 never sign in to a live account or issue iBroadcast writes.
 
 ## Earlier downloads

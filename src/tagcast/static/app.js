@@ -1339,6 +1339,7 @@ async function loadLive(refresh = false) {
     state.loading = false;
     if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
     state.page = 0; updateChrome(); render();
+    if (state.screen === "overview" && typeof loadOverview === "function") loadOverview();
     if (typeof refreshPlayerRatings === "function") refreshPlayerRatings();
     if (typeof restorePendingRoute === "function") restorePendingRoute();
   }

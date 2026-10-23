@@ -19,24 +19,22 @@ keeping the interface shared with the browser version.
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [0.75.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.75.0):**
-Public Deezer playlist import (plus experimental ListenBrainz), persistent paused
-imports, playlist search/reordering and reviewed track removal, separate album/track
-editor tabs, persistent lyrics and the [Reddit community](https://www.reddit.com/r/Tagcast/).
-
-In development: [import album lyrics from LRC/TXT files](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes#import-album-lyrics-from-lrc-or-txt-files), with automatic matching and review before saving. This is not included in the 0.75.0 downloads.
+**New in [0.80.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.80.0):**
+Import album lyrics from LRC/TXT files with matching and review, choose fullscreen
+or in-window Now playing, and work with a clearer metadata editor, compact library
+overviews and better narrow-window playback and keyboard focus.
 
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
 ![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/2026-10-22/album-details.png)
 
-*Captured on 22 October 2026 before release; the footer shows the earlier development version.*
+*Captured on 22 October 2026 before 0.75.0; the footer retains the earlier development version.*
 
 ## What you can do
 
 - **Browse and discover:** artists, albums, tracks, genres, tags, years, decades
   and the optional 1001 Albums guide.
-- **Listen:** album playback, a play queue, playlists, fullscreen Now playing,
+- **Listen:** album playback, a play queue, playlists, fullscreen or in-window Now playing,
   volume and available audio outputs, with supported system media controls.
 - **Edit metadata:** album/track details, separate artists and credit roles, genres,
   composers and artwork, assisted
@@ -54,14 +52,14 @@ In development: [import album lyrics from LRC/TXT files](https://github.com/cybe
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 0.75.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.75.0):
+[Tagcast 0.80.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.80.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.75.0/tagcast-0.75.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.80.0/tagcast-0.80.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.80.0/tagcast-0.80.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.80.0/tagcast-0.80.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.80.0/tagcast-0.80.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
@@ -134,15 +132,18 @@ organised into focused pages:
 
 The [full gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots) shows
 browsing, tags, editing, cleanup, playback, Settings and mobile views. The latest
-captures were supplied on 22 October 2026 before the 0.75.0 release and retain
-their earlier version badge; earlier-interface examples stay labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
+captures show 0.80.0 with a separate sample library, including the
+metadata editor, narrow-window player and lyrics import. Earlier-interface examples
+stay labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
 
 <details>
-<summary>Album/track editor, playlists and retained cleanup/fullscreen examples</summary>
+<summary>Current editor and lyrics import, playlists and retained cleanup/fullscreen examples</summary>
 
-![Edit album tab with metadata fields and online source suggestions](docs/screenshots/2026-10-22/editor-album-tab.png)
+![Edit album tab with metadata fields and online source suggestions](docs/screenshots/2026-10-23/editor-album.jpg)
 
-![Edit tracks tab with individual track fields and a separate lyrics workflow](docs/screenshots/2026-10-22/editor-tracks-lyrics.png)
+![Edit tracks tab with an independently scrolling track list and selected track details](docs/screenshots/2026-10-23/editor-tracks.jpg)
+
+![Album lyrics import with album tracks and matched LRC files](docs/screenshots/2026-10-23/lyrics-import.jpg)
 
 ![Playlist cards with track counts and total duration](docs/screenshots/2026-10-22/playlists.png)
 
