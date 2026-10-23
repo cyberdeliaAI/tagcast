@@ -463,8 +463,8 @@ their shared browsing/player state; a fast local response can otherwise race the
 - Settings contains online sources/keys, playback recording, update checks and
   Export changes under Change history. Export downloads the same browser-local JSON
   history as the History dialog, never submits settings and is disabled when empty;
-  keep it out of the topbar. Electron's Help menu opens the GitHub Wiki through the
-  existing HTTPS external-link handler. The
+  keep it out of the topbar. Electron's Help menu opens the GitHub Wiki, r/Tagcast
+  and the repository home through the existing HTTPS external-link handler. The
   library information banner is dismissible with a browser-local remembered preference
   and can be restored in Settings. Never hide other warnings or errors with it.
 - Help uses a compact **?** button to start only the current page or dialog’s
@@ -553,6 +553,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   Opening or closing never restarts audio or adds a history entry. Request native
   fullscreen only on a click; fall back to a window-filling view when unavailable.
   Escape, stopping and library replacement close it; restore focus and inert state.
+  Settings offers Fullscreen (existing default) or In app window, remembered locally
+  in `tagcast-player-view`. Apply on the next opening without requests or audio/queue
+  changes. In app window never requests native fullscreen or exits another element's
+  fullscreen session. Keep button labels and the Settings Help explanation aligned.
 - Covers in grids/lists open the album immediately; compact-player covers immediately
   open Now playing. Enlarge covers only from the album detail page: double-click
   its real cover, or use Enter on its cover button, to open a modal lightbox.

@@ -80,6 +80,7 @@ const HELP_TOPICS = {
     ["Save and check the result", "The save button sends your reviewed changes. Tagcast checks current values before writing and reads accepted changes back afterwards. A save can partly succeed; read the result before trying again.", ["#apply-draft", "#review-status"]],
   ]},
   settings: {title: "Settings", scope: "#settings", steps: [
+    ["Now playing view", "Choose Fullscreen or In app window for the expanded player. The choice is remembered in this browser or desktop profile and applies the next time you open Now playing. Playback and the queue stay unchanged.", ["#player-view-mode"]],
     ["Interface", "Restore the library information banner or choose which details to show in the compact player. These display choices apply immediately in this browser.", ["#settings .interface-settings"]],
     ["Sidebar", "Show, hide and reorder optional shortcuts. Album artists, Albums, Change history and connection controls remain available. Restore default sidebar resets the layout.", ["#settings .sidebar-layout-settings"]],
     ["Library metadata", "Prepare JSON or a ZIP of linked CSV tables from the full loaded library, including separate artists, roles and credit phrases. Then choose Download. Optional tags, playlists and local favourites are included when available; the manifest reports missing data. This does not fetch tracks, save settings or change iBroadcast.", ["#metadata-export"]],
