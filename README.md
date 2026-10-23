@@ -26,9 +26,9 @@ overviews and better narrow-window playback and keyboard focus.
 
 [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
-![Tagcast album page with cover, genres, ratings and playback actions](docs/screenshots/2026-10-22/album-details.png)
+![Tagcast 0.80.0 album page showing Deodato’s Prelude and the compact player](docs/screenshots/2026-10-23-album/album-details.png)
 
-*Captured on 22 October 2026 before 0.75.0; the footer retains the earlier development version.*
+*Tagcast 0.80.0 — album details and compact player, captured on 23 October 2026.*
 
 ## What you can do
 
