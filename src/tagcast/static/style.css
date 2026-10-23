@@ -362,12 +362,26 @@ body.has-player main{padding-bottom:80px}
 .album-tracks small{display:block;color:var(--muted);margin-top:5px;font-size:11px}
 .disc-icons{display:inline-flex;align-items:center;gap:3px;vertical-align:-3px}.disc-icons svg{width:15px;height:15px;fill:currentColor;fill-opacity:.15;fill-rule:evenodd;stroke:currentColor;stroke-width:1.2}.disc-icons small{margin-left:3px;font-size:inherit}
 .track-open{border:0;background:none;padding:0;color:inherit;text-align:left;font:inherit}.track-open:hover{color:var(--green);text-decoration:underline}.track-results .track-number{width:52px}.track-results .track-year{width:70px;color:var(--muted);font-variant-numeric:tabular-nums}@media(max-width:760px){.track-results .track-year{display:none}}
-/* Compact only the Tracks introduction, retaining its existing typography and content. */
-#tracks-page>.page-intro{padding:20px 0 18px}
-#tracks-page>.page-intro .eyebrow{margin-bottom:8px}
-#tracks-page>.page-intro h1{margin-bottom:8px}
+/* Work overviews retain their typography and context, with less empty space. */
+:is(#tracks-page,#artists-page,#favourites-hub,#recently-played-page)>.page-intro,
+#collections-page>.page-intro:not(.playlist-intro),
+#browse-page:not([data-kind="decades"]):has(>#browse-back[hidden])>.page-intro{padding:20px 0 18px}
+:is(#tracks-page,#artists-page,#favourites-hub,#recently-played-page)>.page-intro :is(.eyebrow,h1),
+#collections-page>.page-intro:not(.playlist-intro) :is(.eyebrow,h1),
+#browse-page:not([data-kind="decades"]):has(>#browse-back[hidden])>.page-intro :is(.eyebrow,h1){margin-bottom:8px}
 @media(max-width:760px){
-  #tracks-page>.page-intro{padding:18px 0 16px}
+  :is(#tracks-page,#artists-page,#favourites-hub,#recently-played-page)>.page-intro,
+  #collections-page>.page-intro:not(.playlist-intro),
+  #browse-page:not([data-kind="decades"]):has(>#browse-back[hidden])>.page-intro{padding:18px 0 16px}
+}
+/* Text categories need less image-card whitespace; people and decades keep their cards. */
+#browse-page:not([data-kind="decades"]) .browse-label-card{padding:12px 14px;min-height:72px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-content:center;text-align:left}
+#browse-page:not([data-kind="decades"]) .browse-label-card strong{grid-row:1/3;align-self:center;overflow-wrap:break-word}
+#browse-page:not([data-kind="decades"]) .browse-label-card :is(.artist-card-count,.artist-card-tracks){grid-column:2;margin:0;text-align:right;font-variant-numeric:tabular-nums}
+#browse-page:not([data-kind="decades"]) .browse-label-card>small.muted{grid-column:1/-1}
+@media(max-width:760px){
+  #browse-page:not([data-kind="decades"]) .browse-label-card strong{grid-column:1/-1;grid-row:auto}
+  #browse-page:not([data-kind="decades"]) .browse-label-card .artist-card-count{grid-column:1;text-align:left}
 }
 /* Keep narrow track searches readable without widening the page or other track lists. */
 #tracks-list{max-width:100%;overflow-x:auto;scroll-padding-inline:8px}
