@@ -3961,6 +3961,68 @@ test("fullscreen Now playing reuses audio and queue, updates metadata safely and
   assert.equal(preview.run('visualPlayer.open'), false);
 });
 
+test("Now playing can fill the app window without native fullscreen or playback changes", async () => {
+  const storage = {}, p = livePage({storage}); await settle();
+  p.run('playTracks(state.details.get("1")); audio.currentTime = 39; openSettings(); let fullRequests = 0; $("#player-stage").requestFullscreen = () => {fullRequests++; return Promise.resolve()}');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), requests = p.requests.length, history = p.history.length;
+  assert.match(p.nodes.get('#settings-content').innerHTML, /value="fullscreen" selected/);
+  await p.change({id: 'player-view-mode', value: 'window', matches: () => false});
+  assert.equal(storage['tagcast-player-view'], 'window');
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 39);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  assert.equal(p.requests.length, requests);
+  p.run('$("#settings").close(); $("#player-fullscreen").focus()');
+  assert.equal(p.nodes.get('#player-fullscreen').getAttribute('aria-label'), 'Open Now playing in app window');
+  await p.nodes.get('#player-fullscreen').emit('click');
+  assert.equal(p.run('visualPlayer.open'), true);
+  assert.equal(p.run('fullRequests'), 0);
+  assert.equal(p.nodes.get('#player-stage').getAttribute('aria-label'), 'Now playing');
+  assert.equal(p.nodes.get('main').inert, true);
+  await p.keydown('Escape'); await settle();
+  assert.equal(p.run('visualPlayer.open'), false);
+  assert.equal(p.run('document.activeElement === $("#player-fullscreen")'), true);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 39);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.history.length, history);
+  assert.equal(p.requests.length, requests);
+  p.run('openSettings()');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /value="window" selected/);
+  await p.change({id:'player-view-mode', value:'fullscreen', matches: () => false});
+  p.run('$("#settings").close(); openVisualPlayer()');
+  assert.equal(p.run('fullRequests'), 1, 'Choosing Fullscreen restores the original opening behavior');
+});
+
+test("Now playing presentation persists, validates stored values and works without local storage", async () => {
+  const p = livePage({storage:{'tagcast-player-view':'window'}}); await settle();
+  assert.equal(p.run('visualPlayerMode'), 'window');
+  p.run('playTracks(state.details.get("1")); let fullRequests = 0; $("#player-stage").requestFullscreen = () => {fullRequests++}; openVisualPlayer()');
+  assert.equal(p.run('fullRequests'), 0);
+  await p.change({id:'player-view-mode',value:'fullscreen', matches: () => false});
+  assert.equal(p.run('fullRequests'), 0, 'Preferences apply on next opening, never during a view');
+  await p.change({id:'player-view-mode',value:'invalid', matches: () => false});
+  assert.equal(p.run('visualPlayerMode'), 'fullscreen');
+  p.run('localStorage.setItem = () => {throw Error("Disabled")}; setVisualPlayerMode("window")');
+  assert.equal(p.run('visualPlayerMode'), 'window');
+  p.run('localStorage.getItem = () => {throw Error("Disabled")}');
+  assert.equal(p.run('storedVisualPlayerMode()'), 'fullscreen');
+  const invalid = page({storage:{'tagcast-player-view':'invalid'}}); await settle();
+  assert.equal(invalid.run('visualPlayerMode'), 'fullscreen');
+  invalid.run('openSettings()');
+  assert.match(invalid.nodes.get('#settings-content').innerHTML, /id="player-view-mode"/);
+});
+
+test("in-window Now playing leaves an existing browser fullscreen session untouched", async () => {
+  const p = livePage({storage:{'tagcast-player-view':'window'}}); await settle();
+  p.run('playTracks(state.details.get("1")); document.fullscreenElement = $("main"); let exits = 0; document.exitFullscreen = () => {exits++}; openVisualPlayer()');
+  await p.nodes.get('#visual-player-close').emit('click');
+  assert.equal(p.run('exits'), 0);
+  assert.equal(p.run('document.fullscreenElement === $("main")'), true);
+  assert.equal(p.run('visualPlayer.open'), false);
+  assert.equal(p.nodes.get('#audio').paused, false);
+});
+
 test("fullscreen loads known large artwork only on opening, falls back once and preserves playback", async () => {
   const p = livePage(); await settle();
   p.run('const largeArtAlbum = state.details.get("1"); largeArtAlbum.artwork = "https://art.example/artwork/77-300?variant=1"; playTracks(largeArtAlbum)');

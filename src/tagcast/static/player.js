@@ -10,6 +10,27 @@ const playReporting = {enabled: lookup.recordPlays === true, watch: null, error:
 const queueActions = {trigger: null, details: null};
 const nowPlayingRows = {revision: 0, entries: []};
 const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
+let visualPlayerMode = storedVisualPlayerMode();
+
+function storedVisualPlayerMode() {
+  try { return localStorage.getItem("tagcast-player-view") === "window" ? "window" : "fullscreen"; }
+  catch { return "fullscreen"; }
+}
+
+function renderVisualPlayerButton() {
+  const button = $("#player-fullscreen");
+  const label = visualPlayer.open ? "Close Now playing view"
+    : visualPlayerMode === "window" ? "Open Now playing in app window" : "Open fullscreen Now playing";
+  button.setAttribute("aria-label", label);
+  button.setAttribute("title", label);
+}
+
+function setVisualPlayerMode(mode) {
+  if (!["window", "fullscreen"].includes(mode)) return;
+  visualPlayerMode = mode;
+  try { localStorage.setItem("tagcast-player-view", mode); } catch { /* private window */ }
+  renderVisualPlayerButton();
+}
 
 function storedPlayerDisplay(key) {
   try { return localStorage.getItem(`tagcast-player-${key}`) !== "hidden"; }
@@ -34,7 +55,9 @@ function renderPlayerDisplay() {
 
 document.addEventListener("change", event => {
   if (event.target.matches?.("[data-player-display]")) setPlayerDisplay(event.target.dataset.playerDisplay, event.target.checked);
+  if (event.target.id === "player-view-mode") setVisualPlayerMode(event.target.value);
 });
+renderVisualPlayerButton();
 
 function applyPlaybackSettings(data) {
   if (data.stream_quality) lookup.streamQuality = data.stream_quality;
@@ -150,7 +173,7 @@ function hideVisualPlayer() {
   for (const [node, inert] of visualPlayer.inert) node.inert = inert;
   visualPlayer.inert = [];
   $("#player-fullscreen").setAttribute("aria-expanded", "false");
-  $("#player-fullscreen").setAttribute("aria-label", "Open fullscreen Now playing");
+  renderVisualPlayerButton();
   const target = $("#player").hidden ? $("#home") : visualPlayer.focus || $("#player-fullscreen");
   target.focus();
 }
@@ -173,15 +196,15 @@ function openVisualPlayer() {
   visualPlayer.inert = [$("main"), $(".sidebar"), $("#now-playing-panel")].map(node => [node, node.inert]);
   for (const [node] of visualPlayer.inert) node.inert = true;
   stage.setAttribute("role", "dialog"); stage.setAttribute("aria-modal", "true");
-  stage.setAttribute("aria-label", "Now playing fullscreen");
+  stage.setAttribute("aria-label", "Now playing");
   document.body.classList.add("visual-player-open");
   $("#visual-player").hidden = false;
   $("#visual-player-status").textContent = "";
   $("#player-fullscreen").setAttribute("aria-expanded", "true");
-  $("#player-fullscreen").setAttribute("aria-label", "Close fullscreen view");
+  renderVisualPlayerButton();
   renderVisualPlayer(); $("#visual-player-close").focus();
   // Some browsers do not support or permit native fullscreen. The window view still works.
-  if (stage.requestFullscreen && !document.fullscreenElement) {
+  if (visualPlayerMode === "fullscreen" && stage.requestFullscreen && !document.fullscreenElement) {
     try {
       Promise.resolve(stage.requestFullscreen()).then(() => {
         if (!visualPlayer.open && document.fullscreenElement === stage) closeVisualPlayer();

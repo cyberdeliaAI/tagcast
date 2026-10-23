@@ -16,6 +16,14 @@ Quit. Existing Media Session controls, output selection, volume and streaming st
 in the shared player. AirPlay/Sonos support and audio quality are not implied by
 Electron; available devices/codecs still depend on Chromium and the operating system.
 
+In the unreleased development version, **Settings → Interface → Now playing view**
+offers **Fullscreen** (the existing default) and **In app window**. The choice is
+remembered in this desktop/browser profile and applies on the next opening. The
+same audio and queue remain in place. This does not change View → Toggle Full Screen
+for the application window. **Help** also offers **Tagcast on Reddit** and
+**Tagcast on GitHub**, alongside the existing Wiki link, using the same guarded
+external browser opener. These additions are not in the published 0.75.0 downloads.
+
 ## Settings, sign-in and closing
 
 - Credentials, library cache, settings and local album favourites stay in the same

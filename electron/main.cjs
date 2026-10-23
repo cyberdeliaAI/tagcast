@@ -5,6 +5,7 @@ const http = require("node:http");
 const path = require("node:path");
 const {Backend, backendCommand} = require("./backend.cjs");
 const {applicationUrl, externalUrl, permissionAllowed, contentPolicy} = require("./security.cjs");
+const {helpMenu} = require("./help-menu.cjs");
 const packageInfo = require("./package.json");
 
 app.setName("Tagcast");
@@ -75,7 +76,7 @@ function installMenu() {
     {role: "editMenu"},
     {label: "View", submenu: [{role: "reload"}, {role: "resetZoom"}, {role: "zoomIn"}, {role: "zoomOut"}, {type: "separator"}, {role: "togglefullscreen"}, ...(!app.isPackaged ? [{role: "toggleDevTools"}] : [])]},
     {role: "windowMenu"},
-    {role: "help", submenu: [{label: "Tagcast Help", click: () => openExternal("https://github.com/cyberdeliaAI/tagcast/wiki")}]}
+    helpMenu(openExternal)
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   app.setAboutPanelOptions({applicationName: "Tagcast", applicationVersion: packageInfo.version,

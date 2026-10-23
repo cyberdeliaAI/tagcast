@@ -149,7 +149,9 @@ function openSettings() {
     <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
     <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> Show file format and stream quality in the compact player</label>
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>
-    <p class="muted">These choices apply immediately and are remembered in this browser. Track and album pages and fullscreen Now playing keep their information.</p></section>`
+    <p class="muted">These display choices apply immediately and are remembered in this browser. Track and album pages and expanded Now playing keep their information.</p>
+    <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
+    <p class="muted">Choose whether the expanded player fills the screen or stays inside this app/browser window. Remembered here and applied the next time you open it.</p></section>`
     + sidebarSettingsPanel()
     + metadataExportPanel()
     + `<section class="history-settings"><h3>Change history</h3>
