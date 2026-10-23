@@ -696,7 +696,7 @@ body.help-open{overflow:hidden}
 
 /* Keep the compact controls distinct while the sidebar still occupies desktop space. */
 @media(max-width:1100px){
-  body:not(.visual-player-open) .player{display:grid;grid-template-columns:42px minmax(0,1fr) repeat(3,28px) minmax(28px,max-content) 28px;gap:5px;padding:8px 12px}
+  body:not(.visual-player-open) .player{display:grid;grid-template-columns:42px minmax(0,1fr) repeat(2,28px) repeat(2,minmax(28px,max-content)) 28px;gap:5px;padding:8px 12px}
   body:not(.visual-player-open) .player-cover-button{grid-row:1;grid-column:1}
   body:not(.visual-player-open) .player-text{grid-row:1;grid-column:2;width:auto;font-size:11px}
   body:not(.visual-player-open) .player-meta{font-size:10px}
