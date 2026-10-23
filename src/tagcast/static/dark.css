@@ -165,6 +165,8 @@
 :root[data-theme="dark"] .playlist-import-dialog input:not([type=checkbox]),:root[data-theme="dark"] .playlist-import-dialog select,:root[data-theme="dark"] .playlist-import-dialog textarea{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .csv-match-reasons{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .playlist-list tr:hover td{background:var(--palette-tint,#2d2f2a)}
+:root[data-theme="dark"] #metadata-form .field,:root[data-theme="dark"] #metadata-form .checkline{color: var(--palette-muted,#a8b5ad)}
+:root[data-theme="dark"] .editor-track-list .track-table th,:root[data-theme="dark"] .editor-track-list .track-table tr:not(.disc-row)>td:first-child,:root[data-theme="dark"] .editor-track-list .track-table td:nth-child(3){color: var(--palette-muted,#a8b5ad)}
 :root[data-theme="dark"] .editor-track-list .editing-track{background: var(--palette-tint,#2b2d29)}
 :root[data-theme="dark"] .track-lyrics textarea{background: var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .playlist-order-table th{background: var(--palette-surface,#1b2520)}
@@ -349,6 +351,8 @@
 :root:not([data-theme="light"]) .playlist-import-dialog input:not([type=checkbox]),:root:not([data-theme="light"]) .playlist-import-dialog select,:root:not([data-theme="light"]) .playlist-import-dialog textarea{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .csv-match-reasons{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .playlist-list tr:hover td{background:var(--palette-tint,#2d2f2a)}
+:root:not([data-theme="light"]) #metadata-form .field,:root:not([data-theme="light"]) #metadata-form .checkline{color: var(--palette-muted,#a8b5ad)}
+:root:not([data-theme="light"]) .editor-track-list .track-table th,:root:not([data-theme="light"]) .editor-track-list .track-table tr:not(.disc-row)>td:first-child,:root:not([data-theme="light"]) .editor-track-list .track-table td:nth-child(3){color: var(--palette-muted,#a8b5ad)}
 :root:not([data-theme="light"]) .editor-track-list .editing-track{background: var(--palette-tint,#2b2d29)}
 :root:not([data-theme="light"]) .track-lyrics textarea{background: var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .playlist-order-table th{background: var(--palette-surface,#1b2520)}

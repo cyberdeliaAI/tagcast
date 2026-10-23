@@ -92,12 +92,14 @@ class StaticScriptTests(unittest.TestCase):
                     selector = ",".join(':root[data-theme="dark"] ' + part
                                         for part in selector.split(","))
                 declarations = re.findall(r"(?:^|[}\n])\s*" + re.escape(selector)
-                                          + r"\{([^}]+)\}", forest)[-1]
-                return re.search(re.escape(property_name) + r":(?:var\(--palette-[\w-]+,)?"
+                                          + r"\s*\{([^}]+)\}", forest)[-1]
+                return re.search(re.escape(property_name) + r":\s*(?:var\(--palette-[\w-]+,\s*)?"
                                  r"(#[\da-f]+)", declarations).group(1)
 
             inline_background = fallback_colour(".track-inline", "background")
             artwork_background = fallback_colour(".art-compare img,.art-empty", "background")
+            selected_track_background = fallback_colour(".editor-track-list .editing-track", "background")
+            playing_track_background = fallback_colour(".track-table tr.playing td", "background")
             text_backgrounds = {
                 ".card-meta": (values["paper"],),
                 ".field small": (values["paper"], values["white"], inline_background),
@@ -107,6 +109,12 @@ class StaticScriptTests(unittest.TestCase):
                 ".stat-tile small": (values["white"],),
                 ".col-axis": (values["white"],),
                 ".top-list li:before": (values["white"],),
+                "#metadata-form .field,#metadata-form .checkline": (
+                    values["paper"], values["white"], inline_background),
+                (".editor-track-list .track-table th,"
+                 ".editor-track-list .track-table tr:not(.disc-row)>td:first-child,"
+                 ".editor-track-list .track-table td:nth-child(3)"): (
+                    values["paper"], selected_track_background, playing_track_background),
             }
             for selector, backgrounds in text_backgrounds.items():
                 for background in backgrounds:
