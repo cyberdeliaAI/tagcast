@@ -616,7 +616,7 @@ function field(name, label, value, options = {}) {
 function albumArtistField(albums, bulk) {
   const various = albums.every(a => a.artist_id === 0 && a.artist === "Various Artists");
   const value = various ? "" : common(albums, "artist");
-  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}${artistChoiceInput(`aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Type to find an existing artist, or enter a new name" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Choose an existing artist from the suggestions, or type a new name. Track artists stay unchanged.</small></div>`;
+  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}${artistChoiceInput(`aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Type to find an existing artist, or enter a new name" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Choose an existing artist from the suggestions, or type a new name. Track artists stay unchanged.</small><small id="album-various-artists-note" role="status" hidden>Additional album artists will be cleared when you save the reviewed draft. Track artists and track credits stay unchanged. Untick Various Artists to restore these fields.</small></div>`;
 }
 
 // Reuse already loaded names; only a small matching list enters the DOM.
@@ -757,6 +757,11 @@ function syncAlbumArtistControls() {
   if (!form || !box) return;
   const enabled = !editing.bulk || Boolean(form.querySelector('[data-enable="artist"]')?.checked);
   box.disabled = !enabled;
+  // Match the native clearing rule in buildReview; keep hidden credit drafts intact.
+  const clearsCredits = live() && enabled && box.checked && (editing.bulk || editing.dirty.has("artist"));
+  const credits = form.querySelector('[data-credit-editor="album-credits"]');
+  if (credits) credits.hidden = clearsCredits;
+  $("#album-various-artists-note").hidden = !clearsCredits;
   const input = form.elements.namedItem("artist");
   if (input) {
     input.hidden = box.checked; input.disabled = !enabled || box.checked;
@@ -923,8 +928,8 @@ function buildReview() {
       albumPatch[key] = value;
     }
     const credits = form.querySelector('[data-credit-editor="album-credits"]');
-    if (credits && !credits.classList.contains("disabled") && credits.dataset.dirty === "true") albumPatch.credits = readCredits(credits);
     if (albumPatch.artist_id === 0) albumPatch.credits = [];
+    else if (credits && !credits.classList.contains("disabled") && credits.dataset.dirty === "true") albumPatch.credits = readCredits(credits);
     const genres = form.querySelector('[data-genres="genres"]');
     if (genres && !genres.classList.contains("disabled") && (editing.bulk || editing.dirty.has("genres"))) {
       commitTyped(genres);
