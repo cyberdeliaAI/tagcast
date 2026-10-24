@@ -192,7 +192,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/tags":
             self._run(lambda: self.studio.tags.catalogue(query.get("q"), query.get("offset", "0"), query.get("id")))
         elif url.path == "/api/tags/selection":
-            self._run(lambda: self.studio.tags.selection((query.get("albums") or "").split(","), query.get("track")))
+            self._run(lambda: self.studio.tags.selection((query.get("albums") or "").split(","), query.get("track"),
+                                                        {"0": False, "1": True}.get(query.get("multiple", "0"))))
         elif url.path == "/api/favourites":
             self._run(lambda: self.studio.favourites(query.get("q"), query.get("offset", "0"),
                                                    query.get("limit", "50")))

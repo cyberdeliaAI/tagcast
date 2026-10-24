@@ -347,7 +347,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   membership and merged album counts as other browse groups. Never send complete tag
   track lists to the browser. Album/track tag management reads compact counts and
   prepares explicit add/remove operations; Keep as is preserves partial assignments.
-  Scope assignments to one complete displayed album/set or one of its tracks, at most
+  Scope assignments to one complete displayed album/set or one of its tracks, or an explicit
+  multi-album selection of at most 20 complete displayed albums / 100 native discs. Keep
+  the multi-album snapshot session-bound, show all selected album names before review, and
+  preserve every disc and selections outside filters/paging. All scopes allow at most
   500 tracks / 20 tag operations, checking account, full album membership, tag names,
   archived flags and assignments before sending. Preserve all outside memberships.
   Archived tags cannot be added here because they can hide music; do not archive or

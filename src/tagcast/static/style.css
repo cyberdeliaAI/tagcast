@@ -64,6 +64,7 @@ body.busy,body.busy *{cursor:progress!important}
 .album-table .col-num{text-align:right;width:60px;font-variant-numeric:tabular-nums}
 .album-table .col-thumb{width:52px;padding-right:0}
 .album-table .col-check{width:34px}
+.tag-album-summary{overflow-wrap:anywhere}
 .tag-page-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}.tag-chips,.track-tags{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.tag-chip{font:inherit;color:var(--palette-link,#527753);background:var(--palette-tint,#edf3e7);border:1px solid var(--line);border-radius:12px;padding:3px 9px;overflow-wrap:anywhere}.tag-choice{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.tag-choice>span{min-width:0;overflow-wrap:anywhere}.tag-choice small{display:block;color:var(--muted);margin-top:4px}.tag-choice select{max-width:50%;padding:8px;border:1px solid var(--line);border-radius:5px;background:var(--palette-surface,#fff);color:var(--ink)}#tag-choices{margin-top:12px}.album-tracks .track-tags{margin-top:6px}.track-tags .text-action{font-size:11px}
 .album-table .album-select{position:static;display:inline-flex;background:none;box-shadow:none;padding:0}
 .row-open,.row-artist{border:0;background:none;padding:0;color:inherit;text-align:left}
