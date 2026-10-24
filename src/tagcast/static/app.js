@@ -541,8 +541,8 @@ function render() {
   renderArtistPanel();
   $("#page-subtitle").textContent = $("#filter").value === "duplicates"
     ? "Albums with repeated track numbers on the same disc, including tracks whose titles differ. Open an album to compare the copies."
-    : state.artist ? "Open an album to listen, or select albums by this artist to edit or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
-  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to move them to the trash together" : "Open an album to see its tracks and listen";
+    : state.artist ? "Open an album to listen, or select albums by this artist to edit, tag or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to tag or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
+  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to tag or move to the trash together" : "Open an album to see its tracks and listen";
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
@@ -553,6 +553,7 @@ function render() {
   $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
   $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
   $("#selection-bar").hidden = !state.selected.size;
+  if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   $("#trash-selection").hidden = !live();
   $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
   $("#edit-selection").hidden = !state.artist;
@@ -1239,6 +1240,7 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   if (typeof csvImportCurrent === "function" && $("#playlist-import").open && !csvImportCurrent()) resetPlaylistImport();
   if (typeof syncMetadataExport === "function") syncMetadataExport();
   if (typeof updateAlbumGuideControls === "function") updateAlbumGuideControls();

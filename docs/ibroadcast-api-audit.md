@@ -42,7 +42,7 @@ are listed below, followed by the library operation and history parameter.
 | `makeplaylistpublic` | No | New Tagcast playlists are private. |
 | `playqueue_token` | Supported, opt-in | One-use token stays on the local server. |
 | `badfile` | No | No user-facing corruption/re-encoding report. |
-| `tagtracks` | Supported | Reviewed assignments/removals for one album/set or one track. |
+| `tagtracks` | Supported | Reviewed assignments/removals for one album/set or one track; development also supports explicit complete-album selections. |
 | `deletetags` | Supported | Reviewed global tag deletion; music is preserved. |
 | `createtag` | Supported | Creates an empty native label. |
 | `updatetag` | Partial | Rename; no archive/unarchive control. |
@@ -215,7 +215,7 @@ every private endpoint or dynamic mode name.
 | Playlist quantity/size | Help center says no limit on playlist count or tracks | Stored reads can exceed 10,000; 100 details per page and compact full-definition snapshots. Submitted lists/full replacement remain bounded to 10,000 | Large lists open normally; playback explicitly queues the current page. Reviewed append/delete remain available; full-content editing is disabled above the write bound. |
 | Playlist name/description | No numeric character maximum found | 200 / 2000 characters, browser and server | Local safeguards. |
 | Metadata save size | No public numerical batch limit found | 2000 changed records; generated update requests contain at most 500 rows | Local safeguards; ordinary save remains within one album/album artist. |
-| Tag name/assignments | No published numerical maxima found | Name 1–200 characters; assignment selection at most 500 tracks and 20 tag operations | The 20-operation bound is per review, not a total of 20 tags per track. |
+| Tag name/assignments | No published numerical maxima found | Name 1–200 characters; assignment selection at most 500 tracks and 20 tag operations; development multi-album selection at most 20 displayed albums / 100 native discs | The 20-operation bound is per review, not a total of 20 tags per track. |
 | Trash | No public numerical batch maximum found | Normal track/album selection: up to 500 tracks; complete-album selection: up to 20 displayed sets | Local safeguards; read-back and explicit review retained. |
 | Cleanup / duplicate cleanup | No public numerical batch maximum found | Up to 200 tracks / 20 displayed albums per batch | Local safeguards. |
 | Artwork assignment track lists | No public numerical maximum found | Sends all active tracks of one selected disc in `set_artwork`; no separate 500-track cap/chunk there | Metadata/trash batch caps cannot be assumed to cover every image write. |

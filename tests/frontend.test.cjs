@@ -663,6 +663,107 @@ test("late tag reads cannot cross library replacement and uncertain saves cannot
   assert.equal(p.requests.filter(r=>r.url==="/api/tags/save").length, 1);
 });
 
+
+function selectedTagFixture() {
+  const fixture=tagFixture();
+  fixture.selection={...fixture.selection,target:{albums:["1","3"],track:null,multiple:true},
+    label:"2 selected albums",tracks:17,albums:[
+      {ids:["1"],name:"Wish You Were Here",artist:"Pink Floyd",tracks:5},
+      {ids:["3"],name:"Hounds <of> Love",artist:"Kate Bush",tracks:12}]};
+  return fixture;
+}
+
+test("Tag selection covers albums outside current filters and preserves playback, paging and selection", async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture(),posts=[];
+  p.run('state.screen="albums";state.selected=new Set(["1","3"]);$("#search").value="Pink";playTracks(state.details.get("4"));render();$("#tag-selection").focus();window.scrollY=350');
+  const queue=p.json('player.queue'),audio=p.nodes.get('#audio'),history=p.history.length;
+  assert.equal(p.nodes.get('#tag-selection').hidden,false);
+  assert.match(p.nodes.get('#selection-count').textContent,/outside current results/);
+  p.setFetch((url,options)=>{
+    if(url.startsWith('/api/tags/selection?')){assert.match(url,/albums=1%2C3.*multiple=1/);return {ok:true,json:async()=>fixture.selection};}
+    if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:fixture.rows,total:3,offset:0})};
+    if(url==='/api/tags/save'){posts.push(JSON.parse(options.body));return {ok:true,json:async()=>({job:'selected-tags',sent:1,error:''})};}
+    return {ok:true,json:async()=>({state:'done',results:[{id:'20',status:'saved'}]})};
+  });
+  await p.click({'#tag-selection':{}});
+  assert.equal(posts.length,0);
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/Pink Floyd.*Hounds &lt;of&gt; Love.*Kate Bush/);
+  await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+  p.run('reviewTags()');
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/all 17 tracks of 2 selected albums/);
+  assert.equal(posts.length,0);
+  await p.run('saveTags()');
+  assert.equal(posts.length,1);assert.deepEqual(posts[0].target,fixture.selection.target);
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/saved and confirmed/);
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#audio'),audio);assert.equal(p.history.length,history);
+  assert.equal(p.nodes.get('#search').value,'Pink');assert.equal(p.run('state.history.length'),0);
+  await p.nodes.get('#tag-dialog').emit('close');
+  assert.equal(p.run('document.activeElement === $("#tag-selection")'),true);assert.equal(p.run('window.scrollY'),350);
+});
+
+test("new tag returns to the complete multi-album target and still requires assignment review",async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture(),posts=[];
+  p.run('state.screen="albums";state.selected=new Set(["1","3"]);render()');
+  const newTag={id:'40',name:'New; label',archived:false,tracks:0,total_tracks:0,before:'new-before'};
+  p.setFetch((url,options)=>{
+    if(url.startsWith('/api/tags/selection?'))return {ok:true,json:async()=>fixture.selection};
+    if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:[...fixture.rows,newTag],total:4,offset:0})};
+    if(url==='/api/tags/save'){posts.push(JSON.parse(options.body));return {ok:true,json:async()=>({job:'create-tag',sent:1})};}
+    return {ok:true,json:async()=>({state:'done',results:[{id:'40',status:'saved'}]})};
+  });
+  await p.run('openSelectedAlbumTags()');await p.click({'#tag-new':{}});
+  p.nodes.get('#tag-name').value='New; label';p.run('reviewTags()');assert.equal(posts.length,0);
+  await p.run('saveTags()');assert.equal(posts.length,1);assert.equal(posts[0].action,'create');
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/new tag is empty.*Return to selected album tags/);
+  assert.doesNotMatch(p.nodes.get('#tag-dialog-content').innerHTML,/\$\{view\.origin/);
+  await p.click({'#tag-return':{}});
+  assert.deepEqual(p.json('tagDraft.target'),fixture.selection.target);
+  assert.equal(p.run('tagDraft.query'),'New; label');assert.equal(posts.length,1);
+  await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'40'},value:'add'});
+  p.run('reviewTags()');assert.equal(posts.length,1);
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/New; label.*all 17 tracks/);
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+});
+
+test("multi-album tags require a live idle complete bounded selection before reading",async()=>{
+  const p=livePage();await settle();let reads=0;
+  p.setFetch(()=>{reads++;return {ok:true,json:async()=>selectedTagFixture().selection};});
+  p.run('state.selected=new Set(["1"]);state.mode="demo";render()');
+  assert.equal(p.nodes.get('#tag-selection').hidden,true);await p.run('openSelectedAlbumTags()');
+  p.run('state.mode="live";saving=true;updateChrome()');assert.equal(p.nodes.get('#tag-selection').disabled,true);
+  await p.run('openSelectedAlbumTags()');
+  p.run('saving=false;checking=1;updateChrome()');assert.equal(p.nodes.get('#tag-selection').disabled,true);
+  await p.run('openSelectedAlbumTags()');
+  p.run('checking=0;state.selected.clear();render()');await p.run('openSelectedAlbumTags()');assert.equal(reads,0);
+  p.run('useLocal(Array.from({length:21},(_,i)=>({id:String(i+1),name:"Album "+i,artist:"A",disc:1,tracks:[{id:String(i+100),title:"Song",track:1,artist:"A",genres:[]}]})),"demo");state.mode="live";state.selected=new Set(state.albums.map(a=>a.id))');
+  await p.run('openSelectedAlbumTags()');assert.equal(reads,0);assert.match(p.nodes.get('#toast').textContent,/20 complete albums/);
+});
+
+test("multi-album tags retain every disc and work on an artist page in list layout",async()=>{
+  const p=livePage();await settle();let selection;
+  p.run('useLocal([{id:"11",name:"Set",artist:"A",year:2000,disc:1,tracks:[{id:"110",title:"One",artist:"A",track:1}]},{id:"12",name:"Set",artist:"A",year:2000,disc:2,tracks:[{id:"120",title:"Two",artist:"A",track:1}]},{id:"13",name:"Other",artist:"A",year:2000,disc:1,tracks:[{id:"130",title:"Three",artist:"A",track:1}]}],"demo");state.mode="live";state.artist="A";state.view="list";state.selected=new Set(["11","13"]);render()');
+  const fixture=selectedTagFixture();p.setFetch((url)=>{selection=url;return {ok:true,json:async()=>url.startsWith('/api/tags/selection')?fixture.selection:{tags:[],total:0,offset:0}};});
+  await p.run('openSelectedAlbumTags()');assert.equal(selection,undefined);assert.match(p.nodes.get('#toast').textContent,/complete albums/);
+  p.run('state.selected.add("12");render()');await p.run('openSelectedAlbumTags()');
+  assert.deepEqual(p.json('tagDraft.target'),{albums:['11','12','13'],track:null,multiple:true});
+  assert.equal(p.nodes.get('#tag-selection').hidden,false);assert.equal(p.nodes.get('#edit-selection').hidden,false);
+});
+
+test("late multi-album tag reads and unconfirmed saves cannot change a newer library or retry",async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture();let resolve;
+  p.run('state.selected=new Set(["1","3"])');p.setFetch(()=>new Promise(done=>{resolve=done;}));
+  const opening=p.run('openSelectedAlbumTags()');await settle();p.run('useLocal(demoLibrary(),"demo")');
+  resolve({ok:true,json:async()=>fixture.selection});await opening;
+  assert.equal(p.nodes.get('#tag-dialog').open,false);assert.equal(p.run('tagDraft.selection'),null);
+  p.run('state.mode="live";state.selected=new Set(["1","3"])');
+  p.setFetch((url)=>({ok:true,json:async()=>url.startsWith('/api/tags/selection')?fixture.selection:url.startsWith('/api/tags?')?{tags:fixture.rows,total:3,offset:0}:url==='/api/tags/save'?{job:'uncertain-tags',sent:1}:{state:'done',results:[{id:'20',status:'unverified'}]}}));
+  await p.run('openSelectedAlbumTags()');await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+  p.run('reviewTags()');await p.run('saveTags()');await p.run('saveTags()');
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/could not be confirmed/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/tags/save').length,1);
+});
+
 test("Tags has its own route and contextual help; album tag chips never change genres", async () => {
   const p = livePage(); await settle();
   p.setFetch((url)=>({ok:true,json:async()=>url.includes("key=10") ? {group:{key:"10",label:"Listen later"},album_ids:["1"]}
