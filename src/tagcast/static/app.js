@@ -182,6 +182,7 @@ function useLocal(albums, mode) {
   if (typeof resetCleanup === "function") resetCleanup(true);
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
+  resetAlbumOrder();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetTrackLyrics === "function") resetTrackLyrics();
@@ -271,11 +272,12 @@ const SORTS = {
   uploaded_oldest: (a, b) => compareUpload(a, b, false) || SORTS.artist(a, b),
 };
 const albumSortLabels = {artist: "Album artist · A–Z", artist_za: "Album artist · Z–A",
-  title: "Album title · A–Z", title_za: "Album title · Z–A", year: "Release year · oldest first",
+  title: "Album title · A–Z", title_za: "Album title · Z–A", random: "Random album order", year: "Release year · oldest first",
   newest: "Release year · newest first", rating_high: "Rating · highest first", rating_low: "Rating · lowest first",
   uploaded_newest: "Date uploaded · newest first", uploaded_oldest: "Date uploaded · oldest first"};
 const artistSortLabels = {az: "Name · A–Z", za: "Name · Z–A", random: "Random",
   rating_high: "Rating · highest first", rating_low: "Rating · lowest first"};
+const albumOrder = {ids: [], library: 0};
 const browseChoices = {views: new Map(), kind: null, trigger: null, details: null};
 
 // Hidden values retain the independent filter/order used by history and discovery links.
@@ -355,7 +357,10 @@ function chooseBrowseOption(key) {
   if (kind === "artists") {
     if (field === "sort") artistBrowse.randomNames = [];
     artistBrowse.page = 0; renderArtistBrowse();
-  } else { state.page = 0; render(); }
+  } else {
+    if (field === "sort") albumOrder.ids = [];
+    state.page = 0; render();
+  }
 }
 
 document.addEventListener("click", event => {
@@ -477,11 +482,30 @@ function setArtist(artist) {
   render();
 }
 
+function resetAlbumOrder() {
+  albumOrder.ids = []; albumOrder.library += 1;
+}
+
+function randomAlbumSummaries(albums) {
+  const byId = new Map(albums.map(album => [String(album.id), album]));
+  const ids = albumOrder.ids.filter(id => byId.has(id)), known = new Set(ids);
+  const added = [...byId.keys()].filter(id => !known.has(id));
+  for (let i = added.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [added[i], added[j]] = [added[j], added[i]];
+  }
+  // Shuffle the complete shelf once, before search, artist scope or paging.
+  // Metadata read-backs retain existing positions and append any new albums.
+  albumOrder.ids = [...ids, ...added];
+  return albumOrder.ids.map(id => byId.get(id));
+}
+
 function filteredAlbums() {
   const query = $("#search").value.toLocaleLowerCase().trim(), keep = (FILTERS[$("#filter").value] || FILTERS.all)[1];
-  const items = albumShelf().filter(a => (!state.artist || albumHasArtist(a, state.artist)) && keep(a)
+  const random = $("#sort").value === "random", all = albumShelf();
+  const items = (random ? randomAlbumSummaries(all) : all).filter(a => (!state.artist || albumHasArtist(a, state.artist)) && keep(a)
     && (!query || [a.name, albumArtistsText(a), ...a.genres].join(" ").toLocaleLowerCase().includes(query)));
-  return items.sort(SORTS[$("#sort").value] || SORTS.artist);
+  return random ? items : items.sort(SORTS[$("#sort").value] || SORTS.artist);
 }
 
 function badge(a) {
@@ -1154,7 +1178,10 @@ document.addEventListener("input", event => {
 });
 $("#home").addEventListener("click", event => { event.preventDefault(); showArtistBrowse(); });
 $("#all-albums").addEventListener("click", () => setArtist(null));
-for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => { state.page = 0; render(); });
+for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
+  if (id === "#sort") albumOrder.ids = [];
+  state.page = 0; render();
+});
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {
   const size = Number(event.target.value);
@@ -1304,6 +1331,7 @@ async function loadLive(refresh = false) {
   if (typeof resetCleanup === "function") resetCleanup();
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
+  resetAlbumOrder();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetTrackLyrics === "function") resetTrackLyrics();
