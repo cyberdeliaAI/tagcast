@@ -1,8 +1,8 @@
 {
   "name": "tagcast-desktop",
-  "productName": "Tagcast",
+  "productName": "Tagcast Gapless Test",
   "version": "0.80.0",
-  "description": "Tagcast for iBroadcast, in its own desktop window.",
+  "description": "Local experimental gapless playback build of Tagcast.",
   "author": "Cyberdelia",
   "license": "MIT",
   "main": "main.cjs",
@@ -18,7 +18,7 @@
     "electron-builder": "26.15.3"
   },
   "build": {
-    "appId": "nl.cyberdelia.tagcast",
+    "appId": "nl.cyberdelia.tagcast.gapless-test",
     "executableName": "Tagcast",
     "asar": true,
     "directories": {"output": "out"},

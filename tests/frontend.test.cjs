@@ -9046,3 +9046,49 @@ test("a direct Overview address refreshes its initial disconnected placeholder a
   assert.equal(p.requests.filter(r=>r.url==='/api/overview').length,1, 'Ordinary renders do not poll Overview');
   assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });
+
+test('gapless prototype keeps unsupported browsers on the ordinary player and exposes its limits in Settings', async()=>{
+ const p=livePage();await settle();p.run('openSettings(); playTracks(state.details.get("1"))');
+ assert.match(p.nodes.get('#settings-content').innerHTML,/Gapless playback · experimental/);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/continuous prepared sequence/);
+ assert.equal(p.run('gaplessSupported()'),false);assert.equal(p.run('gaplessTrial.active'),null);
+ assert.equal(p.nodes.get('#audio').src,'/api/stream/100?quality=128');
+});
+test('gapless system positions and seek targets stay relative to the current track',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1')); gaplessTrial.active={current:{start:10,end:14,entry:player.queue[0]}}; audio.duration=20;audio.currentTime=12.5;`);
+ assert.equal(p.run('playerTrackPosition()'),2.5);assert.equal(p.run('playerTrackDuration()'),4);
+ p.run('seekSystemPlayback(3)');assert.equal(p.nodes.get('#audio').currentTime,13);
+ p.run('seekSystemPlayback(100)');assert.equal(p.nodes.get('#audio').currentTime,14);
+ p.run('gaplessTrial.active=null; seekSystemPlayback(2)');assert.equal(p.nodes.get('#audio').currentTime,2);
+});
+test('gapless next-entry planning respects Repeat, play-next and queue removal',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1')); const firstGaplessEntry=player.queue[0]; const trialPlan={current:{entry:firstGaplessEntry}};`);
+ assert.equal(p.run('gaplessCandidate(trialPlan).entry===player.queue[1]'),true);
+ p.run('player.repeat="track"');assert.equal(p.run('gaplessCandidate(trialPlan).entry===player.queue[0]'),true);
+ p.run('player.repeat="queue"; trialPlan.current.entry=player.queue.at(-1)');assert.equal(p.run('gaplessCandidate(trialPlan).wrap'),true);
+ p.run('player.repeat="none"');assert.equal(p.run('gaplessCandidate(trialPlan)'),null);
+ p.run('player.queue=[]');assert.equal(p.run('gaplessCandidate(trialPlan)'),null);
+});
+test('gapless cancellation aborts pending streams and never resurrects a stopped queue',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));let abortedGapless=0;gaplessTrial.active={controllers:new Set([{abort(){abortedGapless++;}}]),timer:1,url:'blob:fixture'};stopPlayer();`);
+ assert.equal(p.run('abortedGapless'),1);assert.equal(p.run('gaplessTrial.active'),null);assert.deepEqual(p.json('player.queue'),[]);
+ assert.equal(p.nodes.get('#audio').src,undefined);assert.equal(p.nodes.get('#audio').paused,true);
+});
+test('gapless preparation rejects oversized streams before reading their body',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const boundedGapless={session:state.connection.playback_session,quality:'128'};gaplessTrial.active=boundedGapless;`);
+ let cancelled=false;p.setFetch(async url=>{assert.match(url,/\/api\/stream\/100\?quality=128/);return{ok:true,headers:{get:()=>String(97*1024**2)},body:{cancel:async()=>{cancelled=true;},getReader(){throw Error('Body must not be read');}}};});
+ await assert.rejects(p.run('gaplessRead(boundedGapless,player.queue[0],{signal:{aborted:false}})'),/96 MiB/);assert.equal(cancelled,true);
+});
+test('gapless late stream replies are discarded after session replacement',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const lateGapless={session:state.connection.playback_session,quality:'128'};gaplessTrial.active=lateGapless;`);
+ let resolve,release=false;p.setFetch(()=>new Promise(done=>{resolve=done;}));
+ const pending=p.run('gaplessRead(lateGapless,player.queue[0],{signal:{aborted:false}})');
+ p.run('state.connection.playback_session="another-account-session";gaplessTrial.active=null');
+ resolve({ok:true,headers:{get:()=>null},body:{getReader:()=>({read:async()=>({done:true}),releaseLock(){release=true;}})}});
+ await assert.rejects(pending,/cancelled/);assert.equal(release,true);assert.equal(p.run('gaplessTrial.active'),null);
+});
+test('gapless fallback failures are scoped to both quality and account session',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessFail(player.queue[0],{quality:'128',session:state.connection.playback_session});`);
+ assert.equal(p.run('gaplessFailed(player.queue[0],"128")'),true);assert.equal(p.run('gaplessFailed(player.queue[0],"orig")'),false);
+ p.run('state.connection.playback_session="replacement"');assert.equal(p.run('gaplessFailed(player.queue[0],"128")'),false);
+});

@@ -5,6 +5,8 @@
 
 const player = {queue: [], index: -1, album: null, epoch: 0, pending: Promise.resolve(), randomRequest: 0, randomLoading: false, repeat: "none", shuffle: false, quality: "128", fallback: false};
 const audio = $("#audio");
+const playerTrackPosition = () => typeof gaplessPosition === "function" ? gaplessPosition() : Number(audio.currentTime) || 0;
+const playerTrackDuration = () => typeof gaplessDuration === "function" ? gaplessDuration() : audio.duration;
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null};
@@ -84,7 +86,7 @@ function beginPlaybackWatch(active = false) {
     details: state.details, eventId: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID()
       : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`,
     startedAt: new Date().toISOString(), listened: 0, attempted: false, completed: false, active,
-    clock: performance.now(), position: Number(audio.currentTime) || 0, rate: audio.playbackRate || 1};
+    clock: performance.now(), position: playerTrackPosition(), rate: audio.playbackRate || 1};
 }
 
 function playbackWatchCurrent(watch) {
@@ -95,7 +97,7 @@ function playbackWatchCurrent(watch) {
 function samplePlayback() {
   const watch = playReporting.watch;
   if (!playbackWatchCurrent(watch)) { playReporting.watch = null; return; }
-  const clock = performance.now(), position = Number(audio.currentTime) || 0;
+  const clock = performance.now(), position = playerTrackPosition();
   // Count actual progress, bounded by elapsed listening time. Seek jumps and pauses
   // never turn currentTime into listening time, and a stalled stream adds nothing.
   if (watch.active && !audio.seeking) {
@@ -121,9 +123,9 @@ function samplePlayback() {
 audio.addEventListener("playing", () => {
   if (!playReporting.watch || playReporting.watch.completed) beginPlaybackWatch();
   const watch = playReporting.watch;
-  if (watch) { watch.clock = performance.now(); watch.position = Number(audio.currentTime) || 0; watch.active = true; }
+  if (watch) { watch.clock = performance.now(); watch.position = playerTrackPosition(); watch.active = true; }
 });
-audio.addEventListener("timeupdate", samplePlayback);
+audio.addEventListener("timeupdate", () => { if (typeof gaplessAdvance === "function") gaplessAdvance(); samplePlayback(); });
 audio.addEventListener("ratechange", samplePlayback);
 for (const name of ["pause", "waiting"]) audio.addEventListener(name, () => {
   samplePlayback(); if (playReporting.watch) playReporting.watch.active = false;
@@ -132,7 +134,7 @@ audio.addEventListener("stalled", samplePlayback); // network stalls can occur w
 audio.addEventListener("seeking", () => { if (playReporting.watch) playReporting.watch.active = false; });
 audio.addEventListener("seeked", () => {
   const watch = playReporting.watch;
-  if (watch) { watch.clock = performance.now(); watch.position = Number(audio.currentTime) || 0; watch.active = !audio.paused; }
+  if (watch) { watch.clock = performance.now(); watch.position = playerTrackPosition(); watch.active = !audio.paused; }
 });
 audio.addEventListener("emptied", () => { if (!player.fallback) playReporting.watch = null; });
 
@@ -332,10 +334,21 @@ function playCurrent(autoPlay = true) {
   player.quality = lookup.streamQuality || "128";
   if (!state.connection.premium && player.quality !== "128") player.quality = "128";
   player.fallback = false;
-  audio.src = `/api/stream/${encodeURIComponent(track.id)}?quality=${player.quality}`;
-  renderStreamQuality();
-  if (autoPlay) { beginPlaybackWatch(); audio.play().catch(() => { /* reported by the error event */ }); }
-  else playReporting.watch = null;
+  const prepared = typeof gaplessBegin === "function" && gaplessBegin(track, autoPlay);
+  if (!prepared) {
+    audio.src = `/api/stream/${encodeURIComponent(track.id)}?quality=${player.quality}`;
+    const offset = typeof gaplessTrial !== "undefined" ? gaplessTrial.offset : 0;
+    if (typeof gaplessTrial !== "undefined") gaplessTrial.offset = 0;
+    if (offset) audio.addEventListener("loadedmetadata", () => { if (player.queue[player.index] === track) audio.currentTime = Math.min(offset, audio.duration || offset); }, {once: true});
+    if (autoPlay) { beginPlaybackWatch(); audio.play().catch(() => { /* reported by the error event */ }); }
+    else playReporting.watch = null;
+  }
+  renderCurrentPlayerTrack();
+}
+
+function renderCurrentPlayerTrack() {
+  const track = player.queue[player.index]; if (!track) return;
+  player.album = track.album; renderStreamQuality();
   $("#player").hidden = false; document.body.classList.add("has-player");
   $("#player-title").textContent = track.title;
   const artist = $("#player-artist"), album = $("#player-album");
@@ -358,6 +371,7 @@ function playCurrent(autoPlay = true) {
 }
 
 function markPlaying() {
+  if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof syncSystemPlayback === "function") syncSystemPlayback();
   if (typeof scheduleQueuePublish === "function") scheduleQueuePublish();
   const current = player.queue[player.index]?.id;
@@ -562,6 +576,7 @@ function step(delta) {
   if (next < 0) return;
   if (next >= player.queue.length) {
     player.index = player.queue.length;
+    if (typeof gaplessCancel === "function") gaplessCancel();
     audio.pause(); audio.removeAttribute("src"); audio.load();
     markPlaying(); renderStreamQuality(); return;
   }
@@ -569,6 +584,7 @@ function step(delta) {
 }
 
 function stopPlayer() {
+  if (typeof gaplessCancel === "function") gaplessCancel();
   if (typeof closePlaybackOutput === "function") closePlaybackOutput(false);
   closeQueueActions();
   playReporting.watch = null;
@@ -582,6 +598,7 @@ function stopPlayer() {
 }
 
 audio.addEventListener("ended", () => {
+  if (typeof gaplessAdvance === "function") gaplessAdvance();
   samplePlayback();
   if (playReporting.watch) { playReporting.watch.active = false; playReporting.watch.completed = true; }
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
@@ -595,6 +612,7 @@ audio.addEventListener("ended", () => {
 audio.addEventListener("play", markPlaying);
 audio.addEventListener("pause", markPlaying);
 audio.addEventListener("error", () => {
+  if (typeof gaplessAudioError === "function" && gaplessAudioError()) return;
   if (!audio.getAttribute("src")) return;
   if (player.quality === "orig" && !player.fallback) {
     player.fallback = true; player.quality = "128";
@@ -677,6 +695,7 @@ document.addEventListener("click", event => {
 function renderStreamQuality() {
   const track = player.queue[player.index];
   $("#player-quality").textContent = track ? `${track.format ? `File: ${track.format} · ` : ""}Stream: ${player.quality === "orig" ? `Original${track.format ? ` ${track.format}` : ""}` : `MP3 ${player.quality} kbps`}${player.fallback ? " (fallback)" : ""}` : "";
+  if (track && typeof gaplessTrial !== "undefined" && gaplessTrial.active) $("#player-quality").textContent += " · Gapless test";
   $("#visual-player-quality").textContent = $("#player-quality").textContent;
   renderPlayerDisplay();
 }
@@ -685,6 +704,7 @@ $("#player-repeat").addEventListener("click", () => {
   $("#player-repeat").textContent = player.repeat === "none" ? "↻" : player.repeat === "queue" ? "↻ Queue" : "↻ Track";
   $("#player-repeat").setAttribute("aria-label", `Repeat: ${player.repeat}. Click to change`);
   $("#player-repeat").setAttribute("aria-pressed", String(player.repeat !== "none"));
+  if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof publishQueueState === "function") publishQueueState();
 });
 

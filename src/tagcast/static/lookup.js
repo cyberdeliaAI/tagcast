@@ -152,6 +152,7 @@ function openSettings() {
     <p class="muted">These display choices apply immediately and are remembered in this browser. Track and album pages and expanded Now playing keep their information.</p>
     <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
     <p class="muted">Choose whether the expanded player fills the screen or stays inside this app/browser window. Remembered here and applied the next time you open it.</p></section>`
+    + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
     + sidebarSettingsPanel()
     + metadataExportPanel()
     + `<section class="history-settings"><h3>Change history</h3>
