@@ -28,3 +28,9 @@ examples labelled and preserve attribution for the bundled Wikipedia excerpts.
 
 The guide was reorganised for 0.60.0. The complete pre-Wiki version remains in
 the [0.60.0 README](https://github.com/cyberdeliaAI/tagcast/blob/v0.60.0/README.md).
+
+Keep the category pages as short navigation guides. Put task-specific instructions,
+such as the [Various Artists walkthrough](https://github.com/cyberdeliaAI/tagcast/wiki/Various-Artists),
+on their own pages. Retain the old page addresses and section headings as links to
+the detailed guides when splitting a page, so existing README, Help and shared
+fragment links remain useful. Keep released behavior separate from local test builds.
