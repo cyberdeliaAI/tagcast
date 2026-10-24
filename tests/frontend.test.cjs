@@ -9050,7 +9050,7 @@ test("a direct Overview address refreshes its initial disconnected placeholder a
 test('gapless prototype keeps unsupported browsers on the ordinary player and exposes its limits in Settings', async()=>{
  const p=livePage();await settle();p.run('openSettings(); playTracks(state.details.get("1"))');
  assert.match(p.nodes.get('#settings-content').innerHTML,/Gapless playback · experimental/);
- assert.match(p.nodes.get('#settings-content').innerHTML,/continuous prepared sequence/);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/time bar shows and seeks within the current track/);
  assert.equal(p.run('gaplessSupported()'),false);assert.equal(p.run('gaplessTrial.active'),null);
  assert.equal(p.nodes.get('#audio').src,'/api/stream/100?quality=128');
 });
@@ -9091,4 +9091,39 @@ test('gapless fallback failures are scoped to both quality and account session',
  const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessFail(player.queue[0],{quality:'128',session:state.connection.playback_session});`);
  assert.equal(p.run('gaplessFailed(player.queue[0],"128")'),true);assert.equal(p.run('gaplessFailed(player.queue[0],"orig")'),false);
  p.run('state.connection.playback_session="replacement"');assert.equal(p.run('gaplessFailed(player.queue[0],"128")'),false);
+});
+
+
+test('gapless clock handles minutes, hours and unavailable durations',()=>{
+ const p=page();assert.equal(p.run('gaplessClock(336)'), '5:36');assert.equal(p.run('gaplessClock(3745)'), '1:02:25');assert.equal(p.run('gaplessClock(NaN)'), '0:00');
+});
+test('gapless transport displays only the current track and restores native controls on fallback',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));player.index=1;gaplessTrial.active={started:true,current:{entry:player.queue[1],start:145,end:481}};audio.currentTime=151;audio.duration=700;gaplessRenderTransport();`);
+ assert.equal(p.nodes.get('#gapless-time').textContent,'0:06 / 5:36');assert.equal(p.nodes.get('#gapless-position').max,'336');assert.equal(p.nodes.get('#gapless-position').value,'6');assert.equal(p.nodes.get('#audio').hidden,true);assert.equal(p.nodes.get('#gapless-transport').hidden,false);
+ p.run('gaplessTrial.active=null;gaplessRenderTransport()');assert.equal(p.nodes.get('#audio').hidden,false);assert.equal(p.nodes.get('#gapless-transport').hidden,true);
+});
+test('gapless timeline previews a seek without moving audio and commits a relative track position',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessTrial.active={started:true,current:{entry:player.queue[0],start:145,end:481}};audio.currentTime=150;gaplessRenderTransport();`);
+ p.nodes.get('#gapless-position').value='20';await p.nodes.get('#gapless-position').emit('input');assert.equal(p.nodes.get('#audio').currentTime,150);assert.equal(p.nodes.get('#gapless-time').textContent,'0:20 / 5:36');
+ await p.nodes.get('#gapless-position').emit('change');assert.equal(p.nodes.get('#audio').currentTime,165);assert.equal(p.run('gaplessControls.draft'),null);
+});
+test('a gapless slider drag cannot seek a new track after a natural or Repeat transition',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessTrial.active={started:true,current:{entry:player.queue[0],start:0,end:14}};audio.currentTime=13;gaplessRenderTransport();`);
+ p.nodes.get('#gapless-position').value='5';await p.nodes.get('#gapless-position').emit('input');
+ p.run(`gaplessTrial.active.current={entry:player.queue[0],start:14,end:28};audio.currentTime=14.5;gaplessRenderTransport();`);
+ await p.nodes.get('#gapless-position').emit('change');assert.equal(p.nodes.get('#audio').currentTime,14.5);assert.equal(p.nodes.get('#gapless-time').textContent,'0:00 / 0:14');
+});
+test('gapless seeks reuse encoded fragments for evicted and not-yet-buffered current-track positions',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));let pumpedTimeline=0;gaplessPump=()=>{pumpedTimeline++;};gaplessTrial.active={current:{entry:player.queue[0],start:100,end:140,part:25,media:{parts:Array.from({length:40},(_,i)=>({start:i,end:i+1}))}},buffer:{buffered:{length:1,start:()=>120,end:()=>130}}};audio.currentTime=103;gaplessNativeSeek();`);
+ assert.equal(p.run('gaplessTrial.active.current.part'),3);assert.equal(p.nodes.get('#audio').currentTime,103);
+ p.run('audio.currentTime=135;gaplessNativeSeek()');assert.equal(p.run('gaplessTrial.active.current.part'),35);assert.equal(p.nodes.get('#audio').currentTime,135);assert.equal(p.run('pumpedTimeline'),2);
+});
+test('gapless transport keeps pause, mute, speed and the existing output dialog on the same audio',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessTrial.active={started:true,current:{entry:player.queue[0],start:0,end:14}};gaplessRenderTransport();`);
+ await p.nodes.get('#gapless-play').emit('click');assert.equal(p.nodes.get('#audio').paused,true);
+ await p.nodes.get('#gapless-play').emit('click');assert.equal(p.nodes.get('#audio').paused,false);
+ await p.nodes.get('#gapless-mute').emit('click');assert.equal(p.nodes.get('#audio').muted,true);
+ p.run('audio.volume=0');await p.nodes.get('#gapless-mute').emit('click');assert.equal(p.nodes.get('#audio').muted,false);assert.equal(p.nodes.get('#audio').volume,1);
+ await p.nodes.get('#gapless-options').emit('click');assert.equal(p.nodes.get('#audio-output-dialog').open,true);
+ await p.nodes.get('#gapless-speed').emit('change',{target:{value:'1.5'}});assert.equal(p.nodes.get('#audio').playbackRate,1.5);
 });

@@ -237,7 +237,7 @@ document.addEventListener("keydown", event => {
   if (event.defaultPrevented || !visualPlayer.open || document.querySelector("dialog[open]")) return;
   if (event.key === "Escape") { closeVisualPlayer(); return; }
   if (event.key !== "Tab") return;
-  const controls = [...$("#player-stage").querySelectorAll('button:not([disabled]), audio')].filter(node => node.getClientRects().length);
+  const controls = [...$("#player-stage").querySelectorAll('button:not([disabled]), input:not([disabled]), audio')].filter(node => node.getClientRects().length);
   const first = controls[0], last = controls.at(-1);
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }

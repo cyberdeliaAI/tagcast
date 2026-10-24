@@ -12,12 +12,13 @@ function gaplessSupported() {
   return typeof MediaSource !== "undefined" && MediaSource.isTypeSupported('audio/mp4; codecs="flac"');
 }
 function gaplessSettings() {
-  return `<section class="settings-section"><h3>Gapless playback · experimental</h3><label class="checkline"><input type="checkbox" id="gapless-test-enabled" ${gaplessTrial.enabled ? "checked" : ""} ${gaplessSupported() ? "" : "disabled"}> Enable gapless playback in this test app</label><p class="muted">Original FLAC is repackaged without changing its audio samples. MP3 with reliable encoder metadata is decoded to 24-bit PCM for playback. For a first test, choose Original streaming quality (Premium) and a continuous FLAC album. Only the current and next track are prepared; the first start can take longer. Unsupported files use standard playback. No crossfade or automatic silence removal is used.</p><p class="muted">In this prototype the native time bar shows the continuous prepared sequence, rather than one track. Track labels and system media controls remain track-based. Queue sync uses the standard player. Changes to this option apply on the next track.</p><p id="gapless-test-status" role="status">${escapeHtml(gaplessSupported() ? gaplessTrial.message : "Gapless buffering is unavailable in this browser; standard playback is retained.")}</p></section>`;
+  return `<section class="settings-section"><h3>Gapless playback · experimental</h3><label class="checkline"><input type="checkbox" id="gapless-test-enabled" ${gaplessTrial.enabled ? "checked" : ""} ${gaplessSupported() ? "" : "disabled"}> Enable gapless playback in this test app</label><p class="muted">Original FLAC is repackaged without changing its audio samples. MP3 with reliable encoder metadata is decoded to 24-bit PCM for playback. For a first test, choose Original streaming quality (Premium) and a continuous FLAC album. Only the current and next track are prepared; the first start can take longer. Unsupported files use standard playback. No crossfade or automatic silence removal is used.</p><p class="muted">The gapless time bar shows and seeks within the current track. The continuous buffer stays underneath; standard playback retains the native audio controls. Volume and playback speed are available through Playback options or Sound. Queue sync uses the standard player. Changes to this option apply on the next track.</p><p id="gapless-test-status" role="status">${escapeHtml(gaplessSupported() ? gaplessTrial.message : "Gapless buffering is unavailable in this browser; standard playback is retained.")}</p></section>`;
 }
 function gaplessNote(message) {
   gaplessTrial.message = message;
   const status = document.querySelector("#gapless-test-status"); if (status) status.textContent = message;
   renderStreamQuality();
+  if (typeof gaplessRenderTransport === "function") gaplessRenderTransport();
   if (visualPlayer.open && gaplessTrial.active) $("#visual-player-status").textContent = message;
 }
 function gaplessPosition() {
@@ -38,6 +39,7 @@ function gaplessCancel() {
   if (!g) return;
   clearTimeout(g.timer); for (const controller of g.controllers) controller.abort();
   if (g.url) URL.revokeObjectURL(g.url);
+  if (typeof gaplessRenderTransport === "function") gaplessRenderTransport();
 }
 function gaplessValid(g) {
   return gaplessTrial.active === g && live() && g.session === state.connection.playback_session
@@ -129,7 +131,7 @@ async function gaplessPrefetch(g) {
     if (media.key !== g.current.media.key) throw new Error("Adjacent audio formats differ; the next transition uses standard playback.");
     g.next = {entry, media, start: g.current.end, end: g.current.end + media.duration, part: 0, wrap: g.wrap};
     if (g.media.readyState === "open" && !g.buffer.updating) g.media.duration = g.next.end;
-    gaplessNote("Gapless active · continuous prepared timeline"); gaplessPump(g);
+    gaplessNote("Gapless active · track-based controls"); gaplessPump(g);
   } catch (error) {
     if (gaplessValid(g) && ticket === g.ticket) { gaplessFail(entry, g); gaplessNote(`Gapless current track; next transition uses standard playback. ${error.message}`); }
   } finally { if (gaplessValid(g) && ticket === g.ticket) { g.pending = false; gaplessPump(g); } }
@@ -159,7 +161,8 @@ function gaplessPump(g) {
 }
 function gaplessAdvance() {
   const g = gaplessTrial.active;
-  if (!g || !g.current || !gaplessValid(g) || g.switching || audio.seeking) return;
+  if (!g || !g.current || !gaplessValid(g) || g.switching) return;
+  if (audio.seeking) { gaplessPump(g); return; }
   if (g.next && audio.currentTime >= g.next.start - 1e-7) {
     g.switching = true;
     samplePlayback(); if (playReporting.watch) { playReporting.watch.active = false; playReporting.watch.completed = true; }
@@ -198,13 +201,13 @@ function gaplessBegin(entry, autoPlay) {
         if (!g.started && g.current.part > 0) {
           g.started = true; if (g.offset) audio.currentTime = Math.min(g.offset, g.current.end);
           if (g.autoPlay) { beginPlaybackWatch(); audio.play().catch(() => { if (gaplessValid(g)) toast("Press Play in Tagcast to start the prepared audio."); }); }
-          gaplessNote("Gapless active · continuous prepared timeline");
+          gaplessNote("Gapless active · track-based controls");
         }
         gaplessPump(g);
       });
       g.buffer.appendBuffer(media.init);
       gaplessQueueChanged();
-      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); g.timer = setTimeout(tick, 100); }; tick();
+      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); g.timer = setTimeout(tick, 100); }; tick();
     } catch (error) { gaplessFallback(g, error.message); }
   })();
   return true;
@@ -213,8 +216,22 @@ function gaplessNativeSeek() {
   const g = gaplessTrial.active;
   if (!g?.current) return;
   const time = audio.currentTime;
-  // Earlier evicted data is not advertised as a reusable track cache.
-  if (time < g.current.start || (g.buffer?.buffered.length && time < g.buffer.buffered.start(0))) audio.currentTime = Math.max(g.current.start, g.buffer?.buffered.start(0) || 0);
+  if (time < g.current.start) { audio.currentTime = g.current.start; return; }
+  const buffered = g.buffer?.buffered;
+  const present = buffered && Array.from({length: buffered.length}, (_, i) => i)
+    .some(i => time >= buffered.start(i) && time < buffered.end(i));
+  if (!present && time < g.current.end) {
+    // Reuse the current file's encoded fragments for evicted/backward or unbuffered/forward seeks.
+    // No refetch, source replacement or queue change is needed.
+    const part = g.current.media.parts.findIndex(p => p.end > time - g.current.start);
+    if (part >= 0) { g.current.part = part; g.finished = false; }
+    // A backward seek must not retain arbitrarily distant decoded regions from earlier seeks.
+    if (buffered?.length && buffered.end(buffered.length - 1) > time + 20) {
+      g.trim = Math.min(g.trim ?? Infinity, time + 20);
+      if (g.next) g.next.part = 0;
+    }
+  }
+  gaplessPump(g);
 }
 function gaplessAudioError() {
   const g = gaplessTrial.active; if (!g) return false;
