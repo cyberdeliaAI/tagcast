@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def unpacked_app():
     output = ROOT / "electron/out"
     if sys.platform == "darwin":
-        return next(output.glob("mac*/Tagcast.app"))
+        return next(output.glob("mac*/" + json.loads((ROOT / "electron/package.json").read_text())["productName"] + ".app"))
     return output / ("win-unpacked" if sys.platform == "win32" else "linux-unpacked")
 
 
@@ -49,7 +49,7 @@ def archive_app(directory, info):
         extracted = Path(name)
         if sys.platform == "darwin":
             subprocess.run(["ditto", "-x", "-k", str(archive), str(extracted)], check=True)
-            directory = extracted / "Tagcast.app"
+            directory = extracted / directory.name
             subprocess.run(["codesign", "--verify", "--deep", "--strict", str(directory)], check=True)
         elif sys.platform == "win32":
             with zipfile.ZipFile(archive) as packed:
