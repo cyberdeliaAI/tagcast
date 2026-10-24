@@ -1,0 +1,47 @@
+[
+  {
+    "file": "album-before.png",
+    "original_name": "Screenshot 2026-10-24 at 09.51.05.png",
+    "caption": "Album with multiple album artists",
+    "width": 2700,
+    "height": 1688,
+    "sha256": "9937d8ec048ca13bc23b420e3a9b406fef1c81269c9ca2d154b3366eeb32f00d",
+    "illustrative_header_edit": false
+  },
+  {
+    "file": "editor-album-artists.png",
+    "original_name": "Screenshot 2026-10-24 at 09.51.18.png",
+    "caption": "Existing primary and additional album artists",
+    "width": 2700,
+    "height": 1688,
+    "sha256": "d13eadac6961723bb6eb9ab5d66fca14b0081f03cbaf25bb97fe2972a045e139",
+    "illustrative_header_edit": false
+  },
+  {
+    "file": "choose-various-artists.png",
+    "original_name": "Screenshot 2026-10-24 at 09.51.54.png",
+    "caption": "Various Artists selected; author annotations show the checkbox and Remove controls",
+    "width": 2700,
+    "height": 1688,
+    "sha256": "8971ac7edb8834a2a6a02bc3a84ed2d4db5deba40c738a1bd79e6d5ce637a0a5",
+    "illustrative_header_edit": false
+  },
+  {
+    "file": "review-all-discs.png",
+    "original_name": "Screenshot 2026-10-24 at 09.52.13.png",
+    "caption": "Review of the album artist and cleared additional album artists on three discs",
+    "width": 2700,
+    "height": 1688,
+    "sha256": "b706a81e6026c6af6d758b482a262b7a262f3d25ac986f229b16244766c442d1",
+    "illustrative_header_edit": false
+  },
+  {
+    "file": "album-after-example.png",
+    "original_name": "Screenshot 2026-10-24 at 09.53.16.png",
+    "caption": "Illustrative result with a user-adjusted header total",
+    "width": 2700,
+    "height": 1688,
+    "sha256": "fb52261aeb0c7d49c7579658b59997ead105c9d836f8556261b6d5141ef66689",
+    "illustrative_header_edit": true
+  }
+]
