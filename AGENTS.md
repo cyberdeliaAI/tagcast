@@ -350,7 +350,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   Scope assignments to one complete displayed album/set or one of its tracks, or an explicit
   multi-album selection of at most 20 complete displayed albums / 100 native discs. Keep
   the multi-album snapshot session-bound, show all selected album names before review, and
-  preserve every disc and selections outside filters/paging. All scopes allow at most
+  preserve every disc and selections outside filters/paging until assignment finishes.
+  After fully confirmed multi-album assignments, deselect only the reviewed albums and
+  refresh the selection bar/cards; return focus to a visible control. Cancel, errors,
+  uncertain results and empty-tag creation retain the selection. All scopes allow at most
   500 tracks / 20 tag operations, checking account, full album membership, tag names,
   archived flags and assignments before sending. Preserve all outside memberships.
   Archived tags cannot be added here because they can hide music; do not archive or

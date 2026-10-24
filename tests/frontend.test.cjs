@@ -673,8 +673,8 @@ function selectedTagFixture() {
   return fixture;
 }
 
-test("Tag selection covers albums outside current filters and preserves playback, paging and selection", async()=>{
-  const p=livePage();await settle();const fixture=selectedTagFixture(),posts=[];
+test("confirmed tag assignments deselect reviewed albums while preserving playback, paging and filters", async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture(),posts=[];let confirmSave;
   p.run('state.screen="albums";state.selected=new Set(["1","3"]);$("#search").value="Pink";playTracks(state.details.get("4"));render();$("#tag-selection").focus();window.scrollY=350');
   const queue=p.json('player.queue'),audio=p.nodes.get('#audio'),history=p.history.length;
   assert.equal(p.nodes.get('#tag-selection').hidden,false);
@@ -683,7 +683,8 @@ test("Tag selection covers albums outside current filters and preserves playback
     if(url.startsWith('/api/tags/selection?')){assert.match(url,/albums=1%2C3.*multiple=1/);return {ok:true,json:async()=>fixture.selection};}
     if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:fixture.rows,total:3,offset:0})};
     if(url==='/api/tags/save'){posts.push(JSON.parse(options.body));return {ok:true,json:async()=>({job:'selected-tags',sent:1,error:''})};}
-    return {ok:true,json:async()=>({state:'done',results:[{id:'20',status:'saved'}]})};
+    if(url==='/api/jobs/selected-tags')return new Promise(resolve=>{confirmSave=resolve;});
+    return {ok:true,json:async()=>({state:'done',results:[]})};
   });
   await p.click({'#tag-selection':{}});
   assert.equal(posts.length,0);
@@ -692,14 +693,20 @@ test("Tag selection covers albums outside current filters and preserves playback
   p.run('reviewTags()');
   assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/all 17 tracks of 2 selected albums/);
   assert.equal(posts.length,0);
-  await p.run('saveTags()');
+  const pendingSave=p.run('saveTags()');await settle();
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+  assert.equal(p.nodes.get('#selection-bar').hidden,false);
+  confirmSave({ok:true,json:async()=>({state:'done',results:[{id:'20',status:'saved'}]})});
+  await pendingSave;
   assert.equal(posts.length,1);assert.deepEqual(posts[0].target,fixture.selection.target);
   assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/saved and confirmed/);
-  assert.deepEqual(p.json('[...state.selected]'),['1','3']);assert.deepEqual(p.json('player.queue'),queue);
+  assert.deepEqual(p.json('[...state.selected]'),[]);assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#selection-bar').hidden,true);
+  assert.doesNotMatch(p.nodes.get('#albums').innerHTML,/ checked/);
   assert.equal(p.nodes.get('#audio'),audio);assert.equal(p.history.length,history);
   assert.equal(p.nodes.get('#search').value,'Pink');assert.equal(p.run('state.history.length'),0);
   await p.nodes.get('#tag-dialog').emit('close');
-  assert.equal(p.run('document.activeElement === $("#tag-selection")'),true);assert.equal(p.run('window.scrollY'),350);
+  assert.equal(p.run('document.activeElement === $("#search")'),true);assert.equal(p.run('window.scrollY'),350);
 });
 
 test("new tag returns to the complete multi-album target and still requires assignment review",async()=>{
@@ -724,6 +731,8 @@ test("new tag returns to the complete multi-album target and still requires assi
   p.run('reviewTags()');assert.equal(posts.length,1);
   assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/New; label.*all 17 tracks/);
   assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+  await p.run('saveTags()');assert.equal(posts.length,2);
+  assert.deepEqual(p.json('[...state.selected]'),[]);assert.equal(p.nodes.get('#selection-bar').hidden,true);
 });
 
 test("multi-album tags require a live idle complete bounded selection before reading",async()=>{
@@ -762,6 +771,43 @@ test("late multi-album tag reads and unconfirmed saves cannot change a newer lib
   p.run('reviewTags()');await p.run('saveTags()');await p.run('saveTags()');
   assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/could not be confirmed/);
   assert.equal(p.requests.filter(r=>r.url==='/api/tags/save').length,1);
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+});
+
+test("cancelling and failed or partial tag saves retain the album selection", async()=>{
+  for(const outcome of ['cancel','request-error','partial']) {
+    const p=livePage();await settle();const fixture=selectedTagFixture();
+    p.run('state.screen="albums";state.selected=new Set(["1","3"]);render()');
+    p.setFetch(url=>{
+      if(url.startsWith('/api/tags/selection?'))return {ok:true,json:async()=>fixture.selection};
+      if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:fixture.rows,total:3,offset:0})};
+      if(url==='/api/tags/save'){
+        if(outcome==='request-error')throw Error('Lost reply');
+        return {ok:true,json:async()=>({job:'partial',sent:1,error:'Later changes not sent'})};
+      }
+      return {ok:true,json:async()=>({state:'done',results:[{id:'20',status:'saved'},{id:'10',status:'not_sent'}]})};
+    });
+    await p.run('openSelectedAlbumTags()');
+    await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+    p.run('reviewTags()');
+    if(outcome==='cancel') {p.nodes.get('#tag-dialog').close();await p.nodes.get('#tag-dialog').emit('close');}
+    else await p.run('saveTags()');
+    assert.deepEqual(p.json('[...state.selected]'),['1','3'],outcome);
+    assert.equal(p.nodes.get('#selection-bar').hidden,false,outcome);
+  }
+});
+
+test("single-album tag changes leave a separate album overview selection alone",async()=>{
+  const p=livePage();await settle();const fixture=tagFixture();
+  p.run('state.screen="albums";state.selected=new Set(["1","3"]);render()');
+  p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/tags/selection?')?fixture.selection:
+    url.startsWith('/api/tags?')?{tags:fixture.rows,total:3,offset:0}:
+    url==='/api/tags/save'?{job:'single',sent:1}:{state:'done',results:[{id:'20',status:'saved'}]}}));
+  await p.run('openTrackTags("1")');
+  await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+  p.run('reviewTags()');await p.run('saveTags()');
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+  assert.equal(p.nodes.get('#selection-bar').hidden,false);
 });
 
 test("Tags has its own route and contextual help; album tag chips never change genres", async () => {
