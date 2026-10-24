@@ -18,7 +18,9 @@ hide music in iBroadcast.
 
 Choose **Review tag changes →**, check the album list and proposed changes, then
 **Save tag changes**. Opening, searching and reviewing do not write anything.
-Playback, queue, browsing filters and the album selection are preserved.
+Playback, queue and browsing filters are preserved. After all changes are saved and
+confirmed, the reviewed albums are automatically deselected. Cancelling, errors
+or unconfirmed results keep the selection; creating an empty tag alone also keeps it.
 
 ## New tags
 

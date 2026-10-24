@@ -188,6 +188,11 @@ async function saveTags() {
     const success = !response.error && Array.isArray(job.results) && job.results.length >= response.sent
       && job.results.every(r => r.status === "saved");
     if (!success) throw Error(response.error || "Some tag changes could not be confirmed. Reload Tags before trying again.");
+    if (body.action === "change" && body.target.multiple) {
+      for (const id of body.target.albums) state.selected.delete(String(id));
+      render();
+      if (!state.selected.size) view.focus = $("#search");
+    }
     if (body.action === "create") view.query = body.name;
     $("#tag-dialog-content").innerHTML = `<p role="status">Tag changes saved and confirmed in iBroadcast.</p>${view.origin ? '<p class="muted">The new tag is empty. Return to your selection to assign it after a separate review.</p>' : ""}<div class="dialog-footer"><button class="button" id="tag-done" data-close="tag-dialog">Done</button>${view.origin ? `<button class="button primary" id="tag-return">${view.origin.multiple ? "Return to selected album tags" : "Return to album tags"}</button>` : ""}</div>`;
     $("#tag-done").focus();
