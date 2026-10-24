@@ -38,11 +38,15 @@ for every iBroadcast file, streaming quality or audio device.
 - Current and next files only: 96 MiB encoded/file, 128 MiB decoded MP3 PCM/file,
   60-second preparation request timeout. Small media fragments bound the decoded
   playback buffer and old samples are evicted. Audio is not stored persistently.
-- **The native time bar is cumulative for the prepared sequence.** It does not show
-  the current track alone. Earlier buffered tracks are not a seekable track cache;
-  use Previous/Next to revisit tracks. Labels, listening reports and system media
-  position/seek commands use the current track. This is the principal UI limitation
-  of the trial, and must be resolved before considering a production rollout.
+- **The gapless time bar is track-based.** It shows elapsed/current-track duration,
+  resets at natural transitions and seeks within that track, while the same native
+  audio element retains the continuous source underneath. The controls appear only
+  during gapless preparation/playback; fallback retains the ordinary native controls.
+  Play/pause, mute, volume and playback speed remain available. Earlier evicted parts
+  of the current track can be restored from its in-memory encoded fragments without
+  another download. Previous/Next still start a new sequence for another track.
+  Keyboard arrows/Home/End use the range control. Dragging across a natural or Repeat
+  boundary cannot accidentally seek the next track. Fullscreen focus includes the slider.
 - The gapless switch applies on the next track; restarting an album makes A/B testing clear.
 - AirPlay, physical audio interfaces, sleep/wake, offline/network recovery and Windows/Linux
   audio backends have not been validated. Existing system output controls are retained.
@@ -50,7 +54,7 @@ for every iBroadcast file, streaming quality or audio device.
 ## Validation on macOS Apple Silicon
 
 - Full Python suite: 502 tests and 1,767 subtests passed.
-- Frontend/media tests: 435 passed; Electron shell tests: 9 passed.
+- Frontend/media tests: 441 passed; Electron shell tests: 9 passed.
 - Ruff, JavaScript syntax, version consistency and whitespace checks passed.
 - Actual sandboxed Electron 44.9.0 player with synthetic account/audio: three consecutive
   2-second FLAC tracks and three MP3 tracks retained one source and the same audio element.
@@ -63,7 +67,14 @@ for every iBroadcast file, streaming quality or audio device.
   listening; prefetched tracks produced none. No actual account writes were made.
 - A 20-track queue, accelerated for the retention check, discarded old decoded audio:
   at 30.07 seconds the buffered range started at 20.74 seconds. No console errors.
-- Settings checked visually at 1280 and 420 px with fictional library data.
+- Track timeline: a 40-second fixture can seek to 35 seconds, back to two seconds
+  after eviction and to 39 seconds before a natural transition. The current track is
+  downloaded once, the source/element stay unchanged, a paused seek stays paused and
+  the next track displays `0:00 / 0:02` instead of the cumulative 42 seconds.
+- Layouts: 112 geometry checks across 420, 760, 761, 768, 1024, 1101 and 1280 px,
+  four palettes, Light/Dark and compact/in-app expanded views: no control overlap.
+  Browser screenshots at 420/1280 px and an expanded view; keyboard arrows/Home and
+  forward/backward focus wrapping in the expanded view checked with fictional data.
 
 Reproduce the committed checks with `python -m pytest -q`,
 `node --test tests/frontend.test.cjs tests/gapless-media.test.cjs`,
