@@ -569,6 +569,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
   fullscreen focus handling when a lightbox is above Now playing.
+- Album details offer Play album in disc/track order and Shuffle album in a newly mixed
+  queue order, including every disc. Both explicitly replace the queue and reuse the same
+  native audio and ownership guards. Shuffle never reorders library tracks or metadata;
+  ordinary Play restores disc/track order. Preserve Repeat and Play next semantics.
 - Play random album uses all filtered merged albums, before paging or the decade
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play

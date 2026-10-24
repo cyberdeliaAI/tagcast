@@ -1899,6 +1899,85 @@ test("browsing a different album preserves playback and plays the viewed album, 
   assert.equal(p.nodes.get("#audio").paused, false);
 });
 
+test("Shuffle album replaces only the play queue and ordinary Play restores album order", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("3")); Math.random = () => 0');
+  await p.run('openAlbum("1")');
+  const original = p.json('state.details.get("1")'), ids = original.tracks.map(t => String(t.id));
+  const history = p.history.length, audio = p.nodes.get("#audio");
+  assert.match(p.nodes.get("#album-page").innerHTML, /▶ Play album<\/button><button[^>]*data-shuffle-album[^>]*>Shuffle album/);
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  const shuffled = [...ids.slice(1), ids[0]];
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), shuffled);
+  assert.equal(p.run('player.index'), 0);
+  assert.equal(audio.src, `/api/stream/${shuffled[0]}?quality=128`);
+  assert.equal(p.nodes.get("#audio"), audio);
+  assert.equal(p.run('encodedLocalQueue().shuffle'), true);
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), shuffled.map(Number));
+  assert.deepEqual(p.json('state.details.get("1")'), original);
+  const visited = [p.run('player.queue[player.index].id')];
+  for (let i = 1; i < ids.length; i++) {
+    await audio.emit('ended'); visited.push(p.run('player.queue[player.index].id'));
+  }
+  assert.deepEqual(visited, shuffled);
+  await audio.emit('ended'); assert.equal(p.run('player.index'), ids.length - 1);
+  assert.equal(audio.src, `/api/stream/${shuffled.at(-1)}?quality=128`);
+  assert.equal(p.history.length, history); assert.equal(p.run('state.history.length'), 0);
+  assert.ok(p.requests.every(r => !r.options?.body));
+  await p.click({"[data-play-album]": {dataset: {playAlbumId: "1"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ids);
+  assert.equal(p.run('player.shuffle'), false);
+  assert.equal(audio.src, `/api/stream/${ids[0]}?quality=128`);
+});
+
+test("Shuffle album includes every disc once without mutating disc or track order", async () => {
+  const p = setPage(); await settle();
+  p.run('state.mode = "live"; Math.random = () => 0');
+  await p.run('openAlbum("71")');
+  const before = p.json('["71","72","73"].map(id => state.details.get(id))');
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "71"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ['7102','7201','7202','7301','7302','7101']);
+  assert.equal(p.run('player.queue.length'), 6);
+  assert.equal(p.run('player.album.name'), 'The Wall');
+  assert.deepEqual(p.json('["71","72","73"].map(id => state.details.get(id))'), before);
+  await p.click({"[data-play-album]": {dataset: {playAlbumId: "71"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ['7101','7102','7201','7202','7301','7302']);
+});
+
+test("Shuffle album respects preview, empty albums, single tracks and queue-controller ownership", async () => {
+  const p = page(); await settle(); await p.run('openAlbum("1")');
+  assert.match(p.nodes.get("#album-page").innerHTML, /data-shuffle-album data-play-album-id="1" disabled/);
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.equal(p.run('player.queue.length'), 0);
+  p.run('state.mode = "live"; playTracks(state.details.get("3")); state.details.get("1").tracks = []; renderAlbumView()');
+  const kept = p.json('player.queue');
+  assert.match(p.nodes.get("#album-page").innerHTML, /data-shuffle-album data-play-album-id="1" disabled/);
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.deepEqual(p.json('player.queue'), kept);
+  p.run('state.details.get("1").tracks = [state.details.get("3").tracks[0]]; renderAlbumView()');
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.equal(p.run('player.queue.length'), 1); assert.equal(p.run('player.index'), 0);
+  const single = p.json('player.queue'), src = p.nodes.get('#audio').src;
+  p.run('audio.pause(); queueSync.active = true; queueSync.allowed = false; queueSync.view = {own:false,state:{role:"controller"}}');
+  const requests = p.requests.length;
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.deepEqual(p.json('player.queue'), single); assert.equal(p.nodes.get('#audio').src, src);
+  assert.equal(p.nodes.get('#audio').paused, true); assert.equal(p.requests.length, requests);
+});
+
+test("album shuffle keeps Repeat track and Repeat queue semantics in the mixed queue", async () => {
+  const p = livePage(); await settle();
+  p.run('Math.random = () => 0'); await p.run('openAlbum("1")');
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  const mixed = p.json('player.queue.map(t => t.id)');
+  p.run('player.repeat = "track"'); await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), 0);
+  p.run('player.repeat = "queue"; player.index = player.queue.length - 1; playCurrent()');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), 0); assert.deepEqual(p.json('player.queue.map(t => t.id)'), mixed);
+  assert.equal(p.run('player.shuffle'), true);
+});
+
 test("album playback supports pause, resume and automatic next track without looping", async () => {
   const p = page();
   p.run('state.mode = "live"');
