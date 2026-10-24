@@ -1896,6 +1896,52 @@ test("Various Artists reviews every disc of one native set without track changes
     [["album", "71", 0], ["album", "72", 0], ["album", "73", 0]]);
 });
 
+test("Various Artists hides only the album credits being cleared and restores the same draft", async () => {
+  const p = livePage(); await settle();
+  p.run('state.details.get(state.albums[0].id).credits = [{artist_id:77,name:"Guest Band",type:"band",phrase:"with"}]');
+  await p.run("openEditor([state.albums[0].id])");
+  artistEditorForm(p);
+  p.run('$("#test-album-credits")');
+  const form = p.nodes.get("#metadata-form"), credits = p.nodes.get("#test-album-credits");
+  credits.dataset.dirty = "true";
+  // An unfinished hidden credit draft must not block the explicit clearing review.
+  credits.querySelectorAll = () => { throw Error("Do not parse the hidden credit draft"); };
+  form.querySelector = selector => selector === '[data-credit-editor="album-credits"]' ? credits : null;
+  const note = p.nodes.get("#album-various-artists-note");
+  p.run("syncAlbumArtistControls()"); assert.equal(credits.hidden, false); assert.equal(note.hidden, true);
+  const requests = p.requests.length;
+  await tickVariousArtists(p, true);
+  assert.equal(credits.hidden, true); assert.equal(note.hidden, false);
+  assert.equal(credits.dataset.dirty, "true");
+  assert.equal(p.requests.length, requests, "The visual change makes no requests");
+  p.run("buildReview()");
+  assert.deepEqual(p.json('pending.changes.map(c => [c.kind,c.fields.credits.after])'), [["album",[]]]);
+  assert.deepEqual(p.json('pending.changes[0].fields.credits.before'), [{artist_id:77,name:"Guest Band",type:"band",phrase:"with"}]);
+  await tickVariousArtists(p, false);
+  assert.equal(credits.hidden, false); assert.equal(note.hidden, true);
+  assert.equal(credits.dataset.dirty, "true", "Unticking retains the exact credit editor and its draft");
+  assert.ok(p.requests.every(r => !r.options?.body));
+});
+
+test("unchanged Various Artists and disabled bulk artist changes keep album credits visible", async () => {
+  const p = livePage(); await settle();
+  p.run('Object.assign(state.details.get(state.albums[0].id), {artist:"Various Artists",artist_id:0,credits:[{artist_id:77,name:"Guest",type:"artist",phrase:null}]})');
+  await p.run("openEditor([state.albums[0].id])");
+  artistEditorForm(p, "");
+  p.run('$("#test-album-credits")');
+  const credits = p.nodes.get("#test-album-credits"), enable = {checked:false};
+  const form = p.nodes.get("#metadata-form");
+  form.querySelector = selector => selector === '[data-credit-editor="album-credits"]' ? credits : selector === '[data-enable="artist"]' ? enable : null;
+  p.run("syncAlbumArtistControls()");
+  assert.equal(credits.hidden, false, "Opening an existing compilation does not promise to clear untouched credits");
+  p.run("editing.bulk = true; syncAlbumArtistControls()");
+  assert.equal(credits.hidden, false); assert.equal(p.nodes.get("#album-various-artists-note").hidden, true);
+  enable.checked = true; p.run("syncAlbumArtistControls()");
+  assert.equal(credits.hidden, true);
+  enable.checked = false; p.run("syncAlbumArtistControls()");
+  assert.equal(credits.hidden, false, "Disabling the bulk artist change restores the original credit controls");
+});
+
 test("opening an album shows read-only tracks; editing remains an explicit choice", async () => {
   const p = page();
   await p.click({"[data-album]": {dataset: {album: "1"}}});
