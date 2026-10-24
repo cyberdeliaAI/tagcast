@@ -182,6 +182,7 @@ function useLocal(albums, mode) {
   if (typeof resetCleanup === "function") resetCleanup(true);
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
+  resetAlbumOrder();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetTrackLyrics === "function") resetTrackLyrics();
@@ -271,11 +272,12 @@ const SORTS = {
   uploaded_oldest: (a, b) => compareUpload(a, b, false) || SORTS.artist(a, b),
 };
 const albumSortLabels = {artist: "Album artist · A–Z", artist_za: "Album artist · Z–A",
-  title: "Album title · A–Z", title_za: "Album title · Z–A", year: "Release year · oldest first",
+  title: "Album title · A–Z", title_za: "Album title · Z–A", random: "Random album order", year: "Release year · oldest first",
   newest: "Release year · newest first", rating_high: "Rating · highest first", rating_low: "Rating · lowest first",
   uploaded_newest: "Date uploaded · newest first", uploaded_oldest: "Date uploaded · oldest first"};
 const artistSortLabels = {az: "Name · A–Z", za: "Name · Z–A", random: "Random",
   rating_high: "Rating · highest first", rating_low: "Rating · lowest first"};
+const albumOrder = {ids: [], library: 0};
 const browseChoices = {views: new Map(), kind: null, trigger: null, details: null};
 
 // Hidden values retain the independent filter/order used by history and discovery links.
@@ -355,7 +357,10 @@ function chooseBrowseOption(key) {
   if (kind === "artists") {
     if (field === "sort") artistBrowse.randomNames = [];
     artistBrowse.page = 0; renderArtistBrowse();
-  } else { state.page = 0; render(); }
+  } else {
+    if (field === "sort") albumOrder.ids = [];
+    state.page = 0; render();
+  }
 }
 
 document.addEventListener("click", event => {
@@ -477,11 +482,30 @@ function setArtist(artist) {
   render();
 }
 
+function resetAlbumOrder() {
+  albumOrder.ids = []; albumOrder.library += 1;
+}
+
+function randomAlbumSummaries(albums) {
+  const byId = new Map(albums.map(album => [String(album.id), album]));
+  const ids = albumOrder.ids.filter(id => byId.has(id)), known = new Set(ids);
+  const added = [...byId.keys()].filter(id => !known.has(id));
+  for (let i = added.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [added[i], added[j]] = [added[j], added[i]];
+  }
+  // Shuffle the complete shelf once, before search, artist scope or paging.
+  // Metadata read-backs retain existing positions and append any new albums.
+  albumOrder.ids = [...ids, ...added];
+  return albumOrder.ids.map(id => byId.get(id));
+}
+
 function filteredAlbums() {
   const query = $("#search").value.toLocaleLowerCase().trim(), keep = (FILTERS[$("#filter").value] || FILTERS.all)[1];
-  const items = albumShelf().filter(a => (!state.artist || albumHasArtist(a, state.artist)) && keep(a)
+  const random = $("#sort").value === "random", all = albumShelf();
+  const items = (random ? randomAlbumSummaries(all) : all).filter(a => (!state.artist || albumHasArtist(a, state.artist)) && keep(a)
     && (!query || [a.name, albumArtistsText(a), ...a.genres].join(" ").toLocaleLowerCase().includes(query)));
-  return items.sort(SORTS[$("#sort").value] || SORTS.artist);
+  return random ? items : items.sort(SORTS[$("#sort").value] || SORTS.artist);
 }
 
 function badge(a) {
@@ -541,8 +565,8 @@ function render() {
   renderArtistPanel();
   $("#page-subtitle").textContent = $("#filter").value === "duplicates"
     ? "Albums with repeated track numbers on the same disc, including tracks whose titles differ. Open an album to compare the copies."
-    : state.artist ? "Open an album to listen, or select albums by this artist to edit or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
-  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to move them to the trash together" : "Open an album to see its tracks and listen";
+    : state.artist ? "Open an album to listen, or select albums by this artist to edit, tag or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to tag or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
+  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to tag or move to the trash together" : "Open an album to see its tracks and listen";
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
@@ -553,6 +577,7 @@ function render() {
   $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
   $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
   $("#selection-bar").hidden = !state.selected.size;
+  if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   $("#trash-selection").hidden = !live();
   $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
   $("#edit-selection").hidden = !state.artist;
@@ -615,7 +640,7 @@ function field(name, label, value, options = {}) {
 function albumArtistField(albums, bulk) {
   const various = albums.every(a => a.artist_id === 0 && a.artist === "Various Artists");
   const value = various ? "" : common(albums, "artist");
-  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}${artistChoiceInput(`aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Type to find an existing artist, or enter a new name" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Choose an existing artist from the suggestions, or type a new name. Track artists stay unchanged.</small></div>`;
+  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}${artistChoiceInput(`aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Type to find an existing artist, or enter a new name" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Choose an existing artist from the suggestions, or type a new name. Track artists stay unchanged.</small><small id="album-various-artists-note" role="status" hidden>Additional album artists will be cleared when you save the reviewed draft. Track artists and track credits stay unchanged. Untick Various Artists to restore these fields.</small></div>`;
 }
 
 // Reuse already loaded names; only a small matching list enters the DOM.
@@ -756,6 +781,11 @@ function syncAlbumArtistControls() {
   if (!form || !box) return;
   const enabled = !editing.bulk || Boolean(form.querySelector('[data-enable="artist"]')?.checked);
   box.disabled = !enabled;
+  // Match the native clearing rule in buildReview; keep hidden credit drafts intact.
+  const clearsCredits = live() && enabled && box.checked && (editing.bulk || editing.dirty.has("artist"));
+  const credits = form.querySelector('[data-credit-editor="album-credits"]');
+  if (credits) credits.hidden = clearsCredits;
+  $("#album-various-artists-note").hidden = !clearsCredits;
   const input = form.elements.namedItem("artist");
   if (input) {
     input.hidden = box.checked; input.disabled = !enabled || box.checked;
@@ -922,8 +952,8 @@ function buildReview() {
       albumPatch[key] = value;
     }
     const credits = form.querySelector('[data-credit-editor="album-credits"]');
-    if (credits && !credits.classList.contains("disabled") && credits.dataset.dirty === "true") albumPatch.credits = readCredits(credits);
     if (albumPatch.artist_id === 0) albumPatch.credits = [];
+    else if (credits && !credits.classList.contains("disabled") && credits.dataset.dirty === "true") albumPatch.credits = readCredits(credits);
     const genres = form.querySelector('[data-genres="genres"]');
     if (genres && !genres.classList.contains("disabled") && (editing.bulk || editing.dirty.has("genres"))) {
       commitTyped(genres);
@@ -1148,7 +1178,10 @@ document.addEventListener("input", event => {
 });
 $("#home").addEventListener("click", event => { event.preventDefault(); showArtistBrowse(); });
 $("#all-albums").addEventListener("click", () => setArtist(null));
-for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => { state.page = 0; render(); });
+for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
+  if (id === "#sort") albumOrder.ids = [];
+  state.page = 0; render();
+});
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {
   const size = Number(event.target.value);
@@ -1239,6 +1272,7 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   if (typeof csvImportCurrent === "function" && $("#playlist-import").open && !csvImportCurrent()) resetPlaylistImport();
   if (typeof syncMetadataExport === "function") syncMetadataExport();
   if (typeof updateAlbumGuideControls === "function") updateAlbumGuideControls();
@@ -1297,6 +1331,7 @@ async function loadLive(refresh = false) {
   if (typeof resetCleanup === "function") resetCleanup();
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
+  resetAlbumOrder();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
   if (typeof resetTrackLyrics === "function") resetTrackLyrics();

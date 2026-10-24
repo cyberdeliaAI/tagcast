@@ -64,6 +64,7 @@ body.busy,body.busy *{cursor:progress!important}
 .album-table .col-num{text-align:right;width:60px;font-variant-numeric:tabular-nums}
 .album-table .col-thumb{width:52px;padding-right:0}
 .album-table .col-check{width:34px}
+.tag-album-summary{overflow-wrap:anywhere}
 .tag-page-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}.tag-chips,.track-tags{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.tag-chip{font:inherit;color:var(--palette-link,#527753);background:var(--palette-tint,#edf3e7);border:1px solid var(--line);border-radius:12px;padding:3px 9px;overflow-wrap:anywhere}.tag-choice{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.tag-choice>span{min-width:0;overflow-wrap:anywhere}.tag-choice small{display:block;color:var(--muted);margin-top:4px}.tag-choice select{max-width:50%;padding:8px;border:1px solid var(--line);border-radius:5px;background:var(--palette-surface,#fff);color:var(--ink)}#tag-choices{margin-top:12px}.album-tracks .track-tags{margin-top:6px}.track-tags .text-action{font-size:11px}
 .album-table .album-select{position:static;display:inline-flex;background:none;box-shadow:none;padding:0}
 .row-open,.row-artist{border:0;background:none;padding:0;color:inherit;text-align:left}
@@ -787,17 +788,18 @@ body.help-open{overflow:hidden}
 .browse-options-trigger strong,.browse-options-trigger small{display:block;font-weight:500}
 .browse-options-trigger small{font-size:10px;color:var(--muted);margin-top:3px}
 .browse-options-trigger>svg{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5}
-.browse-options-menu{position:fixed;z-index:90;width:330px;max-width:calc(100vw - 16px);padding:6px;overflow-y:auto;overscroll-behavior:contain;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 25px #0002}
-.browse-options-title{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--palette-surface,#fff);z-index:1;padding:4px 6px 4px 12px;font-size:12px;font-weight:600}
+.browse-options-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;position:fixed;z-index:90;width:640px;max-width:calc(100vw - 16px);padding:6px;overflow-y:auto;overscroll-behavior:contain;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 25px #0002}
+.browse-options-title{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--palette-surface,#fff);z-index:1;padding:4px 6px 4px 12px;font-size:12px;font-weight:600}
 .browse-options-menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:36px;border:0;border-radius:5px;padding:8px 12px;text-align:left;background:none;color:inherit;font:inherit;font-size:12px}
 .browse-options-menu button:disabled{opacity:.5;cursor:default}
 .browse-options-menu button:hover:not(:disabled),.browse-options-menu button:focus-visible{background:var(--palette-tint,#edf2e7)}
 .browse-options-menu button>svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;opacity:0}
 .browse-options-menu button[aria-checked="true"]>svg{opacity:1}
 .browse-options-heading{padding:10px 12px 5px;color:var(--muted);font-size:10px;font-weight:600}
-.browse-options-menu [role="group"]+[role="group"]{border-top:1px solid var(--line);margin-top:6px}
+.browse-options-menu [role="group"]{min-width:0}
+.browse-options-menu [role="group"]+[role="group"]{border-left:1px solid var(--line)}
 .browse-options-title button{width:36px;justify-content:center;font-size:22px;padding:4px}
-@media(max-width:760px){.toolbar .browse-options-trigger{flex:1;min-width:0}.browse-options-menu button{min-height:44px}}
+@media(max-width:760px){.toolbar .browse-options-trigger{flex:1;min-width:0}.browse-options-menu{grid-template-columns:minmax(0,1fr);width:330px}.browse-options-menu [role="group"]+[role="group"]{border-left:0;border-top:1px solid var(--line);margin-top:6px}.browse-options-menu button{min-height:44px}}
 
 /* Artwork entry points retain the existing comparison and explicit save. */
 .image-edit-button{position:relative;display:block;border:0;padding:0;background:none;border-radius:8px;flex:none;cursor:pointer}

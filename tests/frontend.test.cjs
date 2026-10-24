@@ -663,6 +663,153 @@ test("late tag reads cannot cross library replacement and uncertain saves cannot
   assert.equal(p.requests.filter(r=>r.url==="/api/tags/save").length, 1);
 });
 
+
+function selectedTagFixture() {
+  const fixture=tagFixture();
+  fixture.selection={...fixture.selection,target:{albums:["1","3"],track:null,multiple:true},
+    label:"2 selected albums",tracks:17,albums:[
+      {ids:["1"],name:"Wish You Were Here",artist:"Pink Floyd",tracks:5},
+      {ids:["3"],name:"Hounds <of> Love",artist:"Kate Bush",tracks:12}]};
+  return fixture;
+}
+
+test("confirmed tag assignments deselect reviewed albums while preserving playback, paging and filters", async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture(),posts=[];let confirmSave;
+  p.run('state.screen="albums";state.selected=new Set(["1","3"]);$("#search").value="Pink";playTracks(state.details.get("4"));render();$("#tag-selection").focus();window.scrollY=350');
+  const queue=p.json('player.queue'),audio=p.nodes.get('#audio'),history=p.history.length;
+  assert.equal(p.nodes.get('#tag-selection').hidden,false);
+  assert.match(p.nodes.get('#selection-count').textContent,/outside current results/);
+  p.setFetch((url,options)=>{
+    if(url.startsWith('/api/tags/selection?')){assert.match(url,/albums=1%2C3.*multiple=1/);return {ok:true,json:async()=>fixture.selection};}
+    if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:fixture.rows,total:3,offset:0})};
+    if(url==='/api/tags/save'){posts.push(JSON.parse(options.body));return {ok:true,json:async()=>({job:'selected-tags',sent:1,error:''})};}
+    if(url==='/api/jobs/selected-tags')return new Promise(resolve=>{confirmSave=resolve;});
+    return {ok:true,json:async()=>({state:'done',results:[]})};
+  });
+  await p.click({'#tag-selection':{}});
+  assert.equal(posts.length,0);
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/Pink Floyd.*Hounds &lt;of&gt; Love.*Kate Bush/);
+  await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+  p.run('reviewTags()');
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/all 17 tracks of 2 selected albums/);
+  assert.equal(posts.length,0);
+  const pendingSave=p.run('saveTags()');await settle();
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+  assert.equal(p.nodes.get('#selection-bar').hidden,false);
+  confirmSave({ok:true,json:async()=>({state:'done',results:[{id:'20',status:'saved'}]})});
+  await pendingSave;
+  assert.equal(posts.length,1);assert.deepEqual(posts[0].target,fixture.selection.target);
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/saved and confirmed/);
+  assert.deepEqual(p.json('[...state.selected]'),[]);assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#selection-bar').hidden,true);
+  assert.doesNotMatch(p.nodes.get('#albums').innerHTML,/ checked/);
+  assert.equal(p.nodes.get('#audio'),audio);assert.equal(p.history.length,history);
+  assert.equal(p.nodes.get('#search').value,'Pink');assert.equal(p.run('state.history.length'),0);
+  await p.nodes.get('#tag-dialog').emit('close');
+  assert.equal(p.run('document.activeElement === $("#search")'),true);assert.equal(p.run('window.scrollY'),350);
+});
+
+test("new tag returns to the complete multi-album target and still requires assignment review",async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture(),posts=[];
+  p.run('state.screen="albums";state.selected=new Set(["1","3"]);render()');
+  const newTag={id:'40',name:'New; label',archived:false,tracks:0,total_tracks:0,before:'new-before'};
+  p.setFetch((url,options)=>{
+    if(url.startsWith('/api/tags/selection?'))return {ok:true,json:async()=>fixture.selection};
+    if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:[...fixture.rows,newTag],total:4,offset:0})};
+    if(url==='/api/tags/save'){posts.push(JSON.parse(options.body));return {ok:true,json:async()=>({job:'create-tag',sent:1})};}
+    return {ok:true,json:async()=>({state:'done',results:[{id:'40',status:'saved'}]})};
+  });
+  await p.run('openSelectedAlbumTags()');await p.click({'#tag-new':{}});
+  p.nodes.get('#tag-name').value='New; label';p.run('reviewTags()');assert.equal(posts.length,0);
+  await p.run('saveTags()');assert.equal(posts.length,1);assert.equal(posts[0].action,'create');
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/new tag is empty.*Return to selected album tags/);
+  assert.doesNotMatch(p.nodes.get('#tag-dialog-content').innerHTML,/\$\{view\.origin/);
+  await p.click({'#tag-return':{}});
+  assert.deepEqual(p.json('tagDraft.target'),fixture.selection.target);
+  assert.equal(p.run('tagDraft.query'),'New; label');assert.equal(posts.length,1);
+  await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'40'},value:'add'});
+  p.run('reviewTags()');assert.equal(posts.length,1);
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/New; label.*all 17 tracks/);
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+  await p.run('saveTags()');assert.equal(posts.length,2);
+  assert.deepEqual(p.json('[...state.selected]'),[]);assert.equal(p.nodes.get('#selection-bar').hidden,true);
+});
+
+test("multi-album tags require a live idle complete bounded selection before reading",async()=>{
+  const p=livePage();await settle();let reads=0;
+  p.setFetch(()=>{reads++;return {ok:true,json:async()=>selectedTagFixture().selection};});
+  p.run('state.selected=new Set(["1"]);state.mode="demo";render()');
+  assert.equal(p.nodes.get('#tag-selection').hidden,true);await p.run('openSelectedAlbumTags()');
+  p.run('state.mode="live";saving=true;updateChrome()');assert.equal(p.nodes.get('#tag-selection').disabled,true);
+  await p.run('openSelectedAlbumTags()');
+  p.run('saving=false;checking=1;updateChrome()');assert.equal(p.nodes.get('#tag-selection').disabled,true);
+  await p.run('openSelectedAlbumTags()');
+  p.run('checking=0;state.selected.clear();render()');await p.run('openSelectedAlbumTags()');assert.equal(reads,0);
+  p.run('useLocal(Array.from({length:21},(_,i)=>({id:String(i+1),name:"Album "+i,artist:"A",disc:1,tracks:[{id:String(i+100),title:"Song",track:1,artist:"A",genres:[]}]})),"demo");state.mode="live";state.selected=new Set(state.albums.map(a=>a.id))');
+  await p.run('openSelectedAlbumTags()');assert.equal(reads,0);assert.match(p.nodes.get('#toast').textContent,/20 complete albums/);
+});
+
+test("multi-album tags retain every disc and work on an artist page in list layout",async()=>{
+  const p=livePage();await settle();let selection;
+  p.run('useLocal([{id:"11",name:"Set",artist:"A",year:2000,disc:1,tracks:[{id:"110",title:"One",artist:"A",track:1}]},{id:"12",name:"Set",artist:"A",year:2000,disc:2,tracks:[{id:"120",title:"Two",artist:"A",track:1}]},{id:"13",name:"Other",artist:"A",year:2000,disc:1,tracks:[{id:"130",title:"Three",artist:"A",track:1}]}],"demo");state.mode="live";state.artist="A";state.view="list";state.selected=new Set(["11","13"]);render()');
+  const fixture=selectedTagFixture();p.setFetch((url)=>{selection=url;return {ok:true,json:async()=>url.startsWith('/api/tags/selection')?fixture.selection:{tags:[],total:0,offset:0}};});
+  await p.run('openSelectedAlbumTags()');assert.equal(selection,undefined);assert.match(p.nodes.get('#toast').textContent,/complete albums/);
+  p.run('state.selected.add("12");render()');await p.run('openSelectedAlbumTags()');
+  assert.deepEqual(p.json('tagDraft.target'),{albums:['11','12','13'],track:null,multiple:true});
+  assert.equal(p.nodes.get('#tag-selection').hidden,false);assert.equal(p.nodes.get('#edit-selection').hidden,false);
+});
+
+test("late multi-album tag reads and unconfirmed saves cannot change a newer library or retry",async()=>{
+  const p=livePage();await settle();const fixture=selectedTagFixture();let resolve;
+  p.run('state.selected=new Set(["1","3"])');p.setFetch(()=>new Promise(done=>{resolve=done;}));
+  const opening=p.run('openSelectedAlbumTags()');await settle();p.run('useLocal(demoLibrary(),"demo")');
+  resolve({ok:true,json:async()=>fixture.selection});await opening;
+  assert.equal(p.nodes.get('#tag-dialog').open,false);assert.equal(p.run('tagDraft.selection'),null);
+  p.run('state.mode="live";state.selected=new Set(["1","3"])');
+  p.setFetch((url)=>({ok:true,json:async()=>url.startsWith('/api/tags/selection')?fixture.selection:url.startsWith('/api/tags?')?{tags:fixture.rows,total:3,offset:0}:url==='/api/tags/save'?{job:'uncertain-tags',sent:1}:{state:'done',results:[{id:'20',status:'unverified'}]}}));
+  await p.run('openSelectedAlbumTags()');await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+  p.run('reviewTags()');await p.run('saveTags()');await p.run('saveTags()');
+  assert.match(p.nodes.get('#tag-dialog-content').innerHTML,/could not be confirmed/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/tags/save').length,1);
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+});
+
+test("cancelling and failed or partial tag saves retain the album selection", async()=>{
+  for(const outcome of ['cancel','request-error','partial']) {
+    const p=livePage();await settle();const fixture=selectedTagFixture();
+    p.run('state.screen="albums";state.selected=new Set(["1","3"]);render()');
+    p.setFetch(url=>{
+      if(url.startsWith('/api/tags/selection?'))return {ok:true,json:async()=>fixture.selection};
+      if(url.startsWith('/api/tags?'))return {ok:true,json:async()=>({tags:fixture.rows,total:3,offset:0})};
+      if(url==='/api/tags/save'){
+        if(outcome==='request-error')throw Error('Lost reply');
+        return {ok:true,json:async()=>({job:'partial',sent:1,error:'Later changes not sent'})};
+      }
+      return {ok:true,json:async()=>({state:'done',results:[{id:'20',status:'saved'},{id:'10',status:'not_sent'}]})};
+    });
+    await p.run('openSelectedAlbumTags()');
+    await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+    p.run('reviewTags()');
+    if(outcome==='cancel') {p.nodes.get('#tag-dialog').close();await p.nodes.get('#tag-dialog').emit('close');}
+    else await p.run('saveTags()');
+    assert.deepEqual(p.json('[...state.selected]'),['1','3'],outcome);
+    assert.equal(p.nodes.get('#selection-bar').hidden,false,outcome);
+  }
+});
+
+test("single-album tag changes leave a separate album overview selection alone",async()=>{
+  const p=livePage();await settle();const fixture=tagFixture();
+  p.run('state.screen="albums";state.selected=new Set(["1","3"]);render()');
+  p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/tags/selection?')?fixture.selection:
+    url.startsWith('/api/tags?')?{tags:fixture.rows,total:3,offset:0}:
+    url==='/api/tags/save'?{job:'single',sent:1}:{state:'done',results:[{id:'20',status:'saved'}]}}));
+  await p.run('openTrackTags("1")');
+  await p.change({matches:s=>s==='[data-tag-change]',dataset:{tagChange:'20'},value:'add'});
+  p.run('reviewTags()');await p.run('saveTags()');
+  assert.deepEqual(p.json('[...state.selected]'),['1','3']);
+  assert.equal(p.nodes.get('#selection-bar').hidden,false);
+});
+
 test("Tags has its own route and contextual help; album tag chips never change genres", async () => {
   const p = livePage(); await settle();
   p.setFetch((url)=>({ok:true,json:async()=>url.includes("key=10") ? {group:{key:"10",label:"Listen later"},album_ids:["1"]}
@@ -1749,6 +1896,52 @@ test("Various Artists reviews every disc of one native set without track changes
     [["album", "71", 0], ["album", "72", 0], ["album", "73", 0]]);
 });
 
+test("Various Artists hides only the album credits being cleared and restores the same draft", async () => {
+  const p = livePage(); await settle();
+  p.run('state.details.get(state.albums[0].id).credits = [{artist_id:77,name:"Guest Band",type:"band",phrase:"with"}]');
+  await p.run("openEditor([state.albums[0].id])");
+  artistEditorForm(p);
+  p.run('$("#test-album-credits")');
+  const form = p.nodes.get("#metadata-form"), credits = p.nodes.get("#test-album-credits");
+  credits.dataset.dirty = "true";
+  // An unfinished hidden credit draft must not block the explicit clearing review.
+  credits.querySelectorAll = () => { throw Error("Do not parse the hidden credit draft"); };
+  form.querySelector = selector => selector === '[data-credit-editor="album-credits"]' ? credits : null;
+  const note = p.nodes.get("#album-various-artists-note");
+  p.run("syncAlbumArtistControls()"); assert.equal(credits.hidden, false); assert.equal(note.hidden, true);
+  const requests = p.requests.length;
+  await tickVariousArtists(p, true);
+  assert.equal(credits.hidden, true); assert.equal(note.hidden, false);
+  assert.equal(credits.dataset.dirty, "true");
+  assert.equal(p.requests.length, requests, "The visual change makes no requests");
+  p.run("buildReview()");
+  assert.deepEqual(p.json('pending.changes.map(c => [c.kind,c.fields.credits.after])'), [["album",[]]]);
+  assert.deepEqual(p.json('pending.changes[0].fields.credits.before'), [{artist_id:77,name:"Guest Band",type:"band",phrase:"with"}]);
+  await tickVariousArtists(p, false);
+  assert.equal(credits.hidden, false); assert.equal(note.hidden, true);
+  assert.equal(credits.dataset.dirty, "true", "Unticking retains the exact credit editor and its draft");
+  assert.ok(p.requests.every(r => !r.options?.body));
+});
+
+test("unchanged Various Artists and disabled bulk artist changes keep album credits visible", async () => {
+  const p = livePage(); await settle();
+  p.run('Object.assign(state.details.get(state.albums[0].id), {artist:"Various Artists",artist_id:0,credits:[{artist_id:77,name:"Guest",type:"artist",phrase:null}]})');
+  await p.run("openEditor([state.albums[0].id])");
+  artistEditorForm(p, "");
+  p.run('$("#test-album-credits")');
+  const credits = p.nodes.get("#test-album-credits"), enable = {checked:false};
+  const form = p.nodes.get("#metadata-form");
+  form.querySelector = selector => selector === '[data-credit-editor="album-credits"]' ? credits : selector === '[data-enable="artist"]' ? enable : null;
+  p.run("syncAlbumArtistControls()");
+  assert.equal(credits.hidden, false, "Opening an existing compilation does not promise to clear untouched credits");
+  p.run("editing.bulk = true; syncAlbumArtistControls()");
+  assert.equal(credits.hidden, false); assert.equal(p.nodes.get("#album-various-artists-note").hidden, true);
+  enable.checked = true; p.run("syncAlbumArtistControls()");
+  assert.equal(credits.hidden, true);
+  enable.checked = false; p.run("syncAlbumArtistControls()");
+  assert.equal(credits.hidden, false, "Disabling the bulk artist change restores the original credit controls");
+});
+
 test("opening an album shows read-only tracks; editing remains an explicit choice", async () => {
   const p = page();
   await p.click({"[data-album]": {dataset: {album: "1"}}});
@@ -1796,6 +1989,85 @@ test("browsing a different album preserves playback and plays the viewed album, 
   assert.equal(p.run("albumView.id"), "1", "Back returns to the album viewed before");
   assert.equal(p.nodes.get("#audio").src, "/api/stream/300?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
+});
+
+test("Shuffle album replaces only the play queue and ordinary Play restores album order", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("3")); Math.random = () => 0');
+  await p.run('openAlbum("1")');
+  const original = p.json('state.details.get("1")'), ids = original.tracks.map(t => String(t.id));
+  const history = p.history.length, audio = p.nodes.get("#audio");
+  assert.match(p.nodes.get("#album-page").innerHTML, /▶ Play album<\/button><button[^>]*data-shuffle-album[^>]*>Shuffle album/);
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  const shuffled = [...ids.slice(1), ids[0]];
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), shuffled);
+  assert.equal(p.run('player.index'), 0);
+  assert.equal(audio.src, `/api/stream/${shuffled[0]}?quality=128`);
+  assert.equal(p.nodes.get("#audio"), audio);
+  assert.equal(p.run('encodedLocalQueue().shuffle'), true);
+  assert.deepEqual(p.json('encodedLocalQueue().tracks'), shuffled.map(Number));
+  assert.deepEqual(p.json('state.details.get("1")'), original);
+  const visited = [p.run('player.queue[player.index].id')];
+  for (let i = 1; i < ids.length; i++) {
+    await audio.emit('ended'); visited.push(p.run('player.queue[player.index].id'));
+  }
+  assert.deepEqual(visited, shuffled);
+  await audio.emit('ended'); assert.equal(p.run('player.index'), ids.length - 1);
+  assert.equal(audio.src, `/api/stream/${shuffled.at(-1)}?quality=128`);
+  assert.equal(p.history.length, history); assert.equal(p.run('state.history.length'), 0);
+  assert.ok(p.requests.every(r => !r.options?.body));
+  await p.click({"[data-play-album]": {dataset: {playAlbumId: "1"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ids);
+  assert.equal(p.run('player.shuffle'), false);
+  assert.equal(audio.src, `/api/stream/${ids[0]}?quality=128`);
+});
+
+test("Shuffle album includes every disc once without mutating disc or track order", async () => {
+  const p = setPage(); await settle();
+  p.run('state.mode = "live"; Math.random = () => 0');
+  await p.run('openAlbum("71")');
+  const before = p.json('["71","72","73"].map(id => state.details.get(id))');
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "71"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ['7102','7201','7202','7301','7302','7101']);
+  assert.equal(p.run('player.queue.length'), 6);
+  assert.equal(p.run('player.album.name'), 'The Wall');
+  assert.deepEqual(p.json('["71","72","73"].map(id => state.details.get(id))'), before);
+  await p.click({"[data-play-album]": {dataset: {playAlbumId: "71"}}});
+  assert.deepEqual(p.json('player.queue.map(t => t.id)'), ['7101','7102','7201','7202','7301','7302']);
+});
+
+test("Shuffle album respects preview, empty albums, single tracks and queue-controller ownership", async () => {
+  const p = page(); await settle(); await p.run('openAlbum("1")');
+  assert.match(p.nodes.get("#album-page").innerHTML, /data-shuffle-album data-play-album-id="1" disabled/);
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.equal(p.run('player.queue.length'), 0);
+  p.run('state.mode = "live"; playTracks(state.details.get("3")); state.details.get("1").tracks = []; renderAlbumView()');
+  const kept = p.json('player.queue');
+  assert.match(p.nodes.get("#album-page").innerHTML, /data-shuffle-album data-play-album-id="1" disabled/);
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.deepEqual(p.json('player.queue'), kept);
+  p.run('state.details.get("1").tracks = [state.details.get("3").tracks[0]]; renderAlbumView()');
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.equal(p.run('player.queue.length'), 1); assert.equal(p.run('player.index'), 0);
+  const single = p.json('player.queue'), src = p.nodes.get('#audio').src;
+  p.run('audio.pause(); queueSync.active = true; queueSync.allowed = false; queueSync.view = {own:false,state:{role:"controller"}}');
+  const requests = p.requests.length;
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  assert.deepEqual(p.json('player.queue'), single); assert.equal(p.nodes.get('#audio').src, src);
+  assert.equal(p.nodes.get('#audio').paused, true); assert.equal(p.requests.length, requests);
+});
+
+test("album shuffle keeps Repeat track and Repeat queue semantics in the mixed queue", async () => {
+  const p = livePage(); await settle();
+  p.run('Math.random = () => 0'); await p.run('openAlbum("1")');
+  await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
+  const mixed = p.json('player.queue.map(t => t.id)');
+  p.run('player.repeat = "track"'); await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), 0);
+  p.run('player.repeat = "queue"; player.index = player.queue.length - 1; playCurrent()');
+  await p.nodes.get('#audio').emit('ended');
+  assert.equal(p.run('player.index'), 0); assert.deepEqual(p.json('player.queue.map(t => t.id)'), mixed);
+  assert.equal(p.run('player.shuffle'), true);
 });
 
 test("album playback supports pause, resume and automatic next track without looping", async () => {
@@ -2094,6 +2366,105 @@ test("artist page image editing uses the identity supplying the photo when nativ
   await p.click({'#change-artist-page-image':{dataset:{artistPageImageId:'11'}}});
   assert.equal(p.run('art.target.id'),'11');
   assert.equal(p.run('art.target.current'),'https://example.test/eleven-300');
+});
+
+test("Random album order spans every page, preserves filtered subsets and leaves selection and playback intact", async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"), "100");
+    state.albums = Array.from({length: 75}, (_, i) => ({...state.albums[0], id: String(i),
+      name: "Album " + String(i).padStart(3, "0"), artist: i % 2 ? "Other artist" : "Test artist",
+      year: i % 3 ? 2000 : 0, disc: 1}));
+    let albumShuffleCalls = 0; Math.random = () => { albumShuffleCalls += 1; return 0; };
+    showScreen("albums"); state.selected.add("0");
+    $('#albums-browse-options').dataset.browseOptions = 'albums';
+    openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random');`);
+  const order = p.json("filteredAlbums().map(a => String(a.id))");
+  assert.equal(order.length, 75); assert.equal(new Set(order).size, 75);
+  assert.notDeepEqual(order, Array.from({length: 75}, (_, i) => String(i)));
+  const requests = p.requests.length, calls = p.run("albumShuffleCalls"), queue = p.json("player.queue");
+  const visibleIds = () => [...p.nodes.get("#albums").innerHTML.matchAll(/data-album="([^"]+)"/g)].map(match => match[1]);
+  const pages = visibleIds();
+  for (let i = 1; i < 4; i++) {
+    await p.click({"[data-page]": {dataset: {page: "1"}}}); pages.push(...visibleIds());
+  }
+  assert.deepEqual(pages, order, "Each displayed album appears once across all pages");
+  p.nodes.get("#search").value = "Album 03";
+  await p.nodes.get("#search").emit("input"); p.flushTimers(150);
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order.filter(id => Number(id) >= 30 && Number(id) < 40));
+  p.nodes.get("#search").value = "";
+  await p.nodes.get("#search").emit("input"); p.flushTimers(150);
+  p.nodes.get("#filter").value = "year";
+  await p.nodes.get("#filter").emit("change");
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order.filter(id => Number(id) % 3 === 0));
+  p.nodes.get("#filter").value = "all";
+  await p.nodes.get("#filter").emit("change");
+  p.run('state.artist = "Test artist"; render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order.filter(id => Number(id) % 2 === 0));
+  p.run('state.artist = null; render()');
+  p.nodes.get("#per-page").value = "50";
+  await p.nodes.get("#per-page").emit("change", {target: p.nodes.get("#per-page")});
+  assert.deepEqual(visibleIds(), order.slice(0, 50));
+  assert.equal(p.run("albumShuffleCalls"), calls);
+  assert.equal(p.requests.length, requests, "Ordering never loads details or writes");
+  assert.deepEqual(p.json("[...state.selected]"), ["0"]);
+  assert.deepEqual(p.json("player.queue"), queue);
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.match(p.nodes.get('#albums-browse-options').innerHTML, /Random album order/);
+});
+
+test("Random album order restores each history shuffle, follows metadata read-backs and resets across libraries", async () => {
+  const p = page(); await settle();
+  await p.nodes.get("#all-albums").emit("click");
+  p.run("Math.random = () => 0");
+  p.nodes.get("#sort").value = "random"; await p.nodes.get("#sort").emit("change");
+  const original = p.json("filteredAlbums().map(a => String(a.id))");
+  await p.click({"[data-album]": {dataset: {album: original[0]}}});
+  await p.nodes.get("#all-albums").emit("click");
+  p.nodes.get("#sort").value = "title"; await p.nodes.get("#sort").emit("change");
+  p.run("Math.random = () => 0.999");
+  p.nodes.get("#sort").value = "random"; await p.nodes.get("#sort").emit("change");
+  const second = p.json("filteredAlbums().map(a => String(a.id))");
+  assert.notDeepEqual(second, original);
+  p.history.back(); p.history.back(); await settle();
+  assert.equal(p.nodes.get("#sort").value, "random");
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), original);
+  p.history.forward(); p.history.forward(); await settle();
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), second);
+  p.run('applyLocally([{kind: "album", albumId: "1", fields: {name: {after: "Renamed album"}}}]); render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), second);
+  p.run('state.albums = [...state.albums, {...state.albums[0], id: "added", name: "A new album"}]; render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), [...second, "added"]);
+  p.run('state.albums = state.albums.filter(a => String(a.id) !== "added"); render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), second);
+  const saved = p.json("history.state"), generation = p.run("albumOrder.library");
+  p.run('Math.random = () => 0; useLocal(demoLibrary(), "demo"); render()');
+  assert.notEqual(p.run("albumOrder.library"), generation);
+  p.run(`showRoute({screen: "albums"}, ${JSON.stringify(saved)})`);
+  assert.notDeepEqual(p.json("filteredAlbums().map(a => String(a.id))"), saved.albumsRandomIds,
+    "History from a replaced library cannot reinstate its old permutation");
+  const localGeneration = p.run("albumOrder.library");
+  p.setFetch(async url => {
+    assert.equal(url, "/api/library");
+    return {ok: true, json: async () => ({albums: p.json("state.albums"), artists: []})};
+  });
+  await p.run("loadLive()"); await settle();
+  assert.notEqual(p.run("albumOrder.library"), localGeneration);
+});
+
+test("Random album order counts multi-disc sets once and an already checked choice does not reshuffle", async () => {
+  const p = setPage(); await settle();
+  await p.nodes.get("#all-albums").emit("click");
+  p.run(`Math.random = () => 0; $('#albums-browse-options').dataset.browseOptions = 'albums';
+    openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random');`);
+  const order = p.json("filteredAlbums().map(a => String(a.id))"), requests = p.requests.length;
+  assert.equal(order.length, 7);
+  assert.equal(order.filter(id => ["71", "72", "73"].includes(id)).length, 1);
+  p.run("Math.random = () => 0.999; openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random')");
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order);
+  assert.equal(p.requests.length, requests);
+  p.run("openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:title'); openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random')");
+  assert.notDeepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order);
 });
 
 test("Random album artists keeps one complete order across pages, filters and Back without loading tracks", async () => {
@@ -5927,7 +6298,7 @@ test('album menu counts merged albums in the current artist scope and keeps sear
   const count=p.run('albumShelf().filter(a=>albumHasArtist(a,"Pink Floyd")).length');
   assert.match(p.nodes.get('#browse-options-menu').innerHTML,new RegExp(`All albums · ${count}`));
   assert.deepEqual(p.json('browseChoices.views.get("albums").filter(o=>o.key.startsWith("sort:")).map(o=>o.key)'),
-    ['sort:artist','sort:artist_za','sort:title','sort:title_za','sort:year','sort:newest','sort:rating_high','sort:rating_low','sort:uploaded_newest','sort:uploaded_oldest']);
+    ['sort:artist','sort:artist_za','sort:title','sort:title_za','sort:random','sort:year','sort:newest','sort:rating_high','sort:rating_low','sort:uploaded_newest','sort:uploaded_oldest']);
   p.run(`chooseBrowseOption('sort:title_za'); $('#filter').value='cover';
     state.albums=state.albums.map(a=>({...a,no_cover:0})); render(); openBrowseOptions($('#albums-browse-options'));`);
   assert.doesNotMatch(p.nodes.get('#browse-options-menu').innerHTML,/filter:cover/);

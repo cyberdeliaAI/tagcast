@@ -23,6 +23,7 @@ class TagStudio:
             "30": {"name": "Hidden", "archived": True, "tracks": [10004]},
         }
         self.library_user = "owner"
+        self.playback_session = "tag-session"
         self.client = self
         self.save_lock = threading.Lock()
         self.downloads = 0
@@ -79,8 +80,8 @@ class TagTests(unittest.TestCase):
         self.studio = TagStudio()
         self.tags = self.studio.tags
 
-    def assignment(self, changes, track=None):
-        selection = self.tags.selection(["1"], track)
+    def assignment(self, changes, track=None, albums=None, multiple=False):
+        selection = self.tags.selection(albums or ["1"], track, multiple)
         return {"approved": True, "action": "change", "target": selection["target"], "before": selection["before"],
                 "changes": [{"id": str(i), "action": action, "before": self.tags.catalogue(tag_id=str(i))["before"]}
                             for i, action in changes]}
@@ -258,3 +259,114 @@ class TagTests(unittest.TestCase):
         self.assertEqual(self.tags.catalogue()["total"], 3)
         self.assertEqual(reads, [False, True])
         self.assertEqual(self.studio.writes, [])
+
+    def test_multiple_albums_require_explicit_scope_and_show_complete_compact_summaries(self):
+        with self.assertRaises(LibraryError):
+            self.tags.selection(["1", "2"])
+        selected = self.tags.selection(["1", "2"], multiple=True)
+        self.assertEqual(selected["target"], {"albums": ["1", "2"], "track": None, "multiple": True})
+        self.assertEqual((selected["label"], selected["tracks"]), ("2 selected albums", 8))
+        self.assertEqual(selected["albums"], [
+            {"ids": ["1"], "name": "Album 1", "artist": "Artist", "tracks": 4},
+            {"ids": ["2"], "name": "Album 2", "artist": "Artist", "tracks": 4}])
+        self.assertEqual({t["id"]: t["selected"] for t in selected["tags"]}, {"10": 3, "30": 1})
+        self.assertEqual(self.studio.writes, [])
+
+    def test_multi_album_tagging_preserves_other_albums_genres_and_partial_tags(self):
+        extra = library_data(3, 2)["library"]
+        self.studio.raw["library"]["albums"]["3"] = extra["albums"]["3"]
+        self.studio.raw["library"]["tracks"].update({k: v for k, v in extra["tracks"].items() if k.startswith("3")})
+        self.studio.raw["library"]["artists"]["2"] = {"name": "Another artist"}
+        self.studio.raw["library"]["albums"]["2"]["artist_id"] = 2
+        before = copy.deepcopy(self.studio.raw["library"]["tracks"])
+        self.tags.save(self.assignment([(20, "add")], albums=["1", "2"], multiple=True))
+        chosen = [10002, 10003, 10004, 10005, 20002, 20003, 20004, 20005]
+        self.assertEqual(self.studio.writes, [("tagtracks", {"tagid": 20, "tracks": chosen, "untag": False})])
+        self.assertEqual(self.studio.raw["library"]["tags"]["10"]["tracks"], [10002, 10003, 20002, 99999])
+        self.assertEqual(self.studio.raw["library"]["tags"]["30"]["tracks"], [10004])
+        self.assertEqual(self.studio.raw["library"]["tracks"], before)
+        self.assertEqual(self.studio.jobs["tag-job"]["results"], [{"id": "20", "status": "saved"}])
+        self.tags.save(self.assignment([(10, "remove")], albums=["1", "2"], multiple=True))
+        self.assertEqual(self.studio.raw["library"]["tags"]["10"]["tracks"], [99999])
+
+    def test_multi_album_review_blocks_changed_membership_names_session_account_and_mode(self):
+        mutations = [
+            lambda: self.studio.raw["library"]["albums"]["2"].update(name="Renamed"),
+            lambda: self.studio.raw["library"]["tracks"]["20002"].update(title="Renamed track"),
+            lambda: self.studio.raw["library"]["albums"]["2"]["tracks"].pop(),
+            lambda: self.studio.raw.update(combine_sets=True),
+            lambda: setattr(self.studio, "playback_session", "another-session"),
+            lambda: setattr(self.studio, "library_user", "another-account"),
+        ]
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                self.setUp()
+                body = self.assignment([(20, "add")], albums=["1", "2"], multiple=True)
+                mutate()
+                with self.assertRaises(LibraryError):
+                    self.tags.save(body)
+                self.assertEqual(self.studio.writes, [])
+        self.setUp()
+        body = self.assignment([(20, "add")], multiple=True)
+        body["target"]["multiple"] = False
+        with self.assertRaises(ConflictError):
+            self.tags.save(body)
+        self.assertEqual(self.studio.writes, [])
+
+    def test_multi_album_scope_keeps_discs_together_and_detects_regrouped_sets(self):
+        third = library_data(3, 1)["library"]
+        self.studio.raw["library"]["albums"]["3"] = third["albums"]["3"]
+        self.studio.raw["library"]["tracks"].update({k: v for k, v in third["tracks"].items() if k.startswith("3")})
+        self.studio.raw["library"]["albums"]["2"].update(name="Album 1", disc=2)
+        with self.assertRaises(LibraryError):
+            self.tags.selection(["1", "3"], multiple=True)
+        selected = self.tags.selection(["1", "2", "3"], multiple=True)
+        self.assertEqual((selected["label"], selected["tracks"]), ("2 selected albums", 10))
+        self.assertEqual(selected["albums"][0]["ids"], ["1", "2"])
+        body = self.assignment([(20, "add")], albums=["1", "2", "3"], multiple=True)
+        self.studio.raw["library"]["albums"]["2"]["year"] = 2000
+        with self.assertRaises(ConflictError):
+            self.tags.save(body)
+        self.assertEqual(self.studio.writes, [])
+
+    def test_multi_album_bounds_and_invalid_modes_never_write(self):
+        tags = self.studio.raw["library"]["tags"]
+        self.studio.raw = library_data(21, 1)
+        self.studio.raw["library"]["tags"] = tags
+        self.assertEqual(self.tags.selection([str(i) for i in range(1, 21)], multiple=True)["tracks"], 40)
+        with self.assertRaisesRegex(LibraryError, "20 displayed"):
+            self.tags.selection([str(i) for i in range(1, 22)], multiple=True)
+        for mode in (1, None, "true", [], {}):
+            with self.subTest(mode=mode), self.assertRaises(LibraryError):
+                self.tags.selection(["1"], multiple=mode)
+        for albums, track in ((["1", "1"], None), (["1", "2"], "10002"), ([str(i) for i in range(1, 102)], None)):
+            with self.subTest(albums=albums, track=track), self.assertRaises(LibraryError):
+                self.tags.selection(albums, track, multiple=True)
+        for count, allowed in ((250, True), (251, False)):
+            self.studio.raw = library_data(1, count)
+            self.studio.raw["library"]["tags"] = tags
+            if allowed:
+                self.assertEqual(self.tags.selection(["1"], multiple=True)["tracks"], 500)
+            else:
+                with patch.object(Library, "album_view", side_effect=AssertionError("No oversized detail views")):
+                    with self.assertRaisesRegex(LibraryError, "500 tracks"):
+                        self.tags.selection(["1"], multiple=True)
+        self.assertEqual(self.studio.writes, [])
+
+    def test_new_tag_is_confirmed_empty_before_explicit_multi_album_assignment(self):
+        self.tags.save({"approved": True, "action": "create", "name": "Together"})
+        self.assertEqual(self.studio.raw["library"]["tags"]["40"]["tracks"], [])
+        self.assertEqual(len(self.studio.writes), 1)
+        self.tags.save(self.assignment([(40, "add")], albums=["1", "2"], multiple=True))
+        self.assertEqual(len(self.studio.raw["library"]["tags"]["40"]["tracks"]), 8)
+        self.assertEqual([mode for mode, body in self.studio.writes], ["createtag", "tagtracks"])
+
+    def test_multi_album_archived_and_uncertain_writes_keep_existing_safeguards(self):
+        with self.assertRaisesRegex(LibraryError, "hide music"):
+            self.tags.save(self.assignment([(30, "add")], albums=["1", "2"], multiple=True))
+        self.assertEqual(self.studio.writes, [])
+        self.studio.accept_then_fail = True
+        result = self.tags.save(self.assignment([(20, "add"), (10, "add")], albums=["1", "2"], multiple=True))
+        self.assertTrue(result["error"])
+        self.assertEqual(len(self.studio.writes), 1)
+        self.assertEqual([r["status"] for r in self.studio.jobs["tag-job"]["results"]], ["saved", "not_sent"])
