@@ -22,7 +22,12 @@ ROOT = Path(__file__).resolve().parent.parent
 def unpacked_app():
     output = ROOT / "electron/out"
     if sys.platform == "darwin":
-        return next(output.glob("mac*/" + json.loads((ROOT / "electron/package.json").read_text())["productName"] + ".app"))
+        package = json.loads((ROOT / "electron/package.json").read_text())
+        app = next(output.glob("mac*/" + package["build"].get("executableName", package["productName"]) + ".app"))
+        named = app.with_name(package["productName"] + ".app")
+        if app != named:
+            app.rename(named)
+        return named
     return output / ("win-unpacked" if sys.platform == "win32" else "linux-unpacked")
 
 
