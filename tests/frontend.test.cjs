@@ -2368,6 +2368,105 @@ test("artist page image editing uses the identity supplying the photo when nativ
   assert.equal(p.run('art.target.current'),'https://example.test/eleven-300');
 });
 
+test("Random album order spans every page, preserves filtered subsets and leaves selection and playback intact", async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"), "100");
+    state.albums = Array.from({length: 75}, (_, i) => ({...state.albums[0], id: String(i),
+      name: "Album " + String(i).padStart(3, "0"), artist: i % 2 ? "Other artist" : "Test artist",
+      year: i % 3 ? 2000 : 0, disc: 1}));
+    let albumShuffleCalls = 0; Math.random = () => { albumShuffleCalls += 1; return 0; };
+    showScreen("albums"); state.selected.add("0");
+    $('#albums-browse-options').dataset.browseOptions = 'albums';
+    openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random');`);
+  const order = p.json("filteredAlbums().map(a => String(a.id))");
+  assert.equal(order.length, 75); assert.equal(new Set(order).size, 75);
+  assert.notDeepEqual(order, Array.from({length: 75}, (_, i) => String(i)));
+  const requests = p.requests.length, calls = p.run("albumShuffleCalls"), queue = p.json("player.queue");
+  const visibleIds = () => [...p.nodes.get("#albums").innerHTML.matchAll(/data-album="([^"]+)"/g)].map(match => match[1]);
+  const pages = visibleIds();
+  for (let i = 1; i < 4; i++) {
+    await p.click({"[data-page]": {dataset: {page: "1"}}}); pages.push(...visibleIds());
+  }
+  assert.deepEqual(pages, order, "Each displayed album appears once across all pages");
+  p.nodes.get("#search").value = "Album 03";
+  await p.nodes.get("#search").emit("input"); p.flushTimers(150);
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order.filter(id => Number(id) >= 30 && Number(id) < 40));
+  p.nodes.get("#search").value = "";
+  await p.nodes.get("#search").emit("input"); p.flushTimers(150);
+  p.nodes.get("#filter").value = "year";
+  await p.nodes.get("#filter").emit("change");
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order.filter(id => Number(id) % 3 === 0));
+  p.nodes.get("#filter").value = "all";
+  await p.nodes.get("#filter").emit("change");
+  p.run('state.artist = "Test artist"; render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order.filter(id => Number(id) % 2 === 0));
+  p.run('state.artist = null; render()');
+  p.nodes.get("#per-page").value = "50";
+  await p.nodes.get("#per-page").emit("change", {target: p.nodes.get("#per-page")});
+  assert.deepEqual(visibleIds(), order.slice(0, 50));
+  assert.equal(p.run("albumShuffleCalls"), calls);
+  assert.equal(p.requests.length, requests, "Ordering never loads details or writes");
+  assert.deepEqual(p.json("[...state.selected]"), ["0"]);
+  assert.deepEqual(p.json("player.queue"), queue);
+  assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
+  assert.equal(p.nodes.get("#audio").paused, false);
+  assert.match(p.nodes.get('#albums-browse-options').innerHTML, /Random album order/);
+});
+
+test("Random album order restores each history shuffle, follows metadata read-backs and resets across libraries", async () => {
+  const p = page(); await settle();
+  await p.nodes.get("#all-albums").emit("click");
+  p.run("Math.random = () => 0");
+  p.nodes.get("#sort").value = "random"; await p.nodes.get("#sort").emit("change");
+  const original = p.json("filteredAlbums().map(a => String(a.id))");
+  await p.click({"[data-album]": {dataset: {album: original[0]}}});
+  await p.nodes.get("#all-albums").emit("click");
+  p.nodes.get("#sort").value = "title"; await p.nodes.get("#sort").emit("change");
+  p.run("Math.random = () => 0.999");
+  p.nodes.get("#sort").value = "random"; await p.nodes.get("#sort").emit("change");
+  const second = p.json("filteredAlbums().map(a => String(a.id))");
+  assert.notDeepEqual(second, original);
+  p.history.back(); p.history.back(); await settle();
+  assert.equal(p.nodes.get("#sort").value, "random");
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), original);
+  p.history.forward(); p.history.forward(); await settle();
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), second);
+  p.run('applyLocally([{kind: "album", albumId: "1", fields: {name: {after: "Renamed album"}}}]); render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), second);
+  p.run('state.albums = [...state.albums, {...state.albums[0], id: "added", name: "A new album"}]; render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), [...second, "added"]);
+  p.run('state.albums = state.albums.filter(a => String(a.id) !== "added"); render()');
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), second);
+  const saved = p.json("history.state"), generation = p.run("albumOrder.library");
+  p.run('Math.random = () => 0; useLocal(demoLibrary(), "demo"); render()');
+  assert.notEqual(p.run("albumOrder.library"), generation);
+  p.run(`showRoute({screen: "albums"}, ${JSON.stringify(saved)})`);
+  assert.notDeepEqual(p.json("filteredAlbums().map(a => String(a.id))"), saved.albumsRandomIds,
+    "History from a replaced library cannot reinstate its old permutation");
+  const localGeneration = p.run("albumOrder.library");
+  p.setFetch(async url => {
+    assert.equal(url, "/api/library");
+    return {ok: true, json: async () => ({albums: p.json("state.albums"), artists: []})};
+  });
+  await p.run("loadLive()"); await settle();
+  assert.notEqual(p.run("albumOrder.library"), localGeneration);
+});
+
+test("Random album order counts multi-disc sets once and an already checked choice does not reshuffle", async () => {
+  const p = setPage(); await settle();
+  await p.nodes.get("#all-albums").emit("click");
+  p.run(`Math.random = () => 0; $('#albums-browse-options').dataset.browseOptions = 'albums';
+    openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random');`);
+  const order = p.json("filteredAlbums().map(a => String(a.id))"), requests = p.requests.length;
+  assert.equal(order.length, 7);
+  assert.equal(order.filter(id => ["71", "72", "73"].includes(id)).length, 1);
+  p.run("Math.random = () => 0.999; openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random')");
+  assert.deepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order);
+  assert.equal(p.requests.length, requests);
+  p.run("openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:title'); openBrowseOptions($('#albums-browse-options')); chooseBrowseOption('sort:random')");
+  assert.notDeepEqual(p.json("filteredAlbums().map(a => String(a.id))"), order);
+});
+
 test("Random album artists keeps one complete order across pages, filters and Back without loading tracks", async () => {
   const p = livePage(); await settle();
   p.run(`playTracks(state.details.get("1"), "100");
@@ -6199,7 +6298,7 @@ test('album menu counts merged albums in the current artist scope and keeps sear
   const count=p.run('albumShelf().filter(a=>albumHasArtist(a,"Pink Floyd")).length');
   assert.match(p.nodes.get('#browse-options-menu').innerHTML,new RegExp(`All albums · ${count}`));
   assert.deepEqual(p.json('browseChoices.views.get("albums").filter(o=>o.key.startsWith("sort:")).map(o=>o.key)'),
-    ['sort:artist','sort:artist_za','sort:title','sort:title_za','sort:year','sort:newest','sort:rating_high','sort:rating_low','sort:uploaded_newest','sort:uploaded_oldest']);
+    ['sort:artist','sort:artist_za','sort:title','sort:title_za','sort:random','sort:year','sort:newest','sort:rating_high','sort:rating_low','sort:uploaded_newest','sort:uploaded_oldest']);
   p.run(`chooseBrowseOption('sort:title_za'); $('#filter').value='cover';
     state.albums=state.albums.map(a=>({...a,no_cover:0})); render(); openBrowseOptions($('#albums-browse-options'));`);
   assert.doesNotMatch(p.nodes.get('#browse-options-menu').innerHTML,/filter:cover/);

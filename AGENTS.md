@@ -671,6 +671,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   discs, with unknown/unrated entries last and stable name tie-breakers. Artist and
   favourite-artist sorts use native artist ratings (minimum for mixed named IDs),
   independently of album stars. Upload-date sorting belongs only to albums.
+  Album Random album order shuffles the complete merged shelf once before search,
+  artist scope, filters and pagination. Preserve it through metadata read-backs and
+  Back/Forward within the same library; reset on library/account replacement or a
+  different sort choice. Keep random ordering separate from Play random album.
+  The shared Filter and sort menu shows Sort/Show side by side above 760px and
+  stacked below, retaining independent choices and keyboard dismissal/focus.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
   Album-rating read-back invalidates copied multi-disc shelf ratings (including
   partial results) and refreshes visible album ordering. Confirm unnamed native
