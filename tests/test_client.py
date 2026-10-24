@@ -1022,6 +1022,27 @@ class ClientTests(unittest.TestCase):
         finally:
             mock_ibroadcast.STATE["tags"] = tags_before
 
+    def test_selected_album_tags_read_back_across_artists_without_changing_music(self):
+        studio = self.connect()
+        tags_before = copy.deepcopy(mock_ibroadcast.STATE["tags"])
+        tracks_before = copy.deepcopy(mock_ibroadcast.STATE["tracks"])
+        try:
+            result = studio.tags.save({"approved": True, "action": "create", "name": "Together"})
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            tag = studio.tags.catalogue()["tags"][0]
+            selection = studio.tags.selection(["72", "74"], multiple=True)
+            self.assertEqual({a["artist"] for a in selection["albums"]}, {"Kate Bush", "Pink Floyd"})
+            self.assertEqual(selection["tracks"], 3)
+            result = studio.tags.save({"approved": True, "action": "change", "target": selection["target"],
+                "before": selection["before"], "changes": [{"id": tag["id"], "before": tag["before"], "action": "add"}]})
+            self.assertEqual(self.wait_job(studio, result["job"])["results"], [{"id": tag["id"], "status": "saved"}])
+            self.assertEqual(set(studio.browse("tags", tag["id"])["album_ids"]), {"72", "74"})
+            self.assertEqual(mock_ibroadcast.STATE["tags"][int(tag["id"])]["tracks"], [900, 901, 904])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"], tracks_before)
+            self.assertEqual([w["mode"] for w in mock_ibroadcast.STATE["writes"]], ["createtag", "tagtracks"])
+        finally:
+            mock_ibroadcast.STATE["tags"] = tags_before
+
     def test_selected_album_trash_accepts_different_artists_and_keeps_unselected_albums(self):
         studio = self.connect()
         body = {"approved": True, "combine_sets": False, "albums": [

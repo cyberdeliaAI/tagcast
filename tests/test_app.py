@@ -228,10 +228,11 @@ class StartTests(unittest.TestCase):
                 action.assert_not_called()
                 self.assertEqual(request("POST", path, {"X-Tagcast": "1"}), 200)
                 action.assert_called_once()
-            for path in ("/api/playlist-folder/choices", "/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/album-guide/album?album_id=1&session=test-session", "/api/tags", "/api/tags/selection?albums=1&track=2"):
+            for path in ("/api/playlist-folder/choices", "/api/playlists", "/api/album-favourites", "/api/artist-favourites", "/api/queue-sync", "/api/album-guide", "/api/album-guide/album?album_id=1&session=test-session", "/api/tags", "/api/tags/selection?albums=1&track=2", "/api/tags/selection?albums=1,2&multiple=1"):
                 self.assertEqual(request("GET", path, {"Sec-Fetch-Site": "cross-site"}), 403)
                 self.assertEqual(request("GET", path, {"Host": "elsewhere.test"}), 403)
                 self.assertEqual(request("GET", path), 200)
+            studio.tags.selection.assert_called_with(["1", "2"], None, True)
             studio.album_guide.notes_for_album.assert_called_once_with("1", "test-session", None, None)
             self.assertEqual(request("GET", "/api/lyrics?track_id=1&title=Track&artist=Artist&session=test-session", {"Sec-Fetch-Site": "cross-site"}), 403)
             self.assertEqual(request("GET", "/api/lyrics?track_id=1&title=Track&artist=Artist&session=test-session"), 200)

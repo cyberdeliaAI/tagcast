@@ -58,14 +58,27 @@ class Tags:
 
     def target(self, library, target):
         if not isinstance(target, dict):
-            raise LibraryError("Choose one album or track for its tags.")
+            raise LibraryError("Choose an album or track for its tags.")
+        multiple = target.get("multiple", False)
+        if type(multiple) is not bool or (multiple and target.get("track") is not None):
+            raise LibraryError("Choose complete albums for a multi-album tag selection.")
         ids = track_ids(target.get("albums"), 100)
         if not ids or len(ids) != len(set(ids)):
-            raise LibraryError("Choose one complete album or multi-disc set.")
+            raise LibraryError("Choose complete albums or multi-disc sets, without repeated IDs.")
         library._browse_index("tags")
         groups = {library._browse_albums.get(i) for i in ids}
-        if None in groups or len(groups) != 1 or any(i not in ids for i, g in library._browse_albums.items() if g in groups):
-            raise LibraryError("Choose one complete album or multi-disc set.")
+        if None in groups or (not multiple and len(groups) != 1) or any(
+                i not in ids for i, g in library._browse_albums.items() if g in groups):
+            raise LibraryError("Choose complete albums or multi-disc sets.")
+        if multiple and len(groups) > 20:
+            raise LibraryError("Choose at most 20 displayed albums for one tag review.")
+        if multiple:
+            bounded = set()
+            for album_id in ids:
+                for track_id in library.active_track_ids(album_id):
+                    bounded.add(track_id)
+                    if len(bounded) > 500:
+                        raise LibraryError("Choose up to 500 tracks for one tag review; use a smaller selection.")
         views = [library.album_view(i) for i in ids]
         tracks = {int(t["id"]): t for a in views for t in a["tracks"]}
         if target.get("track") is not None:
@@ -74,20 +87,34 @@ class Tags:
                 raise ConflictError("This track is no longer in the chosen album.")
             tracks = {chosen: tracks[chosen]}
         if not tracks or len(tracks) > 500:
-            raise LibraryError("Choose up to 500 tracks; for a larger album, manage tags per track.")
-        label = next(iter(tracks.values()))["title"] if target.get("track") else views[0]["name"]
-        before = self.digest({"combine_sets": library.combine_sets,
+            raise LibraryError("Choose up to 500 tracks for one tag review; use a smaller selection.")
+        albums = {}
+        for view in views:
+            key = library._browse_albums[int(view["id"])]
+            group = albums.setdefault(key, {"ids": [], "name": view["name"],
+                                           "artist": view["artist"], "tracks": set()})
+            group["ids"].append(view["id"])
+            group["tracks"].update(t["id"] for t in view["tracks"])
+        summaries = [{**group, "tracks": len(group["tracks"])} for group in albums.values()]
+        label = (f"{len(groups)} selected {'album' if len(groups) == 1 else 'albums'}" if multiple else
+                 next(iter(tracks.values()))["title"] if target.get("track") else views[0]["name"])
+        snapshot = {"combine_sets": library.combine_sets,
             "albums": [{"id": a["id"], "name": a["name"], "artist": a["artist"],
                         "tracks": sorted(t["id"] for t in a["tracks"])} for a in views],
             "tracks": [{"id": t["id"], "title": t["title"], "tags": sorted(tag["id"] for tag in t["tags"])}
-                       for _, t in sorted(tracks.items())]})
-        return set(tracks), label, before
+                       for _, t in sorted(tracks.items())]}
+        if multiple:
+            snapshot.update(multiple=True, session=self.studio.playback_session, groups=summaries)
+        return set(tracks), label, self.digest(snapshot), summaries
 
-    def selection(self, albums, track=None):
+    def selection(self, albums, track=None, multiple=False):
+        if type(multiple) is not bool:
+            raise LibraryError("Choose a valid album tag selection mode.")
         _, library = self.library()
-        target = {"albums": albums, "track": track}
-        ids, label, before = self.target(library, target)
+        target = {"albums": albums, "track": track, **({"multiple": True} if multiple else {})}
+        ids, label, before, summaries = self.target(library, target)
         return {"target": target, "label": label, "tracks": len(ids), "before": before,
+                **({"albums": summaries} if multiple else {}),
                 "tags": [self.row(library, i, ids) for i, t in library.tags.items() if ids.intersection(t["tracks"])]}
 
     @staticmethod
@@ -107,7 +134,7 @@ class Tags:
             client, library = self.library()
             action, plans = body.get("action"), []
             if action == "change":
-                ids, _, before = self.target(library, body.get("target"))
+                ids, _, before, _ = self.target(library, body.get("target"))
                 if before != body.get("before"):
                     raise ConflictError("The album, track or its tags changed. Open a new review.")
                 changes = body.get("changes")

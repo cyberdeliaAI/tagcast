@@ -347,7 +347,13 @@ their shared browsing/player state; a fast local response can otherwise race the
   membership and merged album counts as other browse groups. Never send complete tag
   track lists to the browser. Album/track tag management reads compact counts and
   prepares explicit add/remove operations; Keep as is preserves partial assignments.
-  Scope assignments to one complete displayed album/set or one of its tracks, at most
+  Scope assignments to one complete displayed album/set or one of its tracks, or an explicit
+  multi-album selection of at most 20 complete displayed albums / 100 native discs. Keep
+  the multi-album snapshot session-bound, show all selected album names before review, and
+  preserve every disc and selections outside filters/paging until assignment finishes.
+  After fully confirmed multi-album assignments, deselect only the reviewed albums and
+  refresh the selection bar/cards; return focus to a visible control. Cancel, errors,
+  uncertain results and empty-tag creation retain the selection. All scopes allow at most
   500 tracks / 20 tag operations, checking account, full album membership, tag names,
   archived flags and assignments before sending. Preserve all outside memberships.
   Archived tags cannot be added here because they can hide music; do not archive or
@@ -566,6 +572,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
   fullscreen focus handling when a lightbox is above Now playing.
+- Album details offer Play album in disc/track order and Shuffle album in a newly mixed
+  queue order, including every disc. Both explicitly replace the queue and reuse the same
+  native audio and ownership guards. Shuffle never reorders library tracks or metadata;
+  ordinary Play restores disc/track order. Preserve Repeat and Play next semantics.
 - Play random album uses all filtered merged albums, before paging or the decade
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play
@@ -661,6 +671,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   discs, with unknown/unrated entries last and stable name tie-breakers. Artist and
   favourite-artist sorts use native artist ratings (minimum for mixed named IDs),
   independently of album stars. Upload-date sorting belongs only to albums.
+  Album Random album order shuffles the complete merged shelf once before search,
+  artist scope, filters and pagination. Preserve it through metadata read-backs and
+  Back/Forward within the same library; reset on library/account replacement or a
+  different sort choice. Keep random ordering separate from Play random album.
+  The shared Filter and sort menu shows Sort/Show side by side above 760px and
+  stacked below, retaining independent choices and keyboard dismissal/focus.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
   Album-rating read-back invalidates copied multi-disc shelf ratings (including
   partial results) and refreshes visible album ordering. Confirm unnamed native

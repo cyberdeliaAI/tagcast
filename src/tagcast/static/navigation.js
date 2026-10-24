@@ -154,6 +154,7 @@ function viewState(index, from) {
   return {index, from, scrollY: nav.scroll?.hash === `#/${currentRoute()}` ? nav.scroll.top : Math.max(0, window.scrollY || 0),
     label: state.screen === "browse" && browseView.key !== null ? browseView.label : state.screen === "playlists" && collectionsView.playlist ? collectionsView.data?.name || "Playlist" : routeLabel(`#/${currentRoute()}`, {}),
     albumOrigin: state.screen === "album" ? history.state?.albumOrigin || [] : [], search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
+    albumsRandomIds: $("#sort").value === "random" ? albumOrder.ids : [], albumsLibrary: albumOrder.library,
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
     artistsRandomNames: $("#artists-sort").value === "random" ? artistBrowse.randomNames : [], artistsLibrary: artistBrowse.library,
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
@@ -335,6 +336,9 @@ function showRoute(route, saved = {}) {
     if (saved.search !== undefined) $("#search").value = saved.search;
     if (saved.filter) $("#filter").value = saved.filter;
     if (saved.sort) $("#sort").value = saved.sort;
+    if (saved.albumsLibrary === albumOrder.library && Array.isArray(saved.albumsRandomIds)) {
+      albumOrder.ids = [...new Set(saved.albumsRandomIds.filter(id => typeof id === "string"))];
+    }
     state.page = saved.page || 0;
     showScreen("albums"); render();
   }

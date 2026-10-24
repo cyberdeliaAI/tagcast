@@ -1,0 +1,19 @@
+{
+  "status": "unreleased development after 0.80.0",
+  "date": "2026-10-24",
+  "sample_library": true,
+  "images": [
+    {
+      "file": "random-album-order.jpg",
+      "sha256": "4ac61017e9e2f318c7b4b13d017058ad6a3b43ea3a2e522bf69fc6ad098e1be6"
+    },
+    {
+      "file": "selected-album-tags.jpg",
+      "sha256": "88593e868b3c0800d4d6a0fbfb09a07a2f61875cdbeaff599ebabc3e666c03e9"
+    },
+    {
+      "file": "shuffle-album.jpg",
+      "sha256": "e7015b70d1c7b49928bee63ccb456a8effeabb0b01f9c5ced03de2eac13ea395"
+    }
+  ]
+}

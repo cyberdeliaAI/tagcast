@@ -252,14 +252,18 @@ function queueTracks(album, tracks = album.tracks) {
     format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source}));
 }
 
-function playTracks(album, startId) {
+function playTracks(album, startId, shuffle = false) {
   if (!live() || !album.tracks.length) return;
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
   cancelRandomPlay();
   player.epoch += 1;
-  player.shuffle = false;
+  player.shuffle = shuffle;
   player.queue = queueTracks(album);
-  player.index = Math.max(0, player.queue.findIndex(t => t.id === String(startId)));
+  if (shuffle) for (let i = player.queue.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [player.queue[i], player.queue[j]] = [player.queue[j], player.queue[i]];
+  }
+  player.index = shuffle ? 0 : Math.max(0, player.queue.findIndex(t => t.id === String(startId)));
   playCurrent();
 }
 
@@ -653,7 +657,8 @@ document.addEventListener("click", event => {
     return;
   }
   const play = event.target.closest("[data-play]");
-  const all = event.target.closest("[data-play-album]");
+  const shuffle = event.target.closest("[data-shuffle-album]");
+  const all = event.target.closest("[data-play-album]") || shuffle;
   if (!play && !all) return;
   if (!live()) return;
   const albumId = (play || all).dataset.playAlbumId;
@@ -665,7 +670,7 @@ document.addEventListener("click", event => {
     if (audio.paused) audio.play(); else audio.pause();
     return;
   }
-  playTracks(album, id || album.tracks[0]?.id);
+  playTracks(album, id || album.tracks[0]?.id, Boolean(shuffle));
 });
 
 // File format comes from metadata; streaming quality describes this playback request.
