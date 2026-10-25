@@ -980,7 +980,7 @@ body.help-open{overflow:hidden}
 .settings-save-bar>div{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 10px)}
 .settings-editor-return{margin-bottom:16px}
-@media(max-width:1024px){.settings-layout{grid-template-columns:150px minmax(0,1fr);gap:20px}#settings-nav a{padding:10px;font-size:12px}}
+@media(max-width:1024px){.settings-layout{grid-template-columns:150px minmax(0,1fr);gap:20px}#settings-nav a{padding:10px;font-size:12px}#settings-content .setting-row{grid-template-columns:minmax(0,1fr) auto}#settings-content .setting-row>div{grid-column:1/-1}}
 @media(max-width:760px){.settings-layout{grid-template-columns:1fr;gap:22px}#settings-nav{position:static;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}#settings-nav a{border:1px solid var(--line)}#settings-content section{padding:17px 15px}#settings-content .setting-row{grid-template-columns:minmax(0,1fr) auto}#settings-content .setting-row>div{grid-column:1/-1}.settings-save-bar{position:static}.settings-category-heading h2{font-size:21px}}
 
 /* Compact public service health, separate from personal connection state. */
