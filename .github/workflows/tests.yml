@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: for f in src/tagcast/static/*.js; do node --check "$f"; done
       - name: Frontend regressions
-        run: node --test tests/frontend.test.cjs tests/gapless-media.test.cjs tests/gapless-oracle.test.cjs
+        run: node --test tests/frontend.test.cjs tests/gapless-media.test.cjs tests/gapless-oracle.test.cjs tests/gapless-diagnostics.test.cjs
       - name: Electron shell regressions
         if: hashFiles('electron/package.json') != ''
         shell: bash

@@ -55,6 +55,7 @@ async function run(id, sourceCase, mode) {
   await wait(150);const events=[],observations=[],identity=audio;let result;
   for(const name of ['playing','waiting','seeking','seeked','pause','ended','error']) audio.addEventListener(name,()=>events.push({name,at:performance.now(),index:player.index,time:audio.currentTime,src:audio.currentSrc,active:Boolean(gaplessTrial.active),nativeVisible:!audio.hidden}));
   const album=${JSON.stringify(album)},mode=${JSON.stringify(mode)};
+  if(${args.includes('--diagnostics')})gaplessDiagnosticsSet(true);
   try{
    useLocal([album],'live');state.connection={connected:true,premium:true,playback_session:'isolated-app-test'};lookup.streamQuality='orig';gaplessTrial.enabled=true;updateChrome();showScreen('albums');render();
    if(mode==='startup-fallback'){
@@ -96,7 +97,7 @@ async function run(id, sourceCase, mode) {
     const queued=player.queue[2];setNowPlaying(true);renderNowPlaying();removeQueueEntry(2,nowPlayingRows.revision);await wait(100);observations.push({removedNotWanted:gaplessTrial.active?.wanted!==queued});
    }
    if(observations.some(o=>Object.entries(o).some(([k,v])=>['paused','stable','resumed','cancelled','sourceCleared','repeatTrack','advanced','removedNotWanted','nativeVisible','gaplessHidden','evicted','backwardSeek','mseActive','skippedToPrepared','lateReplyIgnored','startupRecovered'].includes(k)&&v!==true)))throw Error('Application state assertion failed');
-   result={id,pass:true,observations,events,sameElement:identity===audio,queueIds:player.queue.map(t=>t.id),index:player.index,message:gaplessTrial.message};
+   result={id,pass:true,diagnostics:gaplessDiagnosticsReport(),observations,events,sameElement:identity===audio,queueIds:player.queue.map(t=>t.id),index:player.index,message:gaplessTrial.message};
   }catch(error){result={id,pass:false,error:error.message,observations,events,index:player.index,message:gaplessTrial.message};}
   return result;
  })()` .replace('result={id,','result={id:'+JSON.stringify(id)+',').replace('result={id,','result={id:'+JSON.stringify(id)+','));

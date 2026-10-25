@@ -10,9 +10,9 @@
  for(const name of ['playing','waiting','stalled','seeking','seeked','ended','error'])audio.addEventListener(name,()=>events.push({name,at:performance.now()-started,time:audio.currentTime,index:player.index,error:audio.error?.message||''}));
  audio.addEventListener('timeupdate',()=>gaplessAdvance());audio.addEventListener('error',()=>gaplessAudioError());
  const finish=async(error='')=>{
-   audio.pause();await wait(250);
+   audio.pause();await wait(250);if(config.diagnostics)gaplessDiagnosticsSet(false);
    if(node)await new Promise(resolve=>{flush=resolve;node.port.postMessage('flush');});
-   const result={id:config.id,startedEpoch,mode:config.referenceMode?'reference':'engine',error,rate:config.rate,contextRate:context?.sampleRate,events,operations,trace,fallbacks,inputChannels,time:audio.currentTime,duration:audio.duration,finalIndex:player.index,message:gaplessTrial.message,engineActive:Boolean(gaplessTrial.active),elapsedMs:performance.now()-started,engineState:gaplessTrial.active?{finished:gaplessTrial.active.finished,pending:gaplessTrial.active.pending,wanted:Boolean(gaplessTrial.active.wanted),readyState:gaplessTrial.active.media?.readyState,currentPart:gaplessTrial.active.current?.part,totalParts:gaplessTrial.active.current?.media.parts.length,ranges:gaplessTrial.active.buffer?Array.from({length:gaplessTrial.active.buffer.buffered.length},(_,i)=>[gaplessTrial.active.buffer.buffered.start(i),gaplessTrial.active.buffer.buffered.end(i)]):[]}:null,seekProbe:config.probeResult};
+   const result={id:config.id,diagnostics:config.diagnostics?gaplessDiagnosticsReport():null,startedEpoch,mode:config.referenceMode?'reference':'engine',error,rate:config.rate,contextRate:context?.sampleRate,events,operations,trace,fallbacks,inputChannels,time:audio.currentTime,duration:audio.duration,finalIndex:player.index,message:gaplessTrial.message,engineActive:Boolean(gaplessTrial.active),elapsedMs:performance.now()-started,engineState:gaplessTrial.active?{finished:gaplessTrial.active.finished,pending:gaplessTrial.active.pending,wanted:Boolean(gaplessTrial.active.wanted),readyState:gaplessTrial.active.media?.readyState,currentPart:gaplessTrial.active.current?.part,totalParts:gaplessTrial.active.current?.media.parts.length,ranges:gaplessTrial.active.buffer?Array.from({length:gaplessTrial.active.buffer.buffered.length},(_,i)=>[gaplessTrial.active.buffer.buffered.start(i),gaplessTrial.active.buffer.buffered.end(i)]):[]}:null,seekProbe:config.probeResult};
    gaplessCancel();audio.removeAttribute('src');audio.load();if(context)await context.close();window.lab.done(result);
  };
  try {
@@ -20,6 +20,7 @@
    node=new AudioWorkletNode(context,'counter-capture',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCountMode:'max',channelInterpretation:'discrete'});
    node.port.onmessage=e=>{if(e.data.pcm)window.lab.pcm(e.data.pcm);if(e.data.channels!==undefined)inputChannels.push({channels:e.data.channels,frame:e.data.frame});if(e.data.flush)flush?.();};
    context.createMediaElementSource(audio).connect(node).connect(context.destination);audio.volume=1;audio.playbackRate=1;await context.resume();
+   if(config.diagnostics&&!config.referenceMode)gaplessDiagnosticsSet(true);
    if(config.referenceMode){audio.src='/reference';await audio.play();}
    else {
     gaplessTrial.enabled=true;player.repeat=config.repeat||'none';player.queue=config.tracks.map((s,i)=>({id:String(i),title:s.id,album:{id:'fixture'}}));gaplessAlbumQueue(player.queue,true);
