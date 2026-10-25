@@ -15,3 +15,11 @@ test('injected starvation is distinguished from normal leading/trailing capture 
 test('unexpected signal after the last expected sample is not silently ignored',()=>{const s=signal();s[0][s[0].length-1]=.5;assert.equal(C.inspect(s,specs).exact,false);});
 test('24-bit counter survives Float32 transport and detects a single codeword error',()=>{const list=specs.map(s=>({...s,bits:24})),s=signal(list);assert.equal(C.inspect(s,list).exact,true);s[1][17033]+=1/8388608;const r=C.inspect(s,list);assert.equal(r.exact,false);assert.equal(r.firstMismatch,17033);});
 test('unknown gain/resampling is inconclusive rather than falsely proving continuity',()=>{const s=signal().map(p=>p.map(v=>v*.75));assert.equal(C.inspect(s,specs).measurable,false);});
+
+test('an intentional seek window still checks every tail sample and the following boundary',()=>{
+ const list=specs.map(s=>({...s,bits:24})),full=signal(list);
+ const tail=full.map(p=>p.slice(list[0].samples-256,list[0].samples+list[1].samples));
+ const window=[{...list[0],sourceStart:list[0].samples-256,samples:256},list[1]];
+ assert.equal(C.inspect(tail,window).exact,true);
+ assert.equal(C.inspect(edit(tail,256,0,[[0,0]]),window).exact,false);
+});

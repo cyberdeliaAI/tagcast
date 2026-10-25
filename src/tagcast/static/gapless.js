@@ -21,7 +21,7 @@ function gaplessSupported() {
   return typeof MediaSource !== "undefined" && MediaSource.isTypeSupported('audio/mp4; codecs="flac"');
 }
 function gaplessSettings() {
-  return `<section class="settings-section" data-settings-category="playback"><h3>Gapless playback <span class="settings-mode">Experimental · next track</span></h3><label class="checkline"><input type="checkbox" id="gapless-test-enabled" ${gaplessTrial.enabled ? "checked" : ""} ${gaplessSupported() ? "" : "disabled"}> Enable gapless playback for albums in order</label><p class="muted">Keep consecutive album tracks playing without an added pause. Off by default. Only for normal album order; not shuffle, Random Album, playlists or queue sync. Your choice is remembered in this browser and applies on the next track.</p><p class="muted">Starting an album can take longer. Forward seeking may show Preparing… while the current audio continues. Unsupported files use standard playback.</p><details class="settings-details"><summary>Supported audio and limitations</summary><p class="muted">Original FLAC is repackaged without changing its audio samples. MP3 needs reliable encoder metadata and is decoded to 24-bit PCM for playback. For a first test, choose Original streaming quality (Premium) and a continuous FLAC album. No crossfade or automatic silence removal is used.</p><p class="muted">The current track and the start of the next are prepared before playback begins. The track-based time bar keeps the continuous buffer underneath. Volume and playback speed remain available in Playback options or Sound. Slow connections and incompatible files can still interrupt playback; this experiment does not guarantee uninterrupted output for every file or device.</p></details><p id="gapless-test-status" role="status">${escapeHtml(gaplessSupported() ? gaplessTrial.message : "Gapless buffering is unavailable in this browser; standard playback is retained.")}</p></section>`;
+  return `<section class="settings-section" data-settings-category="playback"><h3>Gapless playback <span class="settings-mode">Experimental · next track</span></h3><label class="checkline"><input type="checkbox" id="gapless-test-enabled" ${gaplessTrial.enabled ? "checked" : ""} ${gaplessSupported() ? "" : "disabled"}> Enable gapless playback for albums in order</label><p class="muted">Keep consecutive album tracks playing without an added pause. Off by default. Only for normal album order; not shuffle, Random Album, playlists or queue sync. Your choice is remembered in this browser and applies on the next track.</p><p class="muted">Starting an album can take longer. Seeking near a track's end may show Preparing… while the current audio continues. Unsupported files use standard playback.</p><details class="settings-details"><summary>Supported audio and limitations</summary><p class="muted">Original FLAC is repackaged without changing its audio samples. MP3 needs reliable encoder metadata and is decoded to 24-bit PCM for playback. For a first test, choose Original streaming quality (Premium) and a continuous FLAC album. No crossfade or automatic silence removal is used.</p><p class="muted">The current file is prepared first. Longer tracks can start while the next downloads; very short runs prepare one extra track before starting. Buffer and preparation limits may switch to standard playback. The track-based time bar keeps the continuous buffer underneath. Volume and playback speed remain available in Playback options or Sound. Slow connections and incompatible files can still interrupt playback; this experiment does not guarantee uninterrupted output for every file or device.</p></details><p id="gapless-test-status" role="status">${escapeHtml(gaplessSupported() ? gaplessTrial.message : "Gapless buffering is unavailable in this browser; standard playback is retained.")}</p></section>`;
 }
 function gaplessNote(message) {
   gaplessTrial.message = message;
@@ -56,23 +56,36 @@ function gaplessApplySeek(g, position, fast) {
 function gaplessSeek(position, fast = false) {
   const g = gaplessTrial.active;
   if (g) g.seekIntent = null;
-  if (g?.current && position > gaplessPosition() + .05 && !gaplessBoundaryReady(g)) {
-    g.seekIntent = {engine: g, segment: g.current, position, fast};
+  if (g?.current && position > gaplessPosition() + .05 && !gaplessBoundaryReady(g) && !gaplessSeekReady(g, position)) {
+    g.seekIntent = {engine: g, segment: g.current, position, fast, at: performance.now()};
     gaplessNote("Preparing the next album track before seeking…");
     gaplessPrefetch(g); gaplessPump(g); return;
   }
   gaplessApplySeek(g, position, fast);
 }
+function gaplessSeekReady(g, position) {
+  const target = g.current.start + position;
+  return g.current.end - target >= 10 && gaplessBuffered(g, target, 1);
+}
+function gaplessStartupReady(g) {
+  if (g.current.end - (g.current.start + (g.offset || 0)) >= 10) return true;
+  if (!gaplessBoundaryReady(g)) return false;
+  // Very short A+B need C prepared too; keep only one extra file beyond next.
+  const entry = g.next && gaplessCandidate(g, g.next.entry)?.entry;
+  return !entry || entry === g.current.entry || entry === g.next.entry
+    || g.next.end - g.current.start >= 10 || gaplessFailed(entry, g.quality)
+    || Boolean(g.prepared?.get(entry)?.media);
+}
 function gaplessReadiness(g) {
   if (!gaplessValid(g) || !g.started || g.buffer?.updating) return;
-  if (g.ready === false && gaplessBoundaryReady(g)) {
+  if (g.ready === false && gaplessStartupReady(g)) {
     g.ready = true;
     if (g.autoPlay) { beginPlaybackWatch(); audio.play().catch(() => { if (gaplessValid(g)) toast("Press Play in Tagcast to start the prepared audio."); }); }
     gaplessNote(g.nextProblem ? `Gapless current track; next uses standard playback. ${g.nextProblem}` : "Gapless active · track-based controls");
   }
   const intent = g.seekIntent;
   if (intent && intent.segment !== g.current) { g.seekIntent = null; return; }
-  if (intent && gaplessBoundaryReady(g)) {
+  if (intent && (gaplessBoundaryReady(g) || gaplessSeekReady(g, intent.position))) {
     g.seekIntent = null; gaplessApplySeek(g, intent.position, intent.fast);
     gaplessNote(g.nextProblem ? `Gapless current track; next uses standard playback. ${g.nextProblem}` : "Gapless active · track-based controls");
   }
@@ -98,8 +111,8 @@ function gaplessRetire(g) {
     playCurrent(resume); gaplessTrial.bypass = false;
   }
 }
-function gaplessCandidate(g) {
-  const entry = g.current.entry, origin = gaplessAlbumEntry(entry), index = player.queue.indexOf(entry);
+function gaplessCandidate(g, entry = g.current.entry) {
+  const origin = gaplessAlbumEntry(entry), index = player.queue.indexOf(entry);
   if (index < 0 || !origin) return null;
   if (player.repeat === "track") return {entry, wrap: false};
   const next = player.queue[index + 1], following = gaplessAlbumEntry(next);
@@ -111,14 +124,15 @@ function gaplessCandidate(g) {
 async function gaplessRead(g, entry, controller) {
   const response = await fetch(`/api/stream/${encodeURIComponent(entry.id)}?quality=${g.quality}`, {signal: controller.signal, cache: "no-store"});
   if (!response.ok) throw new Error(`Audio returned HTTP ${response.status}.`);
-  const max = 96 * 1024 ** 2, length = Number(response.headers.get("Content-Length"));
+  const record = g.prepared?.get(entry), max = 96 * 1024 ** 2, length = Number(response.headers.get("Content-Length"));
   if (length > max) { await response.body?.cancel(); throw new Error("Audio exceeds the 96 MiB trial file limit."); }
   const reader = response.body.getReader(), chunks = []; let count = 0;
   try {
     while (true) {
       const {done, value} = await reader.read(); if (done) break;
       count += value.length;
-      if (count > max || !gaplessValid(g)) { await reader.cancel(); throw new Error("Gapless preparation was cancelled or exceeded its limit."); }
+      if (record && g.prepared.get(entry) === record) record.received = count;
+      if (count > max || gaplessHeldBytes(g) > max || !gaplessValid(g) || controller.signal.aborted) { await reader.cancel(); throw new Error("Gapless preparation was cancelled or exceeded its limit."); }
       chunks.push(value);
     }
   } finally { reader.releaseLock(); }
@@ -138,17 +152,50 @@ async function gaplessRead(g, entry, controller) {
   if (!gaplessValid(g) || controller.signal.aborted) throw new Error("Gapless preparation was cancelled.");
   return gaplessMedia.pack(info);
 }
+function gaplessHeldBytes(g) {
+  const media = new Set([g.current?.media, g.next?.media]); let pending = 0;
+  for (const record of g.prepared?.values() || []) { media.add(record.media); pending += record.received || 0; }
+  return pending + [...media].reduce((n, item) => n + (item?.bytes || 0), 0);
+}
+function gaplessPrune(g, keep) {
+  for (const [entry, record] of g.prepared || []) if (!keep.has(entry)) {
+    record.retired = true; record.controller.abort(); g.prepared.delete(entry);
+  }
+}
 async function gaplessPrepare(g, entry) {
   if (g.current?.entry === entry && g.current.media) return g.current.media;
-  const controller = new AbortController(); g.controllers.add(controller);
-  const timeout = setTimeout(() => controller.abort(), 60000);
-  try { return await gaplessRead(g, entry, controller); }
-  finally { clearTimeout(timeout); g.controllers.delete(controller); }
+  g.prepared ||= new Map();
+  if (g.prepared.has(entry)) return g.prepared.get(entry).promise;
+  const controller = new AbortController(), record = {controller, received: 0, media: null};
+  g.controllers.add(controller); g.prepared.set(entry, record);
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  record.promise = gaplessRead(g, entry, controller).then(media => {
+    if (!gaplessValid(g) || g.prepared.get(entry) !== record || controller.signal.aborted) throw new Error("Gapless preparation was cancelled.");
+    record.received = 0; record.media = media;
+    if (gaplessHeldBytes(g) > 96 * 1024 ** 2) throw new Error("Prepared audio exceeds the trial memory budget.");
+    return media;
+  }).catch(error => {
+    if (g.prepared.get(entry) === record) g.prepared.delete(entry);
+    throw error;
+  }).finally(() => { clearTimeout(timeout); g.controllers.delete(controller); });
+  return record.promise;
+}
+function gaplessPrefetchAhead(g) {
+  if (!gaplessValid(g) || !g.next || g.next.media.duration >= 10) return;
+  const entry = gaplessCandidate(g, g.next.entry)?.entry;
+  if (!entry || entry === g.current.entry || entry === g.next.entry || gaplessFailed(entry, g.quality) || g.prepared?.has(entry)) return;
+  const pending = gaplessPrepare(g, entry), record = g.prepared.get(entry);
+  pending.catch(error => {
+    // A queue edit may cancel this slot; never mark a replacement's preparation failed.
+    if (!record.retired && (!g.prepared.has(entry) || g.prepared.get(entry) === record) && gaplessValid(g) && g.next && gaplessCandidate(g, g.next.entry)?.entry === entry) {
+      gaplessFail(entry, g); gaplessNote(`A following album track needs standard playback. ${error.message}`);
+    }
+  }).finally(() => { if (gaplessValid(g)) gaplessReadiness(g); });
 }
 function gaplessFallback(g, reason) {
   if (!gaplessValid(g)) return;
-  const position = g.current ? gaplessPosition() : g.offset || 0, entry = g.current?.entry || g.first;
-  const playing = g.started ? !audio.paused : g.autoPlay;
+  const position = g.seekIntent?.segment === g.current ? g.seekIntent.position : g.current ? gaplessPosition() : g.offset || 0, entry = g.current?.entry || g.first;
+  const playing = g.ready ? !audio.paused : g.autoPlay;
   gaplessFail(entry, g); gaplessCancel();
   gaplessNote(`Standard playback: ${reason}`);
   gaplessTrial.bypass = true; gaplessTrial.offset = position;
@@ -162,7 +209,8 @@ function gaplessQueueChanged() {
   const wanted = gaplessTrial.enabled && quality === g.quality ? gaplessCandidate(g) : null, entry = wanted?.entry || null;
   if (entry === g.wanted && Boolean(wanted?.wrap) === g.wrap) return;
   g.wanted = entry; g.wrap = Boolean(wanted?.wrap); g.ticket += 1;
-  for (const controller of g.controllers) controller.abort();
+  const following = entry && g.prepared?.get(entry)?.media?.duration < 10 ? gaplessCandidate(g, entry)?.entry : null;
+  gaplessPrune(g, new Set([entry, following]));
   if (g.next?.part > 0) g.trim = g.current.end;
   g.next = null; g.pending = false; g.finished = false; g.nextProblem = "";
   gaplessPrefetch(g); gaplessPump(g);
@@ -178,10 +226,10 @@ async function gaplessPrefetch(g) {
     g.byteRate = Math.max(g.byteRate || 0, media.byteRate || 0);
     g.next = {entry, media, start: g.current.end, end: g.current.end + media.duration, part: 0, wrap: g.wrap};
     if (g.media.readyState === "open" && !g.buffer.updating) g.media.duration = g.next.end;
-    gaplessNote(g.ready === false ? "Preparing the next album track…" : "Gapless active · track-based controls"); gaplessPump(g);
+    gaplessNote(g.ready === false ? "Preparing the next album track…" : "Gapless active · track-based controls"); gaplessPrefetchAhead(g); gaplessPump(g);
   } catch (error) {
     if (gaplessValid(g) && ticket === g.ticket) { gaplessFail(entry, g); g.nextProblem = error.message; gaplessNote(`Gapless current track; next transition uses standard playback. ${error.message}`); }
-  } finally { if (gaplessValid(g) && ticket === g.ticket) { g.pending = false; gaplessPump(g); } }
+  } finally { if (gaplessValid(g) && ticket === g.ticket) { g.pending = false; gaplessPump(g); gaplessReadiness(g); } }
 }
 // Conservative coded-byte estimate, not decoded PCM/RSS or a Chromium quota override.
 // Peak fragment density bounds retained ranges even after a higher-rate fragment is evicted.
@@ -236,7 +284,7 @@ function gaplessAdvance() {
     const old = g.current;
     if (old.entry.upNext) { const i = player.queue.indexOf(old.entry); if (i >= 0) player.queue.splice(i, 1); }
     if (g.next.wrap) player.queue = player.queue.filter(t => !t.upNext);
-    g.current = g.next; g.next = null; g.wanted = null; g.ticket += 1; g.pending = false;
+    g.current = g.next; g.prepared?.delete(g.current.entry); g.next = null; g.wanted = null; g.ticket += 1; g.pending = false;
     g.seekIntent = null;
     player.index = player.queue.indexOf(g.current.entry); player.album = g.current.entry.album;
     beginPlaybackWatch(!audio.paused);
@@ -248,6 +296,9 @@ function gaplessAdvance() {
 // Pauses, seeks and startup holds are not evidence of a stalled playing timeline.
 function gaplessWatch(g, now = performance.now()) {
   if (!gaplessValid(g)) return;
+  if ((!g.ready && now - g.createdAt >= 20000) || (g.seekIntent && now - g.seekIntent.at >= 10000)) {
+    gaplessFallback(g, "Audio preparation took too long; continuing with standard playback."); return;
+  }
   const time = audio.currentTime || 0, progress = g.progress;
   if (!progress || !g.ready || audio.paused || audio.seeking || audio.ended
       || time < progress.time || time > progress.time + .01) {
@@ -256,12 +307,19 @@ function gaplessWatch(g, now = performance.now()) {
   if (now - progress.at >= 8000) gaplessFallback(g, "Continuous playback stopped progressing; continuing with standard playback.");
 }
 function gaplessBegin(entry, autoPlay) {
+  const previous = gaplessTrial.active, reusable = new Map();
+  if (previous && gaplessValid(previous) && previous.quality === player.quality) {
+    for (const [key, record] of previous.prepared || []) if (record.media) reusable.set(key, record.media);
+    if (previous.current?.media) reusable.set(previous.current.entry, previous.current.media);
+  }
   gaplessCancel();
   if (gaplessTrial.bypass || !gaplessTrial.enabled || !gaplessAlbumEntry(entry) || !gaplessSupported() || gaplessFailed(entry)
       || (typeof queueSync !== "undefined" && queueSync.active)) return false;
   audio.pause(); audio.removeAttribute("src"); audio.load(); playReporting.watch = null;
   const g = {session: state.connection.playback_session, quality: player.quality, first: entry, autoPlay, offset: gaplessTrial.offset,
-    controllers: new Set(), current: null, next: null, wanted: null, wrap: false, ticket: 0, pending: false, trim: null, started: false, finished: false, switching: false, ready: false, seekIntent: null};
+    controllers: new Set(), prepared: new Map(), createdAt: performance.now(), current: null, next: null, wanted: null, wrap: false, ticket: 0, pending: false, trim: null, started: false, finished: false, switching: false, ready: false, seekIntent: null};
+  const next = gaplessCandidate(g, entry)?.entry, keep = new Set([entry, next, next && gaplessCandidate(g, next)?.entry]);
+  for (const [key, media] of reusable) if (keep.has(key)) g.prepared.set(key, {media, received: 0, controller: new AbortController(), promise: Promise.resolve(media)});
   gaplessTrial.offset = 0; gaplessTrial.active = g; gaplessNote("Preparing gapless playback…");
   (async () => {
     try {
@@ -285,7 +343,7 @@ function gaplessBegin(entry, autoPlay) {
       });
       g.buffer.appendBuffer(media.init);
       gaplessQueueChanged();
-      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); gaplessReadiness(g); gaplessWatch(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); if (gaplessValid(g)) g.timer = setTimeout(tick, 100); }; tick();
+      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); gaplessPrefetchAhead(g); gaplessReadiness(g); gaplessWatch(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); if (gaplessValid(g)) g.timer = setTimeout(tick, 100); }; tick();
     } catch (error) { gaplessFallback(g, error.message); }
   })();
   return true;

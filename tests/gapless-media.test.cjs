@@ -7,7 +7,7 @@ test('FLAC remux retains every original encoded frame and the exact sample count
  assert.equal(info.rate,44100);assert.equal(info.bits,16);assert.equal(info.channels,2);assert.equal(info.total,88200);assert.equal(packed.duration,2);
  const originalFrames=Buffer.concat(info.frames.map(x=>x.data));assert.deepEqual(Buffer.from(raw.slice(-originalFrames.length)),originalFrames);
  assert.equal(packed.maxBlock,info.streaminfo[2]*256+info.streaminfo[3]);
- assert.ok(packed.byteRate>0);assert.ok(packed.maxPartBytes>0);
+ assert.ok(packed.byteRate>0);assert.ok(packed.maxPartBytes>0);assert.equal(packed.bytes,packed.parts.reduce((n,p)=>n+p.data.length,0));
  for(const part of packed.parts)assert.ok(packed.byteRate>=part.data.length/(part.end-part.start));
  assert.equal(packed.parts[0].start,0);assert.equal(packed.parts.at(-1).end,2);
  for(let i=1;i<packed.parts.length;i++)assert.equal(packed.parts[i].start,packed.parts[i-1].end);
