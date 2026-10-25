@@ -66,7 +66,7 @@ function sidebarSettingsRows() {
 }
 
 function sidebarSettingsPanel() {
-  return `<section class="sidebar-layout-settings"><h3>Sidebar</h3><details><summary>Choose shortcuts and order</summary><p class="muted">Show or hide extra shortcuts and move items with the arrow buttons. Changes apply immediately and are remembered in this browser. Hiding a shortcut keeps its feature and your music available. Connection controls and Settings always stay visible.</p><ul id="sidebar-layout-list">${sidebarSettingsRows()}</ul><button type="button" class="button small" data-sidebar-reset>Restore default sidebar</button></details></section>`;
+  return `<section class="sidebar-layout-settings" data-settings-category="interface"><h3>Sidebar</h3><p class="muted">Show or hide extra shortcuts and move items with the arrow buttons. Changes apply immediately and are remembered in this browser. Hiding a shortcut keeps its feature and your music available. Connection controls and Settings always stay visible.</p><ul id="sidebar-layout-list">${sidebarSettingsRows()}</ul><button type="button" class="button small" data-sidebar-reset>Restore default sidebar</button></section>`;
 }
 
 document.addEventListener("change", event => {
@@ -121,6 +121,7 @@ document.addEventListener("keydown", event => {
 });
 
 function currentRoute() {
+  if (state.screen === "settings") return `settings/${settingsView.category}`;
   if (state.screen === "browse") return `${browseView.kind}${browseView.key === null ? "" : `/${encodeURIComponent(browseView.key)}`}`;
   if (state.screen === "playlists" && collectionsView.playlist) return `playlist/${encodeURIComponent(collectionsView.playlist)}`;
   if (state.screen === "album" && albumView.id) return `album/${encodeURIComponent(albumView.id)}`;
@@ -132,6 +133,7 @@ function parseRoute(hash) {
   const [kind, ...rest] = String(hash || "").replace(/^#\/?/, "").split("/");
   let value = "";
   try { value = decodeURIComponent(rest.join("/")); } catch { return null; }
+  if (kind === "settings") return {screen: "settings", category: Object.hasOwn(SETTINGS_CATEGORIES, value) ? value : "interface"};
   if (Object.hasOwn(browseKinds, kind)) return {screen: "browse", kind, key: rest.length ? value : null};
   if (["artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
   if (kind === "playlist" && /^\d+$/.test(value)) return {screen: "playlists", playlist: value};
@@ -143,6 +145,7 @@ function parseRoute(hash) {
 function routeLabel(hash, saved = history.state) {
   const route = parseRoute(hash);
   if (!route) return "";
+  if (route.screen === "settings") return "Settings";
   if (route.screen === "album-guide") return "1001 Albums";
   if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : saved?.browse?.label || browseKinds[route.kind].label;
   if (route.playlist) return saved?.label || (String(collectionsView.data?.id) === route.playlist ? collectionsView.data.name : "Playlist");
@@ -297,7 +300,9 @@ function goBack(fallback) {
 }
 
 function showRoute(route, saved = {}) {
-  if (route.screen === "album-guide") {
+  if (route.screen === "settings") {
+    showSettings(route.category, false);
+  } else if (route.screen === "album-guide") {
     showAlbumGuide(saved.guide || {});
   } else if (route.screen === "browse") {
     showBrowse(route.kind, route.key, saved.browse || {});

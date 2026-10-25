@@ -80,11 +80,13 @@ const HELP_TOPICS = {
     ["Save and check the result", "The save button sends your reviewed changes. Tagcast checks current values before writing and reads accepted changes back afterwards. A save can partly succeed; read the result before trying again.", ["#apply-draft", "#review-status"]],
   ]},
   settings: {title: "Settings", scope: "#settings", steps: [
+    ["Find a preference", "Use the categories to find settings. Switching categories preserves pending server choices. Browser Back and Forward follow the visited categories. Immediate preferences are applied locally; server preferences require Save changes. Discard changes resets only the pending server choices.", ["#settings-nav", "#settings-category-description"]],
     ["Now playing view", "Choose Fullscreen or In app window for the expanded player. The choice is remembered in this browser or desktop profile and applies the next time you open Now playing. Playback and the queue stay unchanged.", ["#player-view-mode"]],
-    ["Interface", "Restore the library information banner or choose which details to show in the compact player. These display choices apply immediately in this browser.", ["#settings .interface-settings"]],
+    ["Interface", "Restore the library information banner. Sidebar shortcuts are listed directly below, with no disclosure to open. These choices apply immediately in this browser.", ["#settings .interface-settings"]],
     ["Sidebar", "Show, hide and reorder optional shortcuts. Album artists, Albums, Change history and connection controls remain available. Restore default sidebar resets the layout.", ["#settings .sidebar-layout-settings"]],
     ["Library metadata", "Prepare JSON or a ZIP of linked CSV tables from the full loaded library, including separate artists, roles and credit phrases. Then choose Download. Optional tags, playlists and local favourites are included when available; the manifest reports missing data. This does not fetch tracks, save settings or change iBroadcast.", ["#metadata-export"]],
     ["Export changes", "Download the change history saved in this browser as a JSON file. Export is available after a change has been recorded, and does not save pending settings. You can also export from Change history.", ["#settings #export-button"]],
+    ["Gapless playback", "An optional experiment for consecutive album tracks played in order. Preparation can delay starting or seeking near the end. Shuffle and playlists use normal playback. The switch applies on the next track; expand the technical details in Playback for supported formats and limitations.", ["#gapless-test-enabled"]],
     ["Playback and devices", "Choose streaming quality separately from the stored file format. Optional play reporting and queue synchronisation are independent and off by default. Save server preferences with the Save button.", ["#settings .playback-settings"], "Playback preferences need the local Tagcast server."],
     ["Discovery", "Enable 1001 Albums here and save to show its shortcut. Analysis starts only when you choose it on that page; enabling the feature does not scan your library. This setting controls the discovery page; bundled album background texts stay available when it is off.", ["#settings [name=album_guide]"], "Discovery preferences need the local Tagcast server."],
     ["Artist biographies", "Optional English biographies from TheAudioDB are off by default. After enabling and saving, visiting an album artist checks the local cache first. Only missing or outdated text needs an external lookup of that artist's name. Biographies do not edit your music metadata.", ["#settings .artist-biography-settings"], "Artist biographies need the local Tagcast server."],
@@ -181,9 +183,10 @@ function currentHelpContext() {
   if ($("#lyrics-viewer").open) return "lyrics-viewer";
   if ($("#playlist-dialog").open) return "playlist-review";
   if ($("#artwork").open && art.target?.target === "playlist") return "playlist-cover";
-  for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["settings", "settings"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
+  for (const [id, context] of [["duplicate-cleanup", "duplicate-cleanup"], ["review", "review"], ["guide-link-dialog", "guide-link"], ["editor", "editing"]]) {
     if ($(`#${id}`).open) return context === "editing" && editing?.tab === "tracks" ? "editing-tracks" : context;
   }
+  if (state.screen === "settings") return "settings";
   if (state.screen === "album-guide") return "guide";
   if (state.screen === "playlists" && collectionsView.playlist) return collectionsView.data?.is_folder ? "playlist-folder" : "playlist";
   return state.screen;

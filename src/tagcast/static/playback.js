@@ -178,9 +178,10 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 });
 
 function seekSystemPlayback(position, fast = false) {
-  if (!systemPlaybackTrack() || !Number.isFinite(position) || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-  const target = Math.max(0, Math.min(audio.duration, position));
-  if (fast && typeof audio.fastSeek === "function") audio.fastSeek(target);
+  if (!systemPlaybackTrack() || !Number.isFinite(position) || !Number.isFinite(playerTrackDuration()) || playerTrackDuration() <= 0) return;
+  const target = Math.max(0, Math.min(playerTrackDuration(), position));
+  if (typeof gaplessSeek === "function") gaplessSeek(target, fast);
+  else if (fast && typeof audio.fastSeek === "function") audio.fastSeek(target);
   else audio.currentTime = target;
   syncSystemPlayback();
 }
@@ -188,6 +189,7 @@ function seekSystemPlayback(position, fast = false) {
 function playSystemPlayback() {
   const track = systemPlaybackTrack(), details = state.details;
   if (!track) return;
+  if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) { gaplessTrial.active.autoPlay = true; return; }
   if (audio.ended) audio.currentTime = 0;
   audio.play().catch(() => {
     if (details === state.details && track === systemPlaybackTrack()) toast("Press Play in Tagcast to resume audio.");
@@ -196,13 +198,13 @@ function playSystemPlayback() {
 
 const systemPlaybackActions = {
   play: playSystemPlayback,
-  pause: () => { if (systemPlaybackTrack()) audio.pause(); },
+  pause: () => { if (systemPlaybackTrack()) { if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) gaplessTrial.active.autoPlay = false; audio.pause(); } },
   stop: () => { if (systemPlaybackTrack()) stopPlayer(); },
   previoustrack: () => { if (systemPlaybackTrack()) step(-1); },
   nexttrack: () => { if (systemPlaybackTrack()) step(1); },
   seekto: details => seekSystemPlayback(details.seekTime, details.fastSeek === true),
-  seekbackward: details => seekSystemPlayback(audio.currentTime - (Number.isFinite(details.seekOffset) && details.seekOffset > 0 ? details.seekOffset : 10)),
-  seekforward: details => seekSystemPlayback(audio.currentTime + (Number.isFinite(details.seekOffset) && details.seekOffset > 0 ? details.seekOffset : 10)),
+  seekbackward: details => seekSystemPlayback(playerTrackPosition() - (Number.isFinite(details.seekOffset) && details.seekOffset > 0 ? details.seekOffset : 10)),
+  seekforward: details => seekSystemPlayback(playerTrackPosition() + (Number.isFinite(details.seekOffset) && details.seekOffset > 0 ? details.seekOffset : 10)),
 };
 
 function updateSystemPlaybackPosition(force = true) {
@@ -211,9 +213,9 @@ function updateSystemPlaybackPosition(force = true) {
   if (!force && performance.now() - systemPlayback.positionAt < 1000) return;
   systemPlayback.positionAt = performance.now();
   try {
-    if (!systemPlaybackTrack() || !Number.isFinite(audio.duration) || audio.duration <= 0) session.setPositionState();
-    else session.setPositionState({duration: audio.duration, playbackRate: Number.isFinite(audio.playbackRate) && audio.playbackRate > 0 ? audio.playbackRate : 1,
-      position: Math.max(0, Math.min(audio.duration, Number(audio.currentTime) || 0))});
+    if (!systemPlaybackTrack() || !Number.isFinite(playerTrackDuration()) || playerTrackDuration() <= 0) session.setPositionState();
+    else session.setPositionState({duration: playerTrackDuration(), playbackRate: Number.isFinite(audio.playbackRate) && audio.playbackRate > 0 ? audio.playbackRate : 1,
+      position: Math.max(0, Math.min(playerTrackDuration(), playerTrackPosition()))});
   } catch { /* Position controls are optional and vary by browser. */ }
 }
 

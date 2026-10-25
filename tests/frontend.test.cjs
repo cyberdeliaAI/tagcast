@@ -64,6 +64,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       getAttribute(name) { return name === "src" ? this.src : attributes.get(name); },
       removeAttribute(name) { attributes.delete(name); if (name === "src") delete this.src; }};
   }
+  let respondServiceStatus = null;
   const document = {body: element(), documentElement: element(),
     getElementById(id) { return this.querySelector(`#${id}`); },
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
@@ -78,7 +79,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
-    Event, performance: {now: () => playbackClock},
+    Event, AbortController, performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
@@ -97,6 +98,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
+      if (url.startsWith("/api/service-status")) return respondServiceStatus ? respondServiceStatus(url, options) : {ok:true,json:async()=>({overall:"unknown",services:[],stale:true})};
       if (respond && url !== "/api/status") return respond(url, options);
       assert.equal(url, "/api/status", "Only the initial status read is allowed in preview tests");
       if (!server) throw Error("No local server");
@@ -111,6 +113,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     setPlaybackClock(value) { playbackClock = value; },
     setFetch(handler) { respond = handler; },
     setStatusFetch(handler) { respondStatus = handler; },
+    setServiceStatusFetch(handler) { respondServiceStatus = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
     setNotesFetch(handler) { respondNotes = handler; },
     setAlbumNotesFetch(handler) { respondAlbumNotes = handler; },
@@ -203,10 +206,10 @@ test("code reauthorization keeps waiting even while the previous session is conn
 
 test("queue permissions use code sign-in for the public registration without changing playback", async () => {
   const p = livePage(); await settle();
-  p.run('state.connection.using_default_client = true; lookup.queueSync = true; playTracks(state.details.get("1")); $("#settings").showModal()');
+  p.run('state.connection.using_default_client = true; lookup.queueSync = true; playTracks(state.details.get("1")); openSettings()');
   const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
   await p.click({'[data-queue-reconnect]': {}});
-  assert.equal(p.nodes.get('#settings').open, false);
+  assert.equal(p.run('state.screen'), 'settings');
   assert.equal(p.nodes.get('#connect').open, true);
   assert.match(p.nodes.get('#connect-content').innerHTML, /id="device-start"/);
   assert.equal(p.requests.filter(r => r.url === '/api/auth/browser').length, 0);
@@ -1131,9 +1134,9 @@ test('the question mark selects only the current page or dialog help', async () 
   assert.equal(p.run('helpTour.topic'), 'editing');
   p.run('closeHelp(); $("#review").showModal(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'review');
-  p.run('closeHelp(); $("#review").close(); $("#settings").showModal(); openHelp()');
+  p.run('closeHelp(); $("#review").close(); openSettings(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'settings');
-  p.run('closeHelp(); $("#settings").close(); $("#editor").close(); $("#guide-link-dialog").showModal(); openHelp()');
+  p.run('closeHelp(); closeSettings(); $("#editor").close(); $("#guide-link-dialog").showModal(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'guide-link');
   assert.equal(p.requests.length, requests);
   const html = readFileSync(path.join(staticDir, 'index.html'), 'utf8');
@@ -2609,7 +2612,7 @@ test("Tagcast starts on Album artists, the first page in the sidebar", async () 
 test('sidebar shortcuts hide independently of feature settings, persist and preserve essential controls and playback', async () => {
   const storage = {}, p = page({storage}); await settle();
   p.run('state.mode="live"; playTracks(state.details.get(state.albums[0].id)); openSettings()');
-  assert.match(p.nodes.get('#settings-content').innerHTML, /Choose shortcuts and order/);
+  assert.match(p.nodes.get('#settings-content').innerHTML, /id="sidebar-layout-list"/);
   const queue = p.json('player.queue'), src = p.nodes.get('#audio').src, count = p.requests.length, route = p.location.hash;
   const input = {checked:false,dataset:{sidebarItem:'show-genres'},matches(selector) {return selector === '[data-sidebar-item]';}};
   await p.change(input);
@@ -3779,7 +3782,7 @@ test("the library info banner can be hidden, remembered and restored without req
   assert.equal(reopened.run("libraryNotice.visible"), false);
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.match(html, /id="settings-button">Settings</);
-  assert.match(html, /<h2>Settings<\/h2>/);
+  assert.match(html, /<h1 id="settings-title" tabindex="-1">Settings<span>\.<\/span><\/h1>/);
 });
 
 test("compact player display choices act independently without changing playback, queue or full metadata views", async () => {
@@ -3811,7 +3814,7 @@ test("compact player display choices act independently without changing playback
   assert.equal(p.nodes.get("#player-title").textContent, p.run("displayAlbum.tracks[0].title"));
   assert.equal(p.nodes.get("#player-artist").textContent, "Pink Floyd");
   assert.equal(p.nodes.get("#player-album").textContent, "Wish You Were Here");
-  p.run('$("#settings").close(); openVisualPlayer()');
+  p.run('closeSettings(); openVisualPlayer()');
   assert.equal(p.nodes.get("#visual-player-quality").textContent, "File: FLAC · Stream: Original FLAC");
   assert.equal(p.nodes.get("#visual-player-track-artist").textContent, "Track artist: Guest Artist");
   assert.equal(p.nodes.get("#visual-player-track-artist").hidden, false);
@@ -4365,7 +4368,7 @@ test("Now playing can fill the app window without native fullscreen or playback 
   assert.equal(p.nodes.get('#audio').currentTime, 39);
   assert.equal(p.nodes.get('#audio').paused, false);
   assert.equal(p.requests.length, requests);
-  p.run('$("#settings").close(); $("#player-fullscreen").focus()');
+  p.run('closeSettings(); $("#player-fullscreen").focus()');
   assert.equal(p.nodes.get('#player-fullscreen').getAttribute('aria-label'), 'Open Now playing in app window');
   await p.nodes.get('#player-fullscreen').emit('click');
   assert.equal(p.run('visualPlayer.open'), true);
@@ -4383,7 +4386,7 @@ test("Now playing can fill the app window without native fullscreen or playback 
   p.run('openSettings()');
   assert.match(p.nodes.get('#settings-content').innerHTML, /value="window" selected/);
   await p.change({id:'player-view-mode', value:'fullscreen', matches: () => false});
-  p.run('$("#settings").close(); openVisualPlayer()');
+  p.run('closeSettings(); openVisualPlayer()');
   assert.equal(p.run('fullRequests'), 1, 'Choosing Fullscreen restores the original opening behavior');
 });
 
@@ -5590,7 +5593,7 @@ test('Settings exports the existing browser history without saving preferences o
   const p = page({storage:{'tagcast-history':JSON.stringify([entry])}}); await settle();
   p.run('state.mode="live"; playTracks(state.details.get("1")); openSettings()');
   const count = p.requests.length, queue = p.json('player.queue'), src = p.nodes.get('#audio').src, route = p.location.hash;
-  assert.match(p.nodes.get('#settings-content').innerHTML, /<section class="history-settings">/);
+  assert.match(p.nodes.get('#settings-content').innerHTML, /<section class="history-settings" data-settings-category="data">/);
   assert.match(p.nodes.get('#settings-content').innerHTML, /type="button" class="button small" id="export-button" >Export changes/);
   await p.click({'#export-button':{}});
   assert.equal(p.downloads.length, 1);
@@ -5598,7 +5601,7 @@ test('Settings exports the existing browser history without saving preferences o
   assert.equal(exported.format, 'tagcast-history');
   assert.deepEqual(exported.entries, [entry]);
   assert.equal(p.requests.length, count);
-  assert.equal(p.nodes.get('#settings').open, true);
+  assert.equal(p.run('state.screen'), 'settings');
   assert.equal(p.location.hash, route);
   assert.equal(p.nodes.get('#audio').src, src);
   assert.deepEqual(p.json('player.queue'), queue);
@@ -6987,7 +6990,7 @@ test("metadata export is disabled in preview and polling pauses when Settings cl
   p.run('state.mode="live"; state.connection.playback_session="export-session"; openSettings()');
   await p.run('prepareMetadataExport("csv")'); await settle();
   assert.match(p.nodes.get('#metadata-export-actions').innerHTML,/Cancel preparation/);
-  p.nodes.get('#settings').close(); await p.nodes.get('#settings').emit('close');
+  p.run('showScreen("artists")');
   const count = p.requests.length;
   p.flushTimers(1000); await settle();
   assert.equal(p.requests.length,count);
@@ -7049,7 +7052,7 @@ test("reopening Settings ignores an older in-flight export status reply", async 
     return {ok:true,json:async()=>({id,state:'ready',format:'json',filename:'new.json',manifest:{counts:{}}})};
   });
   await p.run('prepareMetadataExport("json")'); await settle();
-  p.nodes.get('#settings').close(); await p.nodes.get('#settings').emit('close');
+  p.run('showScreen("artists")');
   p.run('openSettings()'); await settle();
   assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download JSON/);
   release({ok:true,json:async()=>({id,state:'preparing',format:'json'})}); await settle();
@@ -7945,7 +7948,7 @@ test('Settings offers selected source switches even without keys and keeps saved
   assert.doesNotMatch(html,/data-source-toggle="discogs" checked/);
   assert.match(html,/data-clear-key="discogs_token"/,'Disabling preserves the saved key and its Remove control');
   assert.match(html,/Saved · type to replace/);
-  assert.match(html,/separate switches above/);
+  assert.match(html,/separate switches under Discovery/);
   const before=p.requests.length;
   await p.emitDocument('change',{target:{dataset:{sourceToggle:'itunes'},checked:false,closest:()=>null,matches:()=>false}});
   assert.equal(p.requests.length,before,'Changing a checkbox is a draft until Save');
@@ -8345,6 +8348,7 @@ test('free accounts can read native and public lyrics but have no lyrics editing
   assert.equal(p.run('lookup.streamQuality'),'orig','Opening settings does not rewrite a saved preference');
   p.run('state.connection.premium=true; openSettings(); renderLyrics("track")');
   assert.match(p.nodes.get('#settings-content').innerHTML,/name="stream_quality"|Original file \(Premium\)/);
+  p.run('closeSettings(); renderLyrics("track")');
   assert.match(p.nodes.get('#track-lyrics').innerHTML,/textarea|Review lyrics/);
 });
 
@@ -9045,4 +9049,368 @@ test("a direct Overview address refreshes its initial disconnected placeholder a
   p.run('render(); render()'); await settle();
   assert.equal(p.requests.filter(r=>r.url==='/api/overview').length,1, 'Ordinary renders do not poll Overview');
   assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('gapless prototype keeps unsupported browsers on the ordinary player and exposes its limits in Settings', async()=>{
+ const p=livePage();await settle();p.run('openSettings(); playTracks(state.details.get("1"))');
+ assert.match(p.nodes.get('#settings-content').innerHTML,/Gapless playback.*Experimental · next track/);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/track-based time bar keeps the continuous buffer/);
+ assert.equal(p.run('gaplessSupported()'),false);assert.equal(p.run('gaplessTrial.active'),null);
+ assert.equal(p.nodes.get('#audio').src,'/api/stream/100?quality=128');
+});
+test('gapless system positions and seek targets stay relative to the current track',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1')); gaplessTrial.active={current:{start:10,end:14,entry:player.queue[0]}}; audio.duration=20;audio.currentTime=12.5;`);
+ assert.equal(p.run('playerTrackPosition()'),2.5);assert.equal(p.run('playerTrackDuration()'),4);
+ p.run('seekSystemPlayback(3)');assert.equal(p.nodes.get('#audio').currentTime,13);
+ p.run('seekSystemPlayback(100)');assert.equal(p.nodes.get('#audio').currentTime,14);
+ p.run('gaplessTrial.active=null; seekSystemPlayback(2)');assert.equal(p.nodes.get('#audio').currentTime,2);
+});
+test('gapless next-entry planning respects Repeat, play-next and queue removal',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1')); const firstGaplessEntry=player.queue[0]; const trialPlan={current:{entry:firstGaplessEntry}};`);
+ assert.equal(p.run('gaplessCandidate(trialPlan).entry===player.queue[1]'),true);
+ p.run('player.repeat="track"');assert.equal(p.run('gaplessCandidate(trialPlan).entry===player.queue[0]'),true);
+ p.run('player.repeat="queue"; trialPlan.current.entry=player.queue.at(-1)');assert.equal(p.run('gaplessCandidate(trialPlan).wrap'),true);
+ p.run('player.repeat="none"');assert.equal(p.run('gaplessCandidate(trialPlan)'),null);
+ p.run('player.queue=[]');assert.equal(p.run('gaplessCandidate(trialPlan)'),null);
+});
+test('gapless cancellation aborts pending streams and never resurrects a stopped queue',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));let abortedGapless=0;gaplessTrial.active={controllers:new Set([{abort(){abortedGapless++;}}]),timer:1,url:'blob:fixture'};stopPlayer();`);
+ assert.equal(p.run('abortedGapless'),1);assert.equal(p.run('gaplessTrial.active'),null);assert.deepEqual(p.json('player.queue'),[]);
+ assert.equal(p.nodes.get('#audio').src,undefined);assert.equal(p.nodes.get('#audio').paused,true);
+});
+test('gapless preparation rejects oversized streams before reading their body',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const boundedGapless={session:state.connection.playback_session,quality:'128'};gaplessTrial.active=boundedGapless;`);
+ let cancelled=false;p.setFetch(async url=>{assert.match(url,/\/api\/stream\/100\?quality=128/);return{ok:true,headers:{get:()=>String(97*1024**2)},body:{cancel:async()=>{cancelled=true;},getReader(){throw Error('Body must not be read');}}};});
+ await assert.rejects(p.run('gaplessRead(boundedGapless,player.queue[0],{signal:{aborted:false}})'),/96 MiB/);assert.equal(cancelled,true);
+});
+test('gapless late stream replies are discarded after session replacement',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const lateGapless={session:state.connection.playback_session,quality:'128'};gaplessTrial.active=lateGapless;`);
+ let resolve,release=false;p.setFetch(()=>new Promise(done=>{resolve=done;}));
+ const pending=p.run('gaplessRead(lateGapless,player.queue[0],{signal:{aborted:false}})');
+ p.run('state.connection.playback_session="another-account-session";gaplessTrial.active=null');
+ resolve({ok:true,headers:{get:()=>null},body:{getReader:()=>({read:async()=>({done:true}),releaseLock(){release=true;}})}});
+ await assert.rejects(pending,/cancelled/);assert.equal(release,true);assert.equal(p.run('gaplessTrial.active'),null);
+});
+test('gapless fallback failures are scoped to both quality and account session',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessFail(player.queue[0],{quality:'128',session:state.connection.playback_session});`);
+ assert.equal(p.run('gaplessFailed(player.queue[0],"128")'),true);assert.equal(p.run('gaplessFailed(player.queue[0],"orig")'),false);
+ p.run('state.connection.playback_session="replacement"');assert.equal(p.run('gaplessFailed(player.queue[0],"128")'),false);
+});
+
+
+test('gapless clock handles minutes, hours and unavailable durations',()=>{
+ const p=page();assert.equal(p.run('gaplessClock(336)'), '5:36');assert.equal(p.run('gaplessClock(3745)'), '1:02:25');assert.equal(p.run('gaplessClock(NaN)'), '0:00');
+});
+test('gapless transport displays only the current track and restores native controls on fallback',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));player.index=1;gaplessTrial.active={started:true,current:{entry:player.queue[1],start:145,end:481}};audio.currentTime=151;audio.duration=700;gaplessRenderTransport();`);
+ assert.equal(p.nodes.get('#gapless-time').textContent,'0:06 / 5:36');assert.equal(p.nodes.get('#gapless-position').max,'336');assert.equal(p.nodes.get('#gapless-position').value,'6');assert.equal(p.nodes.get('#audio').hidden,true);assert.equal(p.nodes.get('#gapless-transport').hidden,false);
+ p.run('gaplessTrial.active=null;gaplessRenderTransport()');assert.equal(p.nodes.get('#audio').hidden,false);assert.equal(p.nodes.get('#gapless-transport').hidden,true);
+});
+test('gapless timeline previews a seek without moving audio and commits a relative track position',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessTrial.active={started:true,current:{entry:player.queue[0],start:145,end:481}};audio.currentTime=150;gaplessRenderTransport();`);
+ p.nodes.get('#gapless-position').value='20';await p.nodes.get('#gapless-position').emit('input');assert.equal(p.nodes.get('#audio').currentTime,150);assert.equal(p.nodes.get('#gapless-time').textContent,'0:20 / 5:36');
+ await p.nodes.get('#gapless-position').emit('change');assert.equal(p.nodes.get('#audio').currentTime,165);assert.equal(p.run('gaplessControls.draft'),null);
+});
+test('a gapless slider drag cannot seek a new track after a natural or Repeat transition',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessTrial.active={started:true,current:{entry:player.queue[0],start:0,end:14}};audio.currentTime=13;gaplessRenderTransport();`);
+ p.nodes.get('#gapless-position').value='5';await p.nodes.get('#gapless-position').emit('input');
+ p.run(`gaplessTrial.active.current={entry:player.queue[0],start:14,end:28};audio.currentTime=14.5;gaplessRenderTransport();`);
+ await p.nodes.get('#gapless-position').emit('change');assert.equal(p.nodes.get('#audio').currentTime,14.5);assert.equal(p.nodes.get('#gapless-time').textContent,'0:00 / 0:14');
+});
+test('gapless seeks reuse encoded fragments for evicted and not-yet-buffered current-track positions',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));let pumpedTimeline=0;gaplessPump=()=>{pumpedTimeline++;};gaplessTrial.active={current:{entry:player.queue[0],start:100,end:140,part:25,media:{parts:Array.from({length:40},(_,i)=>({start:i,end:i+1}))}},buffer:{buffered:{length:1,start:()=>120,end:()=>130}}};audio.currentTime=103;gaplessNativeSeek();`);
+ assert.equal(p.run('gaplessTrial.active.current.part'),3);assert.equal(p.nodes.get('#audio').currentTime,103);
+ p.run('audio.currentTime=135;gaplessNativeSeek()');assert.equal(p.run('gaplessTrial.active.current.part'),35);assert.equal(p.nodes.get('#audio').currentTime,135);assert.equal(p.run('pumpedTimeline'),2);
+});
+test('gapless transport keeps pause, mute, speed and the existing output dialog on the same audio',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessTrial.active={started:true,current:{entry:player.queue[0],start:0,end:14}};gaplessRenderTransport();`);
+ await p.nodes.get('#gapless-play').emit('click');assert.equal(p.nodes.get('#audio').paused,true);
+ await p.nodes.get('#gapless-play').emit('click');assert.equal(p.nodes.get('#audio').paused,false);
+ await p.nodes.get('#gapless-mute').emit('click');assert.equal(p.nodes.get('#audio').muted,true);
+ p.run('audio.volume=0');await p.nodes.get('#gapless-mute').emit('click');assert.equal(p.nodes.get('#audio').muted,false);assert.equal(p.nodes.get('#audio').volume,1);
+ await p.nodes.get('#gapless-options').emit('click');assert.equal(p.nodes.get('#audio-output-dialog').open,true);
+ await p.nodes.get('#gapless-speed').emit('change',{target:{value:'1.5'}});assert.equal(p.nodes.get('#audio').playbackRate,1.5);
+});
+
+
+test('gapless is off by default and only an explicit saved opt-in enables it',()=>{
+ assert.equal(page().run('gaplessTrial.enabled'),false);
+ assert.equal(page({storage:{'tagcast-gapless-test':'on'}}).run('gaplessTrial.enabled'),true);
+ assert.equal(page({storage:{'tagcast-gapless-test':'off'}}).run('gaplessTrial.enabled'),false);
+});
+test('gapless provenance belongs only to albums explicitly played in order',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));`);
+ assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),true);
+ p.run(`playTracks(state.details.get('1'),undefined,true)`);assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),false);
+ p.run(`playTracks(state.details.get('1'),undefined,false,{random:true})`);assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),false);
+ p.run(`player.shuffle=false;player.queue=queueTracks(state.details.get('1'));player.index=0;gaplessTrial.enabled=true;gaplessSupported=()=>true;`);
+ assert.equal(p.run('gaplessBegin(player.queue[0],true)'),false,'Even playlist/queued rows from one album cannot opt into gapless');
+});
+test('gapless album prefetch never bridges a reordered, inserted or unrelated track',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const boundedAlbumPlan={current:{entry:player.queue[0]}};`);
+ assert.equal(p.run('gaplessCandidate(boundedAlbumPlan).entry===player.queue[1]'),true);
+ p.run('player.queue.reverse()');assert.equal(p.run('gaplessCandidate(boundedAlbumPlan)'),null);
+ p.run(`player.queue.reverse();player.queue[1]={...player.queue[1]};`);assert.equal(p.run('gaplessCandidate(boundedAlbumPlan)'),null);
+});
+test('short gapless startup waits for a buffered next-track head rather than only a downloaded file',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.pause();gaplessQueueChanged=()=>{};let readyHead=false;gaplessTrial.active={started:true,ready:false,autoPlay:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:8},wanted:player.queue[1],next:{entry:player.queue[1],start:8,end:12,media:{duration:4,parts:[{end:1}]}},buffer:{updating:false,buffered:{get length(){return readyHead?1:0;},start:()=>8,end:()=>9}}};gaplessReadiness(gaplessTrial.active);`);
+ assert.equal(p.nodes.get('#audio').paused,true);assert.equal(p.run('gaplessTrial.active.ready'),false);
+ p.run('readyHead=true;gaplessReadiness(gaplessTrial.active)');assert.equal(p.nodes.get('#audio').paused,false);assert.equal(p.run('gaplessTrial.active.ready'),true);
+});
+test('late gapless seeks wait visibly for next audio and only the latest requested position is applied',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};let readySeekHead=false;gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{get length(){return readySeekHead?1:0;},start:()=>40,end:()=>41}}};audio.currentTime=1;seekSystemPlayback(30);`);
+ assert.equal(p.nodes.get('#audio').currentTime,1);assert.equal(p.nodes.get('#gapless-time').textContent,'Preparing…');assert.equal(p.nodes.get('#gapless-transport').getAttribute('aria-busy'),'true');
+ p.run('seekSystemPlayback(35);audio.pause();readySeekHead=true;gaplessReadiness(gaplessTrial.active)');
+ assert.equal(p.nodes.get('#audio').currentTime,35);assert.equal(p.nodes.get('#audio').paused,true);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});
+test('a deferred gapless seek is discarded if the current segment changes',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{length:0}}};audio.currentTime=1;seekSystemPlayback(35);gaplessTrial.active.current={entry:player.queue[1],start:40,end:42};audio.currentTime=40.1;gaplessReadiness(gaplessTrial.active);`);
+ assert.equal(p.nodes.get('#audio').currentTime,40.1);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});
+
+
+test('a backward seek cancels pending forward preparation without shortening the next-track lead time',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{length:0}}};audio.currentTime=20;seekSystemPlayback(35);seekSystemPlayback(10);`);
+ assert.equal(p.nodes.get('#audio').currentTime,10);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});
+
+test('Settings is a routed page with six categories and preserves existing preference keys', async()=>{
+ const p=page({hash:'#/settings/playback',storage:{'tagcast-player-view':'window','tagcast-player-quality':'hidden','tagcast-gapless-test':'on'}});await settle();
+ assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsView.category'),'playback');
+ const html=readFileSync(path.join(staticDir,'index.html'),'utf8');assert.match(html,/<section id="settings"/);assert.doesNotMatch(html,/<dialog id="settings"/);
+ assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),6);
+ assert.equal(p.run('visualPlayerMode'),'window');assert.equal(p.run('playerDisplay.quality'),false);assert.equal(p.run('gaplessTrial.enabled'),true);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/Supported audio and limitations/);
+ assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+test('Settings category Back and Forward retain one pending server draft and never affect playback',async()=>{
+ const p=livePage();await settle();p.run('playTracks(state.details.get("1"));openSettings("sources");');
+ const src=p.nodes.get('#audio').src,markup=p.nodes.get('#settings-content').innerHTML;
+ p.run(`const pendingChoice={name:'auto_lookup',type:'checkbox',checked:true};$("#settings-form").querySelectorAll=()=>[pendingChoice];settingsView.baseline=settingsFormSnapshot();pendingChoice.checked=false;updateSettingsSaveState();showSettings('playback');`);
+ assert.equal(p.run('settingsView.dirty'),true);assert.equal(p.location.hash,'#/settings/playback');
+ assert.equal(p.nodes.get('#settings-content').innerHTML,markup);
+ p.history.back();assert.equal(p.run('settingsView.category'),'sources');assert.equal(p.run('pendingChoice.checked'),false);
+ p.history.forward();assert.equal(p.run('settingsView.category'),'playback');assert.equal(p.run('settingsView.dirty'),true);
+ assert.equal(p.nodes.get('#audio').src,src);assert.equal(p.nodes.get('#audio').paused,false);
+});
+test('Settings suspends and restores the same metadata editor DOM and draft on Back',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));editing={originals:[state.details.get('1')],dirty:new Set(['name']),trackPatches:{}};const preservedSettingsDraft=editing;$("#editor-content").innerHTML='Unsaved album draft';$("#editor").showModal();openSettings('sources');`);
+ assert.equal(p.nodes.get('#editor').open,false);assert.equal(p.run('settingsView.editor.draft===preservedSettingsDraft'),true);
+ p.history.back();assert.equal(p.nodes.get('#editor').open,true);assert.equal(p.run('editing===preservedSettingsDraft'),true);
+ assert.equal(p.nodes.get('#editor-content').innerHTML,'Unsaved album draft');assert.equal(p.nodes.get('#audio').paused,false);
+});
+test('Settings save failure keeps the page and fields, serializes saves and releases locked controls',async()=>{
+ const p=livePage();await settle();p.run('openSettings("sources")');let finish,posts=0;
+ p.setFetch(()=>{posts++;return new Promise(resolve=>{finish=resolve;});});
+ p.run(`const settingsKey={name:'discogs_token',type:'password',value:'typed-key',disabled:false};const saveTestForm={elements:{auto_lookup:{checked:true},auto_updates:{checked:false}},querySelectorAll:s=>s==='input[type=password]'?[settingsKey]:s==='input, select, button[data-clear-key]'?[settingsKey]:[]};`);
+ const saving=p.run('saveSettings(saveTestForm)');await settle();assert.equal(p.run('settingsKey.disabled'),true);
+ await p.run('saveSettings(saveTestForm)');assert.equal(posts,1);
+ finish({ok:false,status:400,json:async()=>({error:'That key does not look right.'})});await saving;
+ assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsKey.value'),'typed-key');assert.equal(p.run('settingsKey.disabled'),false);
+ assert.match(p.nodes.get('#settings-feedback').textContent,/does not look right/);assert.equal(p.run('settingsView.saving'),false);
+});
+function publicStatusFixture(mode='operational') {
+ const stamp=new Date().toISOString();return {overall:mode,stale:false,error:'',message:'Public report',fetched_at:stamp,checked_at:stamp,reported_at:stamp,
+  services:[['streaming','Streaming'],['api','API Server'],['queue','Play Queue'],['artwork','Artwork'],['library','Library Generation']].map(([id,name],index)=>({id,name,state:index===0?mode:'operational',reported_at:stamp,details:index===0&&mode==='outage'?'<script>Untrusted outage detail</script>':''}))};
+}
+test('public service status works while disconnected and coalesces requests independently of account status',async()=>{
+ const p=page();await settle();let finish,reads=0;p.setServiceStatusFetch(()=>{reads++;return new Promise(resolve=>{finish=resolve;});});
+ p.run('showScreen("overview")');const pending=p.run('refreshServiceStatus()');p.run('refreshServiceStatus()');assert.equal(reads,1);
+ finish({ok:true,json:async()=>publicStatusFixture()});await pending;await settle();
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/All five services operational/);
+ assert.equal(p.run('state.connection.connected'),false);assert.equal(p.run('serviceStatus.pending'),null);
+ const count=p.requests.length;p.run('showScreen("artists")');p.flushTimers(300000);await settle();assert.equal(p.requests.length,count);
+});
+test('public service health presents degraded/outage details safely and recovers without changing connection state',async()=>{
+ const p=page();await settle();p.setServiceStatusFetch(()=>({ok:true,json:async()=>publicStatusFixture('degraded')}));p.run('showScreen("overview")');await settle();
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/Degraded performance/);
+ p.setServiceStatusFetch(()=>({ok:true,json:async()=>publicStatusFixture('outage')}));await p.run('refreshServiceStatus(true)');
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/Service disruption/);assert.match(p.nodes.get('#service-status-content').innerHTML,/&lt;script&gt;/);assert.doesNotMatch(p.nodes.get('#service-status-content').innerHTML,/<script>/);
+ p.setServiceStatusFetch(()=>({ok:true,json:async()=>publicStatusFixture()}));await p.run('refreshServiceStatus(true)');assert.match(p.nodes.get('#service-status-content').innerHTML,/All five services operational/);
+ assert.equal(p.run('state.connection.connected'),false);
+});
+test('missing, stale, invalid and failed public status cannot display a current green state',async()=>{
+ const p=page();await settle();p.run('showScreen("overview")');await settle();
+ for(const data of [{}, {...publicStatusFixture(),stale:true}, {...publicStatusFixture(),reported_at:'2020-01-01T00:00:00Z'}, {...publicStatusFixture(),services:[]}]){
+  p.setServiceStatusFetch(()=>({ok:true,json:async()=>data}));await p.run('refreshServiceStatus(true)');
+  assert.doesNotMatch(p.nodes.get('#service-status-content').innerHTML,/All five services operational|state-operational/);
+ }
+ p.setServiceStatusFetch(()=>Promise.reject(Error('Network timeout')));await p.run('refreshServiceStatus(true)');
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/does not mean iBroadcast is down/);assert.doesNotMatch(p.nodes.get('#service-status-content').innerHTML,/state-operational/);
+});
+
+
+test('Settings direct-route bootstrap tolerates an unloaded form and Sidebar has no disclosure',()=>{
+ const p=page();assert.equal(p.run('settingsFormSnapshot(null)'), '[]');
+ const markup=p.run('sidebarSettingsPanel()');assert.match(markup, /id="sidebar-layout-list"/);assert.doesNotMatch(markup, /<details|<summary/);
+});
+
+
+test('gapless re-closes an end-of-stream source after buffer eviction reopens it',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.currentTime=20;
+ let eosCalls=0;const eofEngine={session:state.connection.playback_session,finished:true,trim:null,pending:false,wanted:null,current:{entry:player.queue[0],end:25,part:1,media:{parts:[{}]}},media:{readyState:'ended',duration:25,endOfStream(){eosCalls++;this.readyState='ended';}},buffer:{updating:false,buffered:{length:1,start:()=>0},remove(){this.buffered={length:1,start:()=>14};eofEngine.media.readyState='open';}}};
+ gaplessTrial.active=eofEngine;gaplessPump(eofEngine);`);
+ assert.equal(p.run('eofEngine.finished'),false);assert.equal(p.run('eofEngine.media.readyState'),'open');
+ p.run('gaplessPump(eofEngine)');assert.equal(p.run('eosCalls'),1);assert.equal(p.run('eofEngine.media.readyState'),'ended');
+});
+test('gapless init block compatibility is checked against the original decoder not the previous track',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessPump=()=>{};gaplessPrefetchAhead=()=>{};gaplessPrepare=async()=>({key:'44100/2/16',maxBlock:4096,duration:2});const blockEngine={session:state.connection.playback_session,quality:'128',maxBlock:1152,ticket:1,media:{readyState:'open'},buffer:{updating:false},current:{entry:player.queue[0],media:{key:'44100/2/16'}},wanted:player.queue[1]};gaplessTrial.active=blockEngine;`);
+ await p.run('gaplessPrefetch(blockEngine)');assert.equal(p.run('gaplessFailed(player.queue[1])'),true);assert.equal(p.run('Boolean(blockEngine.next)'),false);assert.match(p.run('blockEngine.nextProblem'),/larger decoder blocks/);
+ p.run(`gaplessTrial.failures=new WeakMap();blockEngine.maxBlock=4096;`);await p.run('gaplessPrefetch(blockEngine)');
+ assert.equal(p.run('gaplessFailed(player.queue[1])'),false);
+});
+test('gapless watchdog recovers a playing stall once and ignores paused, seeking or unready audio',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};let stallFallbacks=0;gaplessFallback=()=>{stallFallbacks++;gaplessTrial.active=null;};const stallEngine={session:state.connection.playback_session,ready:true};gaplessTrial.active=stallEngine;audio.currentTime=2;audio.paused=false;gaplessWatch(stallEngine,0);gaplessWatch(stallEngine,7999);`);
+ assert.equal(p.run('stallFallbacks'),0);p.run('gaplessWatch(stallEngine,8000);gaplessWatch(stallEngine,16000)');assert.equal(p.run('stallFallbacks'),1);
+ p.run(`gaplessTrial.active=stallEngine;for(const stateName of ['paused','seeking']){stallEngine.progress=null;audio[stateName]=true;gaplessWatch(stallEngine,0);gaplessWatch(stallEngine,20000);audio[stateName]=false;}stallEngine.ready=false;gaplessWatch(stallEngine,40000);`);
+ assert.equal(p.run('stallFallbacks'),1);
+});
+
+
+test('gapless coded-byte policy reduces high-rate lookahead and retention without raising browser quotas',()=>{
+ const p=page();const policy=p.json(`gaplessBufferPolicy({byteRate:1200000,current:{media:{maxPartBytes:401808}}})`);
+ assert.equal(policy.bytes,6*1024**2);assert.ok(policy.ahead<4);assert.ok(policy.behind<2);
+ assert.ok(p.json('gaplessBufferPolicy({byteRate:16000,current:{media:{}}})').ahead<=16);
+});
+test('gapless pump waits at its coded-byte budget and rejects an individually oversized fragment once',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.currentTime=0;let budgetAppends=0,budgetFallbacks=0;gaplessFallback=()=>{budgetFallbacks++;gaplessTrial.active=null;};const budgetEngine={session:state.connection.playback_session,quality:'128',ready:true,started:true,trim:null,byteRate:1000000,current:{entry:player.queue[0],start:0,end:20,part:0,media:{parts:[{start:0,end:1,data:new Uint8Array(1000000)}]}},buffer:{updating:false,buffered:{length:1,start:()=>0,end:()=>5.5},appendBuffer(){budgetAppends++;}},media:{readyState:'open',duration:20}};gaplessTrial.active=budgetEngine;gaplessPump(budgetEngine);gaplessPump(budgetEngine);`);
+ assert.equal(p.run('budgetAppends'),0);assert.equal(p.run('budgetFallbacks'),0);
+ p.run('budgetEngine.buffer.buffered={length:0};budgetEngine.current.media.parts[0].data=new Uint8Array(7*1024**2);gaplessPump(budgetEngine);gaplessPump(budgetEngine)');
+ assert.equal(p.run('budgetFallbacks'),1);assert.equal(p.run('budgetAppends'),0);
+});
+
+
+test('long gapless tracks start without waiting for a complete next file and early buffered seeks apply immediately',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.pause();gaplessQueueChanged=()=>{};const responsiveEngine={session:state.connection.playback_session,quality:'128',started:true,ready:false,autoPlay:true,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],buffer:{updating:false,buffered:{length:1,start:()=>0,end:()=>16}}};gaplessTrial.active=responsiveEngine;gaplessReadiness(responsiveEngine);`);
+ assert.equal(p.nodes.get('#audio').paused,false);assert.equal(p.run('responsiveEngine.ready'),true);
+ p.run('audio.currentTime=.1;gaplessSeek(1)');assert.equal(p.nodes.get('#audio').currentTime,1);assert.equal(p.run('responsiveEngine.seekIntent'),null);
+});
+test('very short startup includes one prepared following track without unbounded lookahead',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const shortEngine={quality:'128',current:{entry:player.queue[0],start:0,end:1},next:{entry:player.queue[1],start:1,end:1.5,media:{duration:.5,parts:[{end:.5}]}},wanted:player.queue[1],buffer:{buffered:{length:1,start:()=>0,end:()=>1.5}},prepared:new Map()};`);
+ assert.equal(p.run('gaplessStartupReady(shortEngine)'),false);
+ p.run('shortEngine.prepared.set(player.queue[2],{media:{bytes:20}})');assert.equal(p.run('gaplessStartupReady(shortEngine)'),true);
+});
+test('gapless preparation coalesces the same entry and retired late replies cannot repopulate its cache',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));let prepareReads=0,resolvePrepared;gaplessRead=()=>{prepareReads++;return new Promise(r=>{resolvePrepared=r;});};const cacheEngine={session:state.connection.playback_session,controllers:new Set(),prepared:new Map()};gaplessTrial.active=cacheEngine;const cacheOne=gaplessPrepare(cacheEngine,player.queue[1]),cacheTwo=gaplessPrepare(cacheEngine,player.queue[1]);`);
+ assert.equal(p.run('prepareReads'),1);p.run('resolvePrepared({bytes:20})');await p.run('Promise.all([cacheOne,cacheTwo])');assert.equal(p.run('cacheEngine.prepared.size'),1);
+ p.run('cacheEngine.prepared.clear();const cancelledPrepare=gaplessPrepare(cacheEngine,player.queue[1]);gaplessPrune(cacheEngine,new Set());resolvePrepared({bytes:20});');
+ await assert.rejects(p.run('cancelledPrepare'),/cancelled/);assert.equal(p.run('cacheEngine.prepared.size'),0);
+});
+test('prepared audio budget counts shared media once and includes every in-flight read',()=>{
+ const p=page();assert.equal(p.run(`(()=>{const media={bytes:100};return gaplessHeldBytes({current:{media},next:{media},prepared:new Map([['one',{media,received:20}],['two',{received:30}]])});})()`),150);
+});
+test('startup and deferred seeks have finite deadlines while normal pause remains unlimited',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};let deadlineFallbacks=0;gaplessFallback=()=>{deadlineFallbacks++;gaplessTrial.active=null;};const deadlineEngine={session:state.connection.playback_session,ready:false,createdAt:0};gaplessTrial.active=deadlineEngine;gaplessWatch(deadlineEngine,20000);`);
+ assert.equal(p.run('deadlineFallbacks'),1);
+ p.run('deadlineEngine.ready=true;deadlineEngine.seekIntent={at:0};gaplessTrial.active=deadlineEngine;gaplessWatch(deadlineEngine,10000)');assert.equal(p.run('deadlineFallbacks'),2);
+});
+
+
+test('an in-flight read cannot exceed the shared preparation budget even when its own file is small',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const heldController={signal:{aborted:false}},heldRecord={controller:heldController,received:0};const heldEngine={session:state.connection.playback_session,quality:'128',current:{media:{bytes:96*1024**2-1}},prepared:new Map([[player.queue[1],heldRecord]])};gaplessTrial.active=heldEngine;`);
+ let cancelled=false;p.setFetch(async()=>({ok:true,headers:{get:()=>null},body:{getReader:()=>({read:async()=>({done:false,value:new Uint8Array(2)}),cancel:async()=>{cancelled=true;},releaseLock(){}})}}));
+ await assert.rejects(p.run('gaplessRead(heldEngine,player.queue[1],heldController)'),/exceeded/);assert.equal(cancelled,true);
+});
+
+
+test('fallback during startup preserves the requested autoplay rather than mistaking buffered data for playing audio',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};let startupAutoplay;playCurrent=value=>{startupAutoplay=value;};audio.pause();const startupFailure={session:state.connection.playback_session,quality:'128',controllers:new Set(),current:{entry:player.queue[0],start:0,end:20},started:true,ready:false,autoPlay:true};gaplessTrial.active=startupFailure;gaplessFallback(startupFailure,'injected startup error');`);
+ assert.equal(p.run('startupAutoplay'),true);
+ p.run("startupFailure.autoPlay=false;gaplessTrial.active=startupFailure;gaplessFallback(startupFailure,'injected paused startup error')");assert.equal(p.run('startupAutoplay'),false);
+ p.run("startupFailure.ready=true;startupFailure.autoPlay=true;gaplessTrial.active=startupFailure;gaplessFallback(startupFailure,'injected paused playing error')");assert.equal(p.run('startupAutoplay'),false);
+});
+
+
+test('jumping beyond the prepared horizon discards unrelated cached files before the new read',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const farEntry={...player.queue[2],id:'far-entry'};player.queue.push(farEntry);gaplessAlbumQueue(player.queue,true);const oldEngine={session:state.connection.playback_session,quality:player.quality,controllers:new Set(),current:{entry:player.queue[0],media:{bytes:20}},prepared:new Map([[player.queue[1],{media:{bytes:20}}],[player.queue[2],{media:{bytes:20}}]])};gaplessTrial.active=oldEngine;gaplessTrial.enabled=true;gaplessSupported=()=>true;let seededPrepared=-1;gaplessPrepare=g=>{seededPrepared=g.prepared.size;return Promise.reject(Error('Stop synthetic preparation'));};player.index=player.queue.length-1;gaplessBegin(farEntry,true);`);
+ assert.equal(p.run('seededPrepared'),0);await settle();
+});
+
+test('production gapless-off playback uses the ordinary audio and retains seeking, Next and Previous',async()=>{
+ const p=livePage();await settle();
+ p.run(`gaplessTrial.enabled=false;gaplessSupported=()=>true;gaplessPrepare=()=>{throw Error('Disabled gapless prepared audio');};playTracks(state.details.get('1'));audio.duration=100;`);
+ const identity=p.nodes.get('#audio');assert.equal(p.run('gaplessTrial.active'),null);assert.equal(identity.src,'/api/stream/100?quality=128');
+ p.run('seekSystemPlayback(25)');assert.equal(identity.currentTime,25);
+ p.run('step(1)');assert.equal(p.run('player.index'),1);assert.equal(p.run('gaplessTrial.active'),null);
+ p.run('step(-1)');assert.equal(p.run('player.index'),0);assert.equal(identity.src,'/api/stream/100?quality=128');
+ assert.equal(p.nodes.get('#audio'),identity);assert.equal(identity.hidden,false);assert.equal(p.run('gaplessDiagnostics.enabled'),false);
+});
+
+// Deterministic slow-transfer clock: no real network, sleeps or music fixtures.
+async function gaplessTransferPage() {
+ const p=livePage();await settle();
+ p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.pause();
+ const transferTimers=new Map();let transferTimerId=0;
+ setTimeout=(callback,delay)=>{const id=++transferTimerId;transferTimers.set(id,{callback,at:performance.now()+delay});return id;};
+ clearTimeout=id=>transferTimers.delete(id);
+ const transferEngine={session:state.connection.playback_session,quality:'orig',controllers:new Set(),prepared:new Map(),createdAt:0,ready:false};
+ gaplessTrial.active=transferEngine;
+ gaplessMedia.parseFlac=()=>({});gaplessMedia.pack=()=>({bytes:8,duration:40});`);
+ let deliver, signal, released=false;
+ p.setFetch(async(_url,options)=>{
+  signal=options.signal;
+  return {ok:true,headers:{get:()=>null},body:{getReader:()=>({
+   read:()=>new Promise((resolve,reject)=>{deliver=resolve;signal.addEventListener('abort',()=>reject(signal.reason),{once:true});}),
+   releaseLock(){released=true;}
+  })}};
+ });
+ const pending=p.run('gaplessPrepare(transferEngine,player.queue[0])');await settle();
+ const advance=async now=>{
+  p.setPlaybackClock(now);
+  p.run(`for(const [id,timer] of [...transferTimers])if(timer.at<=performance.now()){transferTimers.delete(id);timer.callback();}`);
+  await settle();
+ };
+ return {p,pending,advance,send:async value=>{deliver(value);await settle();},signal:()=>signal,released:()=>released};
+}
+test('steady Original transfer beyond twenty seconds remains eligible and completes without retry',async()=>{
+ const t=await gaplessTransferPage();
+ await t.advance(19000);await t.send({done:false,value:new Uint8Array([102,76,97,67])});
+ await t.advance(25000);t.p.run('gaplessWatch(transferEngine)');
+ assert.equal(t.signal().aborted,false);assert.equal(t.p.run('gaplessTrial.active===transferEngine'),true);
+ await t.advance(38000);await t.send({done:false,value:new Uint8Array([1,2,3,4])});
+ await t.advance(45000);await t.send({done:true});
+ assert.equal((await t.pending).duration,40);assert.equal(t.released(),true);
+ assert.equal(t.p.run('transferTimers.size'),0);assert.equal(t.p.run('transferEngine.controllers.size'),0);
+ assert.equal(t.p.requests.filter(r=>r.url.startsWith('/api/stream/')).length,1);
+});
+test('a transfer with no bytes for twenty seconds times out with a useful diagnostic cause',async()=>{
+ const t=await gaplessTransferPage();const rejected=assert.rejects(t.pending,/preparation timed out/);
+ await t.advance(19000);await t.send({done:false,value:new Uint8Array([102,76,97,67])});
+ await t.advance(38999);assert.equal(t.signal().aborted,false);
+ await t.advance(39000);await rejected;
+ assert.equal(t.p.run('gaplessDiagnosticCause("Audio preparation timed out")'),'prepare-timeout');
+ assert.equal(t.released(),true);assert.equal(t.p.run('transferTimers.size'),0);
+ assert.equal(t.p.run('transferEngine.prepared.size'),0);
+});
+test('continued trickle cannot exceed the sixty-second preparation deadline',async()=>{
+ const t=await gaplessTransferPage();const rejected=assert.rejects(t.pending,/preparation timed out/);
+ for(const now of [19000,38000,57000]){await t.advance(now);await t.send({done:false,value:new Uint8Array([1])});}
+ await t.advance(59999);assert.equal(t.signal().aborted,false);
+ await t.advance(60000);await rejected;assert.equal(t.p.run('transferTimers.size'),0);
+});
+test('stopping a slow preparation releases its reader and both deadlines without retry',async()=>{
+ const t=await gaplessTransferPage();const rejected=assert.rejects(t.pending);
+ t.p.run('gaplessCancel()');await rejected;
+ assert.equal(t.released(),true);assert.equal(t.p.run('transferTimers.size'),0);
+ assert.equal(t.p.run('gaplessTrial.active'),null);
+});
+test('startup progress postpones inactivity fallback but cannot extend the absolute startup bound',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.pause();
+ let progressFallbacks=0;gaplessFallback=()=>{progressFallbacks++;gaplessTrial.active=null;};
+ const progressEngine={session:state.connection.playback_session,ready:false,createdAt:0,preparationProgressAt:19000};gaplessTrial.active=progressEngine;
+ gaplessWatch(progressEngine,25000);`);
+ assert.equal(p.run('progressFallbacks'),0);
+ p.run('gaplessWatch(progressEngine,39000)');assert.equal(p.run('progressFallbacks'),1);
+ p.run('gaplessTrial.active=progressEngine;progressEngine.preparationProgressAt=119999;gaplessWatch(progressEngine,120000)');
+ assert.equal(p.run('progressFallbacks'),2);
+});
+
+
+test('release Settings keeps experimental gapless without the listening-build diagnostics panel', async()=>{
+ const p=livePage();await settle();p.run('openSettings("playback")');
+ const html=p.nodes.get('#settings-content').innerHTML;
+ assert.match(html,/Enable gapless playback for albums in order/);
+ assert.doesNotMatch(html,/Optional playback diagnostics|Collect playback diagnostics|gapless-diagnostics-download/);
+ assert.equal(p.run('gaplessDiagnostics.enabled'),false);
+ assert.match(readFileSync(path.join(staticDir,'index.html'),'utf8'),/<title>Tagcast ·/);
 });

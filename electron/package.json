@@ -1,7 +1,7 @@
 {
   "name": "tagcast-desktop",
   "productName": "Tagcast",
-  "version": "0.80.0",
+  "version": "0.85.0",
   "description": "Tagcast for iBroadcast, in its own desktop window.",
   "author": "Cyberdelia",
   "license": "MIT",
@@ -21,17 +21,49 @@
     "appId": "nl.cyberdelia.tagcast",
     "executableName": "Tagcast",
     "asar": true,
-    "directories": {"output": "out"},
-    "files": ["*.cjs", "package.json"],
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "*.cjs",
+      "package.json"
+    ],
     "extraResources": [
-      {"from": "../build/electron/backend/tagcast-server", "to": "backend"},
-      {"from": "../build/assets/tagcast-icon.png", "to": "tagcast-icon.png"},
-      {"from": "../LICENSE", "to": "LICENSE"}
+      {
+        "from": "../build/electron/backend/tagcast-server",
+        "to": "backend"
+      },
+      {
+        "from": "../build/assets/tagcast-icon.png",
+        "to": "tagcast-icon.png"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      }
     ],
     "afterPack": "./harden.cjs",
     "artifactName": "tagcast-desktop-${version}-${os}-${arch}.${ext}",
-    "mac": {"target": ["zip"], "icon": "../build/assets/tagcast.icns", "category": "public.app-category.music", "identity": "-"},
-    "win": {"target": ["zip"], "icon": "../build/assets/tagcast.ico"},
-    "linux": {"target": ["tar.gz"], "icon": "../build/assets/tagcast-icon.png", "category": "Audio"}
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "icon": "../build/assets/tagcast.icns",
+      "category": "public.app-category.music",
+      "identity": "-"
+    },
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "icon": "../build/assets/tagcast.ico"
+    },
+    "linux": {
+      "target": [
+        "tar.gz"
+      ],
+      "icon": "../build/assets/tagcast-icon.png",
+      "category": "Audio"
+    }
   }
 }

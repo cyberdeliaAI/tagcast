@@ -1,0 +1,25 @@
+"use strict";
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const C=require('../tools/gapless_lab/counter.cjs');
+const specs=[{rate:44100,bits:16,channels:2,track:1,samples:10019},{rate:44100,bits:16,channels:2,track:2,samples:7013},{rate:44100,bits:16,channels:2,track:3,samples:8009}];
+function signal(list=specs,norm='power2') {const r=C.reference(list);return Array.from({length:2},(_,c)=>Float32Array.from({length:r.length+256},(_,i)=>i<r.length?(norm==='asymmetric'?C.word(i-r.offsets[list.findLastIndex((s,n)=>r.offsets[n]<=i)],list[list.findLastIndex((s,n)=>r.offsets[n]<=i)].track,c,list[0].bits)/(2**(list[0].bits-1)-(r.at(i,c)>0?1:0)):r.at(i,c)):0));}
+function edit(planes,at,remove,insert=[]) {return planes.map((p,c)=>Float32Array.from([...p.slice(0,at),...insert.map(v=>v[c]),...p.slice(at+remove)]));}
+test('oracle reconstructs every sample codeword with independent channel and track identities',()=>{const r=C.inspect(signal(),specs);assert.equal(r.exact,true);assert.equal(r.mismatches,0);assert.equal(r.extraSignalFrames,0);assert.deepEqual(r.boundaries.map(b=>b.at),[10019,17032]);});
+test('oracle accepts measured Chromium signed positive/negative PCM normalization without a sample-count tolerance',()=>{const r=C.inspect(signal(specs,'asymmetric'),specs);assert.equal(r.exact,true);assert.equal(r.normalization,'asymmetric');});
+test('one missing sample at a boundary is a deterministic failure',()=>{const r=C.inspect(edit(signal(),10019,1),specs);assert.equal(r.exact,false);assert.equal(r.firstMismatch,10019);});
+test('one duplicated sample at a boundary is a deterministic failure',()=>{const s=signal(),r=C.inspect(edit(s,10019,0,[[s[0][10018],s[1][10018]]]),specs);assert.equal(r.exact,false);assert.equal(r.firstMismatch,10019);});
+test('a one-sample timestamp/boundary error cannot be accepted by trimming each track independently',()=>{const s=signal();s.forEach((p,c)=>{p[10018]=C.value(0,2,c,16);});assert.equal(C.inspect(s,specs).exact,false);});
+test('reordered tracks cannot match the expected two-channel run',()=>{const r=C.inspect(signal([specs[0],specs[2],specs[1]]),specs);assert.equal(r.exact,false);assert.equal(r.firstMismatch,10019);});
+test('channel swapping or unexpected mono downmix is detected',()=>{const s=signal();assert.notEqual(C.inspect([s[1],s[0]],specs).exact,true);assert.notEqual(C.inspect([s[0],new Float32Array(s[1].length)],specs).exact,true);});
+test('injected starvation is distinguished from normal leading/trailing capture silence',()=>{const s=signal();const delayed=edit(s,17032,0,Array.from({length:512},()=>[0,0]));const r=C.inspect(delayed,specs);assert.equal(r.exact,false);assert.ok(r.maxZeroRun>=512);assert.equal(r.firstMismatch,17032);assert.equal(r.observedTrackStarts[2].displacement,512);const prefixed=edit(s,0,0,Array.from({length:64},()=>[0,0]));assert.equal(C.inspect(prefixed,specs).exact,true);});
+test('unexpected signal after the last expected sample is not silently ignored',()=>{const s=signal();s[0][s[0].length-1]=.5;assert.equal(C.inspect(s,specs).exact,false);});
+test('24-bit counter survives Float32 transport and detects a single codeword error',()=>{const list=specs.map(s=>({...s,bits:24})),s=signal(list);assert.equal(C.inspect(s,list).exact,true);s[1][17033]+=1/8388608;const r=C.inspect(s,list);assert.equal(r.exact,false);assert.equal(r.firstMismatch,17033);});
+test('unknown gain/resampling is inconclusive rather than falsely proving continuity',()=>{const s=signal().map(p=>p.map(v=>v*.75));assert.equal(C.inspect(s,specs).measurable,false);});
+
+test('an intentional seek window still checks every tail sample and the following boundary',()=>{
+ const list=specs.map(s=>({...s,bits:24})),full=signal(list);
+ const tail=full.map(p=>p.slice(list[0].samples-256,list[0].samples+list[1].samples));
+ const window=[{...list[0],sourceStart:list[0].samples-256,samples:256},list[1]];
+ assert.equal(C.inspect(tail,window).exact,true);
+ assert.equal(C.inspect(edit(tail,256,0,[[0,0]]),window).exact,false);
+});
