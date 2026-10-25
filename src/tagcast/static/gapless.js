@@ -131,7 +131,10 @@ async function gaplessRead(g, entry, controller) {
     while (true) {
       const {done, value} = await reader.read(); if (done) break;
       count += value.length;
-      if (record && g.prepared.get(entry) === record) record.received = count;
+      if (record && g.prepared.get(entry) === record) {
+        record.received = count;
+        if (value.length) record.progress?.();
+      }
       if (count > max || gaplessHeldBytes(g) > max || !gaplessValid(g) || controller.signal.aborted) { await reader.cancel(); throw new Error("Gapless preparation was cancelled or exceeded its limit."); }
       chunks.push(value);
     }
@@ -168,16 +171,25 @@ async function gaplessPrepare(g, entry) {
   if (g.prepared.has(entry)) return g.prepared.get(entry).promise;
   const controller = new AbortController(), record = {controller, received: 0, media: null};
   g.controllers.add(controller); g.prepared.set(entry, record);
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  // Large Original files may arrive steadily for longer than twenty seconds.
+  // Bound both inactivity and total preparation; never retry an uncertain read.
+  const expire = () => controller.abort(new Error("Audio preparation timed out; continuing with standard playback."));
+  let idleTimeout;
+  record.progress = () => {
+    g.preparationProgressAt = performance.now();
+    clearTimeout(idleTimeout); idleTimeout = setTimeout(expire, 20000);
+  };
+  record.progress();
+  const timeout = setTimeout(expire, 60000);
   record.promise = gaplessRead(g, entry, controller).then(media => {
     if (!gaplessValid(g) || g.prepared.get(entry) !== record || controller.signal.aborted) throw new Error("Gapless preparation was cancelled.");
-    record.received = 0; record.media = media;
+    record.received = 0; record.media = media; g.preparationProgressAt = performance.now();
     if (gaplessHeldBytes(g) > 96 * 1024 ** 2) throw new Error("Prepared audio exceeds the trial memory budget.");
     return media;
   }).catch(error => {
     if (g.prepared.get(entry) === record) g.prepared.delete(entry);
     throw error;
-  }).finally(() => { clearTimeout(timeout); g.controllers.delete(controller); });
+  }).finally(() => { clearTimeout(timeout); clearTimeout(idleTimeout); delete record.progress; g.controllers.delete(controller); });
   return record.promise;
 }
 function gaplessPrefetchAhead(g) {
@@ -296,7 +308,9 @@ function gaplessAdvance() {
 // Pauses, seeks and startup holds are not evidence of a stalled playing timeline.
 function gaplessWatch(g, now = performance.now()) {
   if (!gaplessValid(g)) return;
-  if ((!g.ready && now - g.createdAt >= 20000) || (g.seekIntent && now - g.seekIntent.at >= 10000)) {
+  const preparationIdle = now - Math.max(g.createdAt, g.preparationProgressAt ?? g.createdAt);
+  if ((!g.ready && (preparationIdle >= 20000 || now - g.createdAt >= 120000))
+      || (g.seekIntent && now - g.seekIntent.at >= 10000)) {
     gaplessFallback(g, "Audio preparation took too long; continuing with standard playback."); return;
   }
   const time = audio.currentTime || 0, progress = g.progress;
