@@ -9244,3 +9244,24 @@ test('Settings direct-route bootstrap tolerates an unloaded form and Sidebar has
  const p=page();assert.equal(p.run('settingsFormSnapshot(null)'), '[]');
  const markup=p.run('sidebarSettingsPanel()');assert.match(markup, /id="sidebar-layout-list"/);assert.doesNotMatch(markup, /<details|<summary/);
 });
+
+
+test('gapless re-closes an end-of-stream source after buffer eviction reopens it',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.currentTime=20;
+ let eosCalls=0;const eofEngine={session:state.connection.playback_session,finished:true,trim:null,pending:false,wanted:null,current:{entry:player.queue[0],end:25,part:1,media:{parts:[{}]}},media:{readyState:'ended',duration:25,endOfStream(){eosCalls++;this.readyState='ended';}},buffer:{updating:false,buffered:{length:1,start:()=>0},remove(){this.buffered={length:1,start:()=>14};eofEngine.media.readyState='open';}}};
+ gaplessTrial.active=eofEngine;gaplessPump(eofEngine);`);
+ assert.equal(p.run('eofEngine.finished'),false);assert.equal(p.run('eofEngine.media.readyState'),'open');
+ p.run('gaplessPump(eofEngine)');assert.equal(p.run('eosCalls'),1);assert.equal(p.run('eofEngine.media.readyState'),'ended');
+});
+test('gapless init block compatibility is checked against the original decoder not the previous track',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessPump=()=>{};gaplessPrepare=async()=>({key:'44100/2/16',maxBlock:4096,duration:2});const blockEngine={session:state.connection.playback_session,quality:'128',maxBlock:1152,ticket:1,media:{readyState:'open'},buffer:{updating:false},current:{entry:player.queue[0],media:{key:'44100/2/16'}},wanted:player.queue[1]};gaplessTrial.active=blockEngine;`);
+ await p.run('gaplessPrefetch(blockEngine)');assert.equal(p.run('gaplessFailed(player.queue[1])'),true);assert.equal(p.run('Boolean(blockEngine.next)'),false);assert.match(p.run('blockEngine.nextProblem'),/larger decoder blocks/);
+ p.run(`gaplessTrial.failures=new WeakMap();blockEngine.maxBlock=4096;`);await p.run('gaplessPrefetch(blockEngine)');
+ assert.equal(p.run('gaplessFailed(player.queue[1])'),false);
+});
+test('gapless watchdog recovers a playing stall once and ignores paused, seeking or unready audio',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};let stallFallbacks=0;gaplessFallback=()=>{stallFallbacks++;gaplessTrial.active=null;};const stallEngine={session:state.connection.playback_session,ready:true};gaplessTrial.active=stallEngine;audio.currentTime=2;audio.paused=false;gaplessWatch(stallEngine,0);gaplessWatch(stallEngine,7999);`);
+ assert.equal(p.run('stallFallbacks'),0);p.run('gaplessWatch(stallEngine,8000);gaplessWatch(stallEngine,16000)');assert.equal(p.run('stallFallbacks'),1);
+ p.run(`gaplessTrial.active=stallEngine;for(const stateName of ['paused','seeking']){stallEngine.progress=null;audio[stateName]=true;gaplessWatch(stallEngine,0);gaplessWatch(stallEngine,20000);audio[stateName]=false;}stallEngine.ready=false;gaplessWatch(stallEngine,40000);`);
+ assert.equal(p.run('stallFallbacks'),1);
+});

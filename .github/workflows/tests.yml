@@ -147,6 +147,8 @@ jobs:
         run: node tools/gapless_lab/fixtures.cjs build/gapless-fixtures
       - name: Measure the unmodified engine and single-file controls
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/electron.cjs --fixtures build/gapless-fixtures --out build/gapless-results --suite smoke
+      - name: Verify ordinary fallback and transport in the full application
+        run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/application.cjs --fixtures build/gapless-fixtures --out build/gapless-application
       # Known failures remain diagnostic until production fixes are separately approved.
       - name: Record mixed-block, starvation, startup and seek probes
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/electron.cjs --fixtures build/gapless-fixtures --out build/gapless-diagnostics --suite diagnostics
@@ -159,3 +161,4 @@ jobs:
             build/gapless-fixtures/manifest.json
             build/gapless-results/*.json
             build/gapless-diagnostics/*.json
+            build/gapless-application/*.json
