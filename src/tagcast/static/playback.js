@@ -189,6 +189,7 @@ function seekSystemPlayback(position, fast = false) {
 function playSystemPlayback() {
   const track = systemPlaybackTrack(), details = state.details;
   if (!track) return;
+  if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) { gaplessTrial.active.autoPlay = true; return; }
   if (audio.ended) audio.currentTime = 0;
   audio.play().catch(() => {
     if (details === state.details && track === systemPlaybackTrack()) toast("Press Play in Tagcast to resume audio.");
@@ -197,7 +198,7 @@ function playSystemPlayback() {
 
 const systemPlaybackActions = {
   play: playSystemPlayback,
-  pause: () => { if (systemPlaybackTrack()) audio.pause(); },
+  pause: () => { if (systemPlaybackTrack()) { if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) gaplessTrial.active.autoPlay = false; audio.pause(); } },
   stop: () => { if (systemPlaybackTrack()) stopPlayer(); },
   previoustrack: () => { if (systemPlaybackTrack()) step(-1); },
   nexttrack: () => { if (systemPlaybackTrack()) step(1); },

@@ -254,13 +254,14 @@ function queueTracks(album, tracks = album.tracks) {
     format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source}));
 }
 
-function playTracks(album, startId, shuffle = false) {
+function playTracks(album, startId, shuffle = false, options = {}) {
   if (!live() || !album.tracks.length) return;
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
   cancelRandomPlay();
   player.epoch += 1;
   player.shuffle = shuffle;
   player.queue = queueTracks(album);
+  if (typeof gaplessAlbumQueue === "function") gaplessAlbumQueue(player.queue, !shuffle && !options.random);
   if (shuffle) for (let i = player.queue.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [player.queue[i], player.queue[j]] = [player.queue[j], player.queue[i]];
@@ -305,7 +306,7 @@ async function playRandomAlbum(albums) {
     if (discs.length !== ids.length || !state.albums.some(a => String(a.id) === String(selected.id))) throw Error("This album is no longer available. Reload the library.");
     const album = joinDiscs(discs);
     if (!album.tracks.length) throw Error("This album has no playable tracks.");
-    playTracks(album);
+    playTracks(album, undefined, false, {random: true});
     toast(`Playing ${album.name} · ${album.artist}`);
   } catch (error) {
     if (request === player.randomRequest && details === state.details) toast(`Could not play a random album: ${error.message}`);
@@ -695,7 +696,10 @@ document.addEventListener("click", event => {
 function renderStreamQuality() {
   const track = player.queue[player.index];
   $("#player-quality").textContent = track ? `${track.format ? `File: ${track.format} · ` : ""}Stream: ${player.quality === "orig" ? `Original${track.format ? ` ${track.format}` : ""}` : `MP3 ${player.quality} kbps`}${player.fallback ? " (fallback)" : ""}` : "";
-  if (track && typeof gaplessTrial !== "undefined" && gaplessTrial.active) $("#player-quality").textContent += " · Gapless test";
+  if (track && typeof gaplessTrial !== "undefined" && gaplessTrial.active) {
+    $("#player-quality").textContent += " · Gapless test";
+    if (gaplessTrial.active.ready === false || gaplessTrial.active.seekIntent) $("#player-quality").textContent += " · Preparing…";
+  }
   $("#visual-player-quality").textContent = $("#player-quality").textContent;
   renderPlayerDisplay();
 }
