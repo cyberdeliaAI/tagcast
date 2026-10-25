@@ -175,6 +175,7 @@ async function gaplessPrefetch(g) {
     if (!gaplessValid(g) || ticket !== g.ticket || entry !== g.wanted) return;
     if (media.maxBlock > g.maxBlock) throw new Error("The next FLAC needs larger decoder blocks; standard playback is used at the boundary.");
     if (media.key !== g.current.media.key) throw new Error("Adjacent audio formats differ; the next transition uses standard playback.");
+    g.byteRate = Math.max(g.byteRate || 0, media.byteRate || 0);
     g.next = {entry, media, start: g.current.end, end: g.current.end + media.duration, part: 0, wrap: g.wrap};
     if (g.media.readyState === "open" && !g.buffer.updating) g.media.duration = g.next.end;
     gaplessNote(g.ready === false ? "Preparing the next album track…" : "Gapless active · track-based controls"); gaplessPump(g);
@@ -182,24 +183,41 @@ async function gaplessPrefetch(g) {
     if (gaplessValid(g) && ticket === g.ticket) { gaplessFail(entry, g); g.nextProblem = error.message; gaplessNote(`Gapless current track; next transition uses standard playback. ${error.message}`); }
   } finally { if (gaplessValid(g) && ticket === g.ticket) { g.pending = false; gaplessPump(g); } }
 }
+// Conservative coded-byte estimate, not decoded PCM/RSS or a Chromium quota override.
+// Peak fragment density bounds retained ranges even after a higher-rate fragment is evicted.
+function gaplessBufferPolicy(g) {
+  const bytes = 6 * 1024 ** 2, rate = Math.max(1, g.byteRate || 65536);
+  const reserve = Math.min(bytes / 2, Math.max(512 * 1024, g.current?.media.maxPartBytes || 0, g.next?.media.maxPartBytes || 0));
+  return {bytes, rate, ahead: Math.max(.05, Math.min(16, (bytes - reserve) * .6 / rate)), behind: Math.min(6, (bytes - reserve) * .2 / rate)};
+}
+function gaplessBufferedBytes(g, policy) {
+  const ranges = g.buffer.buffered; let seconds = 0;
+  for (let i = 0; i < ranges.length; i++) seconds += ranges.end(i) - ranges.start(i);
+  return seconds * policy.rate;
+}
 function gaplessPump(g) {
   if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; }
   const sb = g.buffer;
   if (!sb || sb.updating || g.media.readyState === "closed" || !g.current) return;
   try {
-    const end = g.next?.end || g.current.end;
+    const end = g.next?.end || g.current.end, policy = gaplessBufferPolicy(g);
     if (g.media.readyState === "open" && g.media.duration < end) g.media.duration = end;
     if (g.trim !== null) { const from = g.trim; g.trim = null; g.finished = false; sb.remove(from, Math.max(from + .001, Number.isFinite(g.media.duration) ? g.media.duration + 1 : from + 10000)); return; }
-    // Keep decoded media bounded, independently of queue length.
-    const before = Math.max(0, audio.currentTime - 6);
-    if (sb.buffered.length && sb.buffered.start(0) < before - 4) { g.finished = false; sb.remove(0, before); return; }
+    // Bound coded retention by both time and peak encoded fragment density.
+    const before = Math.max(0, audio.currentTime - policy.behind);
+    if (sb.buffered.length && sb.buffered.start(0) < before - Math.min(4, policy.behind / 2)) { g.finished = false; sb.remove(0, before); return; }
     // The next track's first fragment stays primed even after a seek far ahead or back.
     const primeNext = g.started && g.next && !gaplessBuffered(g, g.next.start, Math.min(.05, (g.next.media.parts?.[0]?.end || g.next.media.duration) / 2));
     if (primeNext && g.next.part > 0) g.next.part = 0;
     const segment = primeNext ? g.next : g.current.part < g.current.media.parts.length ? g.current : g.next;
     if (segment && segment.part < segment.media.parts.length) {
       const part = segment.media.parts[segment.part];
-      if (!primeNext && segment.start + part.start > (audio.currentTime || 0) + 16 && g.started) return;
+      if (!primeNext && segment.start + part.start > (audio.currentTime || 0) + policy.ahead && g.started) return;
+      if (part.data.byteLength > policy.bytes) { gaplessFallback(g, "An audio fragment exceeds the trial buffer budget."); return; }
+      if (gaplessBufferedBytes(g, policy) + part.data.byteLength > policy.bytes) {
+        if (primeNext && !g.ready) gaplessFallback(g, "The next audio fragment cannot fit before playback; using standard playback.");
+        return; // Resume pumping as playback frees old data; never spin on append failures.
+      }
       sb.timestampOffset = segment.start; sb.appendWindowStart = 0; sb.appendWindowEnd = segment.end; sb.appendWindowStart = segment.start;
       sb.appendBuffer(part.data); segment.part += 1; g.finished = false; return;
     }
@@ -248,7 +266,7 @@ function gaplessBegin(entry, autoPlay) {
   (async () => {
     try {
       const media = await gaplessPrepare(g, entry); if (!gaplessValid(g)) return;
-      g.current = {entry, media, start: 0, end: media.duration, part: 0}; g.maxBlock = media.maxBlock;
+      g.current = {entry, media, start: 0, end: media.duration, part: 0}; g.maxBlock = media.maxBlock; g.byteRate = media.byteRate;
       g.media = new MediaSource(); g.url = URL.createObjectURL(g.media); audio.src = g.url;
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Continuous audio did not open.")), 10000);

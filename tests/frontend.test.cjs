@@ -9265,3 +9265,16 @@ test('gapless watchdog recovers a playing stall once and ignores paused, seeking
  p.run(`gaplessTrial.active=stallEngine;for(const stateName of ['paused','seeking']){stallEngine.progress=null;audio[stateName]=true;gaplessWatch(stallEngine,0);gaplessWatch(stallEngine,20000);audio[stateName]=false;}stallEngine.ready=false;gaplessWatch(stallEngine,40000);`);
  assert.equal(p.run('stallFallbacks'),1);
 });
+
+
+test('gapless coded-byte policy reduces high-rate lookahead and retention without raising browser quotas',()=>{
+ const p=page();const policy=p.json(`gaplessBufferPolicy({byteRate:1200000,current:{media:{maxPartBytes:401808}}})`);
+ assert.equal(policy.bytes,6*1024**2);assert.ok(policy.ahead<4);assert.ok(policy.behind<2);
+ assert.ok(p.json('gaplessBufferPolicy({byteRate:16000,current:{media:{}}})').ahead<=16);
+});
+test('gapless pump waits at its coded-byte budget and rejects an individually oversized fragment once',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.currentTime=0;let budgetAppends=0,budgetFallbacks=0;gaplessFallback=()=>{budgetFallbacks++;gaplessTrial.active=null;};const budgetEngine={session:state.connection.playback_session,quality:'128',ready:true,started:true,trim:null,byteRate:1000000,current:{entry:player.queue[0],start:0,end:20,part:0,media:{parts:[{start:0,end:1,data:new Uint8Array(1000000)}]}},buffer:{updating:false,buffered:{length:1,start:()=>0,end:()=>5.5},appendBuffer(){budgetAppends++;}},media:{readyState:'open',duration:20}};gaplessTrial.active=budgetEngine;gaplessPump(budgetEngine);gaplessPump(budgetEngine);`);
+ assert.equal(p.run('budgetAppends'),0);assert.equal(p.run('budgetFallbacks'),0);
+ p.run('budgetEngine.buffer.buffered={length:0};budgetEngine.current.media.parts[0].data=new Uint8Array(7*1024**2);gaplessPump(budgetEngine);gaplessPump(budgetEngine)');
+ assert.equal(p.run('budgetFallbacks'),1);assert.equal(p.run('budgetAppends'),0);
+});
