@@ -1608,7 +1608,7 @@ $("#connect-button").addEventListener("click", openConnect);
 $("#mode-badge").addEventListener("click", openConnect);
 
 function flushPendingAlbums() {
-  if (!pendingAlbums || $("#editor").open || $("#review").open) return;
+  if (!pendingAlbums || $("#editor").open || $("#review").open || (typeof settingsView !== "undefined" && settingsView.editor)) return;
   state.albums = colorize(pendingAlbums); state.details = new Map(); pendingAlbums = null;
   if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
   render();

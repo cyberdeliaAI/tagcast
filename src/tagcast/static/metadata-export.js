@@ -19,7 +19,7 @@ function syncMetadataExport() {
 }
 
 function metadataExportPanel() {
-  return `<section class="history-settings" id="metadata-export"><h3>Export library metadata</h3>
+  return `<section class="history-settings" id="metadata-export" data-settings-category="data"><h3>Export library metadata</h3>
     <p class="muted">Download the loaded iBroadcast library as structured JSON or a ZIP of linked CSV tables. Includes separate album artists, track credits, roles, credit phrases, genres, ratings and upload dates. Uses the full loaded library, regardless of page filters.</p>
     <p class="muted">This snapshot contains saved metadata; open drafts and later changes are not included. Audio and image files are not included.</p>
     ${[["tags", "Include loaded tags"], ["playlists", "Include loaded playlists and folders"], ["favourites", "Include local album and artist favourites"]].map(([key, label]) => `<label class="checkline"><input type="checkbox" data-metadata-option="${key}" ${metadataExportView.options[key] ? "checked" : ""}> ${label}</label>`).join("")}
@@ -28,7 +28,7 @@ function metadataExportPanel() {
 }
 
 function renderMetadataExport() {
-  if (!$("#settings").open) return;
+  if (!(state.screen === "settings")) return;
   const view = metadataExportView;
   const available = live() && !state.loading && Boolean(state.connection.playback_session);
   $("#metadata-export-actions").innerHTML = `<button type="button" class="button small" data-metadata-prepare="json" ${!available || view.busy ? "disabled" : ""}>Prepare JSON export</button>
@@ -80,7 +80,7 @@ async function prepareMetadataExport(format) {
 
 async function pollMetadataExport() {
   const view = metadataExportView, request = view.request, job = view.job;
-  if (!job || !$("#settings").open || !metadataExportActive(request)) return;
+  if (!job || !(state.screen === "settings") || !metadataExportActive(request)) return;
   const poll = ++view.poll;
   try {
     const data = await api(`/api/metadata-export/status?id=${encodeURIComponent(job.id)}&session=${encodeURIComponent(view.session)}`);
@@ -89,7 +89,7 @@ async function pollMetadataExport() {
     view.job = data; view.busy = data.state === "preparing";
     view.error = data.state === "error" ? data.error || "Could not prepare this export." : "";
     renderMetadataExport();
-    if (view.busy && $("#settings").open) view.timer = setTimeout(pollMetadataExport, 1000);
+    if (view.busy && (state.screen === "settings")) view.timer = setTimeout(pollMetadataExport, 1000);
   } catch (error) {
     if (!metadataExportActive(request) || poll !== view.poll) return;
     view.job = null; view.busy = false; view.error = error.message;
@@ -102,7 +102,7 @@ function resumeMetadataExport() {
   clearTimeout(metadataExportView.timer);
   renderMetadataExport();
   // Recheck ready files too: they may have expired while Settings was closed.
-  if (metadataExportView.job && $("#settings").open) pollMetadataExport();
+  if (metadataExportView.job && (state.screen === "settings")) pollMetadataExport();
 }
 
 async function cancelMetadataExport() {
@@ -113,7 +113,7 @@ async function cancelMetadataExport() {
   catch (error) { toast(error.message); }
 }
 
-$("#settings").addEventListener("close", () => clearTimeout(metadataExportView.timer));
+
 document.addEventListener("click", event => {
   const prepare = event.target.closest("[data-metadata-prepare]");
   if (prepare) { prepareMetadataExport(prepare.dataset.metadataPrepare); return; }

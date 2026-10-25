@@ -19,6 +19,7 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  const wasSettings = state.screen === "settings";
   closeBrowseOptions();
   if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();
   if (!["playlists", "album-favourites"].includes(name) && typeof rememberFavouriteView === "function") rememberFavouriteView();
@@ -36,6 +37,9 @@ function showScreen(name) {
   }
   if (name !== "album") { albumView.request += 1; albumView.loading = false; }
   state.screen = name;
+  $("#settings").hidden = name !== "settings";
+  $("#settings-button").classList.toggle("active", name === "settings");
+  if (wasSettings && name !== "settings") settingsPageLeft();
   $("#collections-page").hidden = !["playlists", "album-favourites"].includes(name);
   $("#show-playlists").classList.toggle("active", name === "playlists");
   $("#overview-page").hidden = name !== "overview";
@@ -63,12 +67,13 @@ function showScreen(name) {
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
   $("#show-artists").classList.toggle("active", name === "artists");
   $("#show-tracks").classList.toggle("active", name === "tracks");
-  $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
+  $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "settings" ? "Settings" : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (["playlists", "album-favourites"].includes(name) && typeof renderCollections === "function") renderCollections();
   renderFavouriteHub();
   if (name === "overview") loadOverview();
   if (typeof syncHistory === "function") syncHistory();
+  if (wasSettings && name !== "settings") resumeSettingsEditor();
 }
 
 async function loadOverview() {

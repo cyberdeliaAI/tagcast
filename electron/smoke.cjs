@@ -39,7 +39,7 @@ function check({app, window, origin, backend}) {
         const choice = document.querySelector('#player-view-mode');
         const defaultMode = choice.value;
         choice.value = 'window'; choice.dispatchEvent(new Event('change', {bubbles:true}));
-        document.querySelector('#settings').close();
+        closeSettings();
         const album = state.details.values().next().value;
         player.queue = [{...album.tracks[0], album}]; player.index = 0; state.mode = 'live';
         document.querySelector('#player').hidden = false;

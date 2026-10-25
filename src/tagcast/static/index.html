@@ -43,6 +43,7 @@
   <script src="queue-sync.js" defer></script>
   <script src="album-guide.js" defer></script>
   <script src="help.js" defer></script>
+  <script src="settings.js" defer></script>
   <script src="navigation.js" defer></script>
 </head>
 <body>
@@ -106,6 +107,7 @@
       <div id="favourite-artists-grid" class="artists-grid"></div><div id="favourite-artists-pagination" class="pagination"></div>
     </section>
     <section id="collections-page" hidden aria-label="Playlists and favourite albums"></section>
+    <section id="settings" class="settings-page" aria-labelledby="settings-title" hidden><div class="page-intro"><div><div class="eyebrow">MAKE TAGCAST YOUR OWN</div><h1 id="settings-title" tabindex="-1">Settings<span>.</span></h1><p>Preferences for this browser and your local Tagcast server.</p></div></div><div class="settings-layout"><nav id="settings-nav" aria-label="Settings categories"></nav><div class="settings-body"><div class="settings-category-heading"><h2 id="settings-category-title" tabindex="-1"></h2><p id="settings-category-description" class="muted"></p></div><p id="settings-feedback" role="status" aria-live="polite"></p><button type="button" class="text-action settings-editor-return" data-settings-return hidden>← Return to your open editor</button><div id="settings-content"></div></div></div></section>
     <section id="overview-page" class="overview" hidden aria-live="polite"></section>
     <section id="album-guide-page" hidden aria-label="1001 Albums">
       <div class="page-intro"><div><div class="eyebrow">DISCOVER YOUR COLLECTION</div><h1>1001 Albums<span>.</span></h1><p>Based on <cite><a href="https://en.wikipedia.org/wiki/1001_Albums_You_Must_Hear_Before_You_Die" target="_blank" rel="noopener noreferrer">1001 Albums You Must Hear Before You Die</a></cite>, edited by Robert Dimery. Explore the albums you already have from this selection, covering 1955–2007.</p></div></div>
@@ -194,7 +196,6 @@
       <div id="help-step"><div aria-live="polite"><p id="help-copy"></p><p id="help-hint" class="muted" hidden></p></div><div class="help-controls"><button type="button" class="button small" id="help-prev">← Previous</button><button type="button" class="button small primary" id="help-next">Next →</button></div></div>
     </section>
   </dialog>
-  <dialog id="settings" class="settings-dialog"><div class="dialog-heading"><div><div class="eyebrow">TAGCAST PREFERENCES</div><h2>Settings</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="settings" aria-label="Help with settings" title="Help with settings">?</button><button class="close" data-close="settings" aria-label="Close">×</button></div></div><div id="settings-content"></div></dialog>
   <dialog id="updates" class="settings-dialog"><div class="dialog-heading"><div><div class="eyebrow">TAGCAST UPDATES</div><h2>New release</h2></div><button class="close" data-close="updates" aria-label="Close update details">×</button></div><div id="updates-content"></div></dialog>
   <aside id="now-playing-panel" class="now-playing-panel" hidden aria-label="Now playing and play queue"><div class="now-playing-header"><h2>Now playing</h2><button class="player-button" id="now-playing-close" aria-label="Close Now playing">×</button></div><div class="now-playing-scroll"><div id="now-playing-current"></div><div class="queue-heading"><h3>Play queue</h3><span class="muted" id="now-playing-count"></span></div><ol id="now-playing-list" class="queue-list"></ol></div><div class="now-playing-footer"><button class="button small" id="queue-save">Save as playlist…</button><button class="button danger" id="queue-clear">Clear queue &amp; stop</button></div></aside>
   <div id="player-stage" class="player-stage">

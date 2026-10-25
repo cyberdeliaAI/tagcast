@@ -203,10 +203,10 @@ test("code reauthorization keeps waiting even while the previous session is conn
 
 test("queue permissions use code sign-in for the public registration without changing playback", async () => {
   const p = livePage(); await settle();
-  p.run('state.connection.using_default_client = true; lookup.queueSync = true; playTracks(state.details.get("1")); $("#settings").showModal()');
+  p.run('state.connection.using_default_client = true; lookup.queueSync = true; playTracks(state.details.get("1")); openSettings()');
   const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
   await p.click({'[data-queue-reconnect]': {}});
-  assert.equal(p.nodes.get('#settings').open, false);
+  assert.equal(p.run('state.screen'), 'settings');
   assert.equal(p.nodes.get('#connect').open, true);
   assert.match(p.nodes.get('#connect-content').innerHTML, /id="device-start"/);
   assert.equal(p.requests.filter(r => r.url === '/api/auth/browser').length, 0);
@@ -1131,9 +1131,9 @@ test('the question mark selects only the current page or dialog help', async () 
   assert.equal(p.run('helpTour.topic'), 'editing');
   p.run('closeHelp(); $("#review").showModal(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'review');
-  p.run('closeHelp(); $("#review").close(); $("#settings").showModal(); openHelp()');
+  p.run('closeHelp(); $("#review").close(); openSettings(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'settings');
-  p.run('closeHelp(); $("#settings").close(); $("#editor").close(); $("#guide-link-dialog").showModal(); openHelp()');
+  p.run('closeHelp(); closeSettings(); $("#editor").close(); $("#guide-link-dialog").showModal(); openHelp()');
   assert.equal(p.run('helpTour.topic'), 'guide-link');
   assert.equal(p.requests.length, requests);
   const html = readFileSync(path.join(staticDir, 'index.html'), 'utf8');
@@ -2609,7 +2609,7 @@ test("Tagcast starts on Album artists, the first page in the sidebar", async () 
 test('sidebar shortcuts hide independently of feature settings, persist and preserve essential controls and playback', async () => {
   const storage = {}, p = page({storage}); await settle();
   p.run('state.mode="live"; playTracks(state.details.get(state.albums[0].id)); openSettings()');
-  assert.match(p.nodes.get('#settings-content').innerHTML, /Choose shortcuts and order/);
+  assert.match(p.nodes.get('#settings-content').innerHTML, /id="sidebar-layout-list"/);
   const queue = p.json('player.queue'), src = p.nodes.get('#audio').src, count = p.requests.length, route = p.location.hash;
   const input = {checked:false,dataset:{sidebarItem:'show-genres'},matches(selector) {return selector === '[data-sidebar-item]';}};
   await p.change(input);
@@ -3779,7 +3779,7 @@ test("the library info banner can be hidden, remembered and restored without req
   assert.equal(reopened.run("libraryNotice.visible"), false);
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.match(html, /id="settings-button">Settings</);
-  assert.match(html, /<h2>Settings<\/h2>/);
+  assert.match(html, /<h1 id="settings-title" tabindex="-1">Settings<span>\.<\/span><\/h1>/);
 });
 
 test("compact player display choices act independently without changing playback, queue or full metadata views", async () => {
@@ -3811,7 +3811,7 @@ test("compact player display choices act independently without changing playback
   assert.equal(p.nodes.get("#player-title").textContent, p.run("displayAlbum.tracks[0].title"));
   assert.equal(p.nodes.get("#player-artist").textContent, "Pink Floyd");
   assert.equal(p.nodes.get("#player-album").textContent, "Wish You Were Here");
-  p.run('$("#settings").close(); openVisualPlayer()');
+  p.run('closeSettings(); openVisualPlayer()');
   assert.equal(p.nodes.get("#visual-player-quality").textContent, "File: FLAC · Stream: Original FLAC");
   assert.equal(p.nodes.get("#visual-player-track-artist").textContent, "Track artist: Guest Artist");
   assert.equal(p.nodes.get("#visual-player-track-artist").hidden, false);
@@ -4365,7 +4365,7 @@ test("Now playing can fill the app window without native fullscreen or playback 
   assert.equal(p.nodes.get('#audio').currentTime, 39);
   assert.equal(p.nodes.get('#audio').paused, false);
   assert.equal(p.requests.length, requests);
-  p.run('$("#settings").close(); $("#player-fullscreen").focus()');
+  p.run('closeSettings(); $("#player-fullscreen").focus()');
   assert.equal(p.nodes.get('#player-fullscreen').getAttribute('aria-label'), 'Open Now playing in app window');
   await p.nodes.get('#player-fullscreen').emit('click');
   assert.equal(p.run('visualPlayer.open'), true);
@@ -4383,7 +4383,7 @@ test("Now playing can fill the app window without native fullscreen or playback 
   p.run('openSettings()');
   assert.match(p.nodes.get('#settings-content').innerHTML, /value="window" selected/);
   await p.change({id:'player-view-mode', value:'fullscreen', matches: () => false});
-  p.run('$("#settings").close(); openVisualPlayer()');
+  p.run('closeSettings(); openVisualPlayer()');
   assert.equal(p.run('fullRequests'), 1, 'Choosing Fullscreen restores the original opening behavior');
 });
 
@@ -5590,7 +5590,7 @@ test('Settings exports the existing browser history without saving preferences o
   const p = page({storage:{'tagcast-history':JSON.stringify([entry])}}); await settle();
   p.run('state.mode="live"; playTracks(state.details.get("1")); openSettings()');
   const count = p.requests.length, queue = p.json('player.queue'), src = p.nodes.get('#audio').src, route = p.location.hash;
-  assert.match(p.nodes.get('#settings-content').innerHTML, /<section class="history-settings">/);
+  assert.match(p.nodes.get('#settings-content').innerHTML, /<section class="history-settings" data-settings-category="data">/);
   assert.match(p.nodes.get('#settings-content').innerHTML, /type="button" class="button small" id="export-button" >Export changes/);
   await p.click({'#export-button':{}});
   assert.equal(p.downloads.length, 1);
@@ -5598,7 +5598,7 @@ test('Settings exports the existing browser history without saving preferences o
   assert.equal(exported.format, 'tagcast-history');
   assert.deepEqual(exported.entries, [entry]);
   assert.equal(p.requests.length, count);
-  assert.equal(p.nodes.get('#settings').open, true);
+  assert.equal(p.run('state.screen'), 'settings');
   assert.equal(p.location.hash, route);
   assert.equal(p.nodes.get('#audio').src, src);
   assert.deepEqual(p.json('player.queue'), queue);
@@ -6987,7 +6987,7 @@ test("metadata export is disabled in preview and polling pauses when Settings cl
   p.run('state.mode="live"; state.connection.playback_session="export-session"; openSettings()');
   await p.run('prepareMetadataExport("csv")'); await settle();
   assert.match(p.nodes.get('#metadata-export-actions').innerHTML,/Cancel preparation/);
-  p.nodes.get('#settings').close(); await p.nodes.get('#settings').emit('close');
+  p.run('showScreen("artists")');
   const count = p.requests.length;
   p.flushTimers(1000); await settle();
   assert.equal(p.requests.length,count);
@@ -7049,7 +7049,7 @@ test("reopening Settings ignores an older in-flight export status reply", async 
     return {ok:true,json:async()=>({id,state:'ready',format:'json',filename:'new.json',manifest:{counts:{}}})};
   });
   await p.run('prepareMetadataExport("json")'); await settle();
-  p.nodes.get('#settings').close(); await p.nodes.get('#settings').emit('close');
+  p.run('showScreen("artists")');
   p.run('openSettings()'); await settle();
   assert.match(p.nodes.get('#metadata-export-status').innerHTML,/Download JSON/);
   release({ok:true,json:async()=>({id,state:'preparing',format:'json'})}); await settle();
@@ -7945,7 +7945,7 @@ test('Settings offers selected source switches even without keys and keeps saved
   assert.doesNotMatch(html,/data-source-toggle="discogs" checked/);
   assert.match(html,/data-clear-key="discogs_token"/,'Disabling preserves the saved key and its Remove control');
   assert.match(html,/Saved · type to replace/);
-  assert.match(html,/separate switches above/);
+  assert.match(html,/separate switches under Discovery/);
   const before=p.requests.length;
   await p.emitDocument('change',{target:{dataset:{sourceToggle:'itunes'},checked:false,closest:()=>null,matches:()=>false}});
   assert.equal(p.requests.length,before,'Changing a checkbox is a draft until Save');
@@ -8345,6 +8345,7 @@ test('free accounts can read native and public lyrics but have no lyrics editing
   assert.equal(p.run('lookup.streamQuality'),'orig','Opening settings does not rewrite a saved preference');
   p.run('state.connection.premium=true; openSettings(); renderLyrics("track")');
   assert.match(p.nodes.get('#settings-content').innerHTML,/name="stream_quality"|Original file \(Premium\)/);
+  p.run('closeSettings(); renderLyrics("track")');
   assert.match(p.nodes.get('#track-lyrics').innerHTML,/textarea|Review lyrics/);
 });
 
@@ -9049,8 +9050,8 @@ test("a direct Overview address refreshes its initial disconnected placeholder a
 
 test('gapless prototype keeps unsupported browsers on the ordinary player and exposes its limits in Settings', async()=>{
  const p=livePage();await settle();p.run('openSettings(); playTracks(state.details.get("1"))');
- assert.match(p.nodes.get('#settings-content').innerHTML,/Gapless playback · experimental/);
- assert.match(p.nodes.get('#settings-content').innerHTML,/time bar shows and seeks within the current track/);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/Gapless playback.*Experimental · next track/);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/track-based time bar keeps the continuous buffer/);
  assert.equal(p.run('gaplessSupported()'),false);assert.equal(p.run('gaplessTrial.active'),null);
  assert.equal(p.nodes.get('#audio').src,'/api/stream/100?quality=128');
 });
@@ -9168,4 +9169,44 @@ test('a deferred gapless seek is discarded if the current segment changes',async
 test('a backward seek cancels pending forward preparation without shortening the next-track lead time',async()=>{
  const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{length:0}}};audio.currentTime=20;seekSystemPlayback(35);seekSystemPlayback(10);`);
  assert.equal(p.nodes.get('#audio').currentTime,10);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});
+
+test('Settings is a routed page with six categories and preserves existing preference keys', async()=>{
+ const p=page({hash:'#/settings/playback',storage:{'tagcast-player-view':'window','tagcast-player-quality':'hidden','tagcast-gapless-test':'on'}});await settle();
+ assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsView.category'),'playback');
+ const html=readFileSync(path.join(staticDir,'index.html'),'utf8');assert.match(html,/<section id="settings"/);assert.doesNotMatch(html,/<dialog id="settings"/);
+ assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),6);
+ assert.equal(p.run('visualPlayerMode'),'window');assert.equal(p.run('playerDisplay.quality'),false);assert.equal(p.run('gaplessTrial.enabled'),true);
+ assert.match(p.nodes.get('#settings-content').innerHTML,/Supported audio and limitations/);
+ assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+test('Settings category Back and Forward retain one pending server draft and never affect playback',async()=>{
+ const p=livePage();await settle();p.run('playTracks(state.details.get("1"));openSettings("sources");');
+ const src=p.nodes.get('#audio').src,markup=p.nodes.get('#settings-content').innerHTML;
+ p.run(`const pendingChoice={name:'auto_lookup',type:'checkbox',checked:true};$("#settings-form").querySelectorAll=()=>[pendingChoice];settingsView.baseline=settingsFormSnapshot();pendingChoice.checked=false;updateSettingsSaveState();showSettings('playback');`);
+ assert.equal(p.run('settingsView.dirty'),true);assert.equal(p.location.hash,'#/settings/playback');
+ assert.equal(p.nodes.get('#settings-content').innerHTML,markup);
+ p.history.back();assert.equal(p.run('settingsView.category'),'sources');assert.equal(p.run('pendingChoice.checked'),false);
+ p.history.forward();assert.equal(p.run('settingsView.category'),'playback');assert.equal(p.run('settingsView.dirty'),true);
+ assert.equal(p.nodes.get('#audio').src,src);assert.equal(p.nodes.get('#audio').paused,false);
+});
+test('Settings suspends and restores the same metadata editor DOM and draft on Back',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));editing={originals:[state.details.get('1')],dirty:new Set(['name']),trackPatches:{}};const preservedSettingsDraft=editing;$("#editor-content").innerHTML='Unsaved album draft';$("#editor").showModal();openSettings('sources');`);
+ assert.equal(p.nodes.get('#editor').open,false);assert.equal(p.run('settingsView.editor.draft===preservedSettingsDraft'),true);
+ p.history.back();assert.equal(p.nodes.get('#editor').open,true);assert.equal(p.run('editing===preservedSettingsDraft'),true);
+ assert.equal(p.nodes.get('#editor-content').innerHTML,'Unsaved album draft');assert.equal(p.nodes.get('#audio').paused,false);
+});
+test('Settings save failure keeps the page and fields, serializes saves and releases locked controls',async()=>{
+ const p=livePage();await settle();p.run('openSettings("sources")');let finish,posts=0;
+ p.setFetch(()=>{posts++;return new Promise(resolve=>{finish=resolve;});});
+ p.run(`const settingsKey={name:'discogs_token',type:'password',value:'typed-key',disabled:false};const saveTestForm={elements:{auto_lookup:{checked:true},auto_updates:{checked:false}},querySelectorAll:s=>s==='input[type=password]'?[settingsKey]:s==='input, select, button[data-clear-key]'?[settingsKey]:[]};`);
+ const saving=p.run('saveSettings(saveTestForm)');await settle();assert.equal(p.run('settingsKey.disabled'),true);
+ await p.run('saveSettings(saveTestForm)');assert.equal(posts,1);
+ finish({ok:false,status:400,json:async()=>({error:'That key does not look right.'})});await saving;
+ assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsKey.value'),'typed-key');assert.equal(p.run('settingsKey.disabled'),false);
+ assert.match(p.nodes.get('#settings-feedback').textContent,/does not look right/);assert.equal(p.run('settingsView.saving'),false);
+});
+test('Settings direct-route bootstrap tolerates an unloaded form and Sidebar has no disclosure',()=>{
+ const p=page();assert.equal(p.run('settingsFormSnapshot(null)'), '[]');
+ const markup=p.run('sidebarSettingsPanel()');assert.match(markup, /id="sidebar-layout-list"/);assert.doesNotMatch(markup, /<details|<summary/);
 });
