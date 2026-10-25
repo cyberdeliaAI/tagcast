@@ -20,7 +20,7 @@ function updateStatusText() {
 }
 
 function updateSettingsPanel() {
-  return `<section class="updates-settings"><h3>Tagcast updates</h3>
+  return `<section class="updates-settings" data-settings-category="about"><h3>Tagcast updates</h3>
     <label class="checkline"><input type="checkbox" name="auto_updates" ${updateNotice.automatic ? "checked" : ""}> Automatically check for new stable releases</label>
     <p class="muted">Checks GitHub at startup, at most once a day. No account or library data is sent. Updating is manual.</p>
     <p id="updates-settings-status" class="muted" aria-live="polite">${escapeHtml(updateStatusText())}</p>

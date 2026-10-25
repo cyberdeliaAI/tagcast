@@ -33,6 +33,7 @@ async function loadSettings() {
     if (typeof applyAlbumInformationSettings === "function") applyAlbumInformationSettings(data);
     if (typeof applyPlaybackSettings === "function") applyPlaybackSettings(data);
     applyUpdateSettings(data);
+    if (typeof settingsView !== "undefined" && state.screen === "settings" && !settingsView.dirty && !settingsView.saving) renderSettingsContent();
   } catch { /* opened without the Python server: no online sources */ }
 }
 
@@ -141,51 +142,52 @@ function coverChoices() {
 
 // ---- settings ------------------------------------------------------------------
 
-function openSettings() {
+function renderSettingsContent() {
   const keyed = lookup.sources.filter(s => s.key);
   const freeAccount = live() && state.connection.premium === false;
-  $("#settings-content").innerHTML = `<section class="interface-settings"><h3>Interface</h3>
-    <p class="muted">The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
+  $("#settings-content").innerHTML = `<section class="interface-settings" data-settings-category="interface"><h3>Library information banner <span class="settings-mode">Immediate · this browser</span></h3>
+    <p class="muted" data-notice-description>The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
     <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
+    </section><section class="player-display-settings" data-settings-category="playback"><h3>Player display <span class="settings-mode">Immediate · this browser</span></h3>
     <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> Show file format and stream quality in the compact player</label>
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>
-    <p class="muted">These display choices apply immediately and are remembered in this browser. Track and album pages and expanded Now playing keep their information.</p>
+    <p class="muted">These browser preferences apply immediately. Album pages and expanded Now playing keep their information.</p>
     <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
-    <p class="muted">Choose whether the expanded player fills the screen or stays inside this app/browser window. Remembered here and applied the next time you open it.</p></section>`
+    <p class="muted">Fullscreen fills the screen; In app window stays inside Tagcast. Applied the next time you open Now playing.</p></section>`
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
     + sidebarSettingsPanel()
     + metadataExportPanel()
-    + `<section class="history-settings"><h3>Change history</h3>
+    + `<section class="history-settings" data-settings-category="data"><h3>Change history</h3>
     <p class="muted">Download the change history saved in this browser as a JSON file for your records.</p>
     <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
-    + `<section class="history-settings"><h3>Community</h3>
+    + `<section class="history-settings" data-settings-category="about"><h3>Community</h3>
     <p class="muted">Ask questions, share ideas and discuss Tagcast with other listeners.</p>
     <a class="button small" href="https://www.reddit.com/r/Tagcast/" target="_blank" rel="noopener noreferrer">Join r/Tagcast on Reddit ↗</a></section>`
-    + (!lookup.sources.length ? '<p class="muted">Playback and source settings need the Tagcast server.</p>' : `
-    <form id="settings-form"><section class="playback-settings"><h3>Playback</h3>
+    + (!lookup.sources.length ? '<p class="muted settings-server-note">Playback and source settings need the Tagcast server. Browser preferences remain available.</p>' : `
+    <form id="settings-form"><section class="playback-settings" data-settings-category="playback"><h3>Streaming &amp; listening history <span class="settings-mode">Save required</span></h3>
     ${freeAccount ? '<p>Streaming quality · MP3 128 kbps</p><p class="muted">Playback quality for this account. File format (FLAC/MP3) is separate from streaming quality.</p>' : `<label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
     <p class="muted">Applies to the next track. File format (FLAC/MP3) is separate from streaming quality. Free accounts use 128 kbps. All other choices, including 96 kbps and Original, require Premium. Unsupported Original audio falls back to MP3 128 kbps.</p>`}
     <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}> Record played tracks in iBroadcast</label>
     <p class="muted">Off by default. When enabled, Tagcast sends a track ID and timestamp after more than ten seconds of actual playback. Pausing and seeking do not count. Earlier plays and skips are not sent.</p>
     <p class="muted">Enabling also shows Recently played, using iBroadcast’s recent tracks playlist. Plays are separate from Change history. An uncertain request is not retried automatically.${playReporting.error ? ` <span class="error-text">${escapeHtml(playReporting.error)}</span>` : ""}</p></section>
-    <section class="playback-settings"><h3>Devices &amp; queue synchronisation</h3>
+    <section class="playback-settings" data-settings-category="playback"><h3>Devices &amp; queue synchronisation <span class="settings-mode">Save required</span></h3>
     <label class="checkline"><input type="checkbox" name="queue_sync" ${lookup.queueSync ? "checked" : ""}> Enable queue synchronisation and remote control</label>
     <p class="muted">Off by default. Uses iBroadcast’s queue server. After enabling, reconnect iBroadcast once to approve queue read/write permissions, then open Devices. Only the player records plays; remote controllers do not play audio.</p>
     <button type="button" class="button small" data-queue-reconnect>Reconnect iBroadcast</button></section>
-    <section class="playback-settings"><h3>Discovery</h3>
+    <section class="playback-settings" data-settings-category="discovery"><h3>1001 Albums <span class="settings-mode">Save required</span></h3>
     <label class="checkline"><input type="checkbox" name="album_guide" ${albumGuide.enabled ? "checked" : ""}> Enable 1001 Albums</label>
     <p class="muted">Off by default. This controls the discovery page and sidebar shortcut; bundled background texts on album pages stay available when it is off. Save to show 1001 Albums in the sidebar, then start an analysis when you choose. Compares the supplied 1955–2007 selection with your loaded album metadata locally. Results are saved on this computer; your iBroadcast library is unchanged.</p>
     <button type="button" class="button small" data-guide-open ${albumGuide.enabled ? "" : "disabled"}>Open 1001 Albums</button></section>
-    <section class="artist-biography-settings"><h3>Artist biographies</h3>
+    <section class="artist-biography-settings" data-settings-category="discovery"><h3>Artist biographies</h3>
     <label class="checkline"><input type="checkbox" name="artist_biographies" ${artistProfile.enabled ? "checked" : ""}> Show artist biographies from TheAudioDB</label>
     <p class="muted">Off by default. When you visit an album artist, Tagcast sends that artist’s name to TheAudioDB if no current local biography is available. English text is stored separately on this computer for up to 30 days before checking again. No library scan, iBroadcast changes or Last.fm account are needed. Biographies may be unavailable or refer to another artist with the same name; check the source link.</p></section>
-    <section class="album-information-settings"><h3>Album information</h3>
+    <section class="album-information-settings" data-settings-category="discovery"><h3>Album information</h3>
     <label class="checkline"><input type="checkbox" name="album_information" ${albumInformation.enabled ? "checked" : ""}> Show album information from TheAudioDB</label>
     <p class="muted">Off by default. When you visit an album, Tagcast sends its album artist and full title to TheAudioDB if no current local text is available. English text is saved on this computer and checked again after 30 days, when revisited. Only one exact artist/title match is used; information is not available for every album or edition. Available 1001 Albums texts take priority even when the discovery page is disabled or has never been analysed; those albums do not look up or show TheAudioDB text.</p></section>
-    <section class="source-settings"><h3>Online sources &amp; keys</h3>
+    <section class="source-settings" data-settings-category="sources"><h3>Online sources &amp; keys <span class="settings-mode">Save required</span></h3>
     <p class="muted">Choose sources for metadata, image suggestions and lyrics. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
     ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ' <span class="muted">· Needs a key</span>' : ""}</label>`).join("")}
-    <p class="muted">TheAudioDB artist biographies and album information use their separate switches above. LRCLIB is contacted only when you choose Find lyrics; track title, artist and duration are sent, and results are cached on this computer.</p>
+    <p class="muted">TheAudioDB artist biographies and album information use their separate switches under Discovery. LRCLIB is contacted only when you choose Find lyrics; track title, artist and duration are sent, and results are cached on this computer.</p>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
@@ -196,12 +198,18 @@ function openSettings() {
     <p class="muted">Looking up sends the artist and album name to each selected source with an available key, if required. Tagcast waits between requests so it stays within each source's limits.</p>
     </section>
     ${updateSettingsPanel()}
-    <div class="dialog-footer"><button type="button" class="button" data-close="settings">Cancel</button><button class="button primary">Save</button></div></form>`);
-  $("#settings").showModal();
+    <div class="settings-save-bar" id="settings-save-bar"><p id="settings-save-hint">Server preferences apply after Save. Immediate preferences are already applied.</p><div><button type="button" class="button" data-settings-discard>Discard changes</button><button class="button primary" id="settings-save">Save changes</button></div></div></form>`);
+  settingsView.rendered = true;
+  settingsView.baseline = settingsFormSnapshot();
+  updateSettingsPage();
   resumeMetadataExport();
 }
 
 async function saveSettings(form, clear) {
+  if (settingsView.saving) return;
+  const settingsFocus = document.activeElement;
+  settingsView.saving = true;
+  updateSettingsSaveState();
   const body = {auto_lookup: form.elements.auto_lookup.checked, auto_updates: form.elements.auto_updates.checked};
   const sources = [...form.querySelectorAll("[data-source-toggle]")];
   if (sources.length) body.disabled_sources = sources.filter(input => !input.checked).map(input => input.dataset.sourceToggle);
@@ -213,6 +221,8 @@ async function saveSettings(form, clear) {
   if (form.elements.album_information) body.album_information = form.elements.album_information.checked;
   for (const input of form.querySelectorAll("input[type=password]")) if (input.value.trim()) body[input.name] = input.value.trim();
   if (clear) body[clear] = "";
+  const locked = [...form.querySelectorAll("input, select, button[data-clear-key]")].map(input => [input, input.disabled]);
+  for (const [input] of locked) input.disabled = true;
   try {
     const data = await api("/api/settings", body);
     lookup.settingsRevision += 1;
@@ -225,12 +235,17 @@ async function saveSettings(form, clear) {
     const wasAutomatic = updateNotice.automatic;
     applyUpdateSettings(data); renderUpdateNotice();
     if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
-    if (clear) openSettings(); else { $("#settings").close(); toast("Settings saved."); }
-  } catch (error) { toast(error.message); }
+    renderSettingsContent();
+    $("#settings-feedback").textContent = clear ? "Key removed. Settings saved." : "Settings saved.";
+    toast("Settings saved.");
+  } catch (error) { $("#settings-feedback").textContent = error.message; toast(error.message); }
+  finally { for (const [input, disabled] of locked) input.disabled = disabled; settingsView.saving = false; updateSettingsSaveState();
+    if (state.screen === "settings" && settingsFocus?.closest?.("#settings-form") && (document.activeElement === settingsFocus || document.activeElement === document.body)) $("#settings-save").focus({preventScroll: true});
+  }
 }
 
 document.addEventListener("click", event => {
-  if (event.target.closest("[data-show-notice]")) { setLibraryNotice(true); openSettings(); return; }
+  if (event.target.closest("[data-show-notice]")) { setLibraryNotice(true); event.target.disabled = true; const description = document.querySelector("[data-notice-description]"); if (description) description.textContent = "The library information banner is visible. This choice is remembered in this browser."; return; }
   const year = event.target.closest("[data-use-year]");
   if (year) { setFormField("year", year.dataset.useYear); return; }
   const genre = event.target.closest("[data-use-genre]"), all = event.target.closest("[data-use-genres]");
@@ -249,7 +264,7 @@ document.addEventListener("click", event => {
     if (c) openArtwork(albumArtTarget(), {url: c.cover, thumb: c.thumb || c.cover, source: sourceLabel(source), title: c.title});
     return;
   }
-  if (event.target.closest("[data-open-settings]") || event.target.closest("#settings-button")) { openSettings(); return; }
+  if (event.target.closest("[data-open-settings]") || event.target.closest("#settings-button")) { openSettings(event.target.closest("[data-open-settings]") ? "sources" : undefined); return; }
   const clear = event.target.closest("[data-clear-key]");
   if (clear) saveSettings($("#settings-form"), clear.dataset.clearKey);
 });

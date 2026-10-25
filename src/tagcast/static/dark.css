@@ -171,6 +171,13 @@
 :root[data-theme="dark"] .playlist-order-table th{background: var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .playlist-track-remove:hover:not(:disabled){color:#ff9283}
 :root[data-theme="dark"] .lyrics-import-dialog textarea{background: var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] #settings-nav a:hover{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] #settings-nav a[aria-current=page]{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] #settings-nav a:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root[data-theme="dark"] #settings-content section{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] #settings-content select{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] #settings-content .setting-row input{background:var(--palette-surface,#1b2520)}
+:root[data-theme="dark"] .settings-save-bar{box-shadow:0 4px 18px #0002}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -357,6 +364,13 @@
 :root:not([data-theme="light"]) .playlist-order-table th{background: var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .playlist-track-remove:hover:not(:disabled){color:#ff9283}
 :root:not([data-theme="light"]) .lyrics-import-dialog textarea{background: var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) #settings-nav a:hover{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) #settings-nav a[aria-current=page]{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) #settings-nav a:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root:not([data-theme="light"]) #settings-content section{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) #settings-content select{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) #settings-content .setting-row input{background:var(--palette-surface,#1b2520)}
+:root:not([data-theme="light"]) .settings-save-bar{box-shadow:0 4px 18px #0002}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

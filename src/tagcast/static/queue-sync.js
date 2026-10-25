@@ -167,7 +167,6 @@ document.addEventListener("click", async event => {
   const target = event.target, device = target.closest("[data-device-connect]");
   if (device) return connectQueue(device.dataset.deviceConnect);
   if (target.closest("[data-queue-reconnect]")) {
-    $("#settings").close();
     if (!lookup.queueSync) { toast("Save Enable queue synchronisation first, then reconnect."); return; }
     if (state.connection.using_default_client !== false) {
       connectView("ready"); $("#connect").showModal(); return;
