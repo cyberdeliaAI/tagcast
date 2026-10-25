@@ -9404,3 +9404,13 @@ test('startup progress postpones inactivity fallback but cannot extend the absol
  p.run('gaplessTrial.active=progressEngine;progressEngine.preparationProgressAt=119999;gaplessWatch(progressEngine,120000)');
  assert.equal(p.run('progressFallbacks'),2);
 });
+
+
+test('release Settings keeps experimental gapless without the listening-build diagnostics panel', async()=>{
+ const p=livePage();await settle();p.run('openSettings("playback")');
+ const html=p.nodes.get('#settings-content').innerHTML;
+ assert.match(html,/Enable gapless playback for albums in order/);
+ assert.doesNotMatch(html,/Optional playback diagnostics|Collect playback diagnostics|gapless-diagnostics-download/);
+ assert.equal(p.run('gaplessDiagnostics.enabled'),false);
+ assert.match(readFileSync(path.join(staticDir,'index.html'),'utf8'),/<title>Tagcast ·/);
+});

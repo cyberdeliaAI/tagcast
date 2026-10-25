@@ -1,6 +1,6 @@
 "use strict";
 
-// Isolated Electron experiment. The ordinary URL player is retained as a fallback.
+// Optional experimental album playback. The ordinary URL player remains the fallback.
 const gaplessTrial = {enabled: false, origins: new WeakMap(), active: null, bypass: false, offset: 0, message: "Gapless playback ready", failures: new WeakMap()};
 try { gaplessTrial.enabled = localStorage.getItem("tagcast-gapless-test") === "on"; } catch { /* Local preference is optional. */ }
 // Only explicitly started, ordered album queues qualify; playlist/server rows never acquire this provenance.

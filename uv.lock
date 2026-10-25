@@ -282,7 +282,7 @@ wheels = [
 
 [[package]]
 name = "tagcast"
-version = "0.81.0b1"
+version = "0.85.0"
 source = { editable = "." }
 dependencies = [
     { name = "ibroadcast" },
