@@ -19,6 +19,7 @@ function duration(seconds) {
 }
 
 function showScreen(name) {
+  const wasSettings = state.screen === "settings";
   closeBrowseOptions();
   if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();
   if (!["playlists", "album-favourites"].includes(name) && typeof rememberFavouriteView === "function") rememberFavouriteView();
@@ -36,6 +37,9 @@ function showScreen(name) {
   }
   if (name !== "album") { albumView.request += 1; albumView.loading = false; }
   state.screen = name;
+  $("#settings").hidden = name !== "settings";
+  $("#settings-button").classList.toggle("active", name === "settings");
+  if (wasSettings && name !== "settings") settingsPageLeft();
   $("#collections-page").hidden = !["playlists", "album-favourites"].includes(name);
   $("#show-playlists").classList.toggle("active", name === "playlists");
   $("#overview-page").hidden = name !== "overview";
@@ -63,30 +67,34 @@ function showScreen(name) {
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
   $("#show-artists").classList.toggle("active", name === "artists");
   $("#show-tracks").classList.toggle("active", name === "tracks");
-  $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
+  $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "settings" ? "Settings" : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (["playlists", "album-favourites"].includes(name) && typeof renderCollections === "function") renderCollections();
   renderFavouriteHub();
   if (name === "overview") loadOverview();
+  syncServiceStatusPage();
   if (typeof syncHistory === "function") syncHistory();
+  if (wasSettings && name !== "settings") resumeSettingsEditor();
 }
 
 async function loadOverview() {
   const page = $("#overview-page");
   if (!live()) {
-    page.innerHTML = `${intro("Connect your iBroadcast account to see your account, your collection in numbers and its metadata health.")}`;
+    page.innerHTML = `${intro("Connect your iBroadcast account to see your account, your collection in numbers and its metadata health.")}${serviceStatusPanel()}`;
+    renderServiceStatus();
     return;
   }
   if (overview.loading) return;
   overview.loading = true;
   page.classList.add("refreshing");
-  if (!overview.data) page.innerHTML = `${intro('<span class="spinner"></span>Reading your account and library…')}`;
+  if (!overview.data) page.innerHTML = `${intro('<span class="spinner"></span>Reading your account and library…')}${serviceStatusPanel()}`;
   try {
     overview.data = await api("/api/overview");
     renderOverview(overview.data);
   } catch (error) {
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
-    page.innerHTML = intro(escapeHtml(`Could not load the overview: ${error.message}`));
+    page.innerHTML = intro(escapeHtml(`Could not load the overview: ${error.message}`)) + serviceStatusPanel();
+    renderServiceStatus();
   } finally { overview.loading = false; page.classList.remove("refreshing"); }
 }
 
@@ -106,7 +114,8 @@ function renderOverview({account: a, stats: s}) {
       statTile("Playlists", s.playlists == null ? "—" : fmt(s.playlists), s.playlists == null ? "after the next download" : ""),
       statTile("Plays", fmt(a.plays), "counted by iBroadcast"), statTile("Collection size", bytes(s.size)), statTile("Playing time", duration(s.length)),
     ].join("")}</div>
-    <div class="overview-grid">${healthCard(s)}${accountCard(a)}${formatsCard(s)}${uploadsCard(s)}${topCard(s)}</div>`;
+    ${serviceStatusPanel()}<div class="overview-grid">${healthCard(s)}${accountCard(a)}${formatsCard(s)}${uploadsCard(s)}${topCard(s)}</div>`;
+  renderServiceStatus();
 }
 
 // ---- metadata health: meters that open the matching filter ----------------------
@@ -151,7 +160,7 @@ function accountCard(a) {
   ];
   return `<section class="card"><h2>Account</h2><dl class="facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
     <h3>iBroadcast settings</h3><dl class="facts">${settings.map(([k, v, note]) => `<dt>${k}</dt><dd>${v}${note ? `<small class="${k.startsWith("Combine") ? "warn" : ""}">${note}</small>` : ""}</dd>`).join("")}</dl>
-    <p class="muted">Change these in iBroadcast: <a href="https://media.ibroadcast.com/" target="_blank" rel="noopener noreferrer">media.ibroadcast.com ↗</a></p></section>`;
+    <p class="muted account-settings-note">Change these in iBroadcast: <a href="https://media.ibroadcast.com/" target="_blank" rel="noopener noreferrer">media.ibroadcast.com ↗</a></p></section>`;
 }
 
 // ---- formats: horizontal bars, value at the tip ---------------------------------

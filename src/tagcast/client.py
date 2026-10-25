@@ -44,6 +44,7 @@ from .lyrics import Lyrics
 from .metadata_export import MetadataExport
 from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
+from .service_status import ServiceStatus
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
 from .tags import Tags
@@ -368,6 +369,7 @@ class Studio:
         self.config = self._read("config.json") or {}
         self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
+        self.service_status = ServiceStatus()
         self.lookup = Lookup(self.source_keys, self.disabled_sources)
         self.artist_bios = ArtistBiographies(self)
         self.album_info = AlbumInformation(self)

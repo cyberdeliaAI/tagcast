@@ -303,7 +303,7 @@ $("#guide-show-matching").addEventListener("change", async () => {
   }
 });
 document.addEventListener("click", event => {
-  if (event.target.closest("[data-guide-open]")) { $("#settings").close(); showAlbumGuide(); }
+  if (event.target.closest("[data-guide-open]")) { showAlbumGuide(); }
   const page = event.target.closest("[data-guide-page]");
   if (page && !albumGuide.loading) { albumGuide.page += Number(page.dataset.guidePage); renderAlbumGuide(); }
   const decade = event.target.closest("[data-guide-decade]");
