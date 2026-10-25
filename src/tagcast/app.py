@@ -24,12 +24,6 @@ from .sources import SourceError
 
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 24 * 1024 * 1024  # an uploaded image arrives base64-encoded
-# Explicit read/authentication/local-preference actions only in the isolated listening build.
-VALIDATION_POSTS = frozenset({
-    "/api/config", "/api/config/default", "/api/auth/device", "/api/auth/cancel",
-    "/api/auth/browser", "/api/auth/logout", "/api/settings", "/api/queue-tracks",
-    "/api/lyrics", "/api/artist-biography", "/api/album-information", "/api/updates/check",
-})
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -239,9 +233,6 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(403, {"error": "Forbidden."})
             return
         path = urlparse(self.path).path
-        if getattr(self.studio, "playback_validation", False) is True and path not in VALIDATION_POSTS:
-            self._json(403, {"error": "Saving to iBroadcast is disabled in this isolated playback test."})
-            return
         routes = {
             "/api/config": lambda b: (self.studio.set_client_id(b.get("client_id")),
                                       self.studio.status())[1],

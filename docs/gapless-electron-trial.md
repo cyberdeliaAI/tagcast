@@ -1,5 +1,7 @@
 # Local Electron gapless playback trial
 
+> Historical isolated prototype instructions/evidence. The production candidate restores normal Tagcast identity, settings and library operations. See [Gapless playback](gapless-playback.md) for the candidate.
+
 This branch is an isolated experiment based on Tagcast 0.80.0, not a new release.
 Do not publish it as an official build. The shared editor, server, native audio element,
 security policy and reviewed metadata workflows remain in place.

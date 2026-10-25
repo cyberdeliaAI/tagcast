@@ -1,5 +1,7 @@
 # Isolated gapless listening build — validation results
 
+> Historical isolated prototype instructions/evidence. The production candidate restores normal Tagcast identity, settings and library operations. See [Gapless playback](gapless-playback.md) for the candidate.
+
 Date: 25 October 2026. Base engine: `339930b8e8e7eba8bb669c18f9705c3477f92c2c`. This report covers preparation and automated validation, not completed real-world listening. No real iBroadcast account, music stream or account write was used in these checks.
 
 ## Result

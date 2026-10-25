@@ -1,5 +1,7 @@
 # Gapless listening validation — isolated macOS test
 
+> Historical isolated prototype instructions/evidence. The production candidate restores normal Tagcast identity, settings and library operations. See [Gapless playback](gapless-playback.md) for the candidate.
+
 This is a private Apple Silicon listening build, not a release candidate. The MSE/SourceBuffer engine, native audio element, queue, fallback and track-relative transport are unchanged from the three completed improvement phases. Do not use a listening impression as evidence of sample accuracy: the deterministic PCM suite is the reference for the measured cases.
 
 ## Start safely

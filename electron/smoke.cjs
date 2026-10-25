@@ -34,37 +34,29 @@ function check({app, window, origin, backend}) {
       const help = Menu.getApplicationMenu().items.find(item => item.role === "help");
       const helpLabels = help?.submenu.items.map(item => item.label);
       if (JSON.stringify(helpLabels) !== JSON.stringify(["Tagcast Help", "Tagcast on Reddit", "Tagcast on GitHub"])) throw new Error("Help links are missing.");
-      const settings = await (await fetch(origin + "/api/settings")).json();
-      const writeStatus = (await fetch(origin + "/api/save", {method: "POST", headers: {"X-Tagcast": "1"}, body: "{}"})).status;
-      const recordingStatus = (await fetch(origin + "/api/settings", {method: "POST", headers: {"X-Tagcast": "1"}, body: JSON.stringify({record_plays: true})})).status;
-      if (!status.playback_validation || !settings.playback_validation || settings.record_plays || settings.queue_sync
-          || writeStatus !== 403 || recordingStatus !== 400) throw new Error("The listening build's read-only protections failed.");
-      const diagnostics = await window.webContents.executeJavaScript(`(async () => {
+      const restart = process.env.TAGCAST_ELECTRON_SMOKE_PHASE === "restart";
+      const beforeSettings = await (await fetch(origin + "/api/settings")).json();
+      if ("playback_validation" in status || "playback_validation" in beforeSettings) throw new Error("Isolated listening policy leaked into the production app.");
+      if (restart && (beforeSettings.stream_quality !== "orig" || !beforeSettings.record_plays || !beforeSettings.queue_sync)) throw new Error("Saved server preferences were lost on restart.");
+      const saved = await fetch(origin + "/api/settings", {method:"POST", headers:{"X-Tagcast":"1"}, body:JSON.stringify({stream_quality:"orig",record_plays:true,queue_sync:true})});
+      if (saved.status !== 200) throw new Error("Production playback preferences are restricted.");
+      const persistence = await window.webContents.executeJavaScript(`(async () => {
         await loadSettings(); openSettings('playback');
-        const originalAudio = audio, originalPrepare = gaplessPrepare;
-        const defaultGapless = gaplessTrial.enabled, defaultDiagnostics = gaplessDiagnostics.enabled;
-        const disabledControls = ['record_plays','queue_sync'].every(name => document.querySelector('[name="'+name+'"]').disabled);
-        const diagnosticChoice = document.querySelector('#gapless-diagnostics-enabled');
-        diagnosticChoice.click(); gaplessDiagnosticEvent('prepare-start', {slot:1, title:'PRIVATE', url:'SECRET'});
-        diagnosticChoice.click();
-        const report = gaplessDiagnosticsReport();
-        return {defaultGapless, defaultDiagnostics, disabledControls, sameAudio: audio === originalAudio,
-          restored: gaplessPrepare === originalPrepare, events: report.events.length,
-          private: /PRIVATE|SECRET/.test(JSON.stringify(report)), panel: Boolean(document.querySelector('#gapless-diagnostics-enabled'))};
+        const before = {gapless:gaplessTrial.enabled,quality:playerDisplay.quality,view:visualPlayerMode,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette};
+        if (${restart}) {
+          const expected=${process.env.TAGCAST_ELECTRON_RESTART_EXPECTED || 'null'};
+          if (JSON.stringify(before)!==JSON.stringify(expected)) throw Error('Browser preferences were lost on restart');
+        } else {
+          if(gaplessTrial.enabled||gaplessDiagnostics.enabled)throw Error('Experimental controls must default off');
+          const gapless=document.querySelector('#gapless-test-enabled');if(!gapless.disabled)gapless.click();
+          document.querySelector('[data-player-display="quality"]').click();
+          for(const selector of ['[data-appearance-choice][value="light"]','[data-palette-choice][value="warm"]']){
+            const input=document.querySelector(selector);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
+          }
+        }
+        if(gaplessDiagnostics.enabled)throw Error('Diagnostics must not restart automatically');
+        return {before,supported:gaplessSupported(),after:{gapless:gaplessTrial.enabled,quality:playerDisplay.quality,view:'window',theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette}};
       })()`);
-      if (diagnostics.defaultGapless || diagnostics.defaultDiagnostics || !diagnostics.disabledControls || !diagnostics.sameAudio
-          || !diagnostics.restored || diagnostics.events < 3 || diagnostics.private || !diagnostics.panel) throw new Error("Optional diagnostics or listening defaults failed.");
-      if (process.env.TAGCAST_ELECTRON_VALIDATION_SCREENSHOT) {
-        const settle = `(() => { const details = document.querySelector('#gapless-diagnostics-enabled').closest('details'); details.open = true; details.closest('section').scrollIntoView({block:'start'}); return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); })()`;
-        await window.webContents.executeJavaScript(settle);
-        writeFileSync(process.env.TAGCAST_ELECTRON_VALIDATION_SCREENSHOT, (await window.webContents.capturePage()).toPNG());
-        window.setContentSize(420, 800);
-        await window.webContents.executeJavaScript(settle);
-        diagnostics.narrowOverflow = await window.webContents.executeJavaScript('document.documentElement.scrollWidth > innerWidth');
-        writeFileSync(process.env.TAGCAST_ELECTRON_VALIDATION_SCREENSHOT.replace(/\.png$/, '-narrow.png'), (await window.webContents.capturePage()).toPNG());
-        window.setContentSize(1420, 960);
-        if (diagnostics.narrowOverflow) throw new Error("The diagnostics section overflows the narrow window.");
-      }
       const presentation = await window.webContents.executeJavaScript(`(() => {
         openSettings();
         const choice = document.querySelector('#player-view-mode');
@@ -82,7 +74,7 @@ function check({app, window, origin, backend}) {
           sameAudio:originalAudio === document.querySelector('#audio'), queue:player.queue.length};
         return result;
       })()`);
-      if (presentation.defaultMode !== "fullscreen" || presentation.mode !== "window" || presentation.stored !== "window"
+      if (presentation.defaultMode !== (restart ? "window" : "fullscreen") || presentation.mode !== "window" || presentation.stored !== "window"
           || !presentation.open || presentation.native || !presentation.sameAudio || presentation.queue !== 1 || window.isFullScreen()) throw new Error("In-window Now playing failed.");
       if (process.env.TAGCAST_ELECTRON_SMOKE_SCREENSHOT) {
         await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -92,7 +84,7 @@ function check({app, window, origin, backend}) {
       if (errors.length) throw new Error("The renderer reported a runtime or CSP error: " + errors.join("; "));
       done({ok: true, version: identity.version, electron: process.versions.electron,
         chromium: process.versions.chrome, origin, pid: backend.child.pid, sandbox: true,
-        contextIsolation: true, nodeIntegration: false, sharedInterface: true, helpLabels, presentation, diagnostics, validation: {writeStatus, recordingStatus, ownProfile: app.getPath("userData") === process.env.TAGCAST_ELECTRON_PROFILE}});
+        contextIsolation: true, nodeIntegration: false, sharedInterface: true, helpLabels, presentation, persistence, normalSettingsAllowed: true, restarted: restart});
     } catch (error) { done({ok: false, error: error.message}); }
   });
 }

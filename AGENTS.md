@@ -623,6 +623,14 @@ their shared browsing/player state; a fast local response can otherwise race the
 - Track format labels reuse the stored MIME type in album details, search and
   favourites. Omit unknown formats; never download audio or infer bitrate/resolution
   just to show a label.
+- Experimental gapless playback uses `gapless.js`, `gapless-media.js` and the track-relative
+  `gapless-controls.js` over the same native audio element. Preserve the existing opt-in
+  `tagcast-gapless-test` preference (off for new profiles), ordered-album scope, active
+  queue-sync exclusion and safe ordinary fallback. Do not claim universal sample accuracy
+  or optimize scheduling without reproducible evidence. Optional diagnostics are bounded,
+  off per launch and never record identifiers, URLs, credentials or audio.
+  Production Electron retains its normal app/profile/home and stable default port; do not
+  carry the isolated listening app's temporary port or write restrictions into releases.
 - Playback goes through the local server, supports Range requests and does
   report no plays by default. Optional `record_plays` in Settings sends the documented
   `history` payload after more than ten seconds of actual listening, excluding pauses,
