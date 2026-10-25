@@ -11,13 +11,13 @@ const {helpMenu} = require("../help-menu.cjs");
 
 const origin = "http://127.0.0.1:8912";
 
-test("Help provides documentation, Reddit and the repository through the guarded external opener", () => {
+test("Help provides documentation, the website, Reddit and the repository through the guarded external opener", () => {
   const opened = [], menu = helpMenu(value => opened.push(externalUrl(value)));
   assert.equal(menu.role, "help");
-  assert.deepEqual(menu.submenu.map(item => item.label), ["Tagcast Help", "Tagcast on Reddit", "Tagcast on GitHub"]);
+  assert.deepEqual(menu.submenu.map(item => item.label), ["Tagcast Help", "Tagcast Website", "Tagcast on Reddit", "Tagcast on GitHub"]);
   assert.deepEqual(opened, [], "Creating or opening the menu never opens a website");
   for (const item of menu.submenu) item.click();
-  assert.deepEqual(opened, ["https://github.com/cyberdeliaAI/tagcast/wiki", "https://www.reddit.com/r/Tagcast/", "https://github.com/cyberdeliaAI/tagcast"]);
+  assert.deepEqual(opened, ["https://github.com/cyberdeliaAI/tagcast/wiki", "https://tagcast.app/", "https://www.reddit.com/r/Tagcast/", "https://github.com/cyberdeliaAI/tagcast"]);
 });
 
 test("only the shared app's own entry pages are navigable", () => {
