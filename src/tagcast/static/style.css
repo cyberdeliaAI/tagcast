@@ -982,3 +982,26 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 .settings-editor-return{margin-bottom:16px}
 @media(max-width:1024px){.settings-layout{grid-template-columns:150px minmax(0,1fr);gap:20px}#settings-nav a{padding:10px;font-size:12px}}
 @media(max-width:760px){.settings-layout{grid-template-columns:1fr;gap:22px}#settings-nav{position:static;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}#settings-nav a{border:1px solid var(--line)}#settings-content section{padding:17px 15px}#settings-content .setting-row{grid-template-columns:minmax(0,1fr) auto}#settings-content .setting-row>div{grid-column:1/-1}.settings-save-bar{position:static}.settings-category-heading h2{font-size:21px}}
+
+/* Compact public service health, separate from personal connection state. */
+.service-status-card{margin:0 0 24px;padding:22px}
+.service-status-heading{display:flex;justify-content:space-between;align-items:start;gap:16px}
+.service-status-heading h2{margin:0 0 6px}.service-status-heading p{margin:0}
+.service-status-summary{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:17px 0 12px;font-size:13px}
+.service-state-dot{display:inline-block;width:9px;height:9px;flex-shrink:0;border-radius:50%;background:#697679}
+.state-operational.service-state-dot,.state-operational .service-state-dot{background:#357b50}
+.state-degraded.service-state-dot,.state-degraded .service-state-dot{background:#a86c16}
+.state-outage.service-state-dot,.state-outage .service-state-dot{background:#b44747}
+.service-status-details summary{cursor:pointer;font-size:12px;font-weight:600}
+.service-status-details ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;list-style:none;padding:0;margin:12px 0}
+.service-status-details li{border-top:1px solid var(--line);padding:12px 0;min-width:0}
+.service-status-details li>div{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:7px;font-size:12px}
+.service-state{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}
+.service-status-details li p{font-size:12px;line-height:1.65;margin:8px 0 0;overflow-wrap:anywhere}
+.service-status-foot{display:flex;align-items:end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);line-height:1.7}
+.service-status-foot p{margin:0}.service-status-foot a{text-decoration:underline;text-underline-offset:3px}
+.service-status-card .service-status-cadence{font-size:10px;margin:10px 0 0;max-width:95ch}
+.service-status-live{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:760px){.service-status-card{padding:17px}.service-status-details ul{grid-template-columns:1fr}.service-status-heading{flex-wrap:wrap}}
+
+.overview-grid .account-settings-note{margin-top:18px}

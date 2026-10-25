@@ -141,6 +141,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.overview)
         elif url.path == "/api/account-settings":
             self._run(self.studio.account_settings)
+        elif url.path == "/api/service-status":
+            self._run(lambda: self.studio.service_status.get(refresh=query.get("refresh") == "1"))
         elif url.path == "/api/settings":
             self._run(self.studio.settings)
         elif url.path == "/api/lyrics":
