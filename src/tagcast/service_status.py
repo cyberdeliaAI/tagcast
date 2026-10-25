@@ -2,11 +2,14 @@
 
 import copy
 import json
+import ssl
 import threading
 import time
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+
+import certifi
 
 STATUS_URL = "https://status.ibroadcast.com/status.json"
 PAGE_URL = "https://status.ibroadcast.com/"
@@ -44,7 +47,10 @@ def public_text(value, limit=600):
 def read_status():
     request = Request(STATUS_URL, headers={"Accept": "application/json", "User-Agent": "Tagcast service status"})
     # No account client/session, credentials, redirects, library identifiers or persistence.
-    with build_opener(NoStatusRedirect()).open(request, timeout=5) as response:
+    # Frozen Python cannot rely on the build machine's system CA paths. Use the
+    # same bundled trust roots as the other HTTPS clients, with verification on.
+    context = ssl.create_default_context(cafile=certifi.where())
+    with build_opener(NoStatusRedirect(), HTTPSHandler(context=context)).open(request, timeout=5) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("Oversized status response")
