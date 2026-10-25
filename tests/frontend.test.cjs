@@ -79,7 +79,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
-    Event, performance: {now: () => playbackClock},
+    Event, AbortController, performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
@@ -9152,8 +9152,8 @@ test('gapless album prefetch never bridges a reordered, inserted or unrelated tr
  p.run('player.queue.reverse()');assert.equal(p.run('gaplessCandidate(boundedAlbumPlan)'),null);
  p.run(`player.queue.reverse();player.queue[1]={...player.queue[1]};`);assert.equal(p.run('gaplessCandidate(boundedAlbumPlan)'),null);
 });
-test('gapless startup waits for a buffered next-track head rather than only a downloaded file',async()=>{
- const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.pause();gaplessQueueChanged=()=>{};let readyHead=false;gaplessTrial.active={started:true,ready:false,autoPlay:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{get length(){return readyHead?1:0;},start:()=>40,end:()=>41}}};gaplessReadiness(gaplessTrial.active);`);
+test('short gapless startup waits for a buffered next-track head rather than only a downloaded file',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.pause();gaplessQueueChanged=()=>{};let readyHead=false;gaplessTrial.active={started:true,ready:false,autoPlay:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:8},wanted:player.queue[1],next:{entry:player.queue[1],start:8,end:12,media:{duration:4,parts:[{end:1}]}},buffer:{updating:false,buffered:{get length(){return readyHead?1:0;},start:()=>8,end:()=>9}}};gaplessReadiness(gaplessTrial.active);`);
  assert.equal(p.nodes.get('#audio').paused,true);assert.equal(p.run('gaplessTrial.active.ready'),false);
  p.run('readyHead=true;gaplessReadiness(gaplessTrial.active)');assert.equal(p.nodes.get('#audio').paused,false);assert.equal(p.run('gaplessTrial.active.ready'),true);
 });
@@ -9254,7 +9254,7 @@ test('gapless re-closes an end-of-stream source after buffer eviction reopens it
  p.run('gaplessPump(eofEngine)');assert.equal(p.run('eosCalls'),1);assert.equal(p.run('eofEngine.media.readyState'),'ended');
 });
 test('gapless init block compatibility is checked against the original decoder not the previous track',async()=>{
- const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessPump=()=>{};gaplessPrepare=async()=>({key:'44100/2/16',maxBlock:4096,duration:2});const blockEngine={session:state.connection.playback_session,quality:'128',maxBlock:1152,ticket:1,media:{readyState:'open'},buffer:{updating:false},current:{entry:player.queue[0],media:{key:'44100/2/16'}},wanted:player.queue[1]};gaplessTrial.active=blockEngine;`);
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessPump=()=>{};gaplessPrefetchAhead=()=>{};gaplessPrepare=async()=>({key:'44100/2/16',maxBlock:4096,duration:2});const blockEngine={session:state.connection.playback_session,quality:'128',maxBlock:1152,ticket:1,media:{readyState:'open'},buffer:{updating:false},current:{entry:player.queue[0],media:{key:'44100/2/16'}},wanted:player.queue[1]};gaplessTrial.active=blockEngine;`);
  await p.run('gaplessPrefetch(blockEngine)');assert.equal(p.run('gaplessFailed(player.queue[1])'),true);assert.equal(p.run('Boolean(blockEngine.next)'),false);assert.match(p.run('blockEngine.nextProblem'),/larger decoder blocks/);
  p.run(`gaplessTrial.failures=new WeakMap();blockEngine.maxBlock=4096;`);await p.run('gaplessPrefetch(blockEngine)');
  assert.equal(p.run('gaplessFailed(player.queue[1])'),false);
@@ -9277,4 +9277,51 @@ test('gapless pump waits at its coded-byte budget and rejects an individually ov
  assert.equal(p.run('budgetAppends'),0);assert.equal(p.run('budgetFallbacks'),0);
  p.run('budgetEngine.buffer.buffered={length:0};budgetEngine.current.media.parts[0].data=new Uint8Array(7*1024**2);gaplessPump(budgetEngine);gaplessPump(budgetEngine)');
  assert.equal(p.run('budgetFallbacks'),1);assert.equal(p.run('budgetAppends'),0);
+});
+
+
+test('long gapless tracks start without waiting for a complete next file and early buffered seeks apply immediately',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.pause();gaplessQueueChanged=()=>{};const responsiveEngine={session:state.connection.playback_session,quality:'128',started:true,ready:false,autoPlay:true,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],buffer:{updating:false,buffered:{length:1,start:()=>0,end:()=>16}}};gaplessTrial.active=responsiveEngine;gaplessReadiness(responsiveEngine);`);
+ assert.equal(p.nodes.get('#audio').paused,false);assert.equal(p.run('responsiveEngine.ready'),true);
+ p.run('audio.currentTime=.1;gaplessSeek(1)');assert.equal(p.nodes.get('#audio').currentTime,1);assert.equal(p.run('responsiveEngine.seekIntent'),null);
+});
+test('very short startup includes one prepared following track without unbounded lookahead',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const shortEngine={quality:'128',current:{entry:player.queue[0],start:0,end:1},next:{entry:player.queue[1],start:1,end:1.5,media:{duration:.5,parts:[{end:.5}]}},wanted:player.queue[1],buffer:{buffered:{length:1,start:()=>0,end:()=>1.5}},prepared:new Map()};`);
+ assert.equal(p.run('gaplessStartupReady(shortEngine)'),false);
+ p.run('shortEngine.prepared.set(player.queue[2],{media:{bytes:20}})');assert.equal(p.run('gaplessStartupReady(shortEngine)'),true);
+});
+test('gapless preparation coalesces the same entry and retired late replies cannot repopulate its cache',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));let prepareReads=0,resolvePrepared;gaplessRead=()=>{prepareReads++;return new Promise(r=>{resolvePrepared=r;});};const cacheEngine={session:state.connection.playback_session,controllers:new Set(),prepared:new Map()};gaplessTrial.active=cacheEngine;const cacheOne=gaplessPrepare(cacheEngine,player.queue[1]),cacheTwo=gaplessPrepare(cacheEngine,player.queue[1]);`);
+ assert.equal(p.run('prepareReads'),1);p.run('resolvePrepared({bytes:20})');await p.run('Promise.all([cacheOne,cacheTwo])');assert.equal(p.run('cacheEngine.prepared.size'),1);
+ p.run('cacheEngine.prepared.clear();const cancelledPrepare=gaplessPrepare(cacheEngine,player.queue[1]);gaplessPrune(cacheEngine,new Set());resolvePrepared({bytes:20});');
+ await assert.rejects(p.run('cancelledPrepare'),/cancelled/);assert.equal(p.run('cacheEngine.prepared.size'),0);
+});
+test('prepared audio budget counts shared media once and includes every in-flight read',()=>{
+ const p=page();assert.equal(p.run(`(()=>{const media={bytes:100};return gaplessHeldBytes({current:{media},next:{media},prepared:new Map([['one',{media,received:20}],['two',{received:30}]])});})()`),150);
+});
+test('startup and deferred seeks have finite deadlines while normal pause remains unlimited',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};let deadlineFallbacks=0;gaplessFallback=()=>{deadlineFallbacks++;gaplessTrial.active=null;};const deadlineEngine={session:state.connection.playback_session,ready:false,createdAt:0};gaplessTrial.active=deadlineEngine;gaplessWatch(deadlineEngine,20000);`);
+ assert.equal(p.run('deadlineFallbacks'),1);
+ p.run('deadlineEngine.ready=true;deadlineEngine.seekIntent={at:0};gaplessTrial.active=deadlineEngine;gaplessWatch(deadlineEngine,10000)');assert.equal(p.run('deadlineFallbacks'),2);
+});
+
+
+test('an in-flight read cannot exceed the shared preparation budget even when its own file is small',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const heldController={signal:{aborted:false}},heldRecord={controller:heldController,received:0};const heldEngine={session:state.connection.playback_session,quality:'128',current:{media:{bytes:96*1024**2-1}},prepared:new Map([[player.queue[1],heldRecord]])};gaplessTrial.active=heldEngine;`);
+ let cancelled=false;p.setFetch(async()=>({ok:true,headers:{get:()=>null},body:{getReader:()=>({read:async()=>({done:false,value:new Uint8Array(2)}),cancel:async()=>{cancelled=true;},releaseLock(){}})}}));
+ await assert.rejects(p.run('gaplessRead(heldEngine,player.queue[1],heldController)'),/exceeded/);assert.equal(cancelled,true);
+});
+
+
+test('fallback during startup preserves the requested autoplay rather than mistaking buffered data for playing audio',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};let startupAutoplay;playCurrent=value=>{startupAutoplay=value;};audio.pause();const startupFailure={session:state.connection.playback_session,quality:'128',controllers:new Set(),current:{entry:player.queue[0],start:0,end:20},started:true,ready:false,autoPlay:true};gaplessTrial.active=startupFailure;gaplessFallback(startupFailure,'injected startup error');`);
+ assert.equal(p.run('startupAutoplay'),true);
+ p.run("startupFailure.autoPlay=false;gaplessTrial.active=startupFailure;gaplessFallback(startupFailure,'injected paused startup error')");assert.equal(p.run('startupAutoplay'),false);
+ p.run("startupFailure.ready=true;startupFailure.autoPlay=true;gaplessTrial.active=startupFailure;gaplessFallback(startupFailure,'injected paused playing error')");assert.equal(p.run('startupAutoplay'),false);
+});
+
+
+test('jumping beyond the prepared horizon discards unrelated cached files before the new read',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const farEntry={...player.queue[2],id:'far-entry'};player.queue.push(farEntry);gaplessAlbumQueue(player.queue,true);const oldEngine={session:state.connection.playback_session,quality:player.quality,controllers:new Set(),current:{entry:player.queue[0],media:{bytes:20}},prepared:new Map([[player.queue[1],{media:{bytes:20}}],[player.queue[2],{media:{bytes:20}}]])};gaplessTrial.active=oldEngine;gaplessTrial.enabled=true;gaplessSupported=()=>true;let seededPrepared=-1;gaplessPrepare=g=>{seededPrepared=g.prepared.size;return Promise.reject(Error('Stop synthetic preparation'));};player.index=player.queue.length-1;gaplessBegin(farEntry,true);`);
+ assert.equal(p.run('seededPrepared'),0);await settle();
 });

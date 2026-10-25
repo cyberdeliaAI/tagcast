@@ -22,17 +22,21 @@
    context.createMediaElementSource(audio).connect(node).connect(context.destination);audio.volume=1;audio.playbackRate=1;await context.resume();
    if(config.referenceMode){audio.src='/reference';await audio.play();}
    else {
-    gaplessTrial.enabled=true;player.queue=config.tracks.map((s,i)=>({id:String(i),title:s.id,album:{id:'fixture'}}));gaplessAlbumQueue(player.queue,true);
+    gaplessTrial.enabled=true;player.repeat=config.repeat||'none';player.queue=config.tracks.map((s,i)=>({id:String(i),title:s.id,album:{id:'fixture'}}));gaplessAlbumQueue(player.queue,true);
     if(!gaplessBegin(player.queue[0],true))throw Error('MSE FLAC unsupported');
     if(config.seekProbe){
       for(let i=0;i<1500&&player.index!==1;i++)await wait(10);
       const g=gaplessTrial.active;if(!g?.ready||player.index!==1)throw Error('Seek setup did not become ready');
-      audio.pause();
-      const beforeTimeline=audio.currentTime,t=performance.now();gaplessSeek(1);config.probeResult={from:gaplessPosition(),target:1,remaining:gaplessDuration()-1,deferred:Boolean(g.seekIntent),timelineBefore:beforeTimeline,positionAfterRequest:audio.currentTime,at:performance.now()-t};
-      await finish();return;
+      if(config.seekProbe!=='near-end')audio.pause();
+      const target=config.seekProbe==='near-end'?gaplessDuration()-.4:1;
+      const beforeTimeline=audio.currentTime,beforePosition=gaplessPosition(),t=performance.now();gaplessSeek(target);config.probeResult={from:beforePosition,relativeAfterRequest:gaplessPosition(),target,remaining:gaplessDuration()-target,deferred:Boolean(g.seekIntent),timelineBefore:beforeTimeline,positionAfterRequest:audio.currentTime,at:performance.now()-t};
+      if(config.seekProbe!=='near-end'){await finish();return;}
+      for(let i=0;i<1000&&g.seekIntent;i++)await wait(10);
+      config.probeResult.appliedAfterMs=performance.now()-t;
+      if(g.seekIntent)throw Error('Near-end seek was never applied');
     }
    }
-   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Diagnostic playback timed out')),config.timeoutMs||20000);const poll=setInterval(()=>{if(fallbacks.length){clearTimeout(timer);clearInterval(poll);reject(Error('Production engine requested ordinary fallback'));}},25);audio.addEventListener('ended',()=>{clearTimeout(timer);clearInterval(poll);resolve();},{once:true});});
+   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Diagnostic playback timed out')),config.timeoutMs||20000);const poll=setInterval(()=>{if(config.repeatCycles&&gaplessTrial.active?.current.start>=config.tracks.reduce((n,s)=>n+s.samples/config.rate,0)*(config.repeatCycles-1)&&player.repeat!=='none'){player.repeat='none';gaplessQueueChanged();}if(fallbacks.length){clearTimeout(timer);clearInterval(poll);reject(Error('Production engine requested ordinary fallback'));}},25);audio.addEventListener('ended',()=>{clearTimeout(timer);clearInterval(poll);resolve();},{once:true});});
    await finish();
  }catch(e){await finish(e.message);}
 })();

@@ -134,7 +134,7 @@ const gaplessMedia = (() => {
       samples += frames.reduce((n, f) => n + f.samples, 0); parts.push({start: base / info.rate, end: samples / info.rate, data}); sequence++;
     }
     return {init: init(info), parts, duration: samples / info.rate, key: `${info.rate}/${info.channels}/${info.bits}`, samples, rate: info.rate, maxBlock: info.streaminfo[2] * 256 + info.streaminfo[3],
-      byteRate: Math.max(...parts.map(p => p.data.byteLength / (p.end - p.start))), maxPartBytes: Math.max(...parts.map(p => p.data.byteLength))};
+      bytes: parts.reduce((n, p) => n + p.data.byteLength, 0), byteRate: Math.max(...parts.map(p => p.data.byteLength / (p.end - p.start))), maxPartBytes: Math.max(...parts.map(p => p.data.byteLength))};
   }
   return {parseFlac, pcmFlac, mp3Info, pack};
 })();

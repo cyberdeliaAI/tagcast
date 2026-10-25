@@ -29,6 +29,53 @@ Both 32 s + 32 s high-rate runs now pass: **6,144,043 sample frames at 96 kHz an
 
 517 Python tests / 1,785 subtests, 472 frontend/media/oracle tests and nine Electron shell tests pass. Six full-application scenarios pass locally. Data is retained separately under `phase2-*`. Prepared-file/renderer memory remains distinct from SourceBuffer accounting; fixed byte estimates do not guarantee every platform's quota. Conservative normal fallback remains necessary.
 
-## Remaining work
+## Phase 3 — Startup, seeking and bounded preparation
 
-Phase 3 will address startup, buffered seeks and bounded short-track lookahead. The baseline short-track starvation and full-next-file startup gating still apply until that phase is verified.
+- Long current tracks (at least ten seconds of remaining runway) can start after their own first fragment is appended, without a full-next-file startup gate. The current file still downloads and parses completely; no streaming parser was introduced.
+- A forward target already buffered for at least one second applies immediately when at least ten seconds remain. Near-end targets retain the next-head gate. A pending intent belongs to one segment, is replaced by later input and is discarded on a segment/queue change.
+- Short A+B runs also prepare C before startup. Only one extra entry beyond next is prepared, so the steady-state horizon is current plus at most two following entries. This intentionally trades startup latency on very short runs for an uninterrupted measured boundary.
+- Preparation is coalesced by the original queue entry, quality and engine/session. Completed entries can be reused when skipping within the same queue; pending old-engine reads are never adopted. Queue edits selectively retire/cancel unwanted records, including guards against late replies repopulating a replacement's cache.
+- Prepared coded media plus tracked incoming bytes share a 96 MiB budget, distinct from the 6 MiB SourceBuffer estimate and the existing per-file bound. Shared media objects are counted once. Temporary copy/decoder/recorder allocations are not falsely claimed to be bounded by that figure.
+- Asynchronous file preparation has a 20 s timeout; total startup has a 20 s deadline and a deferred near-end seek a ten-second deadline. A playing stall retains the eight-second liveness fallback. Synchronous main-thread parsing cannot be interrupted exactly at a wall-clock deadline; no worker was added.
+- Fallback now distinguishes ready playback from merely appended startup data. It preserves the original autoplay request during startup and an actual paused state after readiness; a deferred seek fallback preserves its requested track-relative position.
+- Existing explanatory text is updated only for these changed policies. The feature remains experimental, disabled by default and restricted to ordered album queues. MP3 decoding and normal player code are unchanged.
+
+### Matched before/after evidence
+
+The earlier evidence was not overwritten. A frozen checkout of phase 2 (`1f15e02`) runs the same new long-startup fixture for a matched comparison. All 31 original track fixture hashes match the extended 35-file manifest.
+
+| Check | Before | After |
+| --- | --- | --- |
+| 96 kHz 32 s + 32 s | All PCM correct but no native ended event | All 6,144,043 sample frames correct; native ended |
+| 192 kHz 32 s + 32 s | Quota exception before first sound | All 12,288,043 sample frames correct; native ended, no boundary waiting |
+| 1152 → 4096 maximum block size | Waiting stall without fallback | Safe rejection before B enters this decoder; actual application plays B through normal URL playback |
+| Short B, C response delayed 1.8 s | C starts 59,390 samples late (~1.347 s) | Zero displaced/missing/duplicated samples; startup deliberately waits for C |
+| Long startup, A delayed 300 ms / B delayed 2 s | ~2.384 s to first playing in frozen phase 2 | ~0.356 s in the final phase 3 probe; complete PCM run also exact |
+| Buffered seek to 1 s in a 40 s track | Deferred despite ~39 s remaining | Immediate position assignment; no next-file wait |
+| Seek to 0.4 s before end with delayed C | Existing gate intended to protect transition | Gate retained; applied after ~1.82 s in the final probe; final 256 B samples plus complete C are exact |
+| Skip to an already prepared next entry | Preparation restarted | Full-app request log shows B and C requested only once |
+| Fault during startup | Could retain paused state despite Play request | Injected quota error resumes ordinary native playback and restores native controls |
+
+These are controlled localhost experiments, not production-CDN latency guarantees. Millisecond measurements vary with scheduling and machine load. The near-end oracle explicitly checks one contiguous tail window after the intentional seek; it does not claim sample accuracy at the first requested seek position or over intentionally omitted content.
+
+### Final verification
+
+- 517 Python tests and 1,785 subtests pass; nine Electron shell tests pass.
+- 481 frontend/media/oracle tests pass, including targeted EOS, first-init block compatibility, stalled/paused/seek states, byte budget, shared preparation accounting, retired replies, readiness and startup autoplay regressions.
+- Final media run: **31/31 assertions pass**. Sixteen full-engine runs compare 20,749,929 sample frames across 30 boundaries, with twelve independent unified-file controls; the ordinary-fallback case and two partial seek probes are separately identified.
+- Original PCM cases remain exact; new short-run, long-startup and Repeat track/queue fixtures compare every codeword against independent unified single-file controls. Both 96/192 kHz long runs remain required regression probes.
+- Nine full-application scenarios verify ordinary fallback at an incompatible boundary; actual recovery after a deliberate stall; startup exception fallback; pause/speed/seek/session cancellation; Repeat/queue removal; evicted backward seek; completed-file reuse; pending queue replacement; high-rate startup. Renderer error logs are empty. These use the actual document/page scripts and native element; only the service endpoint is synthetic and shell output is muted.
+- CI includes the extended PCM checks, stress fixtures and full-application tests, with required diagnostics failing on regressions. An intentionally delegated mixed-block transition is explicitly labeled; it is not counted as full-queue MSE continuity. Hosted CI was configured locally only, with no push.
+- Ruff, JavaScript parsing, version consistency and generated Dark CSS checks pass. No styling, backend, dependency, metadata-save or normal-player source changes were made.
+
+## Remaining limitations and next stage
+
+Safe fallback is the supported handling for larger later FLAC blocks; gapless normalization/reinitialization of such files is deliberately deferred. Arbitrary network delays or many extremely short tracks cannot be guaranteed seamless with a bounded two-entry preparation horizon and event-driven queue/UI updates. Long files still require a complete first-file download, and slow preparation can deliberately select normal playback at the documented deadlines.
+
+All measured output is a same-rate pre-output PCM tap on macOS arm64 / Electron 44.9.0 (Chromium 152). Full-app transport tests are behavioural, including native 1.25× speed; they do not establish hardware/AirPlay bit perfection or PCM continuity at every playback speed. No Windows/Linux packaged media run, sleep/wake/output-device exercise, hour-long production memory run or real-CDN performance benchmark has been performed here. The recorder's RSS is not a production memory-leak measurement. MP3 padding/alignment uncertainty from the prior report remains unchanged. The playing-stall watchdog intentionally excludes native seeking; a browser fault that never completes a native seek is not proven to recover automatically by these tests, unlike the bounded preparation/deferred-intent cases.
+
+Recommended next stage: a separate updated macOS test build and real continuous-album listening, then hosted Linux CI and packaged Windows/Linux verification, output changes and a long-session memory test. Keep streaming-parser and MP3 redesign proposals separate until those observations justify them. No push, tag, release or installed-app replacement is part of this work.
+
+## Implementation references
+
+`src/tagcast/static/gapless.js`: `gaplessStartupReady`, `gaplessSeekReady`, `gaplessReadiness`, `gaplessPrepare`, `gaplessHeldBytes`, `gaplessPrune`, `gaplessPrefetchAhead`, `gaplessBufferPolicy`, `gaplessPump`, `gaplessWatch`, `gaplessFallback` and `gaplessBegin`. `gapless-media.js:pack` adds only bounded-buffer metadata; original frame contents/timestamps and the MP3 decoder path remain intact. Regression coverage is in `tests/frontend.test.cjs`, `tests/gapless-media.test.cjs`, `tests/gapless-oracle.test.cjs` and `tools/gapless_lab/`.

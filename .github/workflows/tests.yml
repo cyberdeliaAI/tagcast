@@ -128,7 +128,7 @@ jobs:
   gapless-measured-media:
     name: Gapless measured PCM · Linux Electron
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -144,12 +144,13 @@ jobs:
       - name: Install pinned Electron test runtime
         run: npm ci --prefix electron
       - name: Independently encode and round-trip sample-counter fixtures
-        run: node tools/gapless_lab/fixtures.cjs build/gapless-fixtures
+        run: node tools/gapless_lab/fixtures.cjs build/gapless-fixtures --stress
       - name: Measure the unmodified engine and single-file controls
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/electron.cjs --fixtures build/gapless-fixtures --out build/gapless-results --suite smoke
       - name: Verify ordinary fallback and transport in the full application
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/application.cjs --fixtures build/gapless-fixtures --out build/gapless-application
-      # Known failures remain diagnostic until production fixes are separately approved.
+      # Mixed-block rejection is checked end-to-end in the full application.
+      # Required PCM/lifecycle diagnostics fail CI on a regression.
       - name: Record mixed-block, starvation, startup and seek probes
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/electron.cjs --fixtures build/gapless-fixtures --out build/gapless-diagnostics --suite diagnostics
       - name: Preserve measurement evidence

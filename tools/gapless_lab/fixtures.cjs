@@ -25,20 +25,25 @@ function generate(directory,stress=false) {
   const small=[1,2,3].map((t,i)=>add(44100,16,2,1152,t,[32210,26050,35774][i]));
   const large=small.map(s=>add(s.rate,s.bits,s.channels,4096,s.track,s.samples));
   cases.push({id:"same-small-block",tracks:small.map(s=>s.id),rate:44100,mode:"engine",gate:true},
-    {id:"block-small-to-large",tracks:[small[0].id,large[1].id,small[2].id],rate:44100,mode:"engine",gate:false},
-    {id:"block-large-to-small",tracks:[large[0].id,small[1].id,large[2].id],rate:44100,mode:"engine",gate:false});
+    {id:"block-small-to-large",required:true,expectedBoundaryFallback:true,tracks:[small[0].id,large[1].id,small[2].id],rate:44100,mode:"engine",gate:false},
+    {id:"block-large-to-small",required:true,tracks:[large[0].id,small[1].id,large[2].id],rate:44100,mode:"engine",gate:false});
   const mono=[1,2].map((t,i)=>add(44100,16,1,4096,t,33000+i*5003));
   cases.push({id:"mono",tracks:mono.map(s=>s.id),rate:44100,mode:"engine",gate:true});
   const intro=[add(44100,16,2,4096,1,44117),add(44100,16,2,4096,2,22061),add(44100,16,2,4096,3,44153)];
-  cases.push({id:"short-delayed-third",tracks:intro.map(s=>s.id),rate:44100,mode:"engine",delays:{2:1800},gate:false},
-    {id:"startup-sequential",tracks:large.slice(0,2).map(s=>s.id),rate:44100,mode:"engine",delays:{0:300,1:700},gate:false},
-    {id:"seek-early",tracks:[large[0].id,add(44100,16,2,4096,2,44100*40+17).id,large[2].id],rate:44100,mode:"engine",gate:false,seekProbe:true,delays:{2:1800}});
+  cases.push({id:"short-delayed-third",tracks:intro.map(s=>s.id),rate:44100,mode:"engine",delays:{2:1800},gate:true},
+    {id:"startup-sequential",required:true,tracks:large.slice(0,2).map(s=>s.id),rate:44100,mode:"engine",delays:{0:300,1:700},gate:false},
+    {id:"seek-early",required:true,expectDeferred:false,tracks:[large[0].id,add(44100,16,2,4096,2,44100*40+17).id,large[2].id],rate:44100,mode:"engine",gate:false,seekProbe:true,delays:{2:1800}});
+  const long=[add(48000,24,2,4096,4,48000*12+17),add(48000,24,2,4096,5,28831),add(48000,24,2,4096,6,26453)];
+  cases.push({id:"startup-long",tracks:long.map(s=>s.id),rate:48000,mode:"engine",gate:true,delays:{0:300,1:2000}},
+    {id:"seek-near-end",tracks:[add(48000,24,2,4096,1,35057).id,add(48000,24,2,4096,2,48000*12+17).id,add(48000,24,2,4096,3,38933).id],rate:48000,mode:"engine",gate:false,required:true,seekProbe:"near-end",delays:{2:1800}},
+    {id:"repeat-track",tracks:[large[0].id],expectedTracks:[large[0].id,large[0].id],rate:44100,gate:true,repeat:"track",repeatCycles:2},
+    {id:"repeat-queue",tracks:large.map(s=>s.id),expectedTracks:[...large,...large].map(s=>s.id),rate:44100,gate:true,repeat:"queue",repeatCycles:2});
   if(stress)for(const rate of [96000,192000]){
     const list=[1,2].map(t=>add(rate,24,2,4096,t,rate*32+17+t*3));
-    cases.push({id:`memory-${rate}`,tracks:list.map(s=>s.id),rate,mode:"engine",gate:false,stress:true});
+    cases.push({id:`memory-${rate}`,tracks:list.map(s=>s.id),rate,mode:"engine",gate:false,required:true,stress:true});
   }
   for(const c of cases.filter(c=>c.gate)) {
-    const list=c.tracks.map(id=>specs.find(s=>s.id===id)), first=list[0];
+    const list=(c.expectedTracks||c.tracks).map(id=>specs.find(s=>s.id===id)), first=list[0];
     const raw=Buffer.concat(list.map(s=>{const a=Buffer.alloc(s.samples*s.channels*s.bits/8);for(let i=0,p=0;i<s.samples;i++)for(let ch=0;ch<s.channels;ch++,p+=s.bits/8)a.writeIntLE(counter.word(i,s.track,ch,s.bits),p,s.bits/8);return a;}));
     const input=path.join(directory,c.id+"-reference.pcm");fs.writeFileSync(input,raw);c.reference=c.id+"-reference.flac";
     const r=cp.spawnSync(process.env.FFMPEG||"ffmpeg",["-v","error","-y","-f",first.bits===16?"s16le":"s24le","-ar",String(first.rate),"-ac",String(first.channels),"-i",input,"-c:a","flac","-frame_size","4096","-compression_level","0",path.join(directory,c.reference)],{encoding:"utf8"});if(r.status!==0)throw Error(r.stderr);fs.unlinkSync(input);

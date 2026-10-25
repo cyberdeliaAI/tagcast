@@ -15,7 +15,7 @@
     return {length, offsets, at(index, c) {
       let n = offsets.length - 1;
       while (n > 0 && index < offsets[n]) n--;
-      return value(index - offsets[n], specs[n].track, c, specs[n].bits);
+      return value(index - offsets[n] + (specs[n].sourceStart || 0), specs[n].track, c, specs[n].bits);
     }};
   }
   function inspect(channels, specs, options = {}) {
@@ -29,7 +29,7 @@
     const anchor = options.anchor ?? Math.min(2048, Math.floor(specs[0].samples / 4));
     let start = null;
     // Anchor inside the first file, then account for the inferred start; never realign at boundaries.
-    search: for (let p = 0; p < Math.min(frames - 8, specs[0].rate * 3); p++) {
+    search: for (let p = 0; p < Math.min(frames - 8, (options.anchorLimit || specs[0].rate * 3)); p++) {
       for (let k = 0; k < 8; k++) for (let c = 0; c < count; c++) {
         if (quantize(channels[c]?.[p + k],specs[0].bits) !== Math.round(ref.at(anchor + k, c)*2**(specs[0].bits-1))) continue search;
       }
@@ -60,7 +60,7 @@
       const inside=Math.min(128,Math.floor(s.samples/4));
       search: for(let p=Math.max(0,start+ref.offsets[n]);p<frames-8;p++) {
         for(let k=0;k<8;k++)for(let c=0;c<count;c++)
-          if(quantize(channels[c]?.[p+k],s.bits)!==word(inside+k,s.track,c,s.bits))continue search;
+          if(quantize(channels[c]?.[p+k],s.bits)!==word(inside+k+(s.sourceStart||0),s.track,c,s.bits))continue search;
         return {track:s.track,expected:ref.offsets[n],observed:p-inside-start,displacement:p-inside-start-ref.offsets[n]};
       }
       return {track:s.track,expected:ref.offsets[n],observed:null,displacement:null};
