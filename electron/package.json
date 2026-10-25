@@ -18,7 +18,7 @@
     "electron-builder": "26.15.3"
   },
   "build": {
-    "appId": "nl.cyberdelia.tagcast.gapless-test",
+    "appId": "nl.cyberdelia.tagcast.gapless-validation",
     "executableName": "Tagcast",
     "asar": true,
     "directories": {"output": "out"},

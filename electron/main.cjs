@@ -7,10 +7,11 @@ const {Backend, backendCommand} = require("./backend.cjs");
 const {applicationUrl, externalUrl, permissionAllowed, contentPolicy} = require("./security.cjs");
 const {helpMenu} = require("./help-menu.cjs");
 const packageInfo = require("./package.json");
+const {validationOptions} = require("./validation.cjs");
+const validation = validationOptions({home: app.getPath("home"), appData: app.getPath("appData"), env: process.env});
 
 app.setName("Tagcast Gapless Test");
-if (!process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.join(app.getPath("appData"), "Tagcast Gapless Test"));
-if (process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.resolve(process.env.TAGCAST_ELECTRON_PROFILE));
+app.setPath("userData", validation.profile);
 app.enableSandbox();
 let window, backend, origin, stopping, finished = false;
 
@@ -97,7 +98,7 @@ else {
   app.whenReady().then(async () => {
     const sourceRoot = app.isPackaged ? null : path.resolve(__dirname, "..");
     backend = new Backend(backendCommand({packaged: app.isPackaged, resourcesPath: process.resourcesPath, sourceRoot, python: process.env.TAGCAST_PYTHON}),
-      {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot, env: {...process.env, TAGCAST_PORT: "0"}, onExit: () => {
+      {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot, env: validation.env, onExit: () => {
         if (!stopping) { dialog.showErrorBox("Tagcast's server stopped", "Restart Tagcast Desktop. No requests will be retried automatically."); window?.destroy(); app.quit(); }
       }});
     const ready = await backend.start();
