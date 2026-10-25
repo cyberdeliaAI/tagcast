@@ -57,7 +57,7 @@ async function run(id, sourceCase, mode) {
   const album=${JSON.stringify(album)},mode=${JSON.stringify(mode)};
   try{
    useLocal([album],'live');state.connection={connected:true,premium:true,playback_session:'isolated-app-test'};lookup.streamQuality='orig';gaplessTrial.enabled=true;updateChrome();showScreen('albums');render();
-   playTracks(album);await until(()=>!audio.paused&&audio.currentTime>.03);
+   playTracks(album,mode==='evicted-seek'?'2':undefined);await until(()=>!audio.paused&&audio.currentTime>.03);
    if(mode==='fallback'){
     await until(()=>!gaplessTrial.active&&audio.currentSrc.includes('/api/stream/2')&&!audio.paused&&audio.currentTime>.03);
     observations.push({normalTrack:player.queue[player.index].id,position:audio.currentTime,nativeVisible:!audio.hidden,gaplessHidden:document.querySelector('#gapless-transport').hidden});
@@ -71,26 +71,33 @@ async function run(id, sourceCase, mode) {
     audio.playbackRate=1.25;await audio.play();await until(()=>audio.currentTime>position+.1);observations.push({resumed:!audio.paused,rate:audio.playbackRate});
     audio.playbackRate=1;gaplessSeek(.05);await until(()=>audio.currentTime<.3);observations.push({seeked:audio.currentTime});
     state.connection.playback_session='replaced-test-session';await wait(250);observations.push({cancelled:!gaplessTrial.active,sourceCleared:!audio.getAttribute('src')});
+   }else if(mode==='evicted-seek'){
+    await until(()=>audio.currentTime>11,16000);const src=audio.currentSrc;
+    observations.push({evicted:gaplessTrial.active.buffer.buffered.start(0)>0});
+    gaplessSeek(1);await until(()=>!audio.seeking&&audio.currentTime>=1&&audio.currentTime<2);
+    observations.push({backwardSeek:gaplessTrial.active!==null&&audio.currentSrc===src,index:player.index,position:audio.currentTime});
+   }else if(mode==='high-rate'){
+    await until(()=>audio.currentTime>1,10000);observations.push({mseActive:Boolean(gaplessTrial.active),position:audio.currentTime});
    }else if(mode==='repeat'){
     player.repeat='track';gaplessQueueChanged();await until(()=>gaplessTrial.active?.current.start>0);observations.push({repeatTrack:player.index===0,relative:gaplessPosition()});
     player.repeat='queue';gaplessQueueChanged();await until(()=>player.index===1);observations.push({advanced:true});
     const queued=player.queue[2];setNowPlaying(true);renderNowPlaying();removeQueueEntry(2,nowPlayingRows.revision);await wait(100);observations.push({removedNotWanted:gaplessTrial.active?.wanted!==queued});
    }
-   if(observations.some(o=>Object.entries(o).some(([k,v])=>['paused','stable','resumed','cancelled','sourceCleared','repeatTrack','advanced','removedNotWanted','nativeVisible','gaplessHidden'].includes(k)&&v!==true)))throw Error('Application state assertion failed');
+   if(observations.some(o=>Object.entries(o).some(([k,v])=>['paused','stable','resumed','cancelled','sourceCleared','repeatTrack','advanced','removedNotWanted','nativeVisible','gaplessHidden','evicted','backwardSeek','mseActive'].includes(k)&&v!==true)))throw Error('Application state assertion failed');
    result={id,pass:true,observations,events,sameElement:identity===audio,queueIds:player.queue.map(t=>t.id),index:player.index,message:gaplessTrial.message};
   }catch(error){result={id,pass:false,error:error.message,observations,events,index:player.index,message:gaplessTrial.message};}
-  stopPlayer();return result;
+  return result;
  })()` .replace('result={id,','result={id:'+JSON.stringify(id)+',').replace('result={id,','result={id:'+JSON.stringify(id)+','));
  result.requests=active.requests;result.consoleErrors=errors;
  fs.writeFileSync(path.join(output,id+'.json'),JSON.stringify(result,null,2));
  fs.writeFileSync(path.join(output,id+'.png'),(await win.webContents.capturePage()).toPNG());
- win.destroy();win=null;console.log(JSON.stringify({id,pass:result.pass,error:result.error,observations:result.observations}));return result;
+ await win.webContents.executeJavaScript('stopPlayer()');win.destroy();win=null;console.log(JSON.stringify({id,pass:result.pass,error:result.error,observations:result.observations}));return result;
 }
 app.whenReady().then(async()=>{
  const results=[];
  try{
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  for(const [id,c,mode] of [['mixed-block-fallback','block-small-to-large','fallback'],['stalled-playback-fallback','same-44100-16','stall'],['pause-seek-session','same-44100-16','interaction'],['repeat-queue-edit','same-44100-16','repeat']]){
+  for(const [id,c,mode] of [['mixed-block-fallback','block-small-to-large','fallback'],['stalled-playback-fallback','same-44100-16','stall'],['pause-seek-session','same-44100-16','interaction'],['repeat-queue-edit','same-44100-16','repeat'],['evicted-backward-seek','seek-early','evicted-seek'],...(manifest.cases.some(c=>c.id==='memory-192000')?[['high-rate-start','memory-192000','high-rate']]:[])]){
    if(option('--case','').split(',').filter(Boolean).length&&!option('--case','').split(',').includes(id))continue;
    results.push(await run(id,c,mode));
   }

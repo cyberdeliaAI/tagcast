@@ -21,6 +21,14 @@ Eight unchanged compatible engine cases plus eight single-file controls pass wit
 
 517 Python tests / 1,785 subtests, 470 frontend/media/oracle tests and nine Electron shell tests pass. The full-app cases and media probes ran locally on macOS arm64 / Electron 44.9.0. CI now runs the full-app checks too, but has not been pushed or executed remotely.
 
+## Phase 2 — Coded-byte buffering
+
+The pump now uses a 6 MiB conservative coded-byte budget in addition to time. `pack()` reports peak fragment bytes/second and largest fragment size. The engine retains the highest density observed in its run, reserves space for the next head, and scales lookahead/backward retention down for dense high-rate streams. Buffered range duration multiplied by that peak density is an estimate, not Chromium's exact internal accounting. Oversized fragments or an impossible startup head choose normal playback. Backpressure waits for playback/eviction instead of repeatedly appending; a real quota exception still takes the existing single fallback path. Chromium process flags/quotas are unchanged.
+
+Both 32 s + 32 s high-rate runs now pass: **6,144,043 sample frames at 96 kHz and 12,288,043 at 192 kHz**, with zero codeword mismatches, no boundary waiting and native `ended`. The earlier 192 kHz failure happened before `playing`; the updated full-app check confirms MSE playback progressing beyond one second. The normal eight scenarios plus controls still all pass. The full application additionally verifies backward seek to an evicted position without replacing the source, alongside all phase 1 controls and fallback tests.
+
+517 Python tests / 1,785 subtests, 472 frontend/media/oracle tests and nine Electron shell tests pass. Six full-application scenarios pass locally. Data is retained separately under `phase2-*`. Prepared-file/renderer memory remains distinct from SourceBuffer accounting; fixed byte estimates do not guarantee every platform's quota. Conservative normal fallback remains necessary.
+
 ## Remaining work
 
-Phase 2 will bound coded-byte buffering without increasing Chromium quotas. Phase 3 will address startup, buffered seeks and bounded short-track lookahead. Until then the baseline 192 kHz quota and short-track starvation limitations still apply.
+Phase 3 will address startup, buffered seeks and bounded short-track lookahead. The baseline short-track starvation and full-next-file startup gating still apply until that phase is verified.
