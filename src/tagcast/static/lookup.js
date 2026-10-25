@@ -161,7 +161,8 @@ function renderSettingsContent() {
     <p class="muted">Download the change history saved in this browser as a JSON file for your records.</p>
     <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
     + `<section class="history-settings" data-settings-category="about"><h3>Community</h3>
-    <p class="muted">Ask questions, share ideas and discuss Tagcast with other listeners.</p>
+    <p class="muted">Visit the website or discuss Tagcast with other listeners.</p>
+    <a class="button small" href="https://tagcast.app/" target="_blank" rel="noopener noreferrer">Tagcast website ↗</a>
     <a class="button small" href="https://www.reddit.com/r/Tagcast/" target="_blank" rel="noopener noreferrer">Join r/Tagcast on Reddit ↗</a></section>`
     + (!lookup.sources.length ? '<p class="muted settings-server-note">Playback and source settings need the Tagcast server. Browser preferences remain available.</p>' : `
     <form id="settings-form"><section class="playback-settings" data-settings-category="playback"><h3>Streaming &amp; listening history <span class="settings-mode">Save required</span></h3>
