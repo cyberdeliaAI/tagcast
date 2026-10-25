@@ -6,6 +6,7 @@ test('FLAC remux retains every original encoded frame and the exact sample count
  const raw=fixture('tone.flac'),info=media.parseFlac(raw),packed=media.pack(info);
  assert.equal(info.rate,44100);assert.equal(info.bits,16);assert.equal(info.channels,2);assert.equal(info.total,88200);assert.equal(packed.duration,2);
  const originalFrames=Buffer.concat(info.frames.map(x=>x.data));assert.deepEqual(Buffer.from(raw.slice(-originalFrames.length)),originalFrames);
+ assert.equal(packed.maxBlock,info.streaminfo[2]*256+info.streaminfo[3]);
  assert.equal(packed.parts[0].start,0);assert.equal(packed.parts.at(-1).end,2);
  for(let i=1;i<packed.parts.length;i++)assert.equal(packed.parts[i].start,packed.parts[i-1].end);
  assert.match(Buffer.from(packed.init).toString('latin1'),/fLaC/);assert.match(Buffer.from(packed.init).toString('latin1'),/dfLa/);

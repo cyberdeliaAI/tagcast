@@ -173,6 +173,7 @@ async function gaplessPrefetch(g) {
   try {
     const media = await gaplessPrepare(g, entry);
     if (!gaplessValid(g) || ticket !== g.ticket || entry !== g.wanted) return;
+    if (media.maxBlock > g.maxBlock) throw new Error("The next FLAC needs larger decoder blocks; standard playback is used at the boundary.");
     if (media.key !== g.current.media.key) throw new Error("Adjacent audio formats differ; the next transition uses standard playback.");
     g.next = {entry, media, start: g.current.end, end: g.current.end + media.duration, part: 0, wrap: g.wrap};
     if (g.media.readyState === "open" && !g.buffer.updating) g.media.duration = g.next.end;
@@ -188,10 +189,10 @@ function gaplessPump(g) {
   try {
     const end = g.next?.end || g.current.end;
     if (g.media.readyState === "open" && g.media.duration < end) g.media.duration = end;
-    if (g.trim !== null) { const from = g.trim; g.trim = null; sb.remove(from, Math.max(from + .001, Number.isFinite(g.media.duration) ? g.media.duration + 1 : from + 10000)); return; }
+    if (g.trim !== null) { const from = g.trim; g.trim = null; g.finished = false; sb.remove(from, Math.max(from + .001, Number.isFinite(g.media.duration) ? g.media.duration + 1 : from + 10000)); return; }
     // Keep decoded media bounded, independently of queue length.
     const before = Math.max(0, audio.currentTime - 6);
-    if (sb.buffered.length && sb.buffered.start(0) < before - 4) { sb.remove(0, before); return; }
+    if (sb.buffered.length && sb.buffered.start(0) < before - 4) { g.finished = false; sb.remove(0, before); return; }
     // The next track's first fragment stays primed even after a seek far ahead or back.
     const primeNext = g.started && g.next && !gaplessBuffered(g, g.next.start, Math.min(.05, (g.next.media.parts?.[0]?.end || g.next.media.duration) / 2));
     if (primeNext && g.next.part > 0) g.next.part = 0;
@@ -225,6 +226,17 @@ function gaplessAdvance() {
   }
   gaplessPump(g);
 }
+// A decoder can wait forever without firing error; recover once through the normal player.
+// Pauses, seeks and startup holds are not evidence of a stalled playing timeline.
+function gaplessWatch(g, now = performance.now()) {
+  if (!gaplessValid(g)) return;
+  const time = audio.currentTime || 0, progress = g.progress;
+  if (!progress || !g.ready || audio.paused || audio.seeking || audio.ended
+      || time < progress.time || time > progress.time + .01) {
+    g.progress = {time, at: now}; return;
+  }
+  if (now - progress.at >= 8000) gaplessFallback(g, "Continuous playback stopped progressing; continuing with standard playback.");
+}
 function gaplessBegin(entry, autoPlay) {
   gaplessCancel();
   if (gaplessTrial.bypass || !gaplessTrial.enabled || !gaplessAlbumEntry(entry) || !gaplessSupported() || gaplessFailed(entry)
@@ -236,7 +248,7 @@ function gaplessBegin(entry, autoPlay) {
   (async () => {
     try {
       const media = await gaplessPrepare(g, entry); if (!gaplessValid(g)) return;
-      g.current = {entry, media, start: 0, end: media.duration, part: 0};
+      g.current = {entry, media, start: 0, end: media.duration, part: 0}; g.maxBlock = media.maxBlock;
       g.media = new MediaSource(); g.url = URL.createObjectURL(g.media); audio.src = g.url;
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Continuous audio did not open.")), 10000);
@@ -255,7 +267,7 @@ function gaplessBegin(entry, autoPlay) {
       });
       g.buffer.appendBuffer(media.init);
       gaplessQueueChanged();
-      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); gaplessReadiness(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); g.timer = setTimeout(tick, 100); }; tick();
+      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); gaplessReadiness(g); gaplessWatch(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); if (gaplessValid(g)) g.timer = setTimeout(tick, 100); }; tick();
     } catch (error) { gaplessFallback(g, error.message); }
   })();
   return true;
