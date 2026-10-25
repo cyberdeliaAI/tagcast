@@ -142,7 +142,15 @@ jobs:
           pactl load-module module-null-sink sink_name=gapless_test
           pactl set-default-sink gapless_test
       - name: Install pinned Electron test runtime
-        run: npm ci --prefix electron
+        run: |
+          npm ci --prefix electron
+          node electron/node_modules/electron/install.js
+      - name: Configure the Chromium sandbox for the disposable Linux runner
+        # Ubuntu's user-namespace restrictions require the bundled SUID helper.
+        # Keep renderer sandboxing enabled; do not use --no-sandbox.
+        run: |
+          sudo chown root:root electron/node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 electron/node_modules/electron/dist/chrome-sandbox
       - name: Independently encode and round-trip sample-counter fixtures
         run: node tools/gapless_lab/fixtures.cjs build/gapless-fixtures --stress
       - name: Measure the unmodified engine and single-file controls
