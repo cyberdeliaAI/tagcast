@@ -9335,3 +9335,72 @@ test('production gapless-off playback uses the ordinary audio and retains seekin
  p.run('step(-1)');assert.equal(p.run('player.index'),0);assert.equal(identity.src,'/api/stream/100?quality=128');
  assert.equal(p.nodes.get('#audio'),identity);assert.equal(identity.hidden,false);assert.equal(p.run('gaplessDiagnostics.enabled'),false);
 });
+
+// Deterministic slow-transfer clock: no real network, sleeps or music fixtures.
+async function gaplessTransferPage() {
+ const p=livePage();await settle();
+ p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.pause();
+ const transferTimers=new Map();let transferTimerId=0;
+ setTimeout=(callback,delay)=>{const id=++transferTimerId;transferTimers.set(id,{callback,at:performance.now()+delay});return id;};
+ clearTimeout=id=>transferTimers.delete(id);
+ const transferEngine={session:state.connection.playback_session,quality:'orig',controllers:new Set(),prepared:new Map(),createdAt:0,ready:false};
+ gaplessTrial.active=transferEngine;
+ gaplessMedia.parseFlac=()=>({});gaplessMedia.pack=()=>({bytes:8,duration:40});`);
+ let deliver, signal, released=false;
+ p.setFetch(async(_url,options)=>{
+  signal=options.signal;
+  return {ok:true,headers:{get:()=>null},body:{getReader:()=>({
+   read:()=>new Promise((resolve,reject)=>{deliver=resolve;signal.addEventListener('abort',()=>reject(signal.reason),{once:true});}),
+   releaseLock(){released=true;}
+  })}};
+ });
+ const pending=p.run('gaplessPrepare(transferEngine,player.queue[0])');await settle();
+ const advance=async now=>{
+  p.setPlaybackClock(now);
+  p.run(`for(const [id,timer] of [...transferTimers])if(timer.at<=performance.now()){transferTimers.delete(id);timer.callback();}`);
+  await settle();
+ };
+ return {p,pending,advance,send:async value=>{deliver(value);await settle();},signal:()=>signal,released:()=>released};
+}
+test('steady Original transfer beyond twenty seconds remains eligible and completes without retry',async()=>{
+ const t=await gaplessTransferPage();
+ await t.advance(19000);await t.send({done:false,value:new Uint8Array([102,76,97,67])});
+ await t.advance(25000);t.p.run('gaplessWatch(transferEngine)');
+ assert.equal(t.signal().aborted,false);assert.equal(t.p.run('gaplessTrial.active===transferEngine'),true);
+ await t.advance(38000);await t.send({done:false,value:new Uint8Array([1,2,3,4])});
+ await t.advance(45000);await t.send({done:true});
+ assert.equal((await t.pending).duration,40);assert.equal(t.released(),true);
+ assert.equal(t.p.run('transferTimers.size'),0);assert.equal(t.p.run('transferEngine.controllers.size'),0);
+ assert.equal(t.p.requests.filter(r=>r.url.startsWith('/api/stream/')).length,1);
+});
+test('a transfer with no bytes for twenty seconds times out with a useful diagnostic cause',async()=>{
+ const t=await gaplessTransferPage();const rejected=assert.rejects(t.pending,/preparation timed out/);
+ await t.advance(19000);await t.send({done:false,value:new Uint8Array([102,76,97,67])});
+ await t.advance(38999);assert.equal(t.signal().aborted,false);
+ await t.advance(39000);await rejected;
+ assert.equal(t.p.run('gaplessDiagnosticCause("Audio preparation timed out")'),'prepare-timeout');
+ assert.equal(t.released(),true);assert.equal(t.p.run('transferTimers.size'),0);
+ assert.equal(t.p.run('transferEngine.prepared.size'),0);
+});
+test('continued trickle cannot exceed the sixty-second preparation deadline',async()=>{
+ const t=await gaplessTransferPage();const rejected=assert.rejects(t.pending,/preparation timed out/);
+ for(const now of [19000,38000,57000]){await t.advance(now);await t.send({done:false,value:new Uint8Array([1])});}
+ await t.advance(59999);assert.equal(t.signal().aborted,false);
+ await t.advance(60000);await rejected;assert.equal(t.p.run('transferTimers.size'),0);
+});
+test('stopping a slow preparation releases its reader and both deadlines without retry',async()=>{
+ const t=await gaplessTransferPage();const rejected=assert.rejects(t.pending);
+ t.p.run('gaplessCancel()');await rejected;
+ assert.equal(t.released(),true);assert.equal(t.p.run('transferTimers.size'),0);
+ assert.equal(t.p.run('gaplessTrial.active'),null);
+});
+test('startup progress postpones inactivity fallback but cannot extend the absolute startup bound',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};audio.pause();
+ let progressFallbacks=0;gaplessFallback=()=>{progressFallbacks++;gaplessTrial.active=null;};
+ const progressEngine={session:state.connection.playback_session,ready:false,createdAt:0,preparationProgressAt:19000};gaplessTrial.active=progressEngine;
+ gaplessWatch(progressEngine,25000);`);
+ assert.equal(p.run('progressFallbacks'),0);
+ p.run('gaplessWatch(progressEngine,39000)');assert.equal(p.run('progressFallbacks'),1);
+ p.run('gaplessTrial.active=progressEngine;progressEngine.preparationProgressAt=119999;gaplessWatch(progressEngine,120000)');
+ assert.equal(p.run('progressFallbacks'),2);
+});
