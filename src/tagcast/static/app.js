@@ -1295,7 +1295,7 @@ function updateChrome() {
   badge.textContent = state.loading ? "Loading library…" : checking ? "Checking saves…" : live() ? "Live" : "Demo · Connect";
   badge.title = c.connected ? `Connected as ${c.account || "your iBroadcast account"}. Open connection details.` : "Connect your iBroadcast account.";
   badge.setAttribute("aria-label", `${badge.textContent}. ${badge.title}`);
-  $("#data-notice").textContent = live() ? "Live iBroadcast library. Metadata saves are checked against iBroadcast first and read back afterwards. Your music files are never touched."
+  $("#data-notice").textContent = c.playback_validation ? "Isolated playback test. Saving to iBroadcast, listening history and queue sync are disabled. Your music files are never touched." : live() ? "Live iBroadcast library. Metadata saves are checked against iBroadcast first and read back afterwards. Your music files are never touched."
     : "Demo library with sample records. Connect your iBroadcast account to edit your own collection.";
   $("#library-notice").hidden = !libraryNotice.visible;
   $("#library-loading").hidden = !state.loading;
