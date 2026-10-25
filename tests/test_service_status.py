@@ -3,16 +3,21 @@
 import copy
 import io
 import json
+import ssl
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 from urllib.error import URLError
+from urllib.request import HTTPSHandler
+
+import certifi
 
 from tagcast.service_status import (
     MAX_BYTES,
     SERVICES,
+    NoStatusRedirect,
     ServiceStatus,
     read_status,
 )
@@ -143,6 +148,21 @@ class StatusTests(unittest.TestCase):
             opener.return_value.open.return_value = io.BytesIO(b"x" * (MAX_BYTES + 1))
             with self.assertRaises(ValueError):
                 read_status()
+
+    def test_https_uses_bundled_roots_with_certificate_and_hostname_verification(self):
+        response = io.BytesIO(json.dumps(self.feed).encode())
+        with patch("tagcast.service_status.ssl.create_default_context",
+                   wraps=ssl.create_default_context) as create_context, \
+                patch("tagcast.service_status.build_opener") as opener:
+            opener.return_value.open.return_value = response
+            read_status()
+            create_context.assert_called_once_with(cafile=certifi.where())
+            redirect, https = opener.call_args.args
+            self.assertIsInstance(redirect, NoStatusRedirect)
+            self.assertIsInstance(https, HTTPSHandler)
+            self.assertEqual(https._context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(https._context.check_hostname)
+            self.assertGreater(https._context.cert_store_stats()["x509_ca"], 0)
 
     def test_http_endpoint_is_public_but_retains_host_and_fetch_metadata_guards(self):
         from functools import partial
