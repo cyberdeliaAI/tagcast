@@ -10,7 +10,7 @@ fs.mkdirSync(out,{recursive:true});const manifest=JSON.parse(fs.readFileSync(pat
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'tagcast-media-lab-'));app.setPath('userData',profile);app.enableSandbox();app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
 let active,server,window;const results=[],memory=[];
 const routes={'/':'harness.html','/environment.js':'environment.js','/run.js':'run.js','/capture.js':'capture.js'};
-const production={'/gapless-media.js':'gapless-media.js','/gapless.js':'gapless.js'};
+const production={'/gapless-media.js':'gapless-media.js','/gapless.js':'gapless.js','/gapless-diagnostics.js':'gapless-diagnostics.js'};
 const timers=new Set();
 function send(res,file,delay=0){const data=fs.readFileSync(file);res.writeHead(200,{'Content-Type':file.endsWith('.flac')?'audio/flac':file.endsWith('.html')?'text/html':'text/javascript','Content-Length':data.length,'Cache-Control':'no-store'});const t=setTimeout(()=>{timers.delete(t);if(!res.destroyed)res.end(data);},delay);timers.add(t);res.on('close',()=>{clearTimeout(t);timers.delete(t);});}
 server=http.createServer((req,res)=>{
@@ -28,7 +28,7 @@ ipcMain.on('lab-pcm',(event,buffer)=>{if(event.sender===window?.webContents&&act
 ipcMain.on('lab-done',(event,result)=>{if(event.sender===window?.webContents&&active)active.resolve(result);});
 async function run(config,referenceMode=false,normalization){
  const name=config.id+(referenceMode?'-reference':''),file=path.join(out,name+'.f32le');
- let resolve;const completed=new Promise(r=>{resolve=r;});active={config:{...config,tracks:config.tracks.map(id=>manifest.specs.find(s=>s.id===id)),referenceMode,expectedTracks:config.expectedTracks?.map(id=>manifest.specs.find(s=>s.id===id))},fd:fs.openSync(file,'w'),bytes:0,resolve,started:performance.now(),requests:[]};
+ let resolve;const completed=new Promise(r=>{resolve=r;});active={config:{...config,tracks:config.tracks.map(id=>manifest.specs.find(s=>s.id===id)),referenceMode,diagnostics:args.includes('--diagnostics'),expectedTracks:config.expectedTracks?.map(id=>manifest.specs.find(s=>s.id===id))},fd:fs.openSync(file,'w'),bytes:0,resolve,started:performance.now(),requests:[]};
  window=new BrowserWindow({show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,sandbox:true,contextIsolation:true,backgroundThrottling:false}});
  const errors=[];window.webContents.on('console-message',(_event,...rest)=>{const d=typeof rest[0]==='object'?rest[0]:{level:rest[0],message:rest[1]};if(d.level==='error'||d.level===3)errors.push(d.message);});
  const started=performance.now(),samples=(active.config.expectedTracks||active.config.tracks).reduce((n,s)=>n+s.samples,0),limit=(config.stress?90:config.seekProbe?20:samples/config.rate+18)*1000;active.config.timeoutMs=limit-2000;

@@ -22,6 +22,8 @@ On Linux use a functioning audio server/null sink and `xvfb-run -a` for the Elec
 
 **Required diagnostics are now regression checks.** A nonzero exit indicates a failed gating/required scenario or an invalid run. A small-to-large block transition deliberately ends the isolated MSE run after A and delegates B to normal playback; `expectedBoundaryFallback` identifies that expected outcome, not full-queue PCM continuity. The separate full-application test must confirm B actually plays normally. Early seek is a partial policy test; near-end seek checks a specifically identified contiguous tail window. Never count either as a full-album accuracy measurement. Historical evidence retains the original failures unmodified.
 
+Use `--diagnostics` to measure the same fixtures with the listening build's optional, bounded event collector enabled. It does not replace the measurement tap. Its anonymous event report is included in each result; renderer wrappers are restored before cleanup. The default remains off.
+
 ## Files and responsibilities
 
 - `counter.cjs`: independent reversible position/channel/track signal and exact integer-codeword oracle. One capture-start anchor; no boundary realignment. Observed per-track displacement is supplementary, never used to forgive mismatches.
