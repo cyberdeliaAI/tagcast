@@ -3,7 +3,7 @@
 // Online sources: year, genre and cover suggestions side by side, like a tag editor's
 // "tag sources". A suggestion only fills the form; saving still goes through the review.
 
-const lookup = {playbackValidation: false, sources: [], auto: true, recordPlays: false, streamQuality: "128", queueSync: false, settingsRevision: 0, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
+const lookup = {sources: [], auto: true, recordPlays: false, streamQuality: "128", queueSync: false, settingsRevision: 0, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
 const sourceLabel = name => lookup.sources.find(s => s.name === name)?.label || name;
 
 function applyLookupSources(sources) {
@@ -26,7 +26,6 @@ async function loadSettings() {
     const data = await api("/api/settings");
     if (revision !== lookup.settingsRevision) return;
     applyLookupSources(data.sources); lookup.auto = data.auto_lookup; lookup.keysFromEnv = data.keys_from_env || [];
-    lookup.playbackValidation = data.playback_validation === true;
     lookup.recordPlays = data.record_plays === true;
     lookup.albumGuideEnabled = data.album_guide === true;
     if (typeof applyAlbumGuideSettings === "function") applyAlbumGuideSettings(data);
@@ -169,12 +168,11 @@ function renderSettingsContent() {
     <form id="settings-form"><section class="playback-settings" data-settings-category="playback"><h3>Streaming &amp; listening history <span class="settings-mode">Save required</span></h3>
     ${freeAccount ? '<p>Streaming quality · MP3 128 kbps</p><p class="muted">Playback quality for this account. File format (FLAC/MP3) is separate from streaming quality.</p>' : `<label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
     <p class="muted">Applies to the next track. File format (FLAC/MP3) is separate from streaming quality. Free accounts use 128 kbps. All other choices, including 96 kbps and Original, require Premium. Unsupported Original audio falls back to MP3 128 kbps.</p>`}
-    ${lookup.playbackValidation ? '<p class="muted">Isolated playback test: library changes, listening history and queue sync are blocked. Streaming quality can still be saved.</p>' : ""}
-    <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}${lookup.playbackValidation ? " disabled" : ""}> Record played tracks in iBroadcast</label>
+    <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}> Record played tracks in iBroadcast</label>
     <p class="muted">Off by default. When enabled, Tagcast sends a track ID and timestamp after more than ten seconds of actual playback. Pausing and seeking do not count. Earlier plays and skips are not sent.</p>
     <p class="muted">Enabling also shows Recently played, using iBroadcast’s recent tracks playlist. Plays are separate from Change history. An uncertain request is not retried automatically.${playReporting.error ? ` <span class="error-text">${escapeHtml(playReporting.error)}</span>` : ""}</p></section>
     <section class="playback-settings" data-settings-category="playback"><h3>Devices &amp; queue synchronisation <span class="settings-mode">Save required</span></h3>
-    <label class="checkline"><input type="checkbox" name="queue_sync" ${lookup.queueSync ? "checked" : ""}${lookup.playbackValidation ? " disabled" : ""}> Enable queue synchronisation and remote control</label>
+    <label class="checkline"><input type="checkbox" name="queue_sync" ${lookup.queueSync ? "checked" : ""}> Enable queue synchronisation and remote control</label>
     <p class="muted">Off by default. Uses iBroadcast’s queue server. After enabling, reconnect iBroadcast once to approve queue read/write permissions, then open Devices. Only the player records plays; remote controllers do not play audio.</p>
     <button type="button" class="button small" data-queue-reconnect>Reconnect iBroadcast</button></section>
     <section class="playback-settings" data-settings-category="discovery"><h3>1001 Albums <span class="settings-mode">Save required</span></h3>
@@ -230,7 +228,6 @@ async function saveSettings(form, clear) {
     const data = await api("/api/settings", body);
     lookup.settingsRevision += 1;
     applyLookupSources(data.sources); lookup.auto = data.auto_lookup;
-    lookup.playbackValidation = data.playback_validation === true;
     lookup.recordPlays = data.record_plays === true;
     applyAlbumGuideSettings(data);
     applyArtistSettings(data);

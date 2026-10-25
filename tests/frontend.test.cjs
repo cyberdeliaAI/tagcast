@@ -9325,3 +9325,13 @@ test('jumping beyond the prepared horizon discards unrelated cached files before
  const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const farEntry={...player.queue[2],id:'far-entry'};player.queue.push(farEntry);gaplessAlbumQueue(player.queue,true);const oldEngine={session:state.connection.playback_session,quality:player.quality,controllers:new Set(),current:{entry:player.queue[0],media:{bytes:20}},prepared:new Map([[player.queue[1],{media:{bytes:20}}],[player.queue[2],{media:{bytes:20}}]])};gaplessTrial.active=oldEngine;gaplessTrial.enabled=true;gaplessSupported=()=>true;let seededPrepared=-1;gaplessPrepare=g=>{seededPrepared=g.prepared.size;return Promise.reject(Error('Stop synthetic preparation'));};player.index=player.queue.length-1;gaplessBegin(farEntry,true);`);
  assert.equal(p.run('seededPrepared'),0);await settle();
 });
+
+test('production gapless-off playback uses the ordinary audio and retains seeking, Next and Previous',async()=>{
+ const p=livePage();await settle();
+ p.run(`gaplessTrial.enabled=false;gaplessSupported=()=>true;gaplessPrepare=()=>{throw Error('Disabled gapless prepared audio');};playTracks(state.details.get('1'));audio.duration=100;`);
+ const identity=p.nodes.get('#audio');assert.equal(p.run('gaplessTrial.active'),null);assert.equal(identity.src,'/api/stream/100?quality=128');
+ p.run('seekSystemPlayback(25)');assert.equal(identity.currentTime,25);
+ p.run('step(1)');assert.equal(p.run('player.index'),1);assert.equal(p.run('gaplessTrial.active'),null);
+ p.run('step(-1)');assert.equal(p.run('player.index'),0);assert.equal(identity.src,'/api/stream/100?quality=128');
+ assert.equal(p.nodes.get('#audio'),identity);assert.equal(identity.hidden,false);assert.equal(p.run('gaplessDiagnostics.enabled'),false);
+});

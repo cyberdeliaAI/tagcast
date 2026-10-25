@@ -86,3 +86,9 @@ electron/node_modules/.bin/electron tools/gapless_lab/application.cjs --fixtures
 ```
 
 Use `--case mixed-block-fallback,stalled-playback-fallback` to select cases. There is no real account, credential loading or metadata write; external network access is blocked. JSON captures native media events, source URL changes, visible transport state, fixture request counts and action outcomes. Screenshots are synthetic and contain no personal library. A deliberately removed future SourceBuffer range tests the production eight-second liveness fallback; it is fault injection, not a claim that iBroadcast routinely removes that data. Cached-next skipping checks that B and C are requested only once. All application cases assert their outcomes and fail the process on failure.
+
+## Targeted extended-session check
+
+Use the existing full-application harness with `--soak-seconds 900` to repeat the compatible 24-bit FLAC fixtures in real time. It samples preparation/buffer/JS-heap state and Electron process memory every fifteen seconds, asserts forward progress, the same audio element and synchronized queue/current entries, and stops on unsupported fallback or an exceeded preparation bound. Output remains muted and no real account is loaded. This is a lifecycle/memory check, not a long-run PCM oracle or a measurement of physical output. The request/event bookkeeping contributes some laboratory memory overhead.
+
+For the actual packaged production app, `python tools/check_electron.py APP_EXECUTABLE VERSION --restart` runs the existing isolated package check twice on one temporary fixed port/profile, verifying that browser and server preferences survive a real app exit/restart without touching installed profiles.

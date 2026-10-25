@@ -49,6 +49,7 @@ async function run(id, sourceCase, mode) {
  const errors=[];win.webContents.on('console-message',(_e,...a)=>{const d=typeof a[0]==='object'?a[0]:{level:a[0],message:a[1]};if(d.level==='error'||d.level===3)errors.push(d.message);});
  await win.loadURL(origin+'/');
  const album={id:'700',name:'Deterministic playback verification',artist:'Sample Counter',artist_id:'701',year:2026,genres:[],tracks:active.tracks.map((s,i)=>({id:String(i+1),title:`Counter track ${i+1}`,artist:'Sample Counter',artist_id:'701',track:i+1,length:s.samples/s.rate,format:'FLAC',genres:[],composers:[]}))};
+ const memory=[];const memoryTimer=mode==='soak'?setInterval(()=>memory.push({at:Date.now(),processes:app.getAppMetrics().map(p=>({type:p.type,workingSetKiB:p.memory.workingSetSize,privateKiB:p.memory.privateBytes}))}),15000):null;
  const result = await win.webContents.executeJavaScript(`(async()=>{
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const until=async(test,ms=20000)=>{const start=performance.now();while(!test()){if(performance.now()-start>ms)throw Error('Condition deadline');await wait(20);}};
@@ -57,13 +58,37 @@ async function run(id, sourceCase, mode) {
   const album=${JSON.stringify(album)},mode=${JSON.stringify(mode)};
   if(${args.includes('--diagnostics')})gaplessDiagnosticsSet(true);
   try{
-   useLocal([album],'live');state.connection={connected:true,premium:true,playback_session:'isolated-app-test'};lookup.streamQuality='orig';gaplessTrial.enabled=true;updateChrome();showScreen('albums');render();
+   useLocal([album],'live');state.connection={connected:true,premium:true,playback_session:'isolated-app-test'};lookup.streamQuality='orig';gaplessTrial.enabled=mode!=='ordinary';updateChrome();showScreen('albums');render();
    if(mode==='startup-fallback'){
     const append=SourceBuffer.prototype.appendBuffer;let injected=false;
     SourceBuffer.prototype.appendBuffer=function(data){if(!injected&&gaplessTrial.active?.started&&!gaplessTrial.active.ready){injected=true;throw new DOMException('Injected test quota failure','QuotaExceededError');}return append.call(this,data);};
    }
    playTracks(album,mode==='evicted-seek'?'2':undefined);await until(()=>!audio.paused&&audio.currentTime>.03);
-   if(mode==='startup-fallback'){
+   if(mode==='ordinary'){
+    if(gaplessTrial.active||audio.hidden||!audio.currentSrc.includes('/api/stream/1'))throw Error('Gapless-off did not use the native stream');
+    seekSystemPlayback(.15);await until(()=>!audio.seeking&&audio.currentTime>=.1);
+    step(1);await until(()=>player.index===1&&!audio.paused&&audio.currentSrc.includes('/api/stream/2'));
+    step(-1);await until(()=>player.index===0&&!audio.paused&&audio.currentSrc.includes('/api/stream/1'));
+    audio.playbackRate=1.25;if(audio.playbackRate!==1.25)throw Error('Native speed change failed');audio.playbackRate=1;
+    audio.currentTime=audio.duration-.05;await until(()=>player.index===1&&!audio.paused);
+    if(gaplessTrial.active||audio.hidden||identity!==audio)throw Error('Ordinary playback/advance changed audio route');
+    observations.push({normalPlayback:true,nextPrevious:true,seekAndAdvance:true,sameNativeAudio:true});
+   }else if(mode==='soak'){
+    player.repeat='queue';gaplessQueueChanged();
+    const start=performance.now(), samples=[];let last=audio.currentTime,lastSegment=gaplessTrial.active.current,boundaries=0,lastSample=start;
+    while(performance.now()-start<${Number(option('--soak-seconds','900'))}*1000){
+     await wait(250);const g=gaplessTrial.active;
+     if(!g||audio.paused||audio.error||identity!==audio||player.queue[player.index]!==g.current.entry)throw Error('Soak playback/state failed');
+     if(g.current!==lastSegment){boundaries++;lastSegment=g.current;}
+     if(performance.now()-lastSample>=15000){
+      if(audio.currentTime<=last)throw Error('Soak timeline did not progress');last=audio.currentTime;lastSample=performance.now();
+      let bufferedSeconds=0;for(let i=0;i<g.buffer.buffered.length;i++)bufferedSeconds+=g.buffer.buffered.end(i)-g.buffer.buffered.start(i);
+      samples.push({elapsedMs:performance.now()-start,timeline:audio.currentTime,heldBytes:gaplessHeldBytes(g),prepared:g.prepared.size,bufferedSeconds,heapBytes:performance.memory?.usedJSHeapSize});
+      if(gaplessHeldBytes(g)>96*1024**2||g.prepared.size>3)throw Error('Soak preparation bounds exceeded');
+     }
+    }
+    observations.push({seconds:(performance.now()-start)/1000,observedBoundaries:boundaries,samples,originalFlac:true,diagnosticsEnabled:gaplessDiagnostics.enabled});
+   }else if(mode==='startup-fallback'){
     observations.push({startupRecovered:!gaplessTrial.active&&audio.currentSrc.includes('/api/stream/1')&&!audio.paused,nativeVisible:!audio.hidden});
    }else if(mode==='fallback'){
     await until(()=>!gaplessTrial.active&&audio.currentSrc.includes('/api/stream/2')&&!audio.paused&&audio.currentTime>.03);
@@ -101,6 +126,7 @@ async function run(id, sourceCase, mode) {
   }catch(error){result={id,pass:false,error:error.message,observations,events,index:player.index,message:gaplessTrial.message};}
   return result;
  })()` .replace('result={id,','result={id:'+JSON.stringify(id)+',').replace('result={id,','result={id:'+JSON.stringify(id)+','));
+ if(memoryTimer)clearInterval(memoryTimer);result.memory=memory;
  result.requests=active.requests;result.consoleErrors=errors;
  if(mode==='skip-next'){result.reusedPrepared=active.requests.filter(r=>r.id===2).length===1&&active.requests.filter(r=>r.id===3).length===1;result.pass &&= result.reusedPrepared;}
  fs.writeFileSync(path.join(output,id+'.json'),JSON.stringify(result,null,2));
@@ -111,7 +137,7 @@ app.whenReady().then(async()=>{
  const results=[];
  try{
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  for(const [id,c,mode] of [['startup-error-fallback','same-44100-16','startup-fallback'],['mixed-block-fallback','block-small-to-large','fallback'],['stalled-playback-fallback','same-44100-16','stall'],['pause-seek-session','same-44100-16','interaction'],['repeat-queue-edit','same-44100-16','repeat'],['evicted-backward-seek','seek-early','evicted-seek'],...(manifest.cases.some(c=>c.id==='startup-long')?[['skip-prepared-next','same-44100-16','skip-next'],['pending-queue-replacement','startup-long','pending-replacement']]:[]),...(manifest.cases.some(c=>c.id==='memory-192000')?[['high-rate-start','memory-192000','high-rate']]:[])]){
+  for(const [id,c,mode] of (args.includes('--soak-seconds')?[['extended-original-flac','same-44100-24','soak']]:[['normal-disabled','same-44100-16','ordinary'],['startup-error-fallback','same-44100-16','startup-fallback'],['mixed-block-fallback','block-small-to-large','fallback'],['stalled-playback-fallback','same-44100-16','stall'],['pause-seek-session','same-44100-16','interaction'],['repeat-queue-edit','same-44100-16','repeat'],['evicted-backward-seek','seek-early','evicted-seek'],...(manifest.cases.some(c=>c.id==='startup-long')?[['skip-prepared-next','same-44100-16','skip-next'],['pending-queue-replacement','startup-long','pending-replacement']]:[]),...(manifest.cases.some(c=>c.id==='memory-192000')?[['high-rate-start','memory-192000','high-rate']]:[])])){
    if(option('--case','').split(',').filter(Boolean).length&&!option('--case','').split(',').includes(id))continue;
    results.push(await run(id,c,mode));
   }

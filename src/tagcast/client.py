@@ -340,7 +340,6 @@ class Studio:
 
     def __init__(self, home=None):
         self.home = Path(home) if home else self.default_home()
-        self.playback_validation = os.environ.get("TAGCAST_PLAYBACK_VALIDATION") == "1"
         self.lock = threading.RLock()
         self.save_lock = threading.Lock()
         self.play_lock = threading.Lock()
@@ -368,8 +367,6 @@ class Studio:
         self._pkce = {}
         self._pkce_gen = 0
         self.config = self._read("config.json") or {}
-        if self.playback_validation:
-            self.config.update(record_plays=False, queue_sync=False)
         self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
         self.service_status = ServiceStatus()
@@ -512,7 +509,6 @@ class Studio:
             "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
             "using_default_client": self.client_id == DEFAULT_CLIENT_ID,
             "connected": bool(client),
-            **({"playback_validation": True} if self.playback_validation else {}),
             "combine_sets": self.combine_sets,
             "premium": self.premium,
             "account": self.account or "",
@@ -1023,7 +1019,6 @@ class Studio:
 
     def settings(self):
         return {"sources": self.lookup.describe(),
-                **({"playback_validation": True} if self.playback_validation else {}),
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
                 "auto_lookup": self.config.get("auto_lookup", True),
                 "auto_updates": self.config.get("auto_updates", True),
@@ -1044,8 +1039,6 @@ class Studio:
         return self.updates.check(enabled=enabled, manual=manual)
 
     def save_settings(self, body):
-        if self.playback_validation and any(body.get(key) is True for key in ("record_plays", "queue_sync")):
-            raise ApiError("Listening history and queue sync are disabled in this isolated playback test.")
         with self.lock:
             if "disabled_sources" in body:
                 disabled = body["disabled_sources"]

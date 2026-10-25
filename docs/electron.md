@@ -24,6 +24,10 @@ for the application window. **Help** also offers **Tagcast on Reddit** and
 **Tagcast on GitHub**, alongside the existing Wiki link, using the same guarded
 external browser opener. These additions first ship in 0.80.0.
 
+## Settings in the 0.81.0 candidate
+
+Settings is a routed page; **Playback** contains Now playing view, compact-player preferences and optional [experimental Gapless playback](gapless-playback.md). The existing normal app identifier/profile, backend folder and stable port remain unchanged. The isolated Gapless Test app's temporary port and write restrictions are not used by the candidate. The ordinary 0.80.0 download still has the dialog described above.
+
 ## Settings, sign-in and closing
 
 - Credentials, library cache, settings and local album favourites stay in the same

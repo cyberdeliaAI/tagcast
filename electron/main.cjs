@@ -7,11 +7,9 @@ const {Backend, backendCommand} = require("./backend.cjs");
 const {applicationUrl, externalUrl, permissionAllowed, contentPolicy} = require("./security.cjs");
 const {helpMenu} = require("./help-menu.cjs");
 const packageInfo = require("./package.json");
-const {validationOptions} = require("./validation.cjs");
-const validation = validationOptions({home: app.getPath("home"), appData: app.getPath("appData"), env: process.env});
 
-app.setName("Tagcast Gapless Test");
-app.setPath("userData", validation.profile);
+app.setName("Tagcast");
+if (process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.resolve(process.env.TAGCAST_ELECTRON_PROFILE));
 app.enableSandbox();
 let window, backend, origin, stopping, finished = false;
 
@@ -49,7 +47,7 @@ function installSession(ses, policy) {
 function createWindow() {
   const icon = app.isPackaged ? path.join(process.resourcesPath, "tagcast-icon.png") : path.join(__dirname, "../assets/tagcast-icon-512.png");
   window = new BrowserWindow({width: 1420, height: 960, minWidth: 420, minHeight: 600, show: false,
-    title: "Tagcast Gapless Test", icon, backgroundColor: "#192516",
+    title: "Tagcast", icon, backgroundColor: "#192516",
     webPreferences: {partition: "persist:tagcast", nodeIntegration: false, contextIsolation: true,
       sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false,
       devTools: !app.isPackaged, backgroundThrottling: false}});
@@ -81,7 +79,7 @@ function installMenu() {
     helpMenu(openExternal)
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-  app.setAboutPanelOptions({applicationName: "Tagcast Gapless Test", applicationVersion: packageInfo.version,
+  app.setAboutPanelOptions({applicationName: "Tagcast", applicationVersion: packageInfo.version,
     copyright: "Independent app by Cyberdelia · Powered by iBroadcast"});
 }
 
@@ -98,7 +96,7 @@ else {
   app.whenReady().then(async () => {
     const sourceRoot = app.isPackaged ? null : path.resolve(__dirname, "..");
     backend = new Backend(backendCommand({packaged: app.isPackaged, resourcesPath: process.resourcesPath, sourceRoot, python: process.env.TAGCAST_PYTHON}),
-      {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot, env: validation.env, onExit: () => {
+      {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot, onExit: () => {
         if (!stopping) { dialog.showErrorBox("Tagcast's server stopped", "Restart Tagcast Desktop. No requests will be retried automatically."); window?.destroy(); app.quit(); }
       }});
     const ready = await backend.start();

@@ -19,6 +19,8 @@ keeping the interface shared with the browser version.
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
+**Candidate preparation:** 0.81.0 beta 1 adds optional experimental gapless playback for ordered albums, dedicated Settings and public iBroadcast service status. It is not published yet; [candidate behaviour and limitations](docs/gapless-playback.md) are separate from the stable downloads below.
+
 **New in [0.80.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.80.0):**
 Import album lyrics from LRC/TXT files with matching and review, choose fullscreen
 or in-window Now playing, and work with a clearer metadata editor, compact library
