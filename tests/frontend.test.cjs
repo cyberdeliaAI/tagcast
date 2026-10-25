@@ -9127,3 +9127,45 @@ test('gapless transport keeps pause, mute, speed and the existing output dialog 
  await p.nodes.get('#gapless-options').emit('click');assert.equal(p.nodes.get('#audio-output-dialog').open,true);
  await p.nodes.get('#gapless-speed').emit('change',{target:{value:'1.5'}});assert.equal(p.nodes.get('#audio').playbackRate,1.5);
 });
+
+
+test('gapless is off by default and only an explicit saved opt-in enables it',()=>{
+ assert.equal(page().run('gaplessTrial.enabled'),false);
+ assert.equal(page({storage:{'tagcast-gapless-test':'on'}}).run('gaplessTrial.enabled'),true);
+ assert.equal(page({storage:{'tagcast-gapless-test':'off'}}).run('gaplessTrial.enabled'),false);
+});
+test('gapless provenance belongs only to albums explicitly played in order',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));`);
+ assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),true);
+ p.run(`playTracks(state.details.get('1'),undefined,true)`);assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),false);
+ p.run(`playTracks(state.details.get('1'),undefined,false,{random:true})`);assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),false);
+ p.run(`player.shuffle=false;player.queue=queueTracks(state.details.get('1'));player.index=0;gaplessTrial.enabled=true;gaplessSupported=()=>true;`);
+ assert.equal(p.run('gaplessBegin(player.queue[0],true)'),false,'Even playlist/queued rows from one album cannot opt into gapless');
+});
+test('gapless album prefetch never bridges a reordered, inserted or unrelated track',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const boundedAlbumPlan={current:{entry:player.queue[0]}};`);
+ assert.equal(p.run('gaplessCandidate(boundedAlbumPlan).entry===player.queue[1]'),true);
+ p.run('player.queue.reverse()');assert.equal(p.run('gaplessCandidate(boundedAlbumPlan)'),null);
+ p.run(`player.queue.reverse();player.queue[1]={...player.queue[1]};`);assert.equal(p.run('gaplessCandidate(boundedAlbumPlan)'),null);
+});
+test('gapless startup waits for a buffered next-track head rather than only a downloaded file',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.pause();gaplessQueueChanged=()=>{};let readyHead=false;gaplessTrial.active={started:true,ready:false,autoPlay:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{get length(){return readyHead?1:0;},start:()=>40,end:()=>41}}};gaplessReadiness(gaplessTrial.active);`);
+ assert.equal(p.nodes.get('#audio').paused,true);assert.equal(p.run('gaplessTrial.active.ready'),false);
+ p.run('readyHead=true;gaplessReadiness(gaplessTrial.active)');assert.equal(p.nodes.get('#audio').paused,false);assert.equal(p.run('gaplessTrial.active.ready'),true);
+});
+test('late gapless seeks wait visibly for next audio and only the latest requested position is applied',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};let readySeekHead=false;gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{get length(){return readySeekHead?1:0;},start:()=>40,end:()=>41}}};audio.currentTime=1;seekSystemPlayback(30);`);
+ assert.equal(p.nodes.get('#audio').currentTime,1);assert.equal(p.nodes.get('#gapless-time').textContent,'Preparing…');assert.equal(p.nodes.get('#gapless-transport').getAttribute('aria-busy'),'true');
+ p.run('seekSystemPlayback(35);audio.pause();readySeekHead=true;gaplessReadiness(gaplessTrial.active)');
+ assert.equal(p.nodes.get('#audio').currentTime,35);assert.equal(p.nodes.get('#audio').paused,true);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});
+test('a deferred gapless seek is discarded if the current segment changes',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{length:0}}};audio.currentTime=1;seekSystemPlayback(35);gaplessTrial.active.current={entry:player.queue[1],start:40,end:42};audio.currentTime=40.1;gaplessReadiness(gaplessTrial.active);`);
+ assert.equal(p.nodes.get('#audio').currentTime,40.1);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});
+
+
+test('a backward seek cancels pending forward preparation without shortening the next-track lead time',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:0,end:40},wanted:player.queue[1],next:{entry:player.queue[1],start:40,media:{duration:2,parts:[{end:1}]}},buffer:{updating:false,buffered:{length:0}}};audio.currentTime=20;seekSystemPlayback(35);seekSystemPlayback(10);`);
+ assert.equal(p.nodes.get('#audio').currentTime,10);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
+});

@@ -18,15 +18,18 @@ function gaplessRenderTransport() {
     if (wasCustom && !$("#player").hidden) audio.focus();
     return;
   }
-  const ready = Boolean(g.started && g.current), duration = ready ? gaplessDuration() : Number(g.first?.length) || 0;
-  const draft = gaplessControls.draft;
+  const ready = Boolean(g.started && g.current && g.ready !== false), duration = ready ? gaplessDuration() : Number(g.first?.length) || 0;
+  const draft = gaplessControls.draft || g.seekIntent;
   const preview = draft && draft.engine === g && draft.segment === g.current;
   const position = Math.max(0, Math.min(duration, preview ? draft.position : ready ? gaplessPosition() : 0));
-  $("#gapless-time").textContent = `${gaplessClock(position)} / ${gaplessClock(duration)}`;
+  const waiting = g.ready === false || Boolean(g.seekIntent);
+  transport.setAttribute("aria-busy", String(waiting));
+  $("#gapless-time").textContent = waiting ? "Preparing…" : `${gaplessClock(position)} / ${gaplessClock(duration)}`;
+  $("#gapless-time").title = waiting ? gaplessTrial.message : "";
   const slider = $("#gapless-position"); slider.max = String(duration); slider.value = String(position);
   slider.disabled = !ready || !Number.isFinite(duration) || duration <= 0;
   slider.setAttribute("aria-label", `Seek in ${player.queue[player.index]?.title || "current track"}`);
-  slider.setAttribute("aria-valuetext", ready ? `${gaplessClock(position)} of ${gaplessClock(duration)}` : "Preparing audio");
+  slider.setAttribute("aria-valuetext", waiting ? `Preparing audio for ${gaplessClock(position)} of ${gaplessClock(duration)}` : `${gaplessClock(position)} of ${gaplessClock(duration)}`);
   const button = $("#gapless-play"), paused = audio.paused;
   button.disabled = !ready; button.textContent = paused ? "▶" : "❚❚";
   button.setAttribute("aria-label", paused ? "Play current track" : "Pause current track");

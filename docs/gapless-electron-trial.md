@@ -12,7 +12,7 @@ The bundled backend starts on its own free localhost port. Existing server-side
 Tagcast sign-in/settings remain available; browser-local display preferences and
 history are separate. Avoid editing the same library concurrently in both apps.
 
-1. In Settings, leave **Enable gapless playback in this test app** selected.
+1. In Settings, explicitly select **Enable gapless playback for albums in order**. It is off by default.
 2. For a first comparison, choose **Original file (Premium)** streaming quality.
 3. Play a continuous live/classical FLAC album in album order.
 4. Listen across several natural transitions. Previous/Next deliberately start a new
@@ -21,7 +21,7 @@ history are separate. Avoid editing the same library concurrently in both apps.
 
 No crossfade is used, and musical silence is never detected or removed. The first
 track must be prepared completely, so startup may take longer than ordinary streaming.
-The next track is prepared while the current one plays. Slow networks and incompatible
+The next track is prepared and its opening audio fragment is primed before the first track starts. Later tracks are prepared while the current one plays. Slow networks and incompatible
 files can still cause an interruption; this prototype does not promise gapless output
 for every iBroadcast file, streaming quality or audio device.
 
@@ -35,6 +35,15 @@ for every iBroadcast file, streaming quality or audio device.
   24-bit PCM/FLAC without a second lossy encode. Unknown padding uses ordinary playback.
 - Adjacent sample rate, channel count and bit depth must match for a continuous sequence.
   A format change falls back to the ordinary player. Queue sync also uses that player.
+- Gapless is restricted to explicitly started albums in their original order. Shuffle,
+  random-album playback, playlists (even a playlist from one album), arbitrary queue
+  insertions and queue sync use the ordinary player. Provenance is browser-local and
+  weakly held; no metadata inference or extra library/API requests classify a queue.
+- Forward seeks wait visibly if the following album track is not ready. The current
+  audio continues until that next opening fragment is buffered, then only the latest
+  seek is applied. Pause, Stop, session replacement, track changes and a new backward
+  seek cannot revive or misapply an old request. This trades immediate seek response
+  for a prepared natural transition; it is not an HTTP/disk audio cache.
 - Current and next files only: 96 MiB encoded/file, 128 MiB decoded MP3 PCM/file,
   60-second preparation request timeout. Small media fragments bound the decoded
   playback buffer and old samples are evicted. Audio is not stored persistently.
@@ -54,7 +63,7 @@ for every iBroadcast file, streaming quality or audio device.
 ## Validation on macOS Apple Silicon
 
 - Full Python suite: 502 tests and 1,767 subtests passed.
-- Frontend/media tests: 441 passed; Electron shell tests: 9 passed.
+- Frontend/media tests: 448 passed; Electron shell tests: 9 passed.
 - Ruff, JavaScript syntax, version consistency and whitespace checks passed.
 - Actual sandboxed Electron 44.9.0 player with synthetic account/audio: three consecutive
   2-second FLAC tracks and three MP3 tracks retained one source and the same audio element.
@@ -81,3 +90,20 @@ Reproduce the committed checks with `python -m pytest -q`,
 `node --test electron/tests/*.test.cjs` and `ruff check src tests tools`.
 The captured signal/control reports and screenshots are local build artifacts.
 Build/install integrity checks are recorded alongside the test app.
+
+## Seek readiness follow-up — 25 October 2026
+
+A controlled two-second delay in the next-track download reproduced a buffer wait
+near the transition after an immediate forward seek. It retained the same source
+and made one download, so the observed issue was preparation timing rather than a
+second download caused by a cache miss.
+
+The revised startup primes the next opening fragment before playback. A forward
+seek into a later track also waits for missing next-track data, while current audio
+continues and the clock shows Preparing…. In actual Electron checks, seeking to ten
+seconds before the end while the following file was delayed twelve seconds produced
+no boundary waiting and a longest internal zero run of one sample (the synthetic
+sine wave's ordinary zero crossing). A one-second-tail/two-second-delay case also passed.
+Every track was downloaded once and the same audio element/source were retained.
+This remains a local prototype: network starvation during ordinary playback, unsupported
+encoders or incompatible adjacent formats can still require buffering or standard playback.
