@@ -697,7 +697,7 @@ function renderStreamQuality() {
   const track = player.queue[player.index];
   $("#player-quality").textContent = track ? `${track.format ? `File: ${track.format} · ` : ""}Stream: ${player.quality === "orig" ? `Original${track.format ? ` ${track.format}` : ""}` : `MP3 ${player.quality} kbps`}${player.fallback ? " (fallback)" : ""}` : "";
   if (track && typeof gaplessTrial !== "undefined" && gaplessTrial.active) {
-    $("#player-quality").textContent += " · Gapless test";
+    $("#player-quality").textContent += " · Gapless";
     if (gaplessTrial.active.ready === false || gaplessTrial.active.seekIntent) $("#player-quality").textContent += " · Preparing…";
   }
   $("#visual-player-quality").textContent = $("#player-quality").textContent;

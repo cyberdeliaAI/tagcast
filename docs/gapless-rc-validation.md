@@ -1,5 +1,7 @@
 # Gapless release candidate — final integration and validation
 
+> Historical preparation record for local 0.81.0 beta 1. The release subsequently moves to 0.85.0; see the [current playback guide](gapless-playback.md) and release notes for availability. Statements about pending authorization below describe the earlier preparation, not current release status.
+
 25 October 2026. Candidate: **0.81.0 beta 1** (`0.81.0b1` / prospective tag `v0.81.0-beta.1`), following the existing prerelease convention. No tag, push, main merge or release has been performed.
 
 ## Recommendation
