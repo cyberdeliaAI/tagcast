@@ -64,6 +64,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       getAttribute(name) { return name === "src" ? this.src : attributes.get(name); },
       removeAttribute(name) { attributes.delete(name); if (name === "src") delete this.src; }};
   }
+  let respondServiceStatus = null;
   const document = {body: element(), documentElement: element(),
     getElementById(id) { return this.querySelector(`#${id}`); },
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
@@ -97,6 +98,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
+      if (url.startsWith("/api/service-status")) return respondServiceStatus ? respondServiceStatus(url, options) : {ok:true,json:async()=>({overall:"unknown",services:[],stale:true})};
       if (respond && url !== "/api/status") return respond(url, options);
       assert.equal(url, "/api/status", "Only the initial status read is allowed in preview tests");
       if (!server) throw Error("No local server");
@@ -111,6 +113,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     setPlaybackClock(value) { playbackClock = value; },
     setFetch(handler) { respond = handler; },
     setStatusFetch(handler) { respondStatus = handler; },
+    setServiceStatusFetch(handler) { respondServiceStatus = handler; },
     setUpdateFetch(handler) { respondUpdates = handler; },
     setNotesFetch(handler) { respondNotes = handler; },
     setAlbumNotesFetch(handler) { respondAlbumNotes = handler; },
@@ -9206,6 +9209,37 @@ test('Settings save failure keeps the page and fields, serializes saves and rele
  assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsKey.value'),'typed-key');assert.equal(p.run('settingsKey.disabled'),false);
  assert.match(p.nodes.get('#settings-feedback').textContent,/does not look right/);assert.equal(p.run('settingsView.saving'),false);
 });
+function publicStatusFixture(mode='operational') {
+ const stamp=new Date().toISOString();return {overall:mode,stale:false,error:'',message:'Public report',fetched_at:stamp,checked_at:stamp,reported_at:stamp,
+  services:[['streaming','Streaming'],['api','API Server'],['queue','Play Queue'],['artwork','Artwork'],['library','Library Generation']].map(([id,name],index)=>({id,name,state:index===0?mode:'operational',reported_at:stamp,details:index===0&&mode==='outage'?'<script>Untrusted outage detail</script>':''}))};
+}
+test('public service status works while disconnected and coalesces requests independently of account status',async()=>{
+ const p=page();await settle();let finish,reads=0;p.setServiceStatusFetch(()=>{reads++;return new Promise(resolve=>{finish=resolve;});});
+ p.run('showScreen("overview")');const pending=p.run('refreshServiceStatus()');p.run('refreshServiceStatus()');assert.equal(reads,1);
+ finish({ok:true,json:async()=>publicStatusFixture()});await pending;await settle();
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/All five services operational/);
+ assert.equal(p.run('state.connection.connected'),false);assert.equal(p.run('serviceStatus.pending'),null);
+ const count=p.requests.length;p.run('showScreen("artists")');p.flushTimers(300000);await settle();assert.equal(p.requests.length,count);
+});
+test('public service health presents degraded/outage details safely and recovers without changing connection state',async()=>{
+ const p=page();await settle();p.setServiceStatusFetch(()=>({ok:true,json:async()=>publicStatusFixture('degraded')}));p.run('showScreen("overview")');await settle();
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/Degraded performance/);
+ p.setServiceStatusFetch(()=>({ok:true,json:async()=>publicStatusFixture('outage')}));await p.run('refreshServiceStatus(true)');
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/Service disruption/);assert.match(p.nodes.get('#service-status-content').innerHTML,/&lt;script&gt;/);assert.doesNotMatch(p.nodes.get('#service-status-content').innerHTML,/<script>/);
+ p.setServiceStatusFetch(()=>({ok:true,json:async()=>publicStatusFixture()}));await p.run('refreshServiceStatus(true)');assert.match(p.nodes.get('#service-status-content').innerHTML,/All five services operational/);
+ assert.equal(p.run('state.connection.connected'),false);
+});
+test('missing, stale, invalid and failed public status cannot display a current green state',async()=>{
+ const p=page();await settle();p.run('showScreen("overview")');await settle();
+ for(const data of [{}, {...publicStatusFixture(),stale:true}, {...publicStatusFixture(),reported_at:'2020-01-01T00:00:00Z'}, {...publicStatusFixture(),services:[]}]){
+  p.setServiceStatusFetch(()=>({ok:true,json:async()=>data}));await p.run('refreshServiceStatus(true)');
+  assert.doesNotMatch(p.nodes.get('#service-status-content').innerHTML,/All five services operational|state-operational/);
+ }
+ p.setServiceStatusFetch(()=>Promise.reject(Error('Network timeout')));await p.run('refreshServiceStatus(true)');
+ assert.match(p.nodes.get('#service-status-content').innerHTML,/does not mean iBroadcast is down/);assert.doesNotMatch(p.nodes.get('#service-status-content').innerHTML,/state-operational/);
+});
+
+
 test('Settings direct-route bootstrap tolerates an unloaded form and Sidebar has no disclosure',()=>{
  const p=page();assert.equal(p.run('settingsFormSnapshot(null)'), '[]');
  const markup=p.run('sidebarSettingsPanel()');assert.match(markup, /id="sidebar-layout-list"/);assert.doesNotMatch(markup, /<details|<summary/);

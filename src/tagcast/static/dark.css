@@ -178,6 +178,10 @@
 :root[data-theme="dark"] #settings-content select{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] #settings-content .setting-row input{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .settings-save-bar{box-shadow:0 4px 18px #0002}
+:root[data-theme="dark"] .service-state-dot{background:#a3b1b4}
+:root[data-theme="dark"] .state-operational.service-state-dot,:root[data-theme="dark"] .state-operational .service-state-dot{background:#7fc596}
+:root[data-theme="dark"] .state-degraded.service-state-dot,:root[data-theme="dark"] .state-degraded .service-state-dot{background:#db9c4f}
+:root[data-theme="dark"] .state-outage.service-state-dot,:root[data-theme="dark"] .state-outage .service-state-dot{background:#fd8985}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -371,6 +375,10 @@
 :root:not([data-theme="light"]) #settings-content select{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) #settings-content .setting-row input{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .settings-save-bar{box-shadow:0 4px 18px #0002}
+:root:not([data-theme="light"]) .service-state-dot{background:#a3b1b4}
+:root:not([data-theme="light"]) .state-operational.service-state-dot,:root:not([data-theme="light"]) .state-operational .service-state-dot{background:#7fc596}
+:root:not([data-theme="light"]) .state-degraded.service-state-dot,:root:not([data-theme="light"]) .state-degraded .service-state-dot{background:#db9c4f}
+:root:not([data-theme="light"]) .state-outage.service-state-dot,:root:not([data-theme="light"]) .state-outage .service-state-dot{background:#fd8985}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}
