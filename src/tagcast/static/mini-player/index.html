@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Tagcast · Mini Player</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../dark.css">
+  <link rel="stylesheet" href="../palettes.css">
+  <link rel="stylesheet" href="mini.css">
+  <script src="view.js" defer></script>
+</head>
+<body class="mini-page">
+  <main class="mini-shell" aria-label="Mini Player">
+    <div class="mini-record">
+      <div class="mini-cover">
+        <svg class="mini-cover-placeholder" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13M9 9l12-2"/><ellipse cx="5.5" cy="18" rx="3.5" ry="3"/><ellipse cx="17.5" cy="16" rx="3.5" ry="3"/></svg>
+        <img id="cover" alt="" hidden referrerpolicy="no-referrer">
+      </div>
+      <div class="mini-meta">
+        <h1 id="title">Tagcast Mini Player</h1>
+        <p id="artist">Connecting to the player…</p>
+        <p id="album"></p>
+      </div>
+      <div class="mini-actions" role="group" aria-label="Window controls">
+        <button id="pin" type="button" aria-label="Keep Mini Player on top" aria-pressed="false" title="Keep Mini Player on top">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6ZM12 15v6"/></svg>
+        </button>
+        <button id="open" type="button" aria-label="Open Tagcast" title="Open Tagcast">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="mini-controls">
+    <div class="mini-transport" role="group" aria-label="Playback">
+      <button type="button" id="previous" aria-label="Previous track" title="Previous track" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"/><path d="m18 5-10 7 10 7Z" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button type="button" id="play" aria-label="Play" title="Play" data-paused="true" disabled>
+        <svg class="mini-play-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 13 8-13 8Z" fill="currentColor" stroke="none"/></svg>
+        <svg class="mini-pause-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button type="button" id="next" aria-label="Next track" title="Next track" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"/><path d="M6 5v14l10-7Z" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div class="mini-progress" role="group" aria-label="Track position">
+      <span id="elapsed" aria-hidden="true">0:00</span>
+      <input id="position" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek in current track" disabled>
+      <span id="duration" aria-hidden="true">0:00</span>
+    </div>
+    </div>
+    <p id="status" role="status"></p>
+  </main>
+</body>
+</html>

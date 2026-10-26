@@ -46,6 +46,7 @@
   <script src="album-guide.js" defer></script>
   <script src="help.js" defer></script>
   <script src="settings.js" defer></script>
+  <script src="mini-player.js" defer></script>
   <script src="navigation.js" defer></script>
 </head>
 <body>
@@ -202,7 +203,7 @@
   <aside id="now-playing-panel" class="now-playing-panel" hidden aria-label="Now playing and play queue"><div class="now-playing-header"><h2>Now playing</h2><button class="player-button" id="now-playing-close" aria-label="Close Now playing">×</button></div><div class="now-playing-scroll"><div id="now-playing-current"></div><div class="queue-heading"><h3>Play queue</h3><span class="muted" id="now-playing-count"></span></div><ol id="now-playing-list" class="queue-list"></ol></div><div class="now-playing-footer"><button class="button small" id="queue-save">Save as playlist…</button><button class="button danger" id="queue-clear">Clear queue &amp; stop</button></div></aside>
   <div id="player-stage" class="player-stage">
     <section id="visual-player" class="visual-player" aria-label="Now playing" hidden>
-      <header class="visual-player-header"><span>Now playing</span><button type="button" class="player-button" id="visual-player-close" aria-label="Close Now playing view" title="Close Now playing view (Escape)">×</button></header>
+      <header class="visual-player-header"><span>Now playing</span><div><button type="button" class="button small" id="visual-player-mini" hidden>Mini Player ↗</button> <button type="button" class="player-button" id="visual-player-close" aria-label="Close Now playing view" title="Close Now playing view (Escape)">×</button></div></header>
       <div class="visual-player-content"><div class="visual-player-cover"><span id="visual-player-placeholder" aria-hidden="true"></span><img id="visual-player-art" alt="" hidden referrerpolicy="no-referrer"></div><div class="visual-player-info"><h2 id="visual-player-title"></h2><p id="visual-player-artist"></p><p id="visual-player-album"></p><small id="visual-player-quality"></small><small id="visual-player-track-artist" hidden></small></div><p id="visual-player-status" role="status"></p></div>
     </section>
   <dialog id="tag-dialog"><div class="dialog-heading"><div><div class="eyebrow">iBROADCAST LABELS</div><h2>Tags</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="tags" aria-label="Help with tags">?</button><button class="close" id="tag-dialog-close" data-close="tag-dialog" aria-label="Close tags">×</button></div></div><div id="tag-dialog-content"></div></dialog>

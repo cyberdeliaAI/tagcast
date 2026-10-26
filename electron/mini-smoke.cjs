@@ -1,0 +1,89 @@
+"use strict";
+// Disposable, disconnected packaging check. Synthetic silence only; no account or music.
+const assert = require("node:assert/strict");
+const {once} = require("node:events");
+const {writeFileSync} = require("node:fs");
+const path = require("node:path");
+async function checkMini({window, miniPlayer}) {
+  const owner = window.webContents, originalBounds = window.getBounds(), nativeEvents=[];
+  for(const name of ["show","hide","focus","blur"])window.on(name,()=>nativeEvents.push([name,window.isVisible(),Boolean(miniPlayer.window)]));
+  await owner.executeJavaScript(`(async()=>{
+    globalThis.miniTestAudio=document.querySelector('#audio');
+    globalThis.miniTestQueue=player.queue;gaplessTrial.enabled=false;
+    const data=new ArrayBuffer(44+44100*2*60),v=new DataView(data);const text=(p,s)=>{for(let n=0;n<s.length;n++)v.setUint8(p+n,s.charCodeAt(n));};
+    text(0,'RIFF');v.setUint32(4,data.byteLength-8,true);text(8,'WAVE');text(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,44100,true);v.setUint32(28,88200,true);v.setUint16(32,2,true);v.setUint16(34,16,true);text(36,'data');v.setUint32(40,data.byteLength-44,true);
+    globalThis.miniTestUrl=URL.createObjectURL(new Blob([data],{type:'audio/wav'}));
+    audio.muted=true;audio.src=miniTestUrl;await new Promise(resolve=>audio.addEventListener('loadedmetadata',resolve,{once:true}));await audio.play();
+  })()`);
+  miniPlayer.open(); let mini = miniPlayer.window;
+  await once(mini.webContents,"did-finish-load");
+  if (!mini.isVisible()) await once(mini,"show");
+  const errors=[];mini.webContents.on("console-message",(_event,details)=>{if(details.level==='error')errors.push(details.message);});
+  async function waitFor(expression) {
+    for(let n=0;n<50;n++) { if(await miniPlayer.window.webContents.executeJavaScript(expression))return;await new Promise(resolve=>setTimeout(resolve,40)); }
+    throw Error("Mini Player did not receive its current state: "+expression);
+  }
+  await waitFor('Boolean(playback?.entry && playback.seekable)');
+  assert.equal(window.isVisible(),false,'Only the Mini Player is visible');
+  const security=mini.webContents.getLastWebPreferences();
+  // A foreign renderer cannot act as the owner even by calling a known channel.
+  assert.equal(await mini.webContents.executeJavaScript('bridge.command({action:"seek",document:"foreign",entry:"",segment:"",position:1})'),false);assert.ok(security.sandbox&&security.contextIsolation&&security.webSecurity&&!security.nodeIntegration);
+  assert.equal(await mini.webContents.executeJavaScript('document.querySelectorAll("audio,video").length'),0);
+  assert.equal(await mini.webContents.executeJavaScript('typeof require'),"undefined");
+  assert.equal(await mini.webContents.executeJavaScript('typeof window.tagcastMiniOwner'),"undefined");
+  assert.equal(await mini.webContents.executeJavaScript('(async()=>{try{await fetch("/api/status");return false;}catch{return true;}})()'),true);
+  // The blocked fetch above is an intentional CSP probe.
+  errors.length=0;
+  const action=code=>mini.webContents.executeJavaScript(code);
+  assert.equal(await action('bridge.command({...playback,action:"pause"})'),true);
+  assert.equal(await owner.executeJavaScript('audio.paused'),true);
+  assert.equal(await action('bridge.command({...playback,action:"seek",position:1})'),true);
+  assert.ok(Math.abs(await owner.executeJavaScript('audio.currentTime')-1)<.05);
+  assert.equal(await action('bridge.command({...playback,action:"play"})'),true);
+  mini.minimize();assert.equal(await action('bridge.command({...playback,action:"pause"})'),true);
+  assert.equal(await owner.executeJavaScript('audio.paused'),true);
+  assert.equal(await action('bridge.command({...playback,action:"play"})'),true);
+  mini.restore();assert.equal(window.isVisible(),false);
+  await action('bridge.openMain()').catch(error=>{if(!mini.isDestroyed())throw error;});await new Promise(resolve=>setTimeout(resolve,80));assert.ok(window.isVisible()&&!window.isMinimized());
+  assert.equal(miniPlayer.window,null,'Returning to Tagcast closes Mini Player');
+  assert.equal(await owner.executeJavaScript('audio.paused'),false);
+  miniPlayer.open();mini=miniPlayer.window;await once(mini.webContents,'did-finish-load');if(!mini.isVisible())await once(mini,'show');await waitFor('Boolean(playback?.entry)');
+  assert.equal(window.isVisible(),false);
+  assert.equal(await action('bridge.pin(true)'),true);assert.equal(mini.isAlwaysOnTop(),true);
+  await action('bridge.pin(false)');
+  await owner.executeJavaScript(`player.queue[0].title="A long track title · Live at the concert hall (Original album version)";player.queue[0].artist="The Tagcast Test Ensemble";renderCurrentPlayerTrack();`);
+  const shots=process.env.TAGCAST_MINI_SCREENSHOTS;
+  if(shots) {
+    for(const [width,theme,palette] of ['forest','ocean','warm','ibroadcast'].flatMap(palette=>['light','dark'].map(theme=>[theme==='light'?420:520,theme,palette]))) {
+      mini.setSize(width,210);
+      await owner.executeJavaScript(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.dataset.palette=${JSON.stringify(palette)};publishMiniPlayer()`);
+      await waitFor(`playback.theme===${JSON.stringify(theme)}&&playback.palette===${JSON.stringify(palette)}`);
+      await action('bridge.pin(true)');
+      await new Promise(resolve=>setTimeout(resolve,80));
+      const contrast=await action(`(()=>{const s=getComputedStyle(nodes.pin);const rgb=c=>c.match(/[\\d.]+/g).slice(0,3).map(Number).map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;});const l=c=>{const v=rgb(c);return .2126*v[0]+.7152*v[1]+.0722*v[2];};const a=l(s.color),b=l(s.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);})()`);
+      assert.ok(contrast>=4.5,`Pin contrast ${palette}/${theme}: ${contrast}`);
+      assert.equal(await action('document.documentElement.scrollWidth>innerWidth'),false);
+      writeFileSync(path.join(shots,`mini-${width}-${theme}-${palette}.png`),(await mini.webContents.capturePage()).toPNG());
+    }
+    await action("bridge.pin(false)");mini.webContents.setZoomFactor(2);mini.setSize(520,550);await new Promise(resolve=>setTimeout(resolve,80));
+    assert.equal(await action('document.documentElement.scrollWidth>innerWidth'),false);
+    writeFileSync(path.join(shots,'mini-200-percent.png'),(await mini.webContents.capturePage()).toPNG());mini.webContents.setZoomFactor(1);
+  }
+  if(process.env.TAGCAST_MINI_VISUAL_REPORT)await require("./mini-visual.cjs").captureMini({owner,mini});
+  const pausedBeforeClose=await owner.executeJavaScript("audio.paused");
+  const preserved=await owner.executeJavaScript('miniTestAudio===audio&&miniTestQueue===player.queue');assert.equal(preserved,true);
+  if(!mini.isDestroyed())mini.close();
+  await new Promise(resolve=>setTimeout(resolve,80));
+  assert.equal(await owner.executeJavaScript('audio.paused'),pausedBeforeClose);
+  assert.equal(await owner.executeJavaScript('miniOwner.timer'),null);
+  assert.equal(window.isVisible(),true,'Closing Mini Player restores Tagcast');
+  miniPlayer.open();await once(miniPlayer.window.webContents,'did-finish-load');if(!miniPlayer.window.isVisible())await once(miniPlayer.window,'show');await waitFor('Boolean(playback?.entry)');
+  window.show();window.focus();await new Promise(resolve=>setTimeout(resolve,80));
+  for(let n=0;n<50&&miniPlayer.window;n++)await new Promise(resolve=>setTimeout(resolve,40));
+  assert.equal(Boolean(miniPlayer.window),false,'Window-menu return: '+JSON.stringify({events:nativeEvents,ownerVisible:window.isVisible(),ownerFocused:window.isFocused(),miniVisible:miniPlayer.window?.isVisible()}));
+  assert.equal(await owner.executeJavaScript('audio.paused'),pausedBeforeClose);
+  await owner.executeJavaScript('audio.pause();audio.removeAttribute("src");audio.load();URL.revokeObjectURL(miniTestUrl);');
+  window.setBounds(originalBounds);
+  return {sameAudio:true,sameQueue:true,passiveWindow:true,seek:true,transport:true,hiddenOwner:true,minimizedMini:true,singleVisibleWindow:true,returnClosesMini:true,closeRestoresMain:true,closePreservesPlayback:true,reopen:true,sandbox:true,apiBlocked:true,errors};
+}
+module.exports={checkMini};
