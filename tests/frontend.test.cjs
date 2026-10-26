@@ -9414,3 +9414,33 @@ test('release Settings keeps experimental gapless without the listening-build di
  assert.equal(p.run('gaplessDiagnostics.enabled'),false);
  assert.match(readFileSync(path.join(staticDir,'index.html'),'utf8'),/<title>Tagcast ·/);
 });
+
+
+test('Mini Player controls the same normal audio and rejects commands from an old queue',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));audio.duration=100;const miniBefore=miniSnapshot();`);
+ const audio=p.nodes.get('#audio');
+ assert.equal(p.run(`miniApplyCommand({...miniBefore,action:'seek',position:25})`),true);assert.equal(audio.currentTime,25);
+ assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'pause'})`),true);assert.equal(audio.paused,true);
+ p.run('state.loading=true');assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'pause'})`),true);p.run('state.loading=false');
+ p.run('audio.error={code:3}');assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'next'})`),true);assert.equal(p.run('player.index'),1);
+ assert.equal(p.run(`miniApplyCommand({...miniBefore,action:'pause'})`),false);
+ assert.equal(p.nodes.get('#audio'),audio);assert.equal(p.run('gaplessTrial.active'),null);
+});
+
+test('Mini Player uses the track-relative Gapless timeline and rejects a stale Repeat occurrence',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessQueueChanged=()=>{};gaplessPump=()=>{};gaplessPrefetch=()=>{};
+ gaplessTrial.active={started:true,ready:true,quality:'128',session:state.connection.playback_session,current:{entry:player.queue[0],start:200,end:240},buffer:{updating:false,buffered:{length:1,start:()=>0,end:()=>300}}};audio.currentTime=210;const miniBefore=miniSnapshot();`);
+ assert.equal(p.run('miniBefore.position'),10);assert.equal(p.run('miniBefore.duration'),40);
+ assert.equal(p.run(`miniApplyCommand({...miniBefore,action:'seek',position:12})`),true);assert.equal(p.nodes.get('#audio').currentTime,212);
+ p.run('gaplessTrial.active.current={...gaplessTrial.active.current,start:240,end:280};audio.currentTime=241');
+ assert.equal(p.run(`miniApplyCommand({...miniBefore,action:'seek',position:12})`),false);assert.equal(p.nodes.get('#audio').currentTime,241);
+ assert.equal(p.run('player.index'),0);
+});
+
+test('Mini Player keeps preparation pause intent and respects remote queue ownership',async()=>{
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));gaplessTrial.active={ready:false,autoPlay:true};`);
+ assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'pause'})`),true);assert.equal(p.run('gaplessTrial.active.autoPlay'),false);
+ assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'play'})`),true);assert.equal(p.run('gaplessTrial.active.autoPlay'),true);
+ p.run('localPlaybackAllowed=()=>false');assert.equal(p.run('miniSnapshot().controllable'),false);
+ assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'next'})`),false);
+});

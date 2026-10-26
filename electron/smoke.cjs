@@ -5,7 +5,7 @@ const {Menu} = require("electron");
 
 // Build checks opt in from the command line with isolated settings and profile folders.
 // Native presentation checks use the disconnected demo only; no live account or writes.
-function check({app, window, origin, backend}) {
+function check({app, window, origin, backend, miniPlayer}) {
   const report = process.env.TAGCAST_ELECTRON_SMOKE_REPORT;
   if (!process.env.TAGCAST_HOME || !process.env.TAGCAST_ELECTRON_PROFILE) throw new Error("Smoke checks require isolated settings and profile folders.");
   const errors = [];
@@ -13,7 +13,7 @@ function check({app, window, origin, backend}) {
     const details = typeof args[0] === "object" ? args[0] : {level: args[0], message: args[1]};
     if (details.level === "error" || details.level === 3) errors.push(details.message);
   });
-  const timer = setTimeout(() => done({ok: false, error: "The application window did not load."}), 20000);
+  const timer = setTimeout(() => done({ok: false, error: "The application window did not load."}), process.env.TAGCAST_MINI_VISUAL_PREVIEW ? 600000 : 45000);
   let completed = false;
   function done(result) {
     if (completed) return;
@@ -33,7 +33,7 @@ function check({app, window, origin, backend}) {
       if (!preferences.sandbox || !preferences.contextIsolation || preferences.nodeIntegration || !preferences.webSecurity) throw new Error("The renderer's security settings are invalid.");
       const help = Menu.getApplicationMenu().items.find(item => item.role === "help");
       const helpLabels = help?.submenu.items.map(item => item.label);
-      if (JSON.stringify(helpLabels) !== JSON.stringify(["Tagcast Help", "Tagcast on Reddit", "Tagcast on GitHub"])) throw new Error("Help links are missing.");
+      if (JSON.stringify(helpLabels) !== JSON.stringify(["Tagcast Help", "Tagcast Website", "Tagcast on Reddit", "Tagcast on GitHub"])) throw new Error("Help links are missing.");
       const restart = process.env.TAGCAST_ELECTRON_SMOKE_PHASE === "restart";
       const beforeSettings = await (await fetch(origin + "/api/settings")).json();
       if ("playback_validation" in status || "playback_validation" in beforeSettings) throw new Error("Isolated listening policy leaked into the production app.");
@@ -80,11 +80,12 @@ function check({app, window, origin, backend}) {
         await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
         writeFileSync(process.env.TAGCAST_ELECTRON_SMOKE_SCREENSHOT, (await window.webContents.capturePage()).toPNG());
       }
+      const mini = await require("./mini-smoke.cjs").checkMini({window, miniPlayer});
       await window.webContents.executeJavaScript('closeVisualPlayer(); state.mode = "demo"; player.queue = []; player.index = -1;');
       if (errors.length) throw new Error("The renderer reported a runtime or CSP error: " + errors.join("; "));
       done({ok: true, version: identity.version, electron: process.versions.electron,
         chromium: process.versions.chrome, origin, pid: backend.child.pid, sandbox: true,
-        contextIsolation: true, nodeIntegration: false, sharedInterface: true, helpLabels, presentation, persistence, normalSettingsAllowed: true, restarted: restart});
+        contextIsolation: true, nodeIntegration: false, sharedInterface: true, helpLabels, presentation, persistence, mini, normalSettingsAllowed: true, restarted: restart});
     } catch (error) { done({ok: false, error: error.message}); }
   });
 }
