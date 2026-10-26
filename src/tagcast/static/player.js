@@ -386,6 +386,7 @@ function markPlaying() {
   $("#player-queue-count").textContent = String(Math.max(0, player.queue.length - player.index - 1));
   renderNowPlaying();
   renderVisualPlayer();
+  if (typeof publishMiniPlayer === "function") publishMiniPlayer();
 }
 
 function setNowPlaying(open) {

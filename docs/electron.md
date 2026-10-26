@@ -28,6 +28,33 @@ external browser opener. These additions first ship in 0.80.0.
 
 Settings is a routed page; **Playback** contains Now playing view, compact-player preferences and optional [experimental Gapless playback](gapless-playback.md). The existing normal app identifier/profile, backend folder and stable port remain unchanged. The private Gapless Test app's temporary port and write restrictions are not used by the release. The earlier 0.80.0 download has the dialog described above.
 
+## Mini Player (development)
+
+Available in the development source; the published 0.85.1 downloads do not include it yet.
+In the desktop app, choose **View → Open Mini Player**, press **Cmd/Ctrl+Shift+M**,
+or choose **Mini Player** in the expanded Now playing view.
+
+The compact window shows artwork, track information, Previous / Play-Pause / Next
+and a track-relative seek bar in one row below the metadata. It opens at 500 × 210
+logical window pixels and can be resized down to 420 × 210. Larger saved window
+sizes are retained. Pin keeps it above other windows where the desktop supports it;
+this option is unavailable on Linux/Wayland.
+
+Only one Tagcast window is visible at a time. Opening Mini Player hides the main
+window. **Open Tagcast**, closing Mini Player, or returning to the main window
+restores the full interface and closes Mini Player. Playback continues through the
+same audio element in the main renderer, including supported experimental Gapless
+playback. Mini Player has no audio element, streaming/API access or separate queue.
+Normal Quit and existing unsaved-change warnings still apply.
+
+Window size, position and Pin are remembered in the desktop profile. Mini Player
+does not start automatically or resume playback on launch. All four palettes and
+Light/Dark follow the main interface. Python/browser use keeps its existing player.
+
+![Desktop Mini Player with artwork, compact window controls and transport buttons beside the track-relative progress bar](screenshots/2026-10-26-mini-player/mini-player.png)
+
+*Development interface, 26 October 2026. Fictional track information and test artwork.*
+
 ## Settings, sign-in and closing
 
 - Credentials, library cache, settings and local album favourites stay in the same
@@ -95,7 +122,9 @@ No Electron auto-updater is enabled. Tagcast's existing release check only notif
 
 ## Security and regression checks
 
-The renderer is sandboxed, isolated and has no Node.js, preload bridge or generic IPC.
+The renderers are sandboxed and isolated, with no Node.js or generic IPC.
+The desktop Mini Player uses narrow, validated preload bridges for presentation
+snapshots and existing transport commands only.
 It can navigate only to the shared application's entry pages. External links are
 parsed as HTTPS URLs; native/file/JavaScript protocols and new app windows are denied.
 Permissions are restricted to the main application frame's fullscreen, audio output
