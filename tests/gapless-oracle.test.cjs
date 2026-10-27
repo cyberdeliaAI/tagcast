@@ -12,6 +12,26 @@ test('a one-sample timestamp/boundary error cannot be accepted by trimming each 
 test('reordered tracks cannot match the expected two-channel run',()=>{const r=C.inspect(signal([specs[0],specs[2],specs[1]]),specs);assert.equal(r.exact,false);assert.equal(r.firstMismatch,10019);});
 test('channel swapping or unexpected mono downmix is detected',()=>{const s=signal();assert.notEqual(C.inspect([s[1],s[0]],specs).exact,true);assert.notEqual(C.inspect([s[0],new Float32Array(s[1].length)],specs).exact,true);});
 test('injected starvation is distinguished from normal leading/trailing capture silence',()=>{const s=signal();const delayed=edit(s,17032,0,Array.from({length:512},()=>[0,0]));const r=C.inspect(delayed,specs);assert.equal(r.exact,false);assert.ok(r.maxZeroRun>=512);assert.equal(r.firstMismatch,17032);assert.equal(r.observedTrackStarts[2].displacement,512);const prefixed=edit(s,0,0,Array.from({length:64},()=>[0,0]));assert.equal(C.inspect(prefixed,specs).exact,true);});
+test('slow device startup does not consume the signal anchor search window',()=>{
+ const padding=specs[0].rate*4+11;
+ const padded=signal().map(p=>{const out=new Float32Array(padding+p.length);out.set(p,padding);return out;});
+ const r=C.inspect(padded,specs);
+ assert.equal(r.measurable,true);assert.equal(r.exact,true);assert.equal(r.start,padding);
+ assert.equal(r.mismatches,0);assert.equal(r.extraSignalFrames,0);
+});
+test('long capture preroll cannot conceal missing or duplicated samples at track boundaries',()=>{
+ const padding=specs[0].rate*4+11,s=signal();
+ const variants=[edit(s,10019,1),edit(s,10019,0,[[s[0][10018],s[1][10018]]])];
+ for(const variant of variants){
+  const padded=variant.map(p=>{const out=new Float32Array(padding+p.length);out.set(p,padding);return out;});
+  const r=C.inspect(padded,specs);
+  assert.equal(r.measurable,true);assert.equal(r.exact,false);assert.equal(r.firstMismatch,10019);
+ }
+});
+test('an entirely silent capture cannot satisfy calibration',()=>{
+ const empty=Array.from({length:2},()=>new Float32Array(specs[0].rate*4));
+ assert.equal(C.inspect(empty,specs).measurable,false);
+});
 test('unexpected signal after the last expected sample is not silently ignored',()=>{const s=signal();s[0][s[0].length-1]=.5;assert.equal(C.inspect(s,specs).exact,false);});
 test('24-bit counter survives Float32 transport and detects a single codeword error',()=>{const list=specs.map(s=>({...s,bits:24})),s=signal(list);assert.equal(C.inspect(s,list).exact,true);s[1][17033]+=1/8388608;const r=C.inspect(s,list);assert.equal(r.exact,false);assert.equal(r.firstMismatch,17033);});
 test('unknown gain/resampling is inconclusive rather than falsely proving continuity',()=>{const s=signal().map(p=>p.map(v=>v*.75));assert.equal(C.inspect(s,specs).measurable,false);});

@@ -601,8 +601,8 @@ class Collections:
                     error = "The iBroadcast connection changed; remaining discs were not sent."
                     break
                 try:
+                    sent.append(i)  # An interrupted response may still have applied this disc.
                     client._jsonrequest("ratealbum", album_id=i, rating=rating)
-                    sent.append(i)
                 except Exception as failure:
                     error = str(failure)
                     break

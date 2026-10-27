@@ -2,11 +2,12 @@
 // Real Tagcast document and page scripts, private fixture streams, no account or host adapters.
 const {app, BrowserWindow} = require('electron');
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), os = require('node:os');
+const contract = require('./contract.cjs');
 const ROOT = path.resolve(__dirname, '../..'), args = process.argv.slice(2);
 const option = (key, value) => args.includes(key) ? args[args.indexOf(key) + 1] : value;
 const directory = path.resolve(option('--fixtures', 'build/gapless-fixtures'));
 const output = path.resolve(option('--out', 'build/gapless-application'));
-const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'manifest.json')));
+let manifest;
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tagcast-application-lab-'));
 app.setPath('userData', profile); app.enableSandbox();
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -134,17 +135,20 @@ async function run(id, sourceCase, mode) {
  await win.webContents.executeJavaScript('stopPlayer()');win.destroy();win=null;console.log(JSON.stringify({id,pass:result.pass,error:result.error,observations:result.observations}));return result;
 }
 app.whenReady().then(async()=>{
- const results=[];
+ let exitCode=1;const results=[],report={schema:2,complete:false,expected:[],versions:process.versions,results};
  try{
+  manifest=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json')));contract.verifyFixtures(manifest,directory);
+  const plan=contract.applicationPlan(manifest,option('--case',null),args.includes('--soak-seconds'),args.includes('--stress'));
+  report.expected=plan.map(c=>c.id);fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(report,null,2));
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  for(const [id,c,mode] of (args.includes('--soak-seconds')?[['extended-original-flac','same-44100-24','soak']]:[['normal-disabled','same-44100-16','ordinary'],['startup-error-fallback','same-44100-16','startup-fallback'],['mixed-block-fallback','block-small-to-large','fallback'],['stalled-playback-fallback','same-44100-16','stall'],['pause-seek-session','same-44100-16','interaction'],['repeat-queue-edit','same-44100-16','repeat'],['evicted-backward-seek','seek-early','evicted-seek'],...(manifest.cases.some(c=>c.id==='startup-long')?[['skip-prepared-next','same-44100-16','skip-next'],['pending-queue-replacement','startup-long','pending-replacement']]:[]),...(manifest.cases.some(c=>c.id==='memory-192000')?[['high-rate-start','memory-192000','high-rate']]:[])])){
-   if(option('--case','').split(',').filter(Boolean).length&&!option('--case','').split(',').includes(id))continue;
-   results.push(await run(id,c,mode));
-  }
-  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({versions:process.versions,results},null,2));
-  if(results.some(r=>!r.pass))process.exitCode=1;
- }catch(e){console.error(e);process.exitCode=1;}
- finally{win?.destroy();server.close();app.quit();}
+  for(const {id,source,mode} of plan)results.push(await run(id,source,mode));
+  report.complete=true;contract.verifyResults(report,output);exitCode=0;
+ }catch(e){report.error=e.message;console.error(e);}
+ finally{
+  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(report,null,2));win?.destroy();server.closeAllConnections();server.close();
+  try{fs.rmSync(profile,{recursive:true,force:true});}catch{/* OS may briefly retain a profile lock. */}
+  app.exit(exitCode);
+ }
 });
 app.on('window-all-closed',()=>{});
 app.on('quit',()=>{try{fs.rmSync(profile,{recursive:true,force:true});}catch{/* OS lock may persist briefly. */}});

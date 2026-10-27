@@ -1,8 +1,13 @@
 # Electron desktop and Python/browser use
 
 Since 0.60.0, standalone downloads for macOS (Apple Silicon and Intel), Windows x64
-and Linux x64 use Electron 44.9.0. Source installs and the existing Python startscripts
+and Linux x64 use Electron. Tagcast 1.0 pins Electron 44.9.3; source installs and the existing Python startscripts
 continue to open the browser. Earlier releases retain their original browser launcher.
+
+The 44.9.3 patch includes the certificate-blocking mitigation described in
+[Electron's official security advisory GHSA-jr5w-w6x2-84p9](https://github.com/electron/electron/security/advisories/GHSA-jr5w-w6x2-84p9).
+Only the Electron runtime and its matching lock entry were upgraded; the major
+version, builder, fuses and application sandbox settings are unchanged.
 
 ## One application, two ways to open it
 
@@ -28,9 +33,11 @@ external browser opener. These additions first ship in 0.80.0.
 
 Settings is a routed page; **Playback** contains Now playing view, compact-player preferences and optional [experimental Gapless playback](gapless-playback.md). The existing normal app identifier/profile, backend folder and stable port remain unchanged. The private Gapless Test app's temporary port and write restrictions are not used by the release. The earlier 0.80.0 download has the dialog described above.
 
-## Mini Player (development)
+<a id="mini-player-development"></a>
 
-Available in the development source; the published 0.85.1 downloads do not include it yet.
+## Mini Player
+
+Included in the standalone downloads since **1.0.0**.
 In the desktop app, choose **View → Open Mini Player**, press **Cmd/Ctrl+Shift+M**,
 or choose **Mini Player** in the expanded Now playing view.
 
@@ -53,7 +60,7 @@ Light/Dark follow the main interface. Python/browser use keeps its existing play
 
 ![Desktop Mini Player with artwork, compact window controls and transport buttons beside the track-relative progress bar](screenshots/2026-10-26-mini-player/mini-player.png)
 
-*Development interface, 26 October 2026. Fictional track information and test artwork.*
+*Mini Player interface, captured on 26 October 2026. Fictional track information and test artwork.*
 
 ## Settings, sign-in and closing
 
