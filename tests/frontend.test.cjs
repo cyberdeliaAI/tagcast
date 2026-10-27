@@ -9599,23 +9599,25 @@ test('upload shortcuts default to hidden, migrate safely and preserve explicit c
   assert.equal(restarted.nodes.get('#show-uploaded').hidden,true);
 });
 
-test('upload folder details list only matching tracks, escape paths and keep native playback controls', async () => {
+test('upload folder details reuse complete album cards, escape paths and retain upload metadata', async () => {
   const p=page();await settle();uploadFrontendFixture(p);
   p.run('showBrowse("upload-folders")');await settle();
   assert.match(p.nodes.get('#browse-list').innerHTML,/One &lt;folder&gt;/);
-  assert.match(p.nodes.get('#browse-list').innerHTML,/Open tracks for/);
+  assert.match(p.nodes.get('#browse-list').innerHTML,/Open albums for/);
   const group=p.json('browseView.rows.find(g=>g.label.includes("One"))');
   p.run(`showBrowse("upload-folders",${JSON.stringify(group.key)})`);await settle();
-  assert.equal(p.run('browseView.sort'),'album');
-  assert.deepEqual(p.json('browseView.rows.map(t=>t.id)'),['910']);
+  assert.equal(p.run('browseView.sort'),'artist');
+  assert.deepEqual(p.json('browseAlbums().map(t=>t.id)'),['91']);
   assert.equal(p.nodes.get('#browse-upload-path').textContent,'/Music/One <folder>');
   const html=p.nodes.get('#browse-list').innerHTML;
-  assert.match(html,/data-track-play="910"/);assert.match(html,/data-track-open="910"/);
-  assert.match(html,/Uploaded: 2026-10-27 · 12:00:00/);
+  assert.match(html,/data-album="91"/);assert.match(html,/Upload example/);
+  assert.match(html,/3 tracks/);
+  assert.equal(p.run('state.details.get("91").tracks[0].uploaded_at'),'2026-10-27T12:00:00');
+  assert.equal(p.nodes.get('#browse-list').className,'album-grid');
   assert.doesNotMatch(html,/Other upload|Missing upload/);
   assert.equal(p.nodes.get('#browse-random').hidden,true);
   p.run('updateRandomControls()');assert.equal(p.nodes.get('#browse-random').hidden,true);
-  assert.match(p.run('JSON.stringify(helpContentFor("browse"))'),/no bulk editing or deletion/);
+  assert.match(p.run('JSON.stringify(helpContentFor("browse"))'),/No bulk editing or deletion/);
 });
 
 test('upload days are newest first with invalid or absent dates in an unknown group', async () => {
@@ -9625,12 +9627,12 @@ test('upload days are newest first with invalid or absent dates in an unknown gr
   assert.equal(p.run('browseView.sort'),'za');
   assert.deepEqual(p.json('browseView.rows.map(g=>g.key)'),['2026-10-27','2026-10-26','unknown']);
   p.run('showBrowse("uploaded","2026-10-27")');await settle();
-  assert.deepEqual(p.json('browseView.rows.map(t=>t.id)'),['910']);
+  assert.deepEqual(p.json('browseAlbums().map(t=>t.id)'),['91']);
   assert.equal(p.nodes.get('#browse-upload-path').hidden,true);
-  assert.match(p.nodes.get('#browse-results').textContent,/1 track/);
+  assert.match(p.nodes.get('#browse-results').textContent,/1 album/);
 });
 
-test('upload group navigation restores track search and paging and keeps the playing queue untouched', async () => {
+test('upload group navigation restores track-based search into albums and keeps the playing queue untouched', async () => {
   const p=page();await settle();uploadFrontendFixture(p);p.run('state.mode="live"; playTracks(state.details.get("91")); state.mode="demo"');
   const queue=p.json('player.queue'),src=p.nodes.get('#audio').src;
   p.run('showBrowse("upload-folders")');await settle();
@@ -9639,38 +9641,51 @@ test('upload group navigation restores track search and paging and keeps the pla
   p.nodes.get('#browse-search').value='first';
   await p.nodes.get('#browse-search').emit('input');p.flushTimers(250);await settle();
   const route=p.location.hash;
-  await p.run('openFoundTrack("910","91")');await settle();
+  await p.run('openAlbum("91")');await settle();
   p.history.back();await settle();
   assert.equal(p.location.hash,route);assert.equal(p.nodes.get('#browse-search').value,'first');
-  assert.deepEqual(p.json('browseView.rows.map(t=>t.id)'),['910']);
+  assert.deepEqual(p.json('browseAlbums().map(t=>t.id)'),['91']);
   assert.deepEqual(p.json('player.queue'),queue);assert.equal(p.nodes.get('#audio').src,src);
   assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });
 
-test('live upload group results are paged remotely and late replies cannot replace a newer group', async () => {
+test('live upload albums are paged and sorted locally while stale membership replies are ignored', async () => {
   const p=livePage();await settle();let finish;
   p.setFetch(url=>new URL(url,'http://localhost').searchParams.get('key')==='old'
     ? new Promise(resolve=>{finish=resolve;})
-    : {ok:true,json:async()=>({group:{label:'/New folder'},tracks:[{id:'100',album_id:'1',title:'Current',artist:'Artist',album:'Album'}],total:201,offset:24})});
+    : {ok:true,json:async()=>({group:{label:'/New folder'},album_ids:['1'],matching_tracks:201})});
   p.run('showBrowse("upload-folders","old")');await settle();
   p.run('showBrowse("uploaded","2026-10-27",{page:1,sort:"za"})');await settle();
-  assert.match(p.requests.at(-1).url,/offset=24/);assert.match(p.requests.at(-1).url,/sort=za/);
-  assert.equal(p.run('browseView.page'),1);assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 2 of 9/);
-  finish({ok:true,json:async()=>({group:{label:'/Stale folder'},tracks:[],total:0})});await settle();
-  assert.equal(p.run('browseView.label'),'/New folder');assert.equal(p.run('browseView.total'),201);
+  assert.match(p.requests.at(-1).url,/offset=24/);assert.match(p.requests.at(-1).url,/sort=az/);
+  assert.equal(p.run('browseView.page'),0);assert.equal(p.run('browseView.sort'),'title_za');
+  const count=p.requests.length;
+  p.run('browseView.sort="year"; refreshBrowseList()');await settle();assert.equal(p.requests.length,count);
+  finish({ok:true,json:async()=>({group:{label:'/Stale folder'},album_ids:[]})});await settle();
+  assert.equal(p.run('browseView.label'),'/New folder');assert.equal(p.run('browseView.total'),1);
   assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
 });
 
-test('upload track scrolling adds a Tab stop only when needed and group errors offer no album actions', async () => {
+test('upload album cards need no extra scrolling Tab stop and group errors offer no album actions', async () => {
   const p=page();await settle();uploadFrontendFixture(p);
   p.run('showBrowse("uploaded","2026-10-27")');await settle();
-  const list=p.nodes.get('#browse-list');list.clientWidth=380;list.scrollWidth=680;
-  p.run('updateUploadScrollFocus()');assert.equal(list.getAttribute('tabindex'),'0');
-  let scrolled=0;
-  await list.emit('focusin',{currentTarget:list,target:{closest:()=>({scrollIntoView:()=>{scrolled++;}})}});
-  assert.equal(scrolled,1);
-  list.clientWidth=1000;p.run('updateUploadScrollFocus()');assert.equal(list.getAttribute('tabindex'),'-1');
+  const list=p.nodes.get('#browse-list');assert.equal(list.className,'album-grid');
+  assert.notEqual(list.getAttribute('tabindex'),'0');
   p.run('showBrowse("upload-folders","missing")');await settle();
   assert.match(list.innerHTML,/no longer available/);assert.equal(p.nodes.get('#browse-random').hidden,true);
   assert.equal(p.nodes.get('#browse-tag-actions').hidden,true);
+});
+
+test('upload group album pagination uses loaded summaries and keeps matching native discs together', async () => {
+  const p=livePage();await settle();
+  p.run('state.albums=Array.from({length:51},(_,i)=>({...state.albums[0],id:String(i+1),name:`Album ${String(i).padStart(3,"0")}`}))');
+  p.setFetch(()=>({ok:true,json:async()=>({group:{label:'2026-10-27'},album_ids:Array.from({length:51},(_,i)=>String(i+1))})}));
+  p.run('showBrowse("uploaded","2026-10-27")');await settle();
+  assert.match(p.nodes.get('#browse-results').textContent,/51 albums/);
+  assert.equal((p.nodes.get('#browse-list').innerHTML.match(/class="album-card"/g)||[]).length,24);
+  const requests=p.requests.length;
+  p.run('browseView.page=1;refreshBrowseList()');await settle();
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 2 of 3/);
+  assert.equal(p.requests.length,requests);
+  p.run('browseView.sort="title_za";refreshBrowseList()');await settle();
+  assert.equal(p.requests.length,requests);
 });
