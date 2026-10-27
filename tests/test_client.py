@@ -866,7 +866,7 @@ class ClientTests(unittest.TestCase):
                          {"album": "blocked", "track": "saved"})
         self.assertTrue(studio.status()["combine_sets"])
 
-    def test_a_busy_ibroadcast_is_retried(self):
+    def test_a_busy_metadata_write_is_checked_without_automatic_replay(self):
         studio = self.connect()
         track = studio.album_details(["74"])[0]["tracks"][0]
         mock_ibroadcast.STATE["busy"] = 2
@@ -874,10 +874,14 @@ class ClientTests(unittest.TestCase):
         client.RETRY_DELAYS = (0, 0)
         try:
             result = studio.save([edit("track", track["id"], 74, genre=(track["genre"], "Retried"))])
+            self.assertEqual(mock_ibroadcast.STATE["busy"], 1)
+            job = self.wait_job(studio, result["job"])
         finally:
             client.RETRY_DELAYS = original
+            mock_ibroadcast.STATE["busy"] = 0
         self.assertEqual([r["status"] for r in result["results"]], ["sent"])
-        self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 1)
+        self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 0)
+        self.assertEqual(job["results"][0]["status"], "unverified")
 
     def test_switching_combine_sets_downloads_the_library_again(self):
         studio = self.connect()
