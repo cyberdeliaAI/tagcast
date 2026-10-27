@@ -391,6 +391,14 @@ their shared browsing/player state; a fast local response can otherwise race the
 - Collection, album artist and browse group totals emphasize albums, with track
   counts shown smaller underneath. Reuse existing summary and group counts;
   never download track details or add requests just to display these totals.
+- Upload folders and Date uploaded are optional sidebar shortcuts, hidden for new
+  and existing profiles until enabled in Settings. Read only the already loaded
+  account/session-bound library. Group exact stored `path` labels behind bounded
+  opaque keys, or validated `uploaded_on` days without timezone conversion; keep
+  missing/invalid values under Unknown. These are historical upload labels, not
+  local files or playlist folders. Group details return only bounded matching
+  track rows, not entire matching albums. Preserve the existing Tracks play/open/
+  queue controls, search/history and overflow keyboard access; no bulk writes.
 - Playlist browsing offers browser-local cards/list layout, independent of album layout.
   Switching uses the current response, preserving search, paging, navigation and audio.
   List totals use loaded-library active playlist positions (including repeats), with

@@ -9577,3 +9577,100 @@ test("album merge review starts at the heading and cancellation returns focus wi
   assert.equal(p.run('document.activeElement === $("#merge-selection")'),true);
   assert.deepEqual(p.json('[...state.selected]'),['11','22']);
 });
+
+function uploadFrontendFixture(p) {
+  p.run(`useLocal([{id:"91", name:"Upload example", artist:"Example Artist", year:1974, disc:1,
+    tracks:[{id:"910", title:"First upload", artist:"Example Artist", track:1, length:180, path:"/Music/One <folder>", uploaded_at:"2026-10-27T12:00:00"},
+      {id:"911", title:"Other upload", artist:"Example Artist", track:2, length:180, path:"/Music/Two", uploaded_at:"2026-10-26"},
+      {id:"912", title:"Missing upload", artist:"Example Artist", track:3, length:180, uploaded_on:"2026-02-30"}]}], "demo")`);
+}
+
+test('upload shortcuts default to hidden, migrate safely and preserve explicit choices after restart', async () => {
+  const storage = {'tagcast-sidebar':JSON.stringify({order:['show-genres'],hidden:[]})};
+  const p=page({storage});await settle();
+  for(const id of ['show-upload-folders','show-uploaded']) assert.equal(p.nodes.get('#'+id).hidden,true);
+  assert.match(p.run('sidebarSettingsPanel()'),/Upload folders/);
+  await p.change({checked:true,dataset:{sidebarItem:'show-uploaded'},matches:s=>s==='[data-sidebar-item]'});
+  assert.equal(p.nodes.get('#show-uploaded').hidden,false);
+  const restarted=page({storage});await settle();
+  assert.equal(restarted.nodes.get('#show-uploaded').hidden,false);
+  assert.equal(restarted.nodes.get('#show-upload-folders').hidden,true);
+  await restarted.click({'[data-sidebar-reset]':{}});
+  assert.equal(restarted.nodes.get('#show-uploaded').hidden,true);
+});
+
+test('upload folder details list only matching tracks, escape paths and keep native playback controls', async () => {
+  const p=page();await settle();uploadFrontendFixture(p);
+  p.run('showBrowse("upload-folders")');await settle();
+  assert.match(p.nodes.get('#browse-list').innerHTML,/One &lt;folder&gt;/);
+  assert.match(p.nodes.get('#browse-list').innerHTML,/Open tracks for/);
+  const group=p.json('browseView.rows.find(g=>g.label.includes("One"))');
+  p.run(`showBrowse("upload-folders",${JSON.stringify(group.key)})`);await settle();
+  assert.equal(p.run('browseView.sort'),'album');
+  assert.deepEqual(p.json('browseView.rows.map(t=>t.id)'),['910']);
+  assert.equal(p.nodes.get('#browse-upload-path').textContent,'/Music/One <folder>');
+  const html=p.nodes.get('#browse-list').innerHTML;
+  assert.match(html,/data-track-play="910"/);assert.match(html,/data-track-open="910"/);
+  assert.match(html,/Uploaded: 2026-10-27 · 12:00:00/);
+  assert.doesNotMatch(html,/Other upload|Missing upload/);
+  assert.equal(p.nodes.get('#browse-random').hidden,true);
+  p.run('updateRandomControls()');assert.equal(p.nodes.get('#browse-random').hidden,true);
+  assert.match(p.run('JSON.stringify(helpContentFor("browse"))'),/no bulk editing or deletion/);
+});
+
+test('upload days are newest first with invalid or absent dates in an unknown group', async () => {
+  const p=page();await settle();uploadFrontendFixture(p);
+  p.run('state.details.get("91").tracks[2].uploaded_on="0000-01-01"');
+  p.run('showBrowse("uploaded")');await settle();
+  assert.equal(p.run('browseView.sort'),'za');
+  assert.deepEqual(p.json('browseView.rows.map(g=>g.key)'),['2026-10-27','2026-10-26','unknown']);
+  p.run('showBrowse("uploaded","2026-10-27")');await settle();
+  assert.deepEqual(p.json('browseView.rows.map(t=>t.id)'),['910']);
+  assert.equal(p.nodes.get('#browse-upload-path').hidden,true);
+  assert.match(p.nodes.get('#browse-results').textContent,/1 track/);
+});
+
+test('upload group navigation restores track search and paging and keeps the playing queue untouched', async () => {
+  const p=page();await settle();uploadFrontendFixture(p);p.run('state.mode="live"; playTracks(state.details.get("91")); state.mode="demo"');
+  const queue=p.json('player.queue'),src=p.nodes.get('#audio').src;
+  p.run('showBrowse("upload-folders")');await settle();
+  const key=p.json('browseView.rows.find(g=>g.label.includes("One")).key');
+  p.run(`showBrowse("upload-folders",${JSON.stringify(key)})`);await settle();
+  p.nodes.get('#browse-search').value='first';
+  await p.nodes.get('#browse-search').emit('input');p.flushTimers(250);await settle();
+  const route=p.location.hash;
+  await p.run('openFoundTrack("910","91")');await settle();
+  p.history.back();await settle();
+  assert.equal(p.location.hash,route);assert.equal(p.nodes.get('#browse-search').value,'first');
+  assert.deepEqual(p.json('browseView.rows.map(t=>t.id)'),['910']);
+  assert.deepEqual(p.json('player.queue'),queue);assert.equal(p.nodes.get('#audio').src,src);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('live upload group results are paged remotely and late replies cannot replace a newer group', async () => {
+  const p=livePage();await settle();let finish;
+  p.setFetch(url=>new URL(url,'http://localhost').searchParams.get('key')==='old'
+    ? new Promise(resolve=>{finish=resolve;})
+    : {ok:true,json:async()=>({group:{label:'/New folder'},tracks:[{id:'100',album_id:'1',title:'Current',artist:'Artist',album:'Album'}],total:201,offset:24})});
+  p.run('showBrowse("upload-folders","old")');await settle();
+  p.run('showBrowse("uploaded","2026-10-27",{page:1,sort:"za"})');await settle();
+  assert.match(p.requests.at(-1).url,/offset=24/);assert.match(p.requests.at(-1).url,/sort=za/);
+  assert.equal(p.run('browseView.page'),1);assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 2 of 9/);
+  finish({ok:true,json:async()=>({group:{label:'/Stale folder'},tracks:[],total:0})});await settle();
+  assert.equal(p.run('browseView.label'),'/New folder');assert.equal(p.run('browseView.total'),201);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test('upload track scrolling adds a Tab stop only when needed and group errors offer no album actions', async () => {
+  const p=page();await settle();uploadFrontendFixture(p);
+  p.run('showBrowse("uploaded","2026-10-27")');await settle();
+  const list=p.nodes.get('#browse-list');list.clientWidth=380;list.scrollWidth=680;
+  p.run('updateUploadScrollFocus()');assert.equal(list.getAttribute('tabindex'),'0');
+  let scrolled=0;
+  await list.emit('focusin',{currentTarget:list,target:{closest:()=>({scrollIntoView:()=>{scrolled++;}})}});
+  assert.equal(scrolled,1);
+  list.clientWidth=1000;p.run('updateUploadScrollFocus()');assert.equal(list.getAttribute('tabindex'),'-1');
+  p.run('showBrowse("upload-folders","missing")');await settle();
+  assert.match(list.innerHTML,/no longer available/);assert.equal(p.nodes.get('#browse-random').hidden,true);
+  assert.equal(p.nodes.get('#browse-tag-actions').hidden,true);
+});

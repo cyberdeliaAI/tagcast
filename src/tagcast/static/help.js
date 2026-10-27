@@ -200,6 +200,11 @@ function currentHelpContext() {
 
 function helpContentFor(context) {
   if (context !== "browse") return HELP_TOPICS[context];
+  if (uploadBrowseKind()) return {title: browseKinds[browseView.kind].label, scope: "#browse-page", steps: [
+    ["Your upload history", "These optional shortcuts are off by default. Enable them under Settings → Interface → Sidebar. Upload folders are historical paths reported by iBroadcast, not local folders or playlist folders. Nothing on your disk is opened or scanned.", ["#browse-title", "#browse-subtitle"]],
+    ["Find an upload group", "Search full upload paths or stored upload days, sort and page the results. Missing information appears under Unknown. Folder case and separators are kept as stored; dates and times are not converted to another time zone.", ["#browse-toolbar", "#browse-upload-path"]],
+    ["Exact matching tracks", "Opening a group lists only its matching tracks, even when the rest of an album was uploaded elsewhere or on another day. Play continues in album order from the chosen track, like Tracks search. Use + for one track, or open its album. Back restores your group, search and page. This page offers no bulk editing or deletion.", ["#browse-list", "#browse-pagination"]],
+  ]};
   if (browseView.kind === "tags") return {title: "Tags", scope: "#browse-page", steps: [
     ["Your iBroadcast labels", "Tags are custom labels attached to tracks. These cards include empty tags and show the matching album and track totals. Archived labels are marked.", ["#browse-list", "#browse-subtitle"]],
     ["Find albums", "Open a tag to see albums with at least one tagged track, then open an album to manage its tags or a single track's tags. Search, sort and page without loading every track into the browser.", ["#browse-toolbar", "#browse-list"]],

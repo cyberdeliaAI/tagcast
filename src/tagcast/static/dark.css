@@ -134,6 +134,7 @@
 :root[data-theme="dark"] .album-genre-chip:hover,:root[data-theme="dark"] .album-tag-add:hover{background:var(--palette-tint,#2c2e29)}
 :root[data-theme="dark"] .album-tracks{background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] #tracks-list:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root[data-theme="dark"] .upload-track-list:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
 :root[data-theme="dark"] .album-tracks tr.found td{background:#2d2924}
 :root[data-theme="dark"] .album-tracks tr.playing td{background:var(--palette-tint,#2b2e26)}
 :root[data-theme="dark"] .now-playing-panel{box-shadow:-8px 0 30px #0a1c2426}
@@ -331,6 +332,7 @@
 :root:not([data-theme="light"]) .album-genre-chip:hover,:root:not([data-theme="light"]) .album-tag-add:hover{background:var(--palette-tint,#2c2e29)}
 :root:not([data-theme="light"]) .album-tracks{background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) #tracks-list:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root:not([data-theme="light"]) .upload-track-list:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
 :root:not([data-theme="light"]) .album-tracks tr.found td{background:#2d2924}
 :root:not([data-theme="light"]) .album-tracks tr.playing td{background:var(--palette-tint,#2b2e26)}
 :root:not([data-theme="light"]) .now-playing-panel{box-shadow:-8px 0 30px #0a1c2426}

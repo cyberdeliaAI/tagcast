@@ -11,6 +11,7 @@ view built from a freshly downloaded library, so a conflict is detected no matte
 where the other edit came from.
 """
 
+import hashlib
 import re
 import unicodedata
 from collections import OrderedDict
@@ -60,6 +61,19 @@ def uploaded_at(track):
     except ValueError:
         return day
     return f"{day}T{clock}"
+
+
+def upload_group(kind, track):
+    """Historical upload metadata, never a path to open on this computer."""
+    if kind == "uploaded":
+        day = uploaded_at(track)[:10]
+        return day or "unknown", day or "Unknown upload date"
+    path = text(track.get("path"))
+    if not path.strip():
+        return "unknown", "Unknown upload folder"
+    # Full paths can be long or contain URL delimiters. Keep exact stored identities
+    # (including case and separators) behind a bounded, URL-safe group key.
+    return hashlib.sha256(path.encode("utf-8", errors="surrogatepass")).hexdigest(), path
 
 
 class LibraryError(ValueError):
@@ -635,6 +649,10 @@ class Library:
                     keys = stored_genres(track)
                 elif kind == "tags":
                     keys = [tag["id"] for tag in self.track_tags(track_id)]
+                elif kind in ("upload-folders", "uploaded"):
+                    value, label = upload_group(kind, track)
+                    groups.setdefault(value, {"key": value, "label": label, "image": "", "ids": []})
+                    keys = [value]
                 else:
                     year = number(track.get("year")) or number(self.albums[album_id].get("year"))
                     keys = [str(year // 10 * 10)] if kind == "decades" and year > 0 else [] if kind == "decades" else [str(year)]
@@ -651,13 +669,14 @@ class Library:
             return groups
 
     def browse(self, kind, key=None, query="", offset=0, limit=50, sort="az"):
-        """Paginated groups, or album IDs with exact group membership.
+        """Paginated groups, matching album IDs, or bounded upload-group tracks.
 
         Release years use the track year, with the album year as fallback, as track
         search does. Missing years get their own group, sorted after known years.
+        Upload groups use stored paths/days and return only matching track rows.
         """
-        if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags"):
-            raise LibraryError("Choose track artists, composers, genres, release years or decades.")
+        if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags", "upload-folders", "uploaded"):
+            raise LibraryError("Choose a supported library browse group.")
         groups = self._browse_index(kind)
         words = fold(query).split()
         if key is not None:
@@ -666,15 +685,39 @@ class Library:
             group = groups.get(key)
             if group is None:
                 raise LibraryError("This group is no longer available. Open the overview again.")
+            if kind in ("upload-folders", "uploaded"):
+                pairs = group["ids"]
+                if words:
+                    def matches(pair):
+                        t, a = pair
+                        haystack = fold(" ".join([
+                            text(self.tracks[t].get("title")), text(self.albums[a].get("name")),
+                            *(self.artist_name(i) for i in self.performer_ids(self.tracks[t])),
+                            *(self.artist_name(i) for i in self.album_artist_ids(self.albums[a])),
+                            *(self.artist_name(e["artist_id"]) for e in self.composer_entries(self.tracks[t])),
+                        ]))
+                        return all(w in haystack for w in words)
+                    pairs = [pair for pair in pairs if matches(pair)]
+                if sort in ("az", "za"):
+                    pairs = sorted(pairs, key=lambda pair: (fold(self.tracks[pair[0]].get("title")), pair), reverse=sort == "za")
+                offset = min(offset, max(0, (len(pairs) - 1) // limit * limit))
+                return {"group": {k: v for k, v in group.items() if k != "ids"},
+                        "tracks": [{**self.track_row(t, a), "uploaded_at": uploaded_at(self.tracks[t])}
+                                   for t, a in pairs[offset:offset + limit]],
+                        "total": len(pairs), "offset": offset}
             return {"group": {k: v for k, v in group.items() if k != "ids"},
                     "album_ids": [str(i) for i in dict.fromkeys(a for _, a in group["ids"])]}
         found = [g for g in groups.values() if all(w in fold(g["label"]) for w in words)]
         if sort == "count":
             found.sort(key=lambda g: (-len(g["ids"]), fold(g["label"]), g["key"]))
+        elif kind in ("upload-folders", "uploaded"):
+            found.sort(key=lambda g: (fold(g["label"]), g["key"]), reverse=sort == "za")
         elif kind in ("years", "decades"):
             found.sort(key=lambda g: (g["key"] == "0", number(g["key"]) * (-1 if sort == "za" else 1)))
         else:
             found.sort(key=lambda g: (fold(g["label"]), g["key"]), reverse=sort == "za")
+        if kind in ("upload-folders", "uploaded"):
+            found.sort(key=lambda g: g["key"] == "unknown")
         offset = min(offset, max(0, (len(found) - 1) // limit * limit))
         return {"groups": [{"key": g["key"], "label": g["label"], "image": g["image"], "tracks": len(g["ids"]), "albums": g["albums"],
                             **({"archived": g["archived"]} if kind == "tags" else {})}

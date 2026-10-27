@@ -389,6 +389,17 @@ body.has-player main{padding-bottom:80px}
 #tracks-list:focus-visible{outline:3px solid var(--palette-focus,#759345);outline-offset:3px}
 #tracks-list .track-results{min-width:680px}
 #tracks-list .track-results strong{overflow-wrap:break-word}
+.upload-group-list{display:grid;gap:8px}
+.upload-group-list .browse-label-card{width:100%;min-width:0}
+#browse-page[data-kind="upload-folders"] :is(h1,.browse-label-card strong),.upload-folder-path{overflow-wrap:anywhere}
+.upload-folder-path{margin:0 0 18px;font-size:12px;line-height:1.6}
+#browse-page:is([data-kind="upload-folders"],[data-kind="uploaded"]) .page-intro{padding:20px 0 18px}
+#browse-page:is([data-kind="upload-folders"],[data-kind="uploaded"]) .page-intro :is(.eyebrow,h1){margin-bottom:8px}
+.upload-track-list{max-width:100%;overflow-x:auto;scroll-padding-inline:8px}
+.upload-track-list:focus-visible{outline:3px solid var(--palette-focus,#759345);outline-offset:3px}
+.upload-track-list .track-results{min-width:680px}
+.upload-track-list .track-results strong{overflow-wrap:break-word}
+.upload-track-date{white-space:nowrap}
 .trash-check{margin:0 8px 0 0;accent-color:var(--green);vertical-align:middle}.album-tracks.trash-mode .track-number{width:104px}.trash-bar{margin:0 0 14px}.trash-row{font-size:12px;margin:7px 0}
 .album-tracks tr.disc-row td{padding:20px 16px 8px;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
 .album-tracks tr.disc-gap td{height:32px;padding:0;background:var(--paper);border-left:hidden;border-right:hidden}
