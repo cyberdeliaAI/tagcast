@@ -785,10 +785,25 @@ class Studio:
             offset, limit = int(offset), int(limit)
         except (TypeError, ValueError):
             raise ApiError("Choose a valid browse page.") from None
-        if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags") or sort not in ("az", "za", "count") \
+        uploads = kind in ("upload-folders", "uploaded")
+        if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags", "upload-folders", "uploaded") \
+                or sort not in (("az", "za", "album") if uploads and key is not None else ("az", "za", "count")) \
                 or len(query) > 200 or offset < 0 or limit not in (24, 50, 100, 200) \
                 or (key is not None and (not isinstance(key, str) or len(key) > 500)):
             raise ApiError("Choose a valid group, page and a search of at most 200 characters.")
+        if uploads:
+            client = self._require_client()
+            with self.lock:
+                library = self.library
+                if client is not self.client or library is None or self.library_user is None:
+                    raise ApiError("Load the library before browsing uploads.")
+                owner = self.library_user, self.playback_session
+            result = library.browse(kind, key, query, offset, limit, sort)
+            with self.lock:
+                if client is not self.client or library is not self.library \
+                        or owner != (self.library_user, self.playback_session):
+                    raise ConflictError("The library changed. Open the upload group again.")
+            return result
         library, _ = self._current(self._require_client())
         if kind == "tags" and not library.tags_loaded:
             _, library = self.tags.library()

@@ -275,7 +275,7 @@ function updateRandomControls() {
   const unavailable = !live() || state.loading || player.randomLoading;
   albums.hidden = !["", "all"].includes($("#filter").value) || state.selected.size > 0;
   albums.disabled = unavailable || !filteredAlbums().some(a => a.track_count > 0);
-  browse.hidden = browseView.key === null;
+  browse.hidden = browseView.key === null || ["upload-folders", "uploaded"].includes(browseView.kind);
   browse.disabled = unavailable || !browseAlbums().some(a => a.track_count > 0);
   for (const button of [albums, browse]) {
     button.textContent = player.randomLoading ? "Loading album…" : "▶ Play random album";

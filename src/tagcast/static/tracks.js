@@ -55,12 +55,12 @@ async function runTrackSearch() {
   renderTrackSearch();
 }
 
-function foundTrackRow(t) {
+function foundTrackRow(t, options = {}) {
   const id = escapeHtml(t.id), album = escapeHtml(t.album_id), canPlay = live();
   const where = [shelfIds(t.album_id).length > 1 || t.disc > 1 ? `Disc ${t.disc || "?"}` : "", t.track ? `Track ${t.track}` : ""].filter(Boolean).join(" · ");
   return `<tr data-row="${id}"><td class="track-number"><button class="album-track-play" data-track-play="${id}" data-track-album="${album}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button></td>
     <td><button class="track-open" data-track-open="${id}" data-track-album="${album}"><strong>${escapeHtml(t.title)}</strong></button><small>${performerLinks(t)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td>
-    <td><button class="track-open" data-track-open="${id}" data-track-album="${album}">${escapeHtml(t.album)}</button>${where ? `<small>${where}</small>` : ""}</td>
+    <td><button class="track-open" data-track-open="${id}" data-track-album="${album}">${escapeHtml(t.album)}</button>${where ? `<small>${where}</small>` : ""}${options.uploadDate ? `<small class="upload-track-date">Uploaded: ${escapeHtml(t.uploaded_at?.replace("T", " · ") || "Unknown")}</small>` : ""}</td>
     <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(t.album_id, t)}${heartButton(t)}</td></tr>`;
 }
 
