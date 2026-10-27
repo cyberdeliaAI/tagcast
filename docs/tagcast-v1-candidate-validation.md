@@ -18,6 +18,34 @@ outdated upload-group description in AGENTS.md are adjusted before the push.
 Windows/Linux/macOS Intel verification and exact-commit CI remain pending until
 their new runs complete. Earlier local results below retain their original scope.
 
+## Follow-up — PR #9 measurement and runner correction
+
+The first hosted Linux media job stopped at its single-file reference calibration,
+before measuring an engine transition. Its first nonzero input block arrived at
+frame **134,656**, beyond the oracle's absolute **132,300-frame** (three-second)
+anchor-search limit at 44.1 kHz. Playback reached `ended` without a media error.
+The recorder's silent device startup could therefore make valid audio unmeasurable.
+The later rerun passed its first six controls/measurements before cancellation;
+neither an incomplete nor a cancelled run establishes a passing media gate.
+
+The independent oracle now starts its bounded search at the first nonzero signal.
+It still uses one fixed alignment, compares every expected codeword, rejects extra
+nonzero samples and allows no missing/duplicated-sample tolerance. Three regression
+tests cover long silent preroll, missing/duplicated boundary samples after that
+preroll, and an entirely silent capture. Two of those tests failed against the old
+oracle and pass after the correction. Production playback code is unchanged.
+
+The Apple Silicon build never acquired a `macos-14` runner. GitHub has reduced that
+image's capacity ahead of its 2 November 2026 retirement. The arm64 build now uses
+the [recommended `macos-15` replacement](https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement/).
+Intel macOS, Windows and Linux build targets are unchanged. This runner change is
+not a declaration of a new minimum supported macOS version.
+
+These are test-tooling and CI corrections after the frozen application checks,
+not another audio-engine optimization. The initial decision and test inventory
+below describe their original local baseline; the new PR runs must complete before
+publication can be reconsidered. Merge, tag and release remain unauthorized.
+
 ## Decision
 
 **CONDITIONAL GO.** The local **1.0.0 beta 1** candidate passes the completed macOS
