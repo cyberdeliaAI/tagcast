@@ -168,6 +168,9 @@ class StartTests(unittest.TestCase):
         studio.tags.catalogue.return_value = {"tags": [], "total": 0, "offset": 0}
         studio.tags.selection.return_value = {"tags": [], "tracks": 1, "before": "snapshot"}
         studio.tags.save.return_value = {"job": "check", "error": "", "sent": 1}
+        studio.album_merge.selection.return_value = {"selection": "token", "albums": []}
+        studio.album_merge.review.return_value = {"review": "token"}
+        studio.album_merge.save.return_value = {"job": "check"}
         studio.album_guide.view.return_value = {"enabled": True, "state": "empty"}
         studio.album_guide.notes_for_album.return_value = {"entries": []}
         studio.album_guide.analyse.return_value = {"enabled": True, "state": "ready"}
@@ -209,6 +212,9 @@ class StartTests(unittest.TestCase):
                                    for path, action in (("paused", "paused"), ("pause", "pause"), ("resume", "resume"), ("remove-paused", "remove_paused"), ("url", "read_url"))),
                                  ("/api/playlist/artwork", studio.collections.playlist_artwork),
                                  ("/api/tags/save", studio.tags.save),
+                                 ("/api/albums/merge/selection", studio.album_merge.selection),
+                                 ("/api/albums/merge/review", studio.album_merge.review),
+                                 ("/api/albums/merge/save", studio.album_merge.save),
                                  ("/api/album-rating", studio.collections.rate_album),
                                  ("/api/artist-rating", studio.collections.rate_artist),
                                  ("/api/album-favourite", studio.collections.favourite_album),

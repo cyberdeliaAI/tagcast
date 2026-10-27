@@ -176,6 +176,7 @@ function useLocal(albums, mode) {
   closeBrowseOptions();
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
+  if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
@@ -565,8 +566,8 @@ function render() {
   renderArtistPanel();
   $("#page-subtitle").textContent = $("#filter").value === "duplicates"
     ? "Albums with repeated track numbers on the same disc, including tracks whose titles differ. Open an album to compare the copies."
-    : state.artist ? "Open an album to listen, or select albums by this artist to edit, tag or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to tag or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
-  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to tag or move to the trash together" : "Open an album to see its tracks and listen";
+    : state.artist ? "Open an album to listen, or select albums by this artist to edit, tag or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to tag, merge or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
+  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to tag, merge or move to the trash together" : "Open an album to see its tracks and listen";
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
@@ -576,7 +577,12 @@ function render() {
   const page = items.slice(state.page * size, (state.page + 1) * size);
   $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
   $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
+  $("#select-page").checked = page.length > 0 && page.every(isSelected);
+  $("#select-page").indeterminate = page.some(isSelected) && !page.every(isSelected);
+  $("#select-page").disabled = !page.length || saving || checking > 0;
+  $("#select-page-label").textContent = `${page.length && page.every(isSelected) ? "Deselect" : "Select all"} on this page (${page.length})`;
   $("#selection-bar").hidden = !state.selected.size;
+  if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   $("#trash-selection").hidden = !live();
   $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
@@ -1116,7 +1122,7 @@ function showHistory() {
   $("#history-status").textContent = "";
   $("#history-clear-review").hidden = true;
   updateHistoryControls();
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
   $("#history").showModal();
 }
 
@@ -1154,6 +1160,13 @@ document.addEventListener("keydown", event => {
   setEditorTab(next, true);
 });
 document.addEventListener("change", event => {
+  if (event.target.id === "select-page") {
+    const page = filteredAlbums().slice(state.page * pageSize(), (state.page + 1) * pageSize());
+    for (const album of page) for (const id of itemIds(album)) {
+      if (event.target.checked) state.selected.add(id); else state.selected.delete(id);
+    }
+    render();
+  }
   if (event.target.matches("[data-select]")) {
     for (const id of shelfIds(event.target.dataset.select)) {
       if (event.target.checked) state.selected.add(id); else state.selected.delete(id);
@@ -1272,6 +1285,7 @@ function statusPill(status) {
 }
 
 function updateChrome() {
+  if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   if (typeof csvImportCurrent === "function" && $("#playlist-import").open && !csvImportCurrent()) resetPlaylistImport();
   if (typeof syncMetadataExport === "function") syncMetadataExport();
@@ -1325,6 +1339,7 @@ async function loadLive(refresh = false) {
   let completed = false;
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
+  if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
@@ -1593,7 +1608,7 @@ function showResults(result, overall, entry) {
   if (overall === "unverified") notes.push('<div class="warn-box">iBroadcast accepted the request, but the library it returned does not show every new value yet. Reload the library in a minute to check.</div>');
   if (result.readBackFailed) notes.push('<div class="warn-box">The library could not be read back. Reload it before editing further.</div>');
   const index = entry ? state.history.indexOf(entry) : -1;
-  if (index >= 0 && !entry.artwork && !entry.trash && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
+  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
     notes.push(`<p><button class="button small" data-review-rest="${index}">Review the rest again →</button> <span class="muted">Sends only what wasn't saved.</span></p>`);
   }
   $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${escapeHtml(r.kind === "album" ? "Album" : "Track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(f => f === "name" ? "title" : f === "track" ? "track number" : f).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");

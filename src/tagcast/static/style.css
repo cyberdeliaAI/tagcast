@@ -1005,3 +1005,17 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 @media(max-width:760px){.service-status-card{padding:17px}.service-status-details ul{grid-template-columns:1fr}.service-status-heading{flex-wrap:wrap}}
 
 .overview-grid .account-settings-note{margin-top:18px}
+
+/* Album selection and explicitly reviewed single-disc merges. */
+.album-page-selection{min-height:36px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;color:var(--ink);font-size:11px}
+.album-page-selection input{margin:0;width:17px;height:17px;accent-color:var(--green)}
+.selection-bar .selection-clear{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;padding:0}
+.selection-clear svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+#album-merge{width:min(820px,calc(100vw - 40px))}
+.album-merge-target{display:flex;flex-direction:column;gap:8px}
+.album-merge-target select{width:100%;min-width:0;max-width:100%}
+.album-merge-tracks{list-style:none;padding:0;margin:12px 0}
+.album-merge-tracks li{display:grid;grid-template-columns:35px minmax(0,1fr);gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.album-merge-tracks small{display:block;color:var(--muted);margin-top:4px}
+.album-merge-tracks li span{overflow-wrap:anywhere}
+@media(max-width:760px){.album-page-selection{flex-basis:100%}#album-merge{width:calc(100vw - 40px)}#selection-bar strong{flex:1;min-width:160px}}

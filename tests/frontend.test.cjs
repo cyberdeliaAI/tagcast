@@ -9444,3 +9444,136 @@ test('Mini Player keeps preparation pause intent and respects remote queue owner
  p.run('localPlaybackAllowed=()=>false');assert.equal(p.run('miniSnapshot().controllable'),false);
  assert.equal(p.run(`miniApplyCommand({...miniSnapshot(),action:'next'})`),false);
 });
+
+test("select page selects only the filtered current page and preserves other selections",async()=>{
+  const p=livePage();await settle();
+  p.run('useLocal(Array.from({length:30},(_,i)=>({id:String(i+1),name:"Ultra-Lounge "+String(i+1).padStart(2,"0"),artist:"Various Artists",year:1990,disc:1,tracks:[{id:String(i+100),title:"Song",artist:"A",track:1}]})),"demo");state.mode="live";state.screen="albums";state.perPage=24;state.page=0;state.selected=new Set(["30"]);render()');
+  const requests=p.requests.length;
+  await p.change({id:'select-page',checked:true,matches:()=>false});
+  assert.equal(p.run('state.selected.size'),25);
+  assert.equal(p.nodes.get('#select-page').checked,true);
+  p.run('state.page=1;render()');
+  assert.equal(p.nodes.get('#select-page').checked,false);
+  assert.equal(p.nodes.get('#select-page').indeterminate,true);
+  await p.change({id:'select-page',checked:true,matches:()=>false});
+  assert.equal(p.run('state.selected.size'),30);
+  await p.change({id:'select-page',checked:false,matches:()=>false});
+  assert.equal(p.run('state.selected.size'),24);
+  p.run('$("#search").value="Ultra-Lounge 01";state.page=0;render()');
+  assert.match(p.nodes.get('#selection-count').textContent,/23 outside current results/);
+  await p.change({id:'select-page',checked:true,matches:()=>false});
+  assert.equal(p.run('state.selected.size'),24);
+  assert.equal(p.requests.length,requests,'Selecting uses the loaded summaries only');
+});
+
+test("select page includes every disc of displayed sets and reports empty results",async()=>{
+  const p=page();await settle();
+  p.run('useLocal([{id:"11",name:"Set",artist:"A",year:2000,disc:1,tracks:[{id:"110",title:"One",track:1,artist:"A"}]},{id:"12",name:"Set",artist:"A",year:2000,disc:2,tracks:[{id:"120",title:"Two",track:1,artist:"A"}]}],"demo");render()');
+  await p.change({id:'select-page',checked:true,matches:()=>false});
+  assert.deepEqual(p.json('[...state.selected]'),['11','12']);
+  assert.match(p.nodes.get('#selection-count').textContent,/1 album selected/);
+  p.run('$("#search").value="no match";render()');
+  assert.equal(p.nodes.get('#select-page').disabled,true);
+  assert.equal(p.nodes.get('#select-page').checked,false);
+});
+
+function mergeFrontendFixture(p) {
+  const albums=[{id:'11',name:'Fictional <fragments>',artist:'Various Artists',year:1995,disc:1,
+    tracks:[{id:'101',title:'One',artist:'A',track:1,artwork_id:0}]},
+    {id:'22',name:'Fictional <fragments>',artist:'B',year:1995,disc:1,
+    tracks:[{id:'102',title:'Two',artist:'B',track:2,artwork_id:0}]},
+    {id:'33',name:'Other',artist:'C',year:2000,disc:1,tracks:[{id:'103',title:'Other',artist:'C',track:1}]}];
+  p.run(`useLocal(${JSON.stringify(albums)},"demo");state.mode="live";state.screen="albums";state.connection.playback_session="merge-session";state.selected=new Set(["11","22"]);render()`);
+  const rows=albums.slice(0,2).map(a=>({...a,album_artists:[{name:a.artist,id:a.id}]}));
+  return {selection:{selection:'selection-token',albums:rows,tracks:2},
+    review:{review:'review-token',target:rows[0],albums:rows,
+      tracks:rows.flatMap(a=>a.tracks.map(t=>({...t,source_id:a.id,source_name:a.name,source_artist:a.artist}))),
+      overlapping_numbers:[],missing_numbers:0,artwork:''}};
+}
+
+test("album merge requires an explicit destination and separate review without writing",async()=>{
+  const p=livePage();await settle();const fixture=mergeFrontendFixture(p),posts=[];
+  p.setFetch((url,options)=>{posts.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:fixture.review};});
+  const audio=p.nodes.get('#audio'),history=p.history.length;
+  await p.run('openAlbumMerge()');
+  assert.equal(posts.length,1);assert.match(posts[0].url,/selection$/);
+  assert.deepEqual(posts[0].body.albums.map(a=>a.id),['11','22']);
+  assert.match(p.nodes.get('#album-merge-content').innerHTML,/Fictional &lt;fragments&gt;/);
+  assert.match(p.nodes.get('#album-merge-content').innerHTML,/id="album-merge-review" disabled/);
+  p.nodes.get('#album-merge-target').value='11';await p.run('reviewAlbumMerge()');
+  assert.equal(posts.length,2);assert.equal(posts[1].body.target,'11');
+  assert.match(p.nodes.get('#album-merge-content').innerHTML,/cannot be undone/);
+  assert.equal(p.nodes.get('#audio'),audio);assert.equal(p.history.length,history);
+  assert.deepEqual(p.json('[...state.selected]'),['11','22']);
+});
+
+test("album merges block multi-disc and busy selections without any request",async()=>{
+  const p=livePage();await settle();mergeFrontendFixture(p);let calls=0;
+  p.setFetch(()=>{calls++;throw Error('Unexpected request');});
+  p.run('saving=true');await p.run('openAlbumMerge()');p.run('saving=false;checking=1');
+  await p.run('openAlbumMerge()');p.run('checking=0;state.albums[1].disc=2');
+  await p.run('openAlbumMerge()');assert.match(p.nodes.get('#toast').textContent,/same disc/);
+  assert.equal(calls,0);
+});
+
+test("late album merge selection reads cannot restore a replaced library",async()=>{
+  const p=livePage();await settle();const fixture=mergeFrontendFixture(p);let resolve;
+  p.setFetch(()=>new Promise(done=>{resolve=done;}));
+  const pending=p.run('openAlbumMerge()');await settle();
+  p.run('useLocal(demoLibrary(),"demo")');resolve({ok:true,json:async()=>fixture.selection});await pending;
+  assert.equal(p.nodes.get('#album-merge').open,false);
+  assert.equal(p.run('albumMergeDraft.selection'),null);
+});
+
+test("lost album merge replies keep selection and cannot be retried",async()=>{
+  const p=livePage();await settle();const fixture=mergeFrontendFixture(p);let saves=0;
+  p.setFetch(url=>{
+    if(url.endsWith('/save')){saves++;return {ok:false,status:503,json:async()=>({error:'Lost reply'})};}
+    return {ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:fixture.review};
+  });
+  await p.run('openAlbumMerge()');p.nodes.get('#album-merge-target').value='11';await p.run('reviewAlbumMerge()');
+  await p.run('saveAlbumMerge()');await p.run('saveAlbumMerge()');
+  assert.equal(saves,1);assert.deepEqual(p.json('[...state.selected]'),['11','22']);
+  assert.match(p.nodes.get('#album-merge-content').innerHTML,/No automatic retry/);
+  assert.equal(p.run('state.history[0].status'),'unverified');
+  p.run('showHistory()');assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-review-rest/);
+});
+
+test("confirmed album merge clears only its selection and preserves the same audio queue",async()=>{
+  const p=livePage();await settle();const fixture=mergeFrontendFixture(p);
+  p.run('playTracks(state.details.get("33"))');const audio=p.nodes.get('#audio'),queue=p.json('player.queue');
+  const results=fixture.review.tracks.map(t=>({kind:'track',id:t.id,label:t.title,fields:['album'],status:'saved'}));
+  const merged=p.json('state.albums.filter(a=>a.id!=="22")');merged[0].track_count=2;
+  p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:url.endsWith('/review')?fixture.review:
+    url.endsWith('/save')?{job:'merge',target:'11',results}:{state:'done',albums:merged,results}}));
+  await p.run('openAlbumMerge()');p.nodes.get('#album-merge-target').value='11';await p.run('reviewAlbumMerge()');
+  p.run('state.selected.add("33")');
+  const saving=p.run('saveAlbumMerge()');await settle();p.flushTimers(2000);await settle();await saving;
+  assert.deepEqual(p.json('[...state.selected]'),['33']);
+  assert.match(p.nodes.get('#album-merge-status').textContent,/All tracks confirmed/);
+  assert.equal(p.nodes.get('#audio'),audio);assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.run('state.history[0].status'),'saved');
+});
+
+test("overlapping album numbers require confirmation and do not renumber the review",async()=>{
+  const p=livePage();await settle();const fixture=mergeFrontendFixture(p);fixture.review.overlapping_numbers=[1];
+  fixture.review.tracks[1].track=1;let saves=0;
+  p.setFetch(url=>{if(url.endsWith('/save'))saves++;return {ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:fixture.review};});
+  await p.run('openAlbumMerge()');p.nodes.get('#album-merge-target').value='11';await p.run('reviewAlbumMerge()');
+  assert.match(p.nodes.get('#album-merge-content').innerHTML,/Keep these overlapping track numbers/);
+  await p.run('saveAlbumMerge()');assert.equal(saves,0);
+  assert.deepEqual(p.json('albumMergeDraft.review.tracks.map(t=>t.track)'),[1,1]);
+});
+
+
+test("album merge review starts at the heading and cancellation returns focus without losing selection",async()=>{
+  const p=livePage();await settle();const fixture=mergeFrontendFixture(p);
+  p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:fixture.review}));
+  await p.run('openAlbumMerge()');p.nodes.get('#album-merge-target').value='11';await p.run('reviewAlbumMerge()');
+  assert.equal(p.run('document.activeElement === $("#album-merge-title")'),true);
+  assert.equal(p.nodes.get('#album-merge-title').textContent,'Review album merge');
+  assert.equal(p.nodes.get('#album-merge').scrollTop,0);
+  await p.nodes.get('#album-merge').emit('close');
+  assert.equal(p.run('document.activeElement === $("#merge-selection")'),true);
+  assert.deepEqual(p.json('[...state.selected]'),['11','22']);
+});

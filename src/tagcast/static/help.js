@@ -27,6 +27,11 @@ const HELP_TOPICS = {
     ["Available devices", "Choose output opens your browser’s device picker where supported. The list contains only outputs the browser makes available. Tagcast never requests microphone access to discover speakers. If no choices appear, use your system sound settings.", [".audio-output-controls", "#audio-output-note"]],
     ["Wireless outputs", "AirPlay appears only when your browser supports it and an output is available. It opens the native route picker. Otherwise, use your system sound settings for supported network speakers. Tagcast does not discover Sonos or Chromecast devices itself.", ["#audio-output-airplay", "#audio-output-note"]],
   ]},
+  "album-merge": {title: "Merge albums", scope: "#album-merge", steps: [
+    ["Choose what to keep", "Merge 2–20 selected fragments of one disc into an existing destination, up to 500 tracks. Multi-disc sets and the iBroadcast Combine setting are blocked. Choose the destination explicitly; its album title, artists, year, disc number and rating are kept.", ["#album-merge-content"]],
+    ["Review every track", "Track IDs, titles, performers, credits, genres, artwork and numbers stay unchanged. Overlapping numbers require explicit confirmation; nothing is automatically renumbered or removed. Each track keeps its cover, so the displayed album image follows the first numbered track with artwork.", ["#album-merge-content"]],
+    ["Confirm once", "Nothing is written until you confirm. Tagcast checks membership and metadata again, sends one request and reads the result back. There is no automatic retry or Undo. An uncertain result requires reloading and checking iBroadcast; cancelling keeps your album selection.", ["#album-merge-content"]],
+  ]},
   tags: {title: "Tags", scope: "#tag-dialog", steps: [
     ["Your own labels", "iBroadcast tags are separate from genres. On an album, changes apply to its tracks, including every disc of the displayed set; track controls affect only that track. In Albums or an artist’s page, select complete albums and choose Tag… to manage up to 20 albums / 500 tracks together. The selection count shows partial assignments.", ["#tag-dialog-content"]],
     ["Choose changes", "Keep as is preserves existing assignments. Add applies the label to the chosen tracks; Remove unassigns it. Choices survive tag search and paging. Archived tags cannot be added here because they may hide music.", ["#tag-choices", "#tag-dialog-content"]],
@@ -178,6 +183,7 @@ function currentHelpContext() {
   if ($("#playlist-order").open) return "playlist-order";
   if ($("#playlist-import").open) return "playlist-import";
   if ($("#audio-output-dialog").open) return "audio-output";
+  if ($("#album-merge").open) return "album-merge";
   if ($("#tag-dialog").open) return "tags";
   if ($("#lyrics-review").open) return "lyrics-review";
   if ($("#lyrics-viewer").open) return "lyrics-viewer";
