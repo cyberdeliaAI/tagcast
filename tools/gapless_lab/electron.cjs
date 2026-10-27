@@ -3,10 +3,11 @@
 const {app,BrowserWindow,ipcMain}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),os=require('node:os'),crypto=require('node:crypto');
 const counter=require('./counter.cjs');
+const contract=require('./contract.cjs');
 const ROOT=path.resolve(__dirname,'../..'),args=process.argv.slice(2);
 function option(name,otherwise){const i=args.indexOf(name);return i<0?otherwise:args[i+1];}
 const directory=path.resolve(option('--fixtures','build/gapless-lab-fixtures')),out=path.resolve(option('--out','build/gapless-lab-results'));
-fs.mkdirSync(out,{recursive:true});const manifest=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json')));
+fs.mkdirSync(out,{recursive:true});let manifest;
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'tagcast-media-lab-'));app.setPath('userData',profile);app.enableSandbox();app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
 let active,server,window;const results=[],memory=[];
 const routes={'/':'harness.html','/environment.js':'environment.js','/run.js':'run.js','/capture.js':'capture.js'};
@@ -34,9 +35,10 @@ async function run(config,referenceMode=false,normalization){
  const started=performance.now(),samples=(active.config.expectedTracks||active.config.tracks).reduce((n,s)=>n+s.samples,0),limit=(config.stress?90:config.seekProbe?20:samples/config.rate+18)*1000;active.config.timeoutMs=limit-2000;
  const timeout=setTimeout(()=>active.resolve({id:config.id,error:'Renderer harness deadline',events:[],operations:[],inputChannels:[]}),limit);
  const memoryTimer=setInterval(()=>memory.push({case:name,at:performance.now()-started,processes:app.getAppMetrics().map(p=>({type:p.type,workingSetKiB:p.memory.workingSetSize,privateKiB:p.memory.privateBytes}))}),500);
- await window.loadURL(`http://127.0.0.1:${server.address().port}/`);const result=await completed;clearTimeout(timeout);clearInterval(memoryTimer);fs.closeSync(active.fd);
+ await window.loadURL(`http://127.0.0.1:${server.address().port}/`);const result=await completed;clearTimeout(timeout);clearInterval(memoryTimer);fs.closeSync(active.fd);active.fd=undefined;
  const bytes=fs.readFileSync(file),floats=new Float32Array(bytes.buffer,bytes.byteOffset,bytes.byteLength/4),channels=[new Float32Array(floats.length/2),new Float32Array(floats.length/2)];
  for(let i=0;i<channels[0].length;i++){channels[0][i]=floats[i*2];channels[1][i]=floats[i*2+1];}
+ result.id=name;result.sourceCase=config.id;
  const expected=active.config.expectedTracks||active.config.tracks;
  const windowSpecs=config.seekProbe==='near-end'?[{...expected[1],sourceStart:expected[1].samples-256,samples:256},expected[2]]:expected;
  result.signal=counter.inspect(channels,windowSpecs,{normalization,anchorLimit:config.seekProbe==='near-end'?config.rate*10:undefined});
@@ -53,19 +55,27 @@ async function run(config,referenceMode=false,normalization){
  window.destroy();window=null;active=null;return result;
 }
 app.whenReady().then(async()=>{
- await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ let exitCode=1;
+ const report={schema:2,complete:false,expected:[],sourceSha256:Object.fromEntries(Object.values(production).map(file=>[file,crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT,'src/tagcast/static',file))).digest('hex')])),versions:process.versions,platform:process.platform,arch:process.arch,signal:'pre-output Web Audio measurement tap; same-rate, volume=1, rate=1; output silenced after capture',results,memory};
  try{
-  for(const spec of manifest.specs){const bytes=fs.readFileSync(path.join(directory,spec.file));if(crypto.createHash('sha256').update(bytes).digest('hex')!==spec.sha256)throw Error('Fixture hash mismatch: '+spec.id);}
-  for(const config of manifest.cases.filter(c=>c.referenceSha256)){if(crypto.createHash('sha256').update(fs.readFileSync(path.join(directory,config.reference))).digest('hex')!==config.referenceSha256)throw Error('Reference hash mismatch: '+config.id);}
-  const selected=option('--case',null),suite=option('--suite','smoke');
-  for(const config of manifest.cases){if(selected?!selected.split(',').includes(config.id):suite==='smoke'?!config.gate:suite==='diagnostics'?config.gate:false)continue;
+  manifest=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json')));
+  contract.verifyFixtures(manifest,directory);
+  const plan=contract.mediaPlan(manifest,option('--suite','smoke'),option('--case',null),args.includes('--stress'));
+  report.expected=plan.flatMap(c=>c.gate?[c.id+'-reference',c.id]:[c.id]);
+  fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(report,null,2));
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  for(const config of plan){
    const reference=config.reference&&config.gate?await run(config,true):null;
    if(reference&&!reference.pass)throw Error('Single-file calibration failed: '+config.id);
    await run(config,false,reference?.signal.normalization);}
-  fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({schema:1,sourceSha256:Object.fromEntries(Object.values(production).map(file=>[file,crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT,'src/tagcast/static',file))).digest('hex')])),versions:process.versions,platform:process.platform,arch:process.arch,signal:'pre-output Web Audio measurement tap; same-rate, volume=1, rate=1; output silenced after capture',results,memory},null,2));
-  if(results.some(r=>(r.gating||r.required)&&!r.pass))process.exitCode=1;
- }catch(e){console.error(e);process.exitCode=1;}
- finally{if(active?.fd!==undefined){try{fs.closeSync(active.fd);}catch{/* Already closed after capture. */}}window?.destroy();for(const t of timers)clearTimeout(t);server.close();app.quit();}
+  report.complete=true;contract.verifyResults(report,out);exitCode=0;
+ }catch(e){report.error=e.message;console.error(e);}
+ finally{
+  fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(report,null,2));
+  if(active?.fd!==undefined){try{fs.closeSync(active.fd);}catch{/* Already closed after capture. */}}window?.destroy();for(const t of timers)clearTimeout(t);server.closeAllConnections();server.close();
+  try{fs.rmSync(profile,{recursive:true,force:true});}catch{/* OS may briefly retain a profile lock. */}
+  app.exit(exitCode); // app.quit() can discard Node's process.exitCode in Electron.
+ }
 });
 app.on('window-all-closed',()=>{});
 
