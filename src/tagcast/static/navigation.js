@@ -12,11 +12,16 @@ const SIDEBAR_ITEMS = [
   ["show-artists", "Album artists", true], ["all-albums", "Albums", true],
   ["show-track-artists", "Track artists"], ["show-composers", "Composers"],
   ["show-genres", "Genres"], ["show-tags", "Tags"], ["show-years", "Release year"], ["show-decades", "Decades"],
+  ["show-upload-folders", "Upload folders", false, true], ["show-uploaded", "Date uploaded", false, true],
   ["show-tracks", "Tracks"], ["show-favourites", "Favourites"], ["show-playlists", "Playlists"],
   ["show-recently-played", "Recently played"],
   ["show-album-guide", "1001 Albums"], ["show-overview", "Overview"], ["show-history", "Change history", true],
 ];
 const sidebarLayout = readSidebarLayout();
+
+function defaultHiddenSidebarItems() {
+  return SIDEBAR_ITEMS.filter(item => item[3]).map(([id]) => id);
+}
 
 function readSidebarLayout() {
   const defaults = SIDEBAR_ITEMS.map(([id]) => id), optional = new Set(SIDEBAR_ITEMS.filter(i => !i[2]).map(i => i[0]));
@@ -25,10 +30,12 @@ function readSidebarLayout() {
     const legacy = Array.isArray(saved?.order) && saved.order.includes("show-album-favourites");
     const order = Array.isArray(saved?.order) ? saved.order.map(id => id === "show-album-favourites" ? "show-favourites" : id).filter(id => defaults.includes(id)) : [];
     let hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(id => optional.has(id)) : [];
+    // New optional upload shortcuts stay off for both new and existing profiles.
+    hidden.push(...defaultHiddenSidebarItems().filter(id => !order.includes(id)));
     // Keep the combined shortcut available if either of the old shortcuts was visible.
     if (legacy && !saved.hidden?.includes?.("show-album-favourites")) hidden = hidden.filter(id => id !== "show-favourites");
     return {order: [...new Set([...order, ...defaults])], hidden: [...new Set(hidden)]};
-  } catch { return {order: defaults, hidden: []}; }
+  } catch { return {order: defaults, hidden: defaultHiddenSidebarItems()}; }
 }
 
 function applySidebarLayout() {
@@ -90,7 +97,7 @@ document.addEventListener("click", event => {
     else document.querySelector(`[data-sidebar-move="${move.dataset.sidebarMove}"][data-direction="${-delta}"]`)?.focus();
   }
   if (event.target.closest("[data-sidebar-reset]")) {
-    sidebarLayout.order = SIDEBAR_ITEMS.map(([id]) => id); sidebarLayout.hidden = [];
+    sidebarLayout.order = SIDEBAR_ITEMS.map(([id]) => id); sidebarLayout.hidden = defaultHiddenSidebarItems();
     saveSidebarLayout(); $("#sidebar-layout-list").innerHTML = sidebarSettingsRows();
     toast("Default sidebar restored.");
   }
