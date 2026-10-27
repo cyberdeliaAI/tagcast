@@ -1,7 +1,22 @@
 # Tagcast 1.0 candidate — Final stabilization and validation
 
-Date: **27 October 2026**. Local preparation only. No push, merge, tag, GitHub
-Release, Wiki publication, website deployment or Homebrew update was performed.
+Date: **27 October 2026**. Initial local preparation record. At that stage no push,
+merge, tag, GitHub Release, Wiki publication, website deployment or Homebrew update
+was performed. See the follow-up below for the subsequently authorized PR stage.
+
+## Follow-up — macOS acceptance and approved platform CI
+
+On 27 October 2026 the user reported thoroughly testing the supplied macOS candidate
+and finding it working correctly. This is user acceptance evidence in addition to
+the automated and synthetic upgrade checks below; individual hardware, output and
+sleep/wake scenarios were not supplied, so they are not inferred as measured passes.
+
+The user subsequently approved pushing `codex/v1-stabilization` and opening a PR
+to run the existing platform checks. This authorizes neither a merge, tag nor
+release. The application source remains `067df8e`; only this follow-up and the
+outdated upload-group description in AGENTS.md are adjusted before the push.
+Windows/Linux/macOS Intel verification and exact-commit CI remain pending until
+their new runs complete. Earlier local results below retain their original scope.
 
 ## Decision
 
