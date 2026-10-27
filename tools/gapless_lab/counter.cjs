@@ -27,9 +27,15 @@
     const quantize=(v,bits)=>Number.isFinite(v)?Math.round(v*(2**(bits-1)-(normalization==="asymmetric"&&v>0?1:0))):NaN;
     const ref = reference(specs), frames = channels[0]?.length || 0, count = specs[0].channels;
     const anchor = options.anchor ?? Math.min(2048, Math.floor(specs[0].samples / 4));
+    const firstSignal = channels.reduce((first, plane) => {
+      const at = plane.findIndex(v => v !== 0);
+      return at < 0 ? first : Math.min(first, at);
+    }, frames);
     let start = null;
     // Anchor inside the first file, then account for the inferred start; never realign at boundaries.
-    search: for (let p = 0; p < Math.min(frames - 8, (options.anchorLimit || specs[0].rate * 3)); p++) {
+    // Device startup can produce seconds of capture silence before any audio arrives.
+    // Bound the anchor search from the first signal, not the recorder's startup.
+    search: for (let p = firstSignal; p < Math.min(frames - 8, firstSignal + (options.anchorLimit || specs[0].rate * 3)); p++) {
       for (let k = 0; k < 8; k++) for (let c = 0; c < count; c++) {
         if (quantize(channels[c]?.[p + k],specs[0].bits) !== Math.round(ref.at(anchor + k, c)*2**(specs[0].bits-1))) continue search;
       }
