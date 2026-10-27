@@ -27,9 +27,12 @@ page and official iBroadcast service health on Overview. Also tag selected album
 together, shuffle an album and browse albums in a stable random order.
 [Gapless setup and limitations](docs/gapless-playback.md).
 
-**In development:** a compact desktop [Mini Player](docs/electron.md#mini-player-development)
-with artwork, transport controls, seeking and optional Pin. It shares the existing
-player and queue; it is not included in the 0.85.1 downloads yet.
+**Local release candidate in preparation: 1.0.0 beta 1.** It adds the compact desktop
+[Mini Player](docs/electron.md#mini-player-development), reviewed album merging,
+optional upload-folder/day browsing with album cards, and stronger send-once save
+verification. These changes are not in the public 0.85.1 downloads. See the
+[candidate release notes](.github/release-notes/1.0.0-beta.1.md); no 1.0 release has
+been published yet.
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
@@ -38,6 +41,13 @@ player and queue; it is not included in the 0.85.1 downloads yet.
 *Tagcast 0.80.0 — album details and compact player, captured on 23 October 2026.*
 
 ## What you can do
+
+iBroadcast controls account limits, available tracks and Premium entitlements.
+Tagcast does not provide storage, remove provider limits or replace every iBroadcast
+feature. See [iBroadcast's announced plan changes](https://news.ibroadcast.com/an-important-update-on-ibroadcast-s-pricing)
+for storage and bandwidth rules; music hidden by those limits has not necessarily
+been deleted. Original-quality streaming and lyrics saving require the corresponding
+iBroadcast Premium access.
 
 - **Browse and discover:** artists, albums, tracks, genres, tags, years, decades
   and the optional 1001 Albums guide.
