@@ -19,17 +19,15 @@ keeping the interface shared with the browser version.
 **Your local music files are never changed.** Tagcast's server listens on
 `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**Latest update: [0.85.1](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.85.1)** restores the official iBroadcast service status in the standalone app.
+**New in [Tagcast 1.0.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.0.0):**
+A compact desktop [Mini Player](docs/electron.md#mini-player), reviewed album merging,
+and optional upload-folder/day browsing with album cards. Interrupted saves are
+sent once and checked afterwards, and the desktop runtime is updated to Electron 44.9.3.
 
-**Introduced in [0.85.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.85.0):**
-Optional experimental gapless playback for ordered albums, a dedicated Settings
-page and official iBroadcast service health on Overview. Also tag selected albums
-together, shuffle an album and browse albums in a stable random order.
+Experimental Gapless playback remains optional and off by default. Unsupported
+transitions safely use ordinary playback. See the
+[release notes](.github/release-notes/1.0.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
-
-**In development:** a compact desktop [Mini Player](docs/electron.md#mini-player-development)
-with artwork, transport controls, seeking and optional Pin. It shares the existing
-player and queue; it is not included in the 0.85.1 downloads yet.
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
@@ -38,6 +36,13 @@ player and queue; it is not included in the 0.85.1 downloads yet.
 *Tagcast 0.80.0 — album details and compact player, captured on 23 October 2026.*
 
 ## What you can do
+
+iBroadcast controls account limits, available tracks and Premium entitlements.
+Tagcast does not provide storage, remove provider limits or replace every iBroadcast
+feature. See [iBroadcast's announced plan changes](https://news.ibroadcast.com/an-important-update-on-ibroadcast-s-pricing)
+for storage and bandwidth rules; music hidden by those limits has not necessarily
+been deleted. Original-quality streaming and lyrics saving require the corresponding
+iBroadcast Premium access.
 
 - **Browse and discover:** artists, albums, tracks, genres, tags, years, decades
   and the optional 1001 Albums guide.
@@ -60,14 +65,14 @@ player and queue; it is not included in the 0.85.1 downloads yet.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 0.85.1](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.85.1):
+[Tagcast 1.0.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.0.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.85.1/tagcast-0.85.1-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.85.1/tagcast-0.85.1-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.85.1/tagcast-0.85.1-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v0.85.1/tagcast-0.85.1-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.0.0/tagcast-1.0.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.0.0/tagcast-1.0.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.0.0/tagcast-1.0.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.0.0/tagcast-1.0.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,

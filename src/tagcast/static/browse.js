@@ -9,8 +9,8 @@ const browseKinds = {
   genres: {label: "Genres", noun: "genres", singular: "genre", subtitle: "Explore main and additional genres. Combined labels such as Pop;Rock stay together as stored."},
   tags: {label: "Tags", noun: "tags", singular: "tag", subtitle: "Your own iBroadcast labels, separate from genres. Open a tag to find matching albums. Manage assignments on an album or track."},
   years: {label: "Release year", noun: "release years", singular: "release year", subtitle: "Explore tracks by release year. The track year takes precedence, with the album year as fallback. Missing years appear under Unknown year."},
-  "upload-folders": {label: "Upload folders", noun: "upload folders", singular: "upload folder", subtitle: "Find tracks by their original upload folder. These are stored upload paths, not folders on this computer or playlist folders."},
-  uploaded: {label: "Date uploaded", noun: "upload days", singular: "upload day", subtitle: "Find tracks by the upload day stored by iBroadcast, independently of release year. Dates are shown as stored, without a time-zone conversion."},
+  "upload-folders": {label: "Upload folders", noun: "upload folders", singular: "upload folder", subtitle: "Find albums by their original upload folder. These are stored upload paths, not folders on this computer or playlist folders."},
+  uploaded: {label: "Date uploaded", noun: "upload days", singular: "upload day", subtitle: "Find albums by the upload day stored by iBroadcast, independently of release year. Dates are shown as stored, without a time-zone conversion."},
 };
 
 const uploadBrowseKind = () => ["upload-folders", "uploaded"].includes(browseView.kind);
@@ -55,7 +55,7 @@ function decadeIntroduction(key) {
 }
 const browseView = {kind: "track-artists", key: null, label: "", rows: [], albumIds: new Set(), total: 0, page: 0,
   query: "", sort: "az", pageSize: storedPageSize("tagcast-browse-per-page") || 24,
-  request: 0, details: null, loaded: false, loading: false, error: "", randomIds: []};
+  request: 0, details: null, loaded: false, loading: false, error: "", randomIds: [], membershipQuery: ""};
 let browseTimer;
 
 function resetBrowse() {
@@ -111,10 +111,7 @@ function localBrowse() {
     browseView.label = group.label;
     if (uploadBrowseKind()) {
       rows = group.rows.filter(t => matches([t.title, t.artist, t.album, t.album_artist, ...t.performers.map(p => p.name), ...t.composers].join(" ")));
-      if (["az", "za"].includes(browseView.sort)) rows.sort((a, b) => foldText(a.title).localeCompare(foldText(b.title)) * (browseView.sort === "za" ? -1 : 1));
-      browseView.total = rows.length;
-      browseView.page = Math.min(browseView.page, Math.max(0, Math.ceil(rows.length / browseView.pageSize) - 1));
-      browseView.rows = rows.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
+      browseView.albumIds = new Set(rows.map(t => t.album_id));
       return;
     }
     browseView.albumIds = new Set(group.rows.map(t => t.album_id));
@@ -142,16 +139,16 @@ async function loadBrowse() {
     if (!live()) localBrowse();
     else {
       const params = new URLSearchParams({kind: browseView.kind, q: browseView.query,
-        offset: String(browseView.page * browseView.pageSize), limit: String(browseView.pageSize), sort: browseView.key === null || uploadBrowseKind() ? browseView.sort : "az"});
+        offset: String(browseView.page * browseView.pageSize), limit: String(browseView.pageSize), sort: browseView.key === null ? browseView.sort : "az"});
       if (browseView.key !== null) params.set("key", browseView.key);
       const data = await api(`/api/browse?${params}`);
       if (request !== browseView.request || details !== state.details) return;
-      browseView.rows = data.groups || data.tracks || [];
+      browseView.rows = data.groups || [];
       browseView.albumIds = new Set(data.album_ids || []);
-      if (!data.group || uploadBrowseKind()) { browseView.total = data.total || 0; browseView.page = Math.floor((data.offset || 0) / browseView.pageSize); }
+      if (!data.group) { browseView.total = data.total || 0; browseView.page = Math.floor((data.offset || 0) / browseView.pageSize); }
       if (data.group) browseView.label = data.group.label;
     }
-    browseView.loaded = true;
+    browseView.membershipQuery = browseView.query; browseView.loaded = true;
   } catch (error) {
     if (request !== browseView.request || details !== state.details) return;
     browseView.error = error.status === 404 ? "Restart Tagcast to use these overviews: the running server is older than this page." : error.message;
@@ -166,7 +163,7 @@ function browseCard(g) {
   const albums = g.albums == null ? "" : `${g.albums.toLocaleString("en")} ${g.albums === 1 ? "album" : "albums"}`;
   const tracks = `${g.tracks.toLocaleString("en")} ${g.tracks === 1 ? "track" : "tracks"}`;
   const image = g.image ? `<img src="${escapeHtml(g.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-  return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="Open ${uploadBrowseKind() ? "tracks" : "albums"} for ${escapeHtml(g.label)}">
+  return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="Open albums for ${escapeHtml(g.label)}">
     ${people ? `<span class="artist-card-photo">${image}<span>${escapeHtml(initials(g.label))}</span></span>` : ""}
     <strong>${escapeHtml(g.label)}</strong>${g.archived ? '<small class="muted">Archived in iBroadcast</small>' : ""}<span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
 }
@@ -187,18 +184,18 @@ function shuffledAlbumIds(albums) {
 
 // All matching albums, before pagination or the decade's random display sample.
 function browseAlbums() {
-  if (uploadBrowseKind() || browseView.key === null || !browseView.loaded || browseView.loading || browseView.error
+  if (browseView.key === null || !browseView.loaded || browseView.loading || browseView.error
     || browseView.details !== state.details || state.loading) return [];
   const words = foldText(browseView.query).split(" ").filter(Boolean);
   return albumShelf().filter(a => itemIds(a).some(id => browseView.albumIds.has(id))
-    && words.every(w => foldText([a.name, a.artist, ...a.genres].join(" ")).includes(w)));
+    && (uploadBrowseKind() || words.every(w => foldText([a.name, a.artist, ...a.genres].join(" ")).includes(w))));
 }
 
 function renderBrowse() {
   if (state.screen !== "browse") return;
   if (!state.loading && !browseView.loading && (browseView.details !== state.details || !browseView.loaded && !browseView.error)) { loadBrowse(); return; }
   const config = browseKinds[browseView.kind], detail = browseView.key !== null;
-  const uploads = uploadBrowseKind(), uploadTracks = uploads && detail;
+  const uploads = uploadBrowseKind(), uploadDetail = uploads && detail;
   $("#browse-page").dataset.kind = browseView.kind;
   $("#browse-tag-actions").hidden = browseView.kind !== "tags" || !live();
   $("#browse-tag-rename").hidden = !detail;
@@ -207,10 +204,10 @@ function renderBrowse() {
   $("#browse-title").textContent = detail ? (uploads ? uploadBrowseTitle() : browseView.label) || "Albums" : `${config.label}.`;
   $("#breadcrumb").innerHTML = detail ? `${escapeHtml(config.label)}<span class="slash" aria-hidden="true">/</span><span aria-current="page">${escapeHtml((uploads ? uploadBrowseTitle() : browseView.label) || "Albums")}</span>` : escapeHtml(config.label);
   $("#browse-eyebrow").textContent = detail ? config.label.toLocaleUpperCase() : "EXPLORE YOUR COLLECTION";
-  $("#browse-subtitle").textContent = uploadTracks ? "Tracks from this upload group only. Play continues in album order; + queues one track. Upload times are shown as stored."
+  $("#browse-subtitle").textContent = uploadDetail ? "Albums with at least one track in this upload group. An album may appear in several folders or days. Open or play an album to use the complete album."
     : surprise ? "A random selection from this decade. Open an album to listen, add it to your queue, or try Surprise me again." : detail ? "Albums with at least one matching track. Open an album to see its tracks, listen or edit." : config.subtitle;
-  $("#browse-upload-path").hidden = !(uploadTracks && browseView.kind === "upload-folders");
-  $("#browse-upload-path").textContent = uploadTracks && browseView.kind === "upload-folders" ? browseView.label : "";
+  $("#browse-upload-path").hidden = !(uploadDetail && browseView.kind === "upload-folders");
+  $("#browse-upload-path").textContent = uploadDetail && browseView.kind === "upload-folders" ? browseView.label : "";
   const introduction = surprise ? decadeIntroduction(browseView.key) : "";
   $("#browse-decade-intro").textContent = introduction;
   $("#browse-decade-intro").hidden = !introduction;
@@ -218,23 +215,22 @@ function renderBrowse() {
   $("#browse-back").textContent = `← Back to ${backLabel(config.label)}`;
   $("#browse-toolbar").hidden = decades && !detail;
   $("#browse-search-field").hidden = decades && !detail;
-  $("#browse-search").placeholder = uploadTracks ? "Search tracks, artists or albums in this group" : detail ? "Search albums in this group" : `Search ${config.noun}`;
-  $("#browse-search").setAttribute("aria-label", uploadTracks ? "Search upload group tracks" : detail ? "Search group albums" : `Search ${config.noun}`);
+  $("#browse-search").placeholder = uploadDetail ? "Search albums, artists or tracks in this group" : detail ? "Search albums in this group" : `Search ${config.noun}`;
+  $("#browse-search").setAttribute("aria-label", detail ? "Search group albums" : `Search ${config.noun}`);
   $("#browse-per-page").value = String(browseView.pageSize);
   $("#browse-per-page").hidden = decades && !detail;
   $("#browse-surprise").hidden = !surprise;
   $("#browse-surprise").disabled = state.loading || browseView.loading || Boolean(browseView.error);
   const sort = $("#browse-sort");
   sort.hidden = decades;
-  sort.setAttribute("aria-label", uploadTracks ? "Sort upload group tracks" : detail ? "Sort group albums" : `Sort ${config.noun}`);
-  sort.innerHTML = uploadTracks ? '<option value="album">Album order</option><option value="az">Track title · A–Z</option><option value="za">Track title · Z–A</option>'
-    : detail ? '<option value="artist">Album artist · A–Z</option><option value="artist_za">Album artist · Z–A</option><option value="title">Album title · A–Z</option><option value="title_za">Album title · Z–A</option><option value="year">Release year · oldest first</option><option value="newest">Release year · newest first</option>'
+  sort.setAttribute("aria-label", detail ? "Sort group albums" : `Sort ${config.noun}`);
+  sort.innerHTML = detail ? '<option value="artist">Album artist · A–Z</option><option value="artist_za">Album artist · Z–A</option><option value="title">Album title · A–Z</option><option value="title_za">Album title · Z–A</option><option value="year">Release year · oldest first</option><option value="newest">Release year · newest first</option>'
     : browseView.kind === "uploaded" ? '<option value="za">Upload day · newest first</option><option value="az">Upload day · oldest first</option><option value="count">Most tracks first</option>'
     : ["years", "decades"].includes(browseView.kind) ? '<option value="az">Year · oldest first</option><option value="za">Year · newest first</option><option value="count">Most tracks first</option>'
     : '<option value="az">Name · A–Z</option><option value="za">Name · Z–A</option><option value="count">Most tracks first</option>';
   sort.value = browseView.sort;
   let rows = browseView.rows;
-  if (detail && !uploads && browseView.loaded && !state.loading && !browseView.loading) {
+  if (detail && browseView.loaded && !state.loading && !browseView.loading) {
     const albums = browseAlbums();
     if (surprise) {
       if (!browseView.randomIds.length) browseView.randomIds = shuffledAlbumIds(albumShelf().filter(a => itemIds(a).some(id => browseView.albumIds.has(id))));
@@ -247,22 +243,17 @@ function renderBrowse() {
     rows = albums.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
   }
   $("#browse-results").textContent = state.loading || browseView.loading ? "Loading…" : browseView.error ? ""
-    : surprise ? `Showing ${rows.length} random ${rows.length === 1 ? "album" : "albums"} of ${browseView.total.toLocaleString("en")}` : `${browseView.total.toLocaleString("en")} ${uploadTracks ? browseView.total === 1 ? "track" : "tracks" : detail ? browseView.total === 1 ? "album" : "albums" : browseView.total === 1 ? config.singular : config.noun}`;
+    : surprise ? `Showing ${rows.length} random ${rows.length === 1 ? "album" : "albums"} of ${browseView.total.toLocaleString("en")}` : `${browseView.total.toLocaleString("en")} ${detail ? browseView.total === 1 ? "album" : "albums" : browseView.total === 1 ? config.singular : config.noun}`;
   const list = $("#browse-list");
-  list.className = uploads ? uploadTracks ? "upload-track-list" : "upload-group-list" : detail ? "album-grid" : "artists-grid";
-  if (uploadTracks) { list.setAttribute("role", "region"); list.setAttribute("aria-label", "Upload group tracks"); }
-  else { list.removeAttribute("role"); list.removeAttribute("aria-label"); }
+  list.className = detail ? "album-grid" : uploads ? "upload-group-list" : "artists-grid";
   list.innerHTML = state.loading || browseView.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading your collection…</div>'
     : browseView.error ? `<p class="error-box" role="alert">${escapeHtml(browseView.error)}</p>`
     : !rows.length ? '<div class="empty">No matches in this library.</div>'
-    : uploadTracks ? `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>Title / Artist</th><th>Album / Upload date</th><th class="track-year">Year</th><th class="track-time">Time</th><th class="track-heart" aria-label="Queue and favourite"></th></tr></thead><tbody>${rows.map(t => foundTrackRow(t, {uploadDate: true})).join("")}</tbody></table>`
     : detail ? rows.map(browseAlbumCard).join("") : rows.map(browseCard).join("");
-  updateUploadScrollFocus();
   const max = Math.max(0, Math.ceil(browseView.total / browseView.pageSize) - 1);
   $("#browse-pagination").innerHTML = !surprise && !state.loading && !browseView.loading && max > 0 ? `<button class="button small" data-browse-page="-1" ${browseView.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${browseView.page + 1} of ${(max + 1).toLocaleString("en")}</span><button class="button small" data-browse-page="1" ${browseView.page === max ? "disabled" : ""}>Next →</button>` : "";
   updateFavouriteControls();
   updateRandomControls();
-  if (uploadTracks) markPlaying();
   if (typeof syncHistory === "function") syncHistory();
 }
 
@@ -271,7 +262,7 @@ function showBrowse(kind, key = null, saved = {}) {
   clearTimeout(browseTimer);
   const uploads = ["upload-folders", "uploaded"].includes(kind);
   Object.assign(browseView, {kind, key, label: saved.label || "", query: kind === "decades" && key === null ? "" : saved.query || "", page: saved.page || 0,
-    sort: kind === "decades" && key === null ? "za" : saved.sort || (uploads ? key !== null ? "album" : kind === "uploaded" ? "za" : "az" : key !== null ? "artist" : kind === "years" ? "za" : "az"), rows: [], albumIds: new Set(), details: null, loaded: false, randomIds: Array.isArray(saved.randomIds) ? saved.randomIds.filter(id => typeof id === "string") : []});
+    sort: kind === "decades" && key === null ? "za" : (uploads && key !== null ? ({album:"artist",az:"title",za:"title_za"}[saved.sort] || saved.sort) : saved.sort) || (key !== null ? "artist" : ["years","uploaded"].includes(kind) ? "za" : "az"), rows: [], albumIds: new Set(), details: null, loaded: false, randomIds: Array.isArray(saved.randomIds) ? saved.randomIds.filter(id => typeof id === "string") : []});
   $("#browse-search").value = browseView.query;
   showScreen("browse"); loadBrowse(); window.scrollTo?.({top: 0});
 }
@@ -279,22 +270,10 @@ function showBrowse(kind, key = null, saved = {}) {
 function refreshBrowseList() {
   // Album summaries are already in memory. Search, sort and page them locally;
   // only overview cards and exact group membership need an API request.
-  if (!uploadBrowseKind() && browseView.key !== null && browseView.loaded && browseView.details === state.details) renderBrowse();
+  if (browseView.key !== null && browseView.loaded && browseView.details === state.details
+    && (!uploadBrowseKind() || browseView.membershipQuery === browseView.query)) renderBrowse();
   else loadBrowse();
 }
-
-function updateUploadScrollFocus() {
-  const list = $("#browse-list");
-  list.setAttribute("tabindex", state.screen === "browse" && uploadBrowseKind() && browseView.key !== null
-    && list.clientWidth > 0 && list.scrollWidth > list.clientWidth ? "0" : "-1");
-}
-
-$("#browse-list").addEventListener("focusin", event => {
-  const list = event.currentTarget, control = event.target.closest("button");
-  if (uploadBrowseKind() && control && list.scrollWidth > list.clientWidth) control.scrollIntoView({block: "nearest", inline: "nearest"});
-});
-if (typeof ResizeObserver !== "undefined") new ResizeObserver(updateUploadScrollFocus).observe($("#browse-list"));
-else window.addEventListener("resize", updateUploadScrollFocus);
 
 $("#browse-surprise").addEventListener("click", () => {
   if (browseView.kind !== "decades" || browseView.key === null || !browseView.loaded) return;

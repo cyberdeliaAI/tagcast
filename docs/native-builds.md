@@ -1,6 +1,6 @@
 # Standalone downloads and builds
 
-Tagcast 0.85.1 packages the shared Python server and editor/player in an Electron
+Tagcast 1.0.0 packages the shared Python server and editor/player in an Electron
 desktop app. No separate browser, Python or Node.js installation is required.
 Python/source installs and the bundled terminal CLI retain browser use. See
 [Electron desktop and Python/browser use](electron.md) for the shared-code design.
@@ -9,10 +9,10 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-0.85.1-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-0.85.1-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-0.85.1-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-0.85.1-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| macOS, Apple Silicon | `tagcast-1.0.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-1.0.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-1.0.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-1.0.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -32,7 +32,7 @@ Privacy & Security → Open Anyway** on macOS, or **More info → Run anyway** o
 Each archive has a separate `.sha256` companion under release Assets. Compare with
 `shasum -a 256` on macOS, `sha256sum` on Linux, or `Get-FileHash` on Windows.
 
-Native CI covers macOS 14 (Apple Silicon), macOS 15 (Intel), Windows Server 2022
+Native CI covers macOS 15 (Apple Silicon and Intel), Windows Server 2022
 and Ubuntu 22.04. Linux needs a graphical desktop and compatible system libraries
 (glibc 2.35 or newer); the download is not a universal Linux executable. Audio
 outputs and codecs depend on Chromium and the operating system.

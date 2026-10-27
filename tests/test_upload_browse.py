@@ -1,4 +1,4 @@
-"""Upload groups use loaded metadata only, with exact, paginated track membership."""
+"""Upload groups select albums from exact stored track membership, without remote reads."""
 
 import tempfile
 import unittest
@@ -45,17 +45,21 @@ class UploadBrowseTests(unittest.TestCase):
                 for p in ("/Music/One", "/music/One", "/Music/One/", r"\Music\One")}
         self.assertEqual(len(keys), 4)
 
-    def test_group_does_not_include_other_tracks_from_the_same_album(self):
+    def test_partial_upload_selects_the_complete_album_without_sending_track_details(self):
         library = Library(uploads())
         key = upload_group("upload-folders", library.tracks[100])[0]
         page = library.browse("upload-folders", key=key, sort="album")
-        self.assertEqual([t["id"] for t in page["tracks"]], ["100"])
-        self.assertNotIn("album_ids", page)
-        self.assertEqual(page["tracks"][0]["uploaded_at"], "2026-10-27T10:30:00")
-        self.assertNotIn("path", page["tracks"][0])
-        self.assertNotIn("file", page["tracks"][0])
-        self.assertEqual(library.browse("upload-folders", key=key, query="elsewhere")["total"], 0)
-        self.assertEqual(library.browse("upload-folders", key=key, query="song artist a")["total"], 1)
+        self.assertEqual(page["album_ids"], ["10"])
+        self.assertEqual(page["matching_tracks"], 1)
+        self.assertNotIn("tracks", page)
+        album = library.album_view(10)
+        self.assertEqual([t["id"] for t in album["tracks"]], ["100", "101"])
+        self.assertEqual(album["tracks"][0]["uploaded_at"], "2026-10-27T10:30:00")
+        other = upload_group("upload-folders", library.tracks[101])[0]
+        self.assertEqual(library.browse("upload-folders", key=other)["album_ids"], ["10"])
+        self.assertEqual(library.browse("upload-folders", key=key, query="elsewhere")["album_ids"], [])
+        self.assertEqual(library.browse("upload-folders", key=key, query="song artist a")["album_ids"], ["10"])
+        self.assertEqual(library.browse("upload-folders", key=key, query="song two")["album_ids"], [])
 
     def test_dates_use_valid_stored_days_not_track_or_album_years(self):
         library = Library(uploads())
@@ -64,13 +68,13 @@ class UploadBrowseTests(unittest.TestCase):
         self.assertEqual(groups[0]["tracks"], 2)
         self.assertEqual([g["key"] for g in library.browse("uploaded", sort="az")["groups"]],
                          ["2026-10-26", "2026-10-27", "unknown"])
-        self.assertEqual([t["id"] for t in library.browse("uploaded", key="2026-10-27")["tracks"]], ["102", "100"])
-        self.assertEqual(library.browse("uploaded", key="unknown")["tracks"][0]["uploaded_at"], "")
+        self.assertEqual(set(library.browse("uploaded", key="2026-10-27")["album_ids"]), {"10", "11"})
+        self.assertEqual(library.browse("uploaded", key="unknown")["album_ids"], ["12"])
         for value, expected in [("2026-10-27 23:55:00", "2026-10-27"),
                                 ("2026-02-30", "unknown"), ("", "unknown"), ("0000-01-01", "unknown")]:
             self.assertEqual(upload_group("uploaded", {"uploaded_on": value})[0], expected)
 
-    def test_bounded_pages_search_sort_and_unknown_data(self):
+    def test_compact_album_membership_search_and_unknown_data(self):
         data = uploads()
         for key in ("100", "101", "102", "104"):
             data["library"]["tracks"][key][8] = "/Together"
@@ -78,12 +82,12 @@ class UploadBrowseTests(unittest.TestCase):
         key = upload_group("upload-folders", library.tracks[100])[0]
         first = library.browse("upload-folders", key, offset=0, limit=2, sort="az")
         second = library.browse("upload-folders", key, offset=2, limit=2, sort="az")
-        self.assertEqual(first["total"], 4)
-        self.assertEqual(len(first["tracks"]), 2)
-        self.assertFalse({t["id"] for t in first["tracks"]} & {t["id"] for t in second["tracks"]})
-        self.assertEqual(library.browse("upload-folders", key, offset=9999, limit=2)["offset"], 2)
+        self.assertEqual(first["matching_tracks"], 4)
+        self.assertEqual(set(first["album_ids"]), {"10", "11", "12"})
+        self.assertEqual(first, second)  # Paging/sorting reuses the loaded album summaries.
+        self.assertEqual(library.browse("upload-folders", key, offset=9999, limit=2), first)
         self.assertEqual(library.browse("upload-folders", query="together")["total"], 1)
-        self.assertEqual(library.browse("upload-folders", key, query="song one")["total"], 1)
+        self.assertEqual(library.browse("upload-folders", key, query="song one")["album_ids"], ["10"])
         with self.assertRaises(LibraryError):
             library.browse("upload-folders", key="missing")
         for kind in ("upload-folders", "uploaded"):

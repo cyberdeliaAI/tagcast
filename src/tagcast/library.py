@@ -698,13 +698,9 @@ class Library:
                         ]))
                         return all(w in haystack for w in words)
                     pairs = [pair for pair in pairs if matches(pair)]
-                if sort in ("az", "za"):
-                    pairs = sorted(pairs, key=lambda pair: (fold(self.tracks[pair[0]].get("title")), pair), reverse=sort == "za")
-                offset = min(offset, max(0, (len(pairs) - 1) // limit * limit))
                 return {"group": {k: v for k, v in group.items() if k != "ids"},
-                        "tracks": [{**self.track_row(t, a), "uploaded_at": uploaded_at(self.tracks[t])}
-                                   for t, a in pairs[offset:offset + limit]],
-                        "total": len(pairs), "offset": offset}
+                        "album_ids": [str(i) for i in dict.fromkeys(a for _, a in pairs)],
+                        "matching_tracks": len(pairs)}
             return {"group": {k: v for k, v in group.items() if k != "ids"},
                     "album_ids": [str(i) for i in dict.fromkeys(a for _, a in group["ids"])]}
         found = [g for g in groups.values() if all(w in fold(g["label"]) for w in words)]

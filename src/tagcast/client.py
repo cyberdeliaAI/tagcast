@@ -64,8 +64,7 @@ COMBINE_SETS_MESSAGE = ("“Combine Multi-Disc Album Sets” is on in your iBroa
                         "it back on.")
 RETRY_DELAYS = (2, 6)  # seconds before the 2nd and 3rd attempt after a temporary failure
 MAX_TRASH = 500  # tracks per trash request
-NO_RETRY = {"create_artist", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "deleteplaylist", "playqueue_token", "trash",
-            "createtag", "updatetag", "deletetags", "tagtracks"}  # Never repeat ambiguous collection/tag/trash mutations or one-use tokens.
+RETRY_READS = {"library", "status", "get_artwork", "gettrackuserdata"}
 CACHE_FILE = "library-cache.json.gz"
 KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
            "fanart_api_key": "FANART_API_KEY"}
@@ -115,7 +114,7 @@ def account_view(data):
         "email": mask_email(user.get("email_address")),
         "verified": bool(user.get("verified")),
         "verified_on": text(user.get("verified_on"))[:10],
-        "premium": bool(user.get("premium")),
+        "premium": user.get("premium") in (True, 1, "1"),
         "tester": bool(user.get("tester")),
         "subscription": {"name": text(plan.get("name") or sub.get("display_title")),
                          "frequency": text(plan.get("frequency")),
@@ -148,6 +147,10 @@ class NotConnected(ApiError):
     pass
 
 
+class UncertainWrite(ApiError):
+    """A request may have been applied; never resend it without a fresh review."""
+
+
 class StudioClient(ibroadcast.iBroadcast):
     """iBroadcast client that keeps server messages and refreshes tokens up front."""
 
@@ -159,9 +162,13 @@ class StudioClient(ibroadcast.iBroadcast):
         self._token_generation = 0
 
     def _post(self, url, args, retry=True, access_token=None):
-        """POST JSON. Network errors, HTTP 429 and 5xx are retried (writes here set values,
-        so sending one twice does no harm), except for modes in NO_RETRY or play history."""
-        retry = retry and args.get("mode") not in NO_RETRY and "history" not in args
+        """Retry only known reads. Even setting the same value can overwrite a later edit.
+
+        An explicit authentication rejection is handled separately by _jsonrequest.
+        Unknown modes and status requests carrying play history are send-once writes.
+        """
+        read = args.get("mode") in RETRY_READS and "history" not in args
+        retry = retry and read
         for attempt, delay in enumerate((0, *RETRY_DELAYS) if retry else (0,)):
             time.sleep(delay)
             last = attempt == (len(RETRY_DELAYS) if retry else 0)
@@ -175,11 +182,14 @@ class StudioClient(ibroadcast.iBroadcast):
                 log.warning("%s: %s (attempt %d)", args.get("mode", "library"),
                             error.__class__.__name__, attempt + 1)
                 if last:
-                    raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+                    failure = ApiError if read else UncertainWrite
+                    raise failure(f"Could not confirm iBroadcast's response ({error.__class__.__name__}).") from None
                 continue
             try:
                 data = response.json()
             except ValueError:
+                data = {}
+            if not isinstance(data, dict):
                 data = {}
             if (response.status_code == 429 or response.status_code >= 500) and not last:
                 log.warning("%s: HTTP %d (attempt %d)", args.get("mode", "library"),
@@ -188,7 +198,12 @@ class StudioClient(ibroadcast.iBroadcast):
             if response.status_code == 401:
                 data.setdefault("authenticated", False)
             elif not response.ok:
+                if not read and (response.status_code == 429 or response.status_code >= 500):
+                    raise UncertainWrite(f"iBroadcast returned HTTP {response.status_code}; the write may have been applied.")
                 raise ApiError(data.get("message") or f"iBroadcast returned HTTP {response.status_code}.")
+            if not data:
+                failure = ApiError if read else UncertainWrite
+                raise failure("iBroadcast returned no usable confirmation.")
             return data
         raise ApiError("iBroadcast did not answer.")
 
@@ -892,7 +907,10 @@ class Studio:
             if before == rating:
                 return {"track_id": str(track_id), "rating": rating, "status": "saved"}
             # Official web player and API: ratetrack, track_id array, 5 = thumbs up, 0 = unset.
-            client._jsonrequest("ratetrack", track_id=[track_id], rating=rating)
+            try:
+                client._jsonrequest("ratetrack", track_id=[track_id], rating=rating)
+            except UncertainWrite:
+                pass  # The fresh read-back, not a lost reply, determines the result.
 
             def verify_rating(after):
                 current = after.tracks.get(track_id, {})
@@ -957,6 +975,9 @@ class Studio:
                 continue
             try:
                 client._jsonrequest(mode, **body)
+            except UncertainWrite as failure:
+                stopped = True
+                error = f"{error} {mode} could not be confirmed: {failure} Remaining requests were not sent; checking the library.".strip()
             except ApiError as failure:
                 stopped = True
                 error = f"{error} iBroadcast refused {mode}: {failure}".strip()
@@ -996,10 +1017,10 @@ class Studio:
                     result["editor_names"] = after.editor_names()
             except (ApiError, LibraryError) as failure:
                 result = {"state": "error",
-                          "error": f"Saved, but the library could not be read back: {failure}"}
+                          "error": f"The write could not be verified because the library could not be read back: {failure}"}
             except Exception:  # report, never leave the browser waiting
                 log.exception("Read-back failed")
-                result = {"state": "error", "error": "Saved, but the read-back failed. Reload the library."}
+                result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
                 self.jobs[job_id] = result
 
@@ -1208,14 +1229,29 @@ class Studio:
                                         "Reload the library and try again.")
 
             note = ""
+            assignments = 0
+
+            def assign(mode, **values):
+                nonlocal note, assignments
+                try:
+                    client._jsonrequest(mode, **values)
+                    assignments += 1
+                    return True
+                except ApiError as failure:
+                    if not isinstance(failure, UncertainWrite) and not assignments:
+                        raise
+                    note = (f"The artwork request could not be confirmed: {failure} "
+                            "Remaining assignments were not sent. Checking the library; no automatic retry.")
+                    return False
+
             if previous is None:  # a new image
                 new_id = self._image(client, source, user_id)
                 if target == "album":
-                    client._jsonrequest("set_artwork", tracks=list(now), artwork_id=new_id)
                     wanted = dict.fromkeys(now, new_id)
+                    assign("set_artwork", tracks=list(now), artwork_id=new_id)
                 else:
-                    client._jsonrequest("set_artist_artwork", artist_id=item_id, artwork_id=new_id)
                     wanted = new_id
+                    assign("set_artist_artwork", artist_id=item_id, artwork_id=new_id)
             elif target == "album":  # undo: the previous artwork per track
                 wanted = {number(k): number(v) for k, v in (previous.get("tracks") or {}).items()}
                 if set(wanted) != set(now):
@@ -1231,17 +1267,18 @@ class Studio:
                     raise ApiError("This album had no cover before, and iBroadcast can't remove one, "
                                    "so there is nothing to restore.")
                 for artwork_id, tracks in groups.items():
-                    client._jsonrequest("set_artwork", tracks=tracks, artwork_id=artwork_id)
+                    if not assign("set_artwork", tracks=tracks, artwork_id=artwork_id):
+                        break
                 new_id = max(groups, key=lambda i: len(groups[i]))
                 if bare:
-                    note = (f"{len(bare)} {'track' if len(bare) == 1 else 'tracks'} had no cover before "
+                    note += (f" {len(bare)} {'track' if len(bare) == 1 else 'tracks'} had no cover before "
                             f"and {'keeps' if len(bare) == 1 else 'keep'} the new one: iBroadcast can't "
                             "remove a cover.")
             else:
                 wanted = new_id = number((previous or {}).get("artwork_id"))
                 if not new_id:
                     raise ApiError("There was no artist image before, so there is nothing to restore.")
-                client._jsonrequest("set_artist_artwork", artist_id=item_id, artwork_id=new_id)
+                assign("set_artist_artwork", artist_id=item_id, artwork_id=new_id)
 
             label = str(body.get("label") or target)[:300]
             field = "cover" if target == "album" else "image"
