@@ -396,9 +396,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   account/session-bound library. Group exact stored `path` labels behind bounded
   opaque keys, or validated `uploaded_on` days without timezone conversion; keep
   missing/invalid values under Unknown. These are historical upload labels, not
-  local files or playlist folders. Group details return only bounded matching
-  track rows, not entire matching albums. Preserve the existing Tracks play/open/
-  queue controls, search/history and overflow keyboard access; no bulk writes.
+  local files or playlist folders. Group details return compact qualifying album
+  IDs from matching upload tracks, never full track lists. At least one matching
+  track qualifies the complete displayed album/set, which can appear in several
+  groups. Reuse album cards, sorting and pagination; open/play/queue uses the whole
+  album/set. Preserve track/artist/album/composer search within the upload group,
+  Back/Forward state and keyboard access; no bulk writes or extra library downloads.
 - Playlist browsing offers browser-local cards/list layout, independent of album layout.
   Switching uses the current response, preserving search, paging, navigation and audio.
   List totals use loaded-library active playlist positions (including repeats), with
