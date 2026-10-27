@@ -1,8 +1,13 @@
 # Electron desktop and Python/browser use
 
 Since 0.60.0, standalone downloads for macOS (Apple Silicon and Intel), Windows x64
-and Linux x64 use Electron 44.9.0. Source installs and the existing Python startscripts
+and Linux x64 use Electron. The 1.0 candidate pins Electron 44.9.3; source installs and the existing Python startscripts
 continue to open the browser. Earlier releases retain their original browser launcher.
+
+The 44.9.3 patch includes the certificate-blocking mitigation described in
+[Electron's official security advisory GHSA-jr5w-w6x2-84p9](https://github.com/electron/electron/security/advisories/GHSA-jr5w-w6x2-84p9).
+Only the Electron runtime and its matching lock entry were upgraded; the major
+version, builder, fuses and application sandbox settings are unchanged.
 
 ## One application, two ways to open it
 
