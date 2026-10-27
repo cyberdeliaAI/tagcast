@@ -142,8 +142,9 @@ data, but these are not complete publicly specified API contracts.
 | Multiple album artists (`artists_additional` on albums) | Supported in development | Separate additional artists/bands, reviewed writes and read-back; compact artist browsing, hearts, stars, images and links include them. |
 | `create_artist` | Supported | Creates a missing name needed by a reviewed save/cleanup; no general artist administration page. |
 | ReplayGain metadata / playback normalization | No | No supported editor field or normalization implementation. |
-| Move a track to another album | No | Album reassignment is excluded from the editable track fields. |
-| `create_album`, album merging/splitting | No | Tagcast's multi-disc shelf grouping is a display feature, not a native merge/split write. |
+| Move an individual track to another album | No | Ordinary metadata editing still excludes reassignment. The separate reviewed complete-album merge below is a narrow exception. |
+| Album merging | Supported in development | Reviewed complete single-disc fragments only: 2–20 albums / 500 tracks, explicit destination, unchanged numbering, single-use approval, fresh membership checks, non-retryable `update_track` membership write and read-back. Different discs / displayed multi-disc sets are blocked. Payload observed in the official web editor on 2026-10-27. |
+| `create_album`, album splitting | No | No general album creation, split or arbitrary track-move UI. Existing multi-disc shelf grouping remains display-only. |
 | `get_artwork` | Supported | Existing iBroadcast image choices for the selected album/artist. |
 | `artwork-upload.ibroadcast.com` | Supported | Upload file or server-fetched image, then apply separately after comparison. |
 | `set_artwork` | Partial | Full selected album/disc cover and per-track restoration for Undo; no independent track-cover editor. |
