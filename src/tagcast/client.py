@@ -114,7 +114,7 @@ def account_view(data):
         "email": mask_email(user.get("email_address")),
         "verified": bool(user.get("verified")),
         "verified_on": text(user.get("verified_on"))[:10],
-        "premium": bool(user.get("premium")),
+        "premium": user.get("premium") in (True, 1, "1"),
         "tester": bool(user.get("tester")),
         "subscription": {"name": text(plan.get("name") or sub.get("display_title")),
                          "frequency": text(plan.get("frequency")),
