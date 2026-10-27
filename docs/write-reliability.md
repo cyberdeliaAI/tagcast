@@ -1,6 +1,6 @@
 # Send-once writes and read-back verification
 
-Prepared for the 1.0 candidate. Earlier stable versions can retry ordinary metadata,
+Included since Tagcast 1.0. Earlier stable versions can retry ordinary metadata,
 ratings and artwork assignments after an ambiguous transport failure.
 
 `StudioClient._post` retries only `library`, plain `status`, `get_artwork` and
