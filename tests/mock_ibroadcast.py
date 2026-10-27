@@ -298,6 +298,11 @@ class H(BaseHTTPRequestHandler):
                                            for e in row["artists_additional"]]
                     if "year" in row:
                         t["year"] = int(row["year"] or 0)
+                    if "album_id" in row:
+                        old_album = STATE["albums"][t["album_id"]]
+                        old_album["tracks"].remove(row["file_id"])
+                        t["album_id"] = int(row["album_id"])
+                        STATE["albums"][t["album_id"]]["tracks"].append(row["file_id"])
                     if "track_no" in row:
                         t["track"] = int(row["track_no"])
                 return self.send(200, {"result": True})
