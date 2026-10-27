@@ -1,0 +1,207 @@
+--- a/Home.md
++++ b/Home.md
+@@ -3,6 +3,12 @@
+ Tagcast lets you browse, play and tidy your iBroadcast music library. It runs on your computer and saves the changes you approve to your iBroadcast account. Your local music files stay unchanged. Choose the desktop app for macOS, Windows or Linux, or run the shared application from source in your browser.
+ 
+ [Tagcast website](https://tagcast.app/) · [Download Tagcast 0.85.1](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.85.1) · [Source code](https://github.com/cyberdeliaAI/tagcast) · [Report a problem](https://github.com/cyberdeliaAI/tagcast/issues)
++
++**Local 1.0 candidate:** `1.0.0 beta 1` is prepared for final validation, but has
++not been published. The public download above remains 0.85.1. Candidate/source
++builds add the desktop [Mini Player](Playback-and-queue#desktop-mini-player),
++[reviewed album merging](Merge-albums), album-oriented upload groups and
++[send-once mutation handling](Saving-and-history#automatic-retries).
+ 
+ ## Start here
+ 
+--- a/Upcoming-changes.md
++++ b/Upcoming-changes.md
+@@ -3,6 +3,9 @@
+ [Documentation home](Home)
+ 
+ The latest release is **[Tagcast 0.85.1](https://github.com/cyberdeliaAI/tagcast/releases/tag/v0.85.1)**.
++
++**Candidate status:** 1.0.0 beta 1 is local and unpublished. This page describes
++candidate/source behaviour; the 0.85.1 downloads remain unchanged.
+ 
+ ## Browse upload folders and dates
+ 
+@@ -11,12 +14,29 @@
+ Enable them under **Settings → Interface → Sidebar**; the choice is remembered
+ in this browser/profile.
+ 
+-Find an original upload path or a stored upload day, then open it to see only
+-its matching tracks. Search, sorting, pagination and the existing track controls
+-remain available. Missing information appears under **Unknown**. These pages use
+-the loaded library; they do not open local folders, scan files or convert assumed
+-time zones. See [upload browsing](Browsing-and-discovery#upload-folders-and-date-uploaded).
++Find an original upload path or stored upload day, then open it to see **album
++cards**. At least one matching track qualifies the album; the same album may appear
++in several groups. Track/artist/album/composer search finds qualifying albums;
++sorting and pagination then operate on those album cards. Opening, playing or
++queueing a card uses its **complete album/set**, including tracks uploaded elsewhere.
++Missing information appears under **Unknown**. These pages use the loaded library;
++they do not open local folders, scan files or convert assumed time zones. See [upload browsing](Browsing-and-discovery#upload-folders-and-date-uploaded).
+ These shortcuts are not in the published 0.85.1 downloads.
++
++## Desktop Mini Player
++
++Use **View → Open Mini Player**, **Cmd/Ctrl+Shift+M**, or **Mini Player** in expanded
++Now playing. Only one Tagcast window is visible; returning to the main interface
++closes the compact window. The same audio element and queue keep playing. Pin,
++seeking and transport remain available. See [Mini Player](Playback-and-queue#desktop-mini-player).
++
++## More reliable interrupted saves
++
++Candidate mutations are sent once. An interrupted reply never triggers a blind
++repeat of metadata, cleanup, ratings or artwork assignments. Tagcast stops later
++writes and uses read-back where supported, retaining uncertain and partial results.
++A new reviewed action still needs fresh conflict checks. Safe reads and explicit
++OAuth refresh retain their existing recovery paths. See [save recovery](Saving-and-history#automatic-retries).
+ 
+ ## Merge album fragments
+ 
+--- a/Browsing-and-discovery.md
++++ b/Browsing-and-discovery.md
+@@ -38,7 +38,7 @@
+ 
+ ## Upload folders and Date uploaded
+ 
+-**Availability:** included in unreleased source builds after 0.85.1. The existing
++**Availability:** included in the local, unpublished 1.0 candidate/source builds after 0.85.1. The existing
+ 0.85.1 standalone downloads do not contain these pages. See [Upcoming changes](Upcoming-changes#browse-upload-folders-and-dates).
+ 
+ Both shortcuts are **off by default**. Open **Settings → Interface → Sidebar**
+@@ -55,18 +55,18 @@
+   under **Unknown**, after known groups. Dates/times are shown as stored without
+   assuming a time zone or inventing missing clock precision.
+ 
+-Opening a group shows **only its matching tracks**. If one album was uploaded
+-from different paths or on different days, its other tracks are not added to the
+-results. The list supports track/artist/album/composer search, album order or
+-title sorting, and 24/50/100/200 results per page. Group totals count displayed
+-multi-disc sets as one album, using their matching active tracks.
++Opening a group shows **album cards** in the 1.0 candidate. An album qualifies
++when at least one active track matches the stored folder/day and current search.
++If an album was uploaded across several folders or days, it can appear in each.
++A displayed multi-disc set is counted once, using the same grouping as Albums.
++The card describes the **complete album/set**, not just its matching upload tracks.
+ 
+-The controls work like Tracks search: **▶** plays from the chosen track and
+-continues in album order; **+** queues one track. Open a track/album name to visit
+-its album, then use Back to restore the upload group, search and page. On narrow
+-screens, Tab can focus **Upload group tracks** for Left/Right scrolling; focused
+-row controls are brought into view. These pages do not offer bulk edits or trash
+-actions and do not change playback simply by browsing.
++Search accepts track titles, artists, albums and composers within the upload group.
++Album sorting and 24/50/100/200 cards per page reuse the existing album controls.
++**▶** plays the whole album in order; **+ ▾** queues the whole album. Opening a card
++visits its complete album; Back restores the group, search, order and page.
++Browsing alone changes neither playback nor metadata. These pages do not add
++bulk edits, trash actions, uploads or filesystem access.
+ 
+ Browsing uses only the already loaded account library. It does not request another
+ library download or inspect local music files. Reload the library explicitly to
+--- a/Saving-and-history.md
++++ b/Saving-and-history.md
+@@ -29,6 +29,30 @@
+ 
+ ## Automatic retries
+ 
++**1.0 candidate:** mutating requests are sent once. A timeout, HTTP 429/5xx or
++unusable reply can mean the change was applied, so Tagcast never blindly sends that
++mutation again. This includes ordinary metadata and Cleanup, ratings, artwork
++assignments, playlist changes, tags, lyrics, trash, album merging and play reporting.
++
++Ordinary metadata saves stop later requests and check attempted values against a
++fresh library. A matching result can be confirmed; a mismatch or failed read-back
++stays unconfirmed. Other reviewed workflows retain their own partial/uncertain
++result handling. A lost response alone is neither success nor definite failure.
++Read-back establishes current values; it does not make remote saves transactional.
++
++Safe library/status/artwork/userdata reads can retain bounded retries after 2 and
++6 seconds. Explicit authentication rejection can refresh the sign-in separately.
++An image upload with a lost reply is not automatically repeated or assigned.
++
++**Do not immediately repeat an uncertain save manually.** Inspect the current
++library, then make a fresh review and conflict check before another change.
++
++<details>
++<summary>Earlier public releases (0.80.0–0.85.1)</summary>
++
++These downloads predate the candidate's send-once transport correction. The
++following historical behaviour is retained for users who have not upgraded:
++
+ **A retry within a running request is different from repeating a finished save.** For selected operations, temporary network errors, HTTP 429 and 5xx responses trigger at most two further attempts, after **2 and 6 seconds**. Other operations send once because an ambiguous response could otherwise duplicate an action or overwrite a newer state.
+ 
+ | Operation | Temporary-error retry behaviour in 0.80.0 |
+@@ -41,6 +65,9 @@
+ | Lyrics saves and lyrics-file import saves; tag operations; trash moves; play reporting | No automatic temporary-error retry. |
+ 
+ After an operation finishes with an uncertain result, Tagcast does not schedule it to run again by itself. **Do not immediately repeat it manually.** Read the result and inspect the current library first. A new review is required for any further change. These transport rules are separate from refreshing an expired sign-in.
++
++</details>
++
+ 
+ ## If a save is unconfirmed, blocked or interrupted
+ 
+--- a/Playback-and-queue.md
++++ b/Playback-and-queue.md
+@@ -28,6 +28,26 @@
+ [![Tagcast 0.80.0 track search with the compact player and its playback, output and queue controls](https://raw.githubusercontent.com/cyberdeliaAI/tagcast/main/docs/screenshots/2026-10-23/tracks-compact-player.jpg)](https://raw.githubusercontent.com/cyberdeliaAI/tagcast/main/docs/screenshots/2026-10-23/tracks-compact-player.jpg)
+ 
+ *0.80.0 compact player, shown with a sample library. Select a screenshot to open the full-size image.*
++
++## Desktop Mini Player
++
++**Unreleased; included in the local 1.0 candidate.** Choose **View → Open Mini
++Player**, press **Cmd/Ctrl+Shift+M**, or choose **Mini Player** in expanded Now
++playing. Artwork and track information sit above transport and a track-relative
++seek bar. Pin keeps the window on top where supported; it is unavailable on
++Linux/Wayland. Window bounds and Pin are remembered in the desktop profile.
++
++Opening it hides the main window. **Open Tagcast**, closing the Mini Player or
++returning to the main window restores the full interface and closes the compact
++window. Playback continues through the same audio element and queue, including
++supported experimental Gapless playback. It does not create a second player.
++Normal Quit still stops the app; existing unsaved-change warnings apply.
++Python/browser use retains its existing player.
++
++[![Compact Tagcast desktop Mini Player with artwork, transport and track-relative seek bar](https://raw.githubusercontent.com/cyberdeliaAI/tagcast/main/docs/screenshots/2026-10-26-mini-player/mini-player.png)](https://raw.githubusercontent.com/cyberdeliaAI/tagcast/main/docs/screenshots/2026-10-26-mini-player/mini-player.png)
++
++*Development interface, 26 October 2026, with fictional track information and test
++artwork. It illustrates the candidate layout, not the published 0.85.1 download.*
+ 
+ ## Keeping a queue
+ 
+--- a/Settings-and-help.md
++++ b/Settings-and-help.md
+@@ -63,6 +63,10 @@
+ 
+ **Record played tracks in iBroadcast** is off by default. When enabled and saved, Tagcast reports a track after more than ten seconds of actual listening and shows **Recently played** in the sidebar. See [play reporting](Playback-and-queue#play-reporting) and [streaming quality](Playback-and-queue#streaming-quality-and-track-display).
+ 
++The local 1.0 candidate also includes the desktop [Mini Player](Playback-and-queue#desktop-mini-player).
++Its Pin and window size are desktop-profile choices, separate from the expanded
++Now playing view. Opening it preserves the current audio and queue.
++
+ ## Devices & queue synchronisation
+ 
+ **Enable queue synchronisation and remote control** is off by default. Save first, then use **Reconnect iBroadcast** to approve queue permissions. **Devices** controls connection or remote-device choice; enabling the setting alone does not start local playback. Read the [experimental remote-control guide](Queue-synchronisation) before using it.
+--- a/Whats-saved-where.md
++++ b/Whats-saved-where.md
+@@ -46,6 +46,16 @@
+ - ListenBrainz playlist URLs and cross-device queue control have explicit experimental/interoperability caveats in their guides. A mock test is not proof that your device/provider will work.
+ - Tagcast does not upload music, restore a metadata-export archive, send Last.fm scrobbles or install updates automatically. Operation-specific size and batch limits stay beside their instructions.
+ 
++### iBroadcast account and service limits
++
++iBroadcast determines storage, bandwidth, track visibility and streaming
++entitlements. Its [announced subscription changes](https://news.ibroadcast.com/an-important-update-on-ibroadcast-s-pricing)
++introduce different account limits; plan names alone do not establish a capability.
++Tagcast uses the account capabilities returned by iBroadcast and cannot remove
++provider limits or reveal unavailable tracks. Missing music is not automatically
++evidence that Tagcast removed it. Check iBroadcast's account and Track Dashboard
++when availability differs. Tagcast itself remains free and open source.
++
+ ## Terms used in the guide
+ 
+ | Term | Meaning |
