@@ -1887,6 +1887,260 @@ test("album release year default respects the bulk year gate and mixed disc plac
   assert.equal(p.run("pending"), null, "Manually checking a disabled bulk year still cannot bypass review validation");
 });
 
+function yearComparisonPage() {
+  const p = livePage({storage: {"tagcast-apply-album-year-to-tracks": "1"}});
+  p.run(`const yearTestAlbum=state.details.get('1'); yearTestAlbum.year=2000;
+    state.albums=[...state.details.values()].map(summarize);
+    cleanupView.category='years'; yearReviewView.details=state.details;
+    yearReviewView.data={id:'year-report',combine_sets:false,total:1,offset:0,limit:25,
+      stats:{albums:1,discs:1,different_tracks:5,missing_track_years:0},
+      rows:[{id:'1',ids:['1'],album:yearTestAlbum.name,artist:yearTestAlbum.artist,album_year:2000,
+        tracks:5,discs:1,disc:1,category:'different',track_years:[{year:1975,count:5}],bounded:true}]};
+    $('#cleanup').showModal(); renderYearReview(); $('#metadata-form');`);
+  const input = {type: "number", value: "2000", disabled: false};
+  p.nodes.get("#metadata-form").elements = {year: input, namedItem: key => key === "year" ? input : null};
+  p.nodes.set('[data-year-review-choice="1"]', {value: "1975"});
+  return p;
+}
+
+test("year comparison opens without analysing, changing the saved cleanup draft or writing", async () => {
+  const p = livePage(); await settle();
+  p.setFetch(url => { assert.equal(url, "/api/cleanup?offset=0&limit=25"); return {ok:true,json:async()=>({state:"empty"})}; });
+  await p.run("openCleanup()");
+  const saved = p.run("cleanupView.data"), requests = p.requests.length;
+  await p.nodes.get("#cleanup").emit("change", {target: {id:"cleanup-category", value:"years", dataset:{}}});
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /Analyse years/);
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /Opening this category does not scan/);
+  assert.equal(p.run("cleanupView.data"), saved);
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.requests.filter(r=>r.options?.method==="POST").length, 0);
+});
+
+test("year comparison analysis, categories and search stay read-only and escape library text", async () => {
+  const p = yearComparisonPage(); await settle();
+  const response = p.json("yearReviewView.data"); response.rows[0].album = '<script>Album</script>';
+  p.setFetch(url => { assert.equal(url,"/api/year-review/analyse"); return {ok:true,json:async()=>response}; });
+  await p.run("fetchYearReview(true)");
+  assert.match(p.nodes.get("#cleanup-content").innerHTML, /&lt;script&gt;Album/);
+  assert.doesNotMatch(p.nodes.get("#cleanup-content").innerHTML, /<script>Album/);
+  p.setFetch(url => { assert.match(url,/id=year-report&q=Artist&category=mixed&offset=25/); return {ok:true,json:async()=>({...response,offset:25})}; });
+  await p.run('yearReviewView.query="Artist";yearReviewView.category="mixed";yearReviewView.offset=25;fetchYearReview()');
+  assert.equal(p.requests.filter(r=>r.url==="/api/save").length,0);
+});
+
+test("year comparison restores keyboard focus after a temporarily disabled analysis control", async () => {
+  const p = yearComparisonPage(); await settle();
+  const response = p.json("yearReviewView.data");
+  p.run('$("#year-review-analyse").id="year-review-analyse"; $("#year-review-analyse").focus()');
+  p.setFetch(() => {
+    p.run('document.activeElement=document.body');
+    return {ok:true,json:async()=>response};
+  });
+  await p.run("fetchYearReview(true)");
+  assert.equal(p.run('document.activeElement.id'),"year-review-analyse");
+});
+
+test("year comparison prepares only track years through normal review without changing playback", async () => {
+  const p = yearComparisonPage(); await settle();
+  p.run('playTracks(state.details.get("1"))');
+  const queue=p.json("player.queue"), source=p.nodes.get("#audio").src;
+  p.setFetch((url,options) => {
+    assert.equal(url,"/api/year-review/choice");
+    const choice=JSON.parse(options.body); assert.equal(choice.direction,"album-to-tracks");
+    return {ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year:2000,direction:choice.direction})};
+  });
+  await p.run('chooseYearReview("1","album-to-tracks")');
+  assert.equal(p.nodes.get("#review").open,true);
+  assert.equal(p.run('pending.changes.length'),5);
+  assert.equal(p.run('pending.changes.every(c=>c.kind==="track" && Object.keys(c.fields).join()==="year" && c.fields.year.after===2000)'),true);
+  assert.equal(p.run('state.details.get("1").tracks[0].year'),1975);
+  assert.equal(p.requests.filter(r=>r.url==="/api/save").length,0);
+  assert.equal(p.nodes.get("#audio").src,source);
+  assert.deepEqual(p.json("player.queue"),queue);
+});
+
+test("track-to-album year review overrides the checkbox default only for this draft", async () => {
+  const p=yearComparisonPage(); await settle();
+  p.setFetch((url,options)=>url==="/api/account-settings" ? {ok:true,json:async()=>({combine_sets:false})}
+    : {ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year:1975,direction:JSON.parse(options.body).direction})});
+  await p.run('chooseYearReview("1","tracks-to-album")');
+  assert.equal(p.nodes.get("#review").open,true);
+  assert.equal(p.nodes.get("#track-years").checked,false);
+  assert.equal(p.run('metadataEditingDefaults.applyYearToTracks'),true);
+  assert.equal(p.run('pending.changes.length'),1);
+  assert.deepEqual(p.json('pending.changes[0].fields'),{year:{before:2000,after:1975}});
+  assert.equal(p.run('pending.changes[0].kind'),"album");
+  assert.equal(p.requests.filter(r=>r.url==="/api/save").length,0);
+});
+
+test("chosen track year can update the album and remaining tracks without rewriting matching years", async () => {
+  for (const year of [1975, 2000]) {
+    const p=yearComparisonPage(); await settle();
+    p.run(`state.details.get('1').tracks.forEach((track,index)=>{track.year=index===0?1975:index===1?0:2000});
+      yearReviewView.data.rows[0].category='mixed';
+      yearReviewView.data.rows[0].track_years=[{year:0,count:1},{year:1975,count:1},{year:2000,count:3}];
+      metadataEditingDefaults.applyYearToTracks=false;`);
+    p.nodes.get('[data-year-review-choice="1"]').value=String(year);
+    p.setFetch((url,options)=> {
+      if (url==="/api/account-settings") return {ok:true,json:async()=>({combine_sets:false})};
+      assert.equal(url,"/api/year-review/choice");
+      assert.equal(JSON.parse(options.body).year,year);
+      return {ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year,direction:"tracks-to-album-and-tracks"})};
+    });
+    await p.run('chooseYearReview("1","tracks-to-album-and-tracks")');
+    assert.equal(p.nodes.get("#review").open,true);
+    assert.equal(p.nodes.get("#track-years").checked,true);
+    assert.equal(p.run("metadataEditingDefaults.applyYearToTracks"),false);
+    const changes=p.json("pending.changes");
+    assert.equal(changes.filter(c=>c.kind==="album").length,year===1975?1:0);
+    assert.equal(changes.filter(c=>c.kind==="track").length,year===1975?4:2);
+    assert.ok(changes.every(c=>Object.keys(c.fields).join()==="year" && c.fields.year.after===year && c.fields.year.before!==year));
+    assert.equal(p.run('state.details.get("1").year'),2000);
+    assert.deepEqual(p.json('state.details.get("1").tracks.map(t=>t.year)'),[1975,0,2000,2000,2000]);
+    assert.equal(p.requests.filter(r=>r.url==="/api/save").length,0);
+  }
+});
+
+test("year saves keep the comparison open and refresh only after verification with the same search and filter", async () => {
+  for (const direction of ["album-to-tracks", "tracks-to-album", "tracks-to-album-and-tracks"]) {
+    const p=yearComparisonPage(); await settle();
+    const report=p.json("yearReviewView.data"), albums=p.json("state.albums"); let changes;
+    p.run('yearReviewView.query="Pink";yearReviewView.category="different";yearReviewView.offset=25;$("#cleanup").scrollTop=340');
+    p.setFetch((url,options)=> {
+      if (url==="/api/year-review/choice") return {ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),
+        year:direction==="album-to-tracks"?2000:1975,direction})};
+      if (url==="/api/account-settings") return {ok:true,json:async()=>({combine_sets:false})};
+      if (url==="/api/save") {
+        changes=JSON.parse(options.body).changes;
+        return {ok:true,json:async()=>({job:"year-check",albums,results:changes.map(c=>({kind:c.kind,id:c.id,status:"sent"}))})};
+      }
+      if (url==="/api/jobs/year-check") return {ok:true,json:async()=>({state:"done",albums,
+        results:changes.map(c=>({kind:c.kind,id:c.id,status:"saved"}))})};
+      if (url==="/api/year-review/analyse") return {ok:true,json:async()=>({...report,id:"updated-report",rows:[],total:0})};
+      assert.match(url,/id=updated-report&q=Pink&category=different&offset=25/);
+      return {ok:true,json:async()=>({...report,id:"updated-report",rows:[],total:0,offset:0})};
+    });
+    await p.run(`chooseYearReview("1","${direction}")`);
+    assert.equal(p.nodes.get("#cleanup").open,true,"The comparison remains underneath the standard review");
+    await p.run("saveDraft()");
+    assert.equal(p.nodes.get("#editor").open,false); assert.equal(p.nodes.get("#review").open,false);
+    assert.equal(p.nodes.get("#cleanup").open,true); assert.equal(p.run("yearReviewView.busy"),true);
+    assert.match(p.nodes.get("#cleanup-status").textContent,/Checking saved years/);
+    assert.equal(p.requests.filter(r=>r.url==="/api/year-review/analyse").length,0,"Wait for existing read-back");
+    p.flushTimers(2000); await settle();
+    assert.equal(p.run("yearReviewView.busy"),false); assert.equal(p.run("yearReviewView.returnTo"),null);
+    assert.equal(p.run("state.history[0].status"),"saved"); assert.equal(p.run("yearReviewView.data.total"),0);
+    assert.deepEqual(p.json('[yearReviewView.query,yearReviewView.category,yearReviewView.offset]'),["Pink","different",0]);
+    assert.equal(p.nodes.get("#cleanup").scrollTop,340);
+    assert.equal(p.run('document.activeElement===$("#year-review-search")'),true);
+    assert.equal(p.requests.filter(r=>r.url==="/api/save").length,1);
+  }
+});
+
+test("cancelling a year draft returns to the existing comparison without analysing or saving", async () => {
+  const p=yearComparisonPage(); await settle();
+  p.setFetch(()=>({ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year:2000,direction:"album-to-tracks"})}));
+  await p.run('chooseYearReview("1","album-to-tracks")');
+  const report=p.run("yearReviewView.data"), requests=p.requests.length;
+  p.nodes.get("#review").close(); p.nodes.get("#editor").close();
+  await p.nodes.get("#editor").emit("close");
+  assert.equal(p.nodes.get("#cleanup").open,true); assert.equal(p.run("yearReviewView.data"),report);
+  assert.equal(p.run("yearReviewView.returnTo"),null); assert.equal(p.requests.length,requests);
+  assert.equal(p.nodes.get("#cleanup-status").textContent,"");
+});
+
+test("unconfirmed year saves retain result warnings and cannot silently remove an album or retry", async () => {
+  for (const failure of ["unverified","error"]) {
+    const p=yearComparisonPage(); await settle(); let changes;
+    p.setFetch((url,options)=> {
+      if (url==="/api/year-review/choice") return {ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year:2000})};
+      if (url==="/api/save") { changes=JSON.parse(options.body).changes;
+        return {ok:true,json:async()=>({job:"uncertain-year",results:changes.map(c=>({kind:c.kind,id:c.id,status:"sent"}))})}; }
+      assert.equal(url,"/api/jobs/uncertain-year");
+      return {ok:true,json:async()=>failure==="error" ? {state:"error",error:"Read-back unavailable"}
+        : {state:"done",albums:p.json("state.albums"),results:changes.map(c=>({kind:c.kind,id:c.id,label:c.label,fields:["year"],status:"unverified"}))}};
+    });
+    await p.run('chooseYearReview("1","album-to-tracks");'); await p.run("saveDraft()");
+    p.flushTimers(2000); await settle();
+    assert.equal(p.nodes.get("#cleanup").open,true); assert.equal(p.run("yearReviewView.busy"),false);
+    assert.equal(p.run("yearReviewView.data"),null);
+    assert.match(p.nodes.get("#cleanup-status").textContent,/not fully confirmed/);
+    assert.equal(p.requests.filter(r=>r.url==="/api/year-review/analyse").length,0);
+    assert.equal(p.requests.filter(r=>r.url==="/api/save").length,1);
+    if (failure==="unverified") assert.equal(p.nodes.get("#results").open,true);
+  }
+});
+
+test("late year verification never reopens a closed or replaced comparison", async () => {
+  for (const leave of ['$("#cleanup").close()', 'resetYearReview()', 'state.screen="tracks";location.hash="#/tracks"', 'state.connection.playback_session="new-session"']) {
+    const p=yearComparisonPage(); await settle(); let changes;
+    p.setFetch((url,options)=> {
+      if (url==="/api/year-review/choice") return {ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year:2000})};
+      if (url==="/api/save") { changes=JSON.parse(options.body).changes;
+        return {ok:true,json:async()=>({job:"late-year",results:changes.map(c=>({kind:c.kind,id:c.id,status:"sent"}))})}; }
+      assert.equal(url,"/api/jobs/late-year");
+      return {ok:true,json:async()=>({state:"done",albums:p.json("state.albums"),results:changes.map(c=>({kind:c.kind,id:c.id,status:"saved"}))})};
+    });
+    await p.run('chooseYearReview("1","album-to-tracks")'); await p.run("saveDraft()");
+    p.run(leave); if (leave.includes('.close()')) await p.nodes.get("#cleanup").emit("close");
+    p.flushTimers(2000); await settle();
+    assert.equal(p.requests.filter(r=>r.url==="/api/year-review/analyse").length,0,leave);
+    if (leave.includes('.close()')) assert.equal(p.nodes.get("#cleanup").open,false);
+  }
+});
+
+test("mixed year rows require an explicit choice and keep missing and combined cases safe", () => {
+  const p=yearComparisonPage();
+  const row=p.json('yearReviewView.data.rows[0]'); row.category="mixed"; row.track_years.push({year:1965,count:1});
+  p.nodes.set("#year-row-test",{value:row});
+  const markup=p.run('yearReviewRow($("#year-row-test").value,false,false)');
+  assert.match(markup,/value="" selected>Choose a track year/);
+  assert.match(markup,/data-year-direction="tracks-to-album" disabled/);
+  assert.match(markup,/data-year-direction="tracks-to-album-and-tracks" disabled/);
+  assert.match(p.run('yearReviewRow({...$("#year-row-test").value,album_year:0},false,false)'),/data-year-direction="album-to-tracks" disabled/);
+  assert.match(p.run('yearReviewRow($("#year-row-test").value,true,false)'),/data-year-direction="tracks-to-album" disabled/);
+  assert.match(p.run('yearReviewRow($("#year-row-test").value,true,false)'),/data-year-direction="tracks-to-album-and-tracks" disabled/);
+});
+
+test("year choice enables both actions but keeps album-only disabled when that year already matches", async () => {
+  const p=yearComparisonPage(); await settle();
+  const album=p.nodes.get('[data-year-review-album="1"][data-year-direction="tracks-to-album"]') || {disabled:true};
+  const both={disabled:true};
+  p.nodes.set('[data-year-review-album="1"][data-year-direction="tracks-to-album"]',album);
+  p.nodes.set('[data-year-review-album="1"][data-year-direction="tracks-to-album-and-tracks"]',both);
+  for (const [value, albumDisabled, bothDisabled] of [["",true,true],["1975",false,false],["2000",true,false]]) {
+    await p.nodes.get("#cleanup").emit("change",{target:{dataset:{yearReviewChoice:"1"},value}});
+    assert.equal(album.disabled,albumDisabled); assert.equal(both.disabled,bothDisabled);
+  }
+});
+
+test("late year choices and analyses cannot open an editor after close or library replacement", async () => {
+  const p=yearComparisonPage(); await settle(); let finish;
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const choice=p.run('chooseYearReview("1","album-to-tracks")');
+  await p.nodes.get("#cleanup").emit("close");
+  p.nodes.get("#cleanup").open=false;
+  finish({ok:true,json:async()=>({albums:p.json('[state.details.get("1")]'),year:2000})}); await choice;
+  assert.equal(p.run("editing"),null); assert.notEqual(p.run('$("#review").open'),true);
+  p.nodes.get("#cleanup").open=true;
+  const analysis=p.run('fetchYearReview(true)');
+  p.run('state.details=new Map(state.details);resetYearReview()');
+  finish({ok:true,json:async()=>({id:"old-report",rows:[]})}); await analysis;
+  assert.equal(p.run("yearReviewView.data"),null);
+  assert.equal(p.run("yearReviewView.busy"),false);
+});
+
+test("changed album details stop a year choice before constructing any reviewed patch", async () => {
+  const p=yearComparisonPage(); await settle();
+  const old=p.json('[state.details.get("1")]');
+  p.run('state.details.get("1").tracks[0].year=1999');
+  p.setFetch(()=>({ok:true,json:async()=>({albums:old,year:2000,direction:"album-to-tracks"})}));
+  await p.run('chooseYearReview("1","album-to-tracks")');
+  assert.equal(p.run("pending"),null);
+  assert.equal(p.run('editing.dirty.size'),0);
+  assert.equal(p.requests.filter(r=>r.url==="/api/save").length,0);
+});
+
 function artistEditorForm(p, value = "Pink Floyd", enable = null) {
   const input = {type: "text", value, disabled: false, hidden: false, classList: {remove() {}, add() {}}};
   const form = p.nodes.get("#metadata-form");

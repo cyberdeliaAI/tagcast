@@ -29,6 +29,10 @@ transitions safely use ordinary playback. See the
 [release notes](.github/release-notes/1.0.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
+Unreleased source improvements, including reviewed comparisons of album and track
+release years, are described in [Upcoming changes](https://github.com/cyberdeliaAI/tagcast/wiki/Upcoming-changes).
+They are not yet included in the installed 1.0.0 downloads.
+
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
 ![Tagcast 0.80.0 album page showing Ananda Shankar, multiple genres, ratings, album information and the compact player](docs/screenshots/2026-10-23-album/album-details-ananda-shankar.png)

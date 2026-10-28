@@ -1529,6 +1529,7 @@ function overallStatus(statuses) {
 async function saveDraft() {
   if (saving || !pending) return;
   saving = true;
+  const yearReviewContext = typeof beginYearReviewSave === "function" ? beginYearReviewSave(editing) : null;
   const apply = $("#apply-draft");
   apply.disabled = true; $("#review-cancel").disabled = true; apply.textContent = "Saving…";
   setActionStatus("#review-status", "Checking iBroadcast and saving…", true);
@@ -1551,9 +1552,14 @@ async function saveDraft() {
     $("#review").close(); $("#editor").close(); render();
     if (overall === "failed" || !statuses.length || result.error) showResults(result, overall, entry);
     else toast(`${statuses.length} ${statuses.length === 1 ? "record" : "records"} saved. Checking the result with iBroadcast in the background…`);
-    if (result.job) followJob(result.job, entry);
+    if (yearReviewContext) acceptedYearReviewSave(yearReviewContext);
+    if (result.job) {
+      const verification = followJob(result.job, entry);
+      if (yearReviewContext) verification.then(job => finishedYearReviewSave(yearReviewContext, job, entry));
+    } else if (yearReviewContext) finishedYearReviewSave(yearReviewContext, null, entry);
     if (next && overall !== "failed") openEditor(shelfIds(next));
   } catch (error) {
+    if (yearReviewContext) yearReviewContext.saving = false;
     apply.disabled = false; $("#review-cancel").disabled = false;
     apply.textContent = "Try again";
     if (error.status === 401) {

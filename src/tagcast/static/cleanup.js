@@ -4,9 +4,10 @@
 const cleanupView = {data: null, offset: 0, excluded: new Set(), request: 0, timer: null, busy: false,
   category: "", ruleLabel: "", ruleText: "", removeLabel: false, labelQuery: "", labelOffset: 0,
   labels: null, labelRequest: 0, labelsBusy: false, draftChanged: false};
-const cleanupLabels = {genres: "Genres", "album-artists": "Album artists", "track-artists": "Track artists", composers: "Composers", "genre-labels": "Review genre labels"};
+const cleanupLabels = {genres: "Genres", "album-artists": "Album artists", "track-artists": "Track artists", composers: "Composers", "genre-labels": "Review genre labels", years: "Album and track years"};
 
 function resetCleanup(close = false) {
+  if (typeof resetYearReview === "function") resetYearReview();
   cleanupView.request += 1;
   clearTimeout(cleanupView.timer);
   cleanupView.data = null; cleanupView.offset = 0; cleanupView.excluded.clear();
@@ -52,10 +53,11 @@ async function fetchCleanup() {
 }
 
 function renderCleanup() {
+  if (cleanupView.category === "years") { renderYearReview(); return; }
   const data = cleanupView.data || {state: "empty"}, preview = data.state === "preview", running = data.state === "running";
   const scroll = $("#cleanup").scrollTop;
   const category = cleanupView.category || data.category || "genres";
-  const picker = `<label class="cleanup-category">Category <select id="cleanup-category" ${running || cleanupView.busy ? "disabled" : ""}>${Object.entries(cleanupLabels).map(([key, label]) => `<option value="${key}" ${key === category ? "selected" : ""}>${label}</option>`).join("")}</select></label><button class="button" id="cleanup-preview" ${running || cleanupView.busy ? "disabled" : ""}>Prepare preview</button>`;
+  const picker = cleanupCategoryControl(running || cleanupView.busy) + `<button class="button" id="cleanup-preview" ${running || cleanupView.busy ? "disabled" : ""}>Prepare preview</button>`;
   const counts = data.counts || {};
   const albumArtists = data.category === "album-artists";
   const explanation = category === "album-artists"
@@ -74,6 +76,11 @@ function renderCleanup() {
     <div class="dialog-footer"><button class="button" id="cleanup-export">Export full report ↓</button>${running ? '<button class="button danger" id="cleanup-stop">Stop after current request</button>' : data.tracks && data.state !== "done" ? `<button class="button primary" id="cleanup-start" ${preview || cleanupView.busy || cleanupView.draftChanged ? "disabled" : ""}>${preview ? "Start selected albums" : "Resume after checking"}</button>` : ""}<button class="button" id="cleanup-refresh">${running ? "Refresh progress" : "Refresh library"}</button></div>` : '<p class="muted">Choose a category and prepare a preview. Nothing is written until you review and start it.</p>'}`;
   $("#cleanup").scrollTop = scroll;
   updateCleanupSelection();
+}
+
+function cleanupCategoryControl(disabled = false) {
+  const category = cleanupView.category || cleanupView.data?.category || "genres";
+  return `<label class="cleanup-category">Category <select id="cleanup-category" ${disabled ? "disabled" : ""}>${Object.entries(cleanupLabels).map(([key, label]) => `<option value="${key}" ${key === category ? "selected" : ""}>${label}</option>`).join("")}</select></label>`;
 }
 
 function cleanupExample(example) {
