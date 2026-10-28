@@ -50,6 +50,7 @@ from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
 from .tags import Tags
 from .updates import UpdateChecker
+from .year_review import YearReview
 
 log = logging.getLogger("tagcast")
 
@@ -392,6 +393,7 @@ class Studio:
         self.album_info = AlbumInformation(self)
         self.cleanup = Cleanup(self)
         self.duplicate_cleanup = DuplicateCleanup(self)
+        self.year_review = YearReview(self)
         tokens = self._read("tokens.json")
         if tokens and tokens.get("client_id") == self.client_id and tokens.get("token_set"):
             try:

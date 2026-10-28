@@ -307,6 +307,23 @@ their shared browsing/player state; a fast local response can otherwise race the
   disabling that field clears the track-year choice. Mixed disc years start unchecked
   so their blank placeholder never clears track years merely from the preference.
   Changing the preference never alters an existing draft, metadata, playback or the queue.
+- Cleanup's Album and track years category explicitly compares the loaded server library,
+  with compact paginated results and the same conservative displayed disc-set grouping.
+  Analysis and choice endpoints are read-only: no downloads, provider/audio requests or
+  mutations. Bind the in-memory report to account, session, combine setting and library
+  identity; reject stale/replaced reports. Separate differing, mixed, missing and invalid
+  years. Never infer the oldest/majority/correct year or copy an unknown year. A choice
+  covers one complete displayed album/set (20 discs / 500 tracks), then opens the normal
+  editor/review; album-to-tracks changes only track years, tracks-to-album requires an
+  explicit known track year and changes only album years; tracks-to-album-and-tracks
+  applies that explicitly chosen track year to the album and all its tracks. Existing
+  matching years create no patch. Override the checkbox default for this draft only.
+  Combined mode blocks album changes. Preserve all normal save,
+  fresh conflict checks and read-back; no automatic global fix or new write path.
+  Keep the year comparison behind its editor/review. After this review's confirmed
+  read-back, reanalyse only the loaded library and restore search, filter, page, scroll
+  and keyboard focus. Keep uncertain/failed result warnings and never retry writes;
+  closing, navigation or a replaced session cancels automatic refresh/focus return.
 - Genres: the first label goes to `genre`, the rest to `genres_additional`.
   Editor, legacy single-genre writes and cleanup accept at most 200 Unicode code points per
   label, 20 labels per track. Reject oversized input visibly and retain it; never truncate.
