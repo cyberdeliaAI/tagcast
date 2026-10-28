@@ -9,6 +9,7 @@ import threading
 import time
 from contextlib import closing
 
+from .album_guide import guide_title_text
 from .artist_bios import biography_text
 from .collections import track_ids
 from .library import ConflictError, LibraryError, number, text
@@ -77,8 +78,15 @@ class AlbumInformation:
                 or data["url"] and not re.fullmatch(r"https://www\.theaudiodb\.com/album/[0-9]{1,20}", data["url"]) \
                 or any(type(value) not in (int, float) or not math.isfinite(value) for value in row[1:]):
             raise ValueError("Invalid cached album information")
+        lookup_album = guide_title_text(data["album"]) or data["album"]
+        if "lookup_album" in data and (data["lookup_album"] != lookup_album
+                                      or lookup_album == data["album"]):
+            raise ValueError("Invalid cached album information lookup title")
+        # Revisit only old misses that have not tried the new edition fallback.
+        edition_lookup_missing = (data["status"] == "missing" and lookup_album != data["album"]
+                                  and "lookup_album" not in data)
         return {**data, "cached": True, "fetched_at": row[1], "expires_at": row[2],
-                "needs_lookup": time.time() >= row[2]}
+                "needs_lookup": time.time() >= row[2] or edition_lookup_missing}
 
     def _write(self, key, data):
         now = time.time()
@@ -154,7 +162,17 @@ class AlbumInformation:
                         raise AlbumInformationRetryError(failure[1], failure[0] - time.time())
                     if not cached or cached["needs_lookup"]:
                         try:
-                            data = TheAudioDB(studio.lookup.http, {}).album_information(artist, album)
+                            source = TheAudioDB(studio.lookup.http, {})
+                            data = source.album_information(artist, album)
+                            lookup_album = guide_title_text(album) or album
+                            if data["status"] == "missing" and lookup_album != album:
+                                with studio.lock:
+                                    if not current():
+                                        raise ConflictError("The account, library or album information setting changed.")
+                                # Only public background text gets this fallback. Keep the
+                                # stored full identity for caching and all library guards.
+                                data = {**source.album_information(artist, lookup_album),
+                                        "artist": artist, "album": album, "lookup_album": lookup_album}
                         except SourceError as error:
                             message = f"TheAudioDB {error}."
                             self.failures[key] = (time.time() + RETRY_DELAY, message)

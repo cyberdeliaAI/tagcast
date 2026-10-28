@@ -34,9 +34,19 @@ never the Unknown artist/Untitled album placeholders. The public v1 endpoint is:
 
 `https://www.theaudiodb.com/api/v1/json/123/searchalbum.php?s=ARTIST&a=ALBUM`
 
-Only that artist and full title leave Tagcast. Matching allows case, Unicode NFC
-and whitespace differences, but retains punctuation, accents, numbered volumes
-and edition/live/version text. Exactly one matching result is required. Multiple
+Only that artist and the requested title leave Tagcast. The full stored title is
+tried first. If no album matches, one additional request may omit recognised trailing
+edition labels such as **(Expanded Edition)**, **(Mono Edition)**,
+**(20th Anniversary Deluxe Edition)**, **(2011 Remastered Version)**,
+**[Deluxe]** or **- 2011 Remaster**. This reuses
+the conservative edition-suffix recognition used by the local 1001 Albums guide;
+it does not remove arbitrary parentheses. The saved album title is never changed.
+
+Each request still requires an exact artist/title match, allowing only case,
+Unicode NFC and whitespace differences. Punctuation, accents, numbered volumes,
+live/remix distinctions and unknown subtitles remain significant. Exactly one
+matching result is required. An exact full-edition match takes priority; ambiguity,
+missing English text and provider failures do not trigger a broader search. Multiple
 matches remain unresolved; a missing English description stays unavailable. A
 same-name result can still describe another release, so the source link remains
 visible. Current `strDescription` and earlier `strDescriptionEN` fields are supported.
@@ -59,6 +69,10 @@ account credentials, library IDs, tracks or artwork. Text can be reused across
 albums/accounts with the same public identity, but each request still validates
 the current session and active album. Successful text lasts 30 days; missing,
 ambiguous and unavailable results last one day. Refresh occurs only on a visit.
+Edition fallbacks keep the full stored identity as their cache key, with the base
+lookup title recorded separately. Older cached misses for recognised editions are
+rechecked on the next visit without waiting for their one-day expiry; new misses
+retain the normal one-day cache. Other cached results are left intact.
 The cache is limited to 5,000 records and 20 MiB of stored JSON, plus SQLite overhead.
 Disabling retains the file and prevents new reads/lookups through the feature.
 
@@ -76,7 +90,9 @@ reused on Back. The feature never writes to iBroadcast, History, the queue or au
 
 ## Validation
 
-`tests/test_album_info.py` covers exact/ambiguous matching, response fields, expiry,
+`tests/test_album_info.py` covers exact/ambiguous matching, conservative edition
+fallbacks, full-title priority, unchanged library data, old negative cache refresh,
+fallback backoff/session guards, response fields, expiry,
 negative caching, bounded/corrupt storage, HTML stripping, parallel visits, backoff,
 independent settings and late-result rejection. The route joins HTTP security-guard
 tests in `tests/test_app.py`. Frontend regressions cover lazy visits, escaping,
