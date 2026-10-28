@@ -26,6 +26,31 @@ folder, separately from browser History. Export the report before making a new
 preview, which replaces it. A server restart stops execution; resume is explicit.
 There is no batch Undo button. The report includes each track's original values.
 
+## Album and track years (unreleased)
+
+The next release adds **Album and track years** to the Category menu. This is a
+separate comparison of the already loaded library, not a semicolon-cleanup batch.
+Choose **Analyse years**, search/filter the results, then choose one complete
+album/set and choose **Album year → track years…**, **Track year → album year…**,
+or **Track year → album + all tracks…**.
+Mixed track years require an explicit choice; unknown years are never copied and
+Tagcast does not infer the oldest, most common or correct release year.
+
+Each action opens the existing metadata editor and before/after review, bounded
+to **20 discs / 500 tracks**. The selected action changes only the track years,
+only the album years, or both to the chosen known track year. Tracks already at
+that year stay unchanged. The general checkbox preference is overridden for that
+draft alone. Normal conflict checks, History, read-back and combined-set
+restrictions still apply. Other cleanup drafts remain separate.
+
+The comparison stays open behind the review. After iBroadcast confirms the save,
+it refreshes with search, filter, page and position preserved where possible.
+This waits for the normal library read-back, which can take time for large
+libraries. Cancel returns without saving; uncertain results retain their warnings
+and never trigger automatic write retries. See the illustrated
+[album and track years guide](https://github.com/cyberdeliaAI/tagcast/wiki/Album-and-track-years).
+This feature is not included in the installed 1.0.0 downloads.
+
 ## Split album artists
 
 The **Album artists** category is available in Tagcast 0.70.0, including desktop

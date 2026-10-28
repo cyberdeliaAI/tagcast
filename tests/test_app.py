@@ -160,6 +160,9 @@ class StartTests(unittest.TestCase):
         studio.check_updates.return_value = {"state": "current", "current": "0.10.1"}
         studio.cleanup.labels.return_value = {"labels": [], "total": 0}
         studio.cleanup.prepare.return_value = {"state": "preview"}
+        studio.year_review.analyse.return_value = {"id": "year-report", "rows": []}
+        studio.year_review.view.return_value = {"id": "year-report", "rows": []}
+        studio.year_review.choice.return_value = {"albums": [], "year": 1958}
         studio.duplicate_cleanup.view.return_value = {"state": "empty"}
         studio.duplicate_cleanup.prepare.return_value = {"state": "preview"}
         studio.duplicate_cleanup.start.return_value = {"state": "running"}
@@ -300,6 +303,19 @@ class StartTests(unittest.TestCase):
             studio.cleanup.prepare.reset_mock()
             self.assertEqual(request("POST", "/api/cleanup/preview", {"X-Tagcast": "1"}, {"category": "album-artists"}), 200)
             studio.cleanup.prepare.assert_called_once_with("album-artists", None, None, False)
+            self.assertEqual(request("GET", "/api/year-review?id=year-report", {"Sec-Fetch-Site": "cross-site"}), 403)
+            studio.year_review.view.assert_not_called()
+            self.assertEqual(request("GET", "/api/year-review?id=year-report&q=Artist&category=mixed&offset=25"), 200)
+            studio.year_review.view.assert_called_once_with("year-report", "Artist", "mixed", "25")
+            self.assertEqual(request("POST", "/api/year-review/analyse", body={}), 403)
+            studio.year_review.analyse.assert_not_called()
+            self.assertEqual(request("POST", "/api/year-review/analyse", {"X-Tagcast": "1"}, {}), 200)
+            studio.year_review.analyse.assert_called_once_with()
+            year_choice = {"id": "year-report", "album": "10", "direction": "tracks-to-album", "year": 1958}
+            self.assertEqual(request("POST", "/api/year-review/choice", body=year_choice), 403)
+            studio.year_review.choice.assert_not_called()
+            self.assertEqual(request("POST", "/api/year-review/choice", {"X-Tagcast": "1"}, year_choice), 200)
+            studio.year_review.choice.assert_called_once_with(year_choice)
             self.assertEqual(request("GET", "/api/duplicate-cleanup", {"Sec-Fetch-Site": "cross-site"}), 403)
             studio.duplicate_cleanup.view.assert_not_called()
             self.assertEqual(request("GET", "/api/duplicate-cleanup?offset=10&limit=10"), 200)

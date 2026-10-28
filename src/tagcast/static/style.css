@@ -521,6 +521,16 @@ body.has-player .now-playing-panel{bottom:76px}
 #player-extra-artists{display:flex;gap:3px;min-width:0;overflow:hidden}
 .cleanup-dialog{width:min(1000px,94vw)}
 .cleanup-controls{display:flex;flex-wrap:wrap;align-items:center;gap:15px;margin:18px 0}
+.year-review-filters{display:flex;align-items:end;flex-wrap:wrap;gap:15px;margin:18px 0}
+.year-review-filters .field:first-child{flex:1;min-width:min(260px,100%)}
+.year-review-values,.year-review-directions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin:16px 0}
+.year-review-values dt{color:var(--muted);font-size:12px;margin-bottom:6px}
+.year-review-values dd{margin:0;overflow-wrap:anywhere}
+.year-review-directions>div{display:flex;flex-direction:column;align-items:start;gap:9px;min-width:0}
+.year-review-directions .field{width:100%}
+.year-review-directions small{display:block}
+.year-review-album h3,.year-review-album p{overflow-wrap:anywhere}
+@media(max-width:760px){.year-review-values,.year-review-directions{grid-template-columns:minmax(0,1fr);gap:14px}.year-review-filters .field{width:100%}.year-review-directions .button{max-width:100%;white-space:normal;text-align:left}}
 .cleanup-category{display:flex;align-items:center;gap:12px}
 .cleanup-category select{background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);padding:11px;border-radius:6px}
 .cleanup-album{border-bottom:1px solid var(--line);padding:15px 0}
