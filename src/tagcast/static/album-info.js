@@ -78,7 +78,7 @@ function renderAlbumInformation(restoreFocus = "") {
     const missing = data?.reason === "missing_identity" ? "An album title and named album artist are needed for album information."
       : data?.status === "ambiguous" ? "More than one album matches this artist and title on TheAudioDB; no text was chosen."
       : data?.status === "unavailable" ? "Album found on TheAudioDB, but no English background text is available."
-      : data?.status === "missing" ? "No matching album found on TheAudioDB for this artist and exact title." : "";
+      : data?.status === "missing" ? "No matching album found on TheAudioDB for this artist and title." : "";
     const source = data?.status === "unavailable" && /^https:\/\/www\.theaudiodb\.com\/album\/[0-9]{1,20}$/.test(data.url || "")
       ? ` <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">View album on TheAudioDB ↗</a>` : "";
     box.innerHTML = `${missing ? `<p class="muted">${escapeHtml(missing)}${source}</p>` : ""}${note}`;
