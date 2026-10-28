@@ -1777,6 +1777,116 @@ test("unchanged bad album and track years do not block title corrections", async
   assert.throws(() => p.run("stashTrack()"), /1800 to 2050/, "Malformed numeric input must not clear the year");
 });
 
+test("album release year default is local, opt-in and retained across restarts without playback or requests", async () => {
+  const storage = {}, p = livePage({storage}); await settle();
+  assert.equal(p.run("metadataEditingDefaults.applyYearToTracks"), false);
+  p.run('playTracks(state.details.get(state.albums[0].id)); openSettings("interface")');
+  const source = p.nodes.get("#audio").src, queue = p.json("player.queue"), requests = p.requests.length;
+  assert.match(p.nodes.get("#settings-content").innerHTML, /Metadata editing/);
+  assert.match(p.nodes.get("#settings-content").innerHTML, /id="apply-track-year-default" > Apply the album release year to tracks by default/);
+  await p.change({id: "apply-track-year-default", checked: true, dataset: {}, matches: () => false});
+  assert.equal(storage["tagcast-apply-album-year-to-tracks"], "1");
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.run("settingsView.dirty"), false);
+  assert.deepEqual(p.json("player.queue"), queue);
+  assert.equal(p.nodes.get("#audio").src, source);
+  assert.equal(p.nodes.get("#audio").paused, false);
+  const reopened = page({storage}); await settle();
+  reopened.run('openSettings("interface")');
+  assert.equal(reopened.run("metadataEditingDefaults.applyYearToTracks"), true);
+  assert.match(reopened.nodes.get("#settings-content").innerHTML, /id="apply-track-year-default" checked/);
+  await reopened.change({id: "apply-track-year-default", checked: false, dataset: {}, matches: () => false});
+  assert.equal(storage["tagcast-apply-album-year-to-tracks"], "0");
+  assert.equal(page({storage}).run("metadataEditingDefaults.applyYearToTracks"), false);
+});
+
+test("album release year default tolerates unavailable or invalid preference storage", () => {
+  for (const value of ["0", "true", "invalid"]) {
+    assert.equal(page({storage: {"tagcast-apply-album-year-to-tracks": value}}).run("metadataEditingDefaults.applyYearToTracks"), false);
+  }
+  const p = page({storage: new Proxy({}, {get() { throw Error("Storage unavailable"); }})});
+  assert.equal(p.run("metadataEditingDefaults.applyYearToTracks"), false);
+  p.run('localStorage.setItem = () => { throw Error("Storage unavailable"); }; setTrackYearDefault(true)');
+  assert.equal(p.run("metadataEditingDefaults.applyYearToTracks"), true, "An unavailable store still permits the preference for this session");
+});
+
+test("album release year default preselects new drafts while preserving the current draft and its override", async () => {
+  const p = page(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  assert.equal(p.nodes.get("#track-years").checked, false);
+  p.run('const originalYearDraft = editing; openSettings("interface"); setTrackYearDefault(true)');
+  p.history.back();
+  assert.equal(p.run("editing === originalYearDraft"), true);
+  assert.equal(p.nodes.get("#track-years").checked, false, "Changing the default must not change an existing draft");
+  await p.run("openEditor([state.albums[0].id])");
+  assert.equal(p.nodes.get("#track-years").checked, true);
+  p.nodes.get("#track-years").checked = false;
+  p.run('setEditorTab("tracks"); setEditorTab("album"); openSettings("interface")');
+  p.history.back();
+  assert.equal(p.nodes.get("#track-years").checked, false, "Tab and Settings navigation preserve the per-draft choice");
+  await p.run("openEditor([state.albums[0].id])");
+  assert.equal(p.nodes.get("#track-years").checked, true, "A new draft uses the saved preference again");
+});
+
+test("album release year default retains explicit review, individual overrides, clearing and year validation", async () => {
+  const p = page({storage: {"tagcast-apply-album-year-to-tracks": "1"}}); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  const input = {type: "number", value: "2000", disabled: false, dataset: {}, setCustomValidity() {}};
+  p.nodes.get("#metadata-form").elements = {year: input, namedItem: name => name === "year" ? input : null};
+  const requests = p.requests.length, original = p.json("editing.originals");
+  p.run('editing.dirty.add("year"); editing.trackPatches[String(editing.originals[0].tracks[0].id)] = {year: 2001}; buildReview()');
+  assert.equal(p.run('pending.changes.find(c => c.kind === "album").fields.year.after'), 2000);
+  assert.equal(p.run('pending.changes.find(c => c.kind === "track").fields.year.after'), 2001);
+  assert.equal(p.run('pending.changes.filter(c => c.kind === "track" && c.fields.year.after === 2000).length'), original[0].tracks.length - 1);
+  assert.deepEqual(p.json("editing.originals"), original);
+  assert.equal(p.requests.length, requests, "Review never writes metadata");
+  p.nodes.get("#track-years").checked = false;
+  p.run('pending = null; editing.trackPatches = {}; buildReview()');
+  assert.equal(p.run('pending.changes.some(c => c.kind === "track")'), false);
+  p.nodes.get("#track-years").checked = true;
+  input.value = "";
+  p.run('pending = null; buildReview()');
+  assert.equal(p.run("pending.changes.every(c => c.fields.year.after === 0)"), true);
+  input.value = "2051";
+  p.run('pending = null; buildReview()');
+  assert.equal(p.run("pending"), null);
+});
+
+test("album release year default respects the bulk year gate and mixed disc placeholders", async () => {
+  const p = page({storage: {"tagcast-apply-album-year-to-tracks": "1"}}); await settle();
+  p.run(`useLocal([
+    {id:"11",name:"Set",artist:"A",year:2000,disc:1,tracks:[{id:"110",title:"One",artist:"A",track:1,year:1999}]},
+    {id:"12",name:"Set",artist:"A",year:2000,disc:2,tracks:[{id:"120",title:"Two",artist:"A",track:1,year:1999}]},
+    {id:"13",name:"Other",artist:"A",year:2001,disc:1,tracks:[{id:"130",title:"Three",artist:"A",track:1,year:1999}]}
+  ],"demo"); state.artist="A";`);
+  await p.run('openEditor(["11","12"])');
+  assert.equal(p.run("editing.set"), true);
+  assert.equal(p.nodes.get("#track-years").checked, true);
+  p.run('state.details.get("12").year = 2001');
+  await p.run('openEditor(["11","12"])');
+  assert.equal(p.nodes.get("#track-years").checked, false, "Mixed disc years are not a clearing instruction");
+  await p.run('openEditor(["11","13"])');
+  assert.equal(p.run("editing.bulk"), true);
+  assert.equal(p.nodes.get("#track-years").checked, false);
+  const year = {type: "number", value: "2002", disabled: true};
+  p.nodes.get("#metadata-form").elements = {year, namedItem: name => name === "year" ? year : null};
+  p.nodes.set('#metadata-form [data-genres="year"]', null);
+  const toggle = checked => p.change({dataset: {enable: "year"}, checked, matches: selector => selector === "[data-enable]"});
+  await toggle(true);
+  assert.equal(year.disabled, false);
+  assert.equal(p.nodes.get("#track-years").checked, true);
+  p.run('buildReview()');
+  assert.equal(p.run('pending.changes.filter(c => c.kind === "track").length'), 2);
+  await toggle(false);
+  assert.equal(year.disabled, true);
+  assert.equal(p.nodes.get("#track-years").checked, false);
+  p.run('pending = null; buildReview()');
+  assert.equal(p.run("pending"), null);
+  p.nodes.get("#track-years").checked = true;
+  p.run('buildReview()');
+  assert.equal(p.run("pending"), null, "Manually checking a disabled bulk year still cannot bypass review validation");
+});
+
 function artistEditorForm(p, value = "Pink Floyd", enable = null) {
   const input = {type: "text", value, disabled: false, hidden: false, classList: {remove() {}, add() {}}};
   const form = p.nodes.get("#metadata-form");
