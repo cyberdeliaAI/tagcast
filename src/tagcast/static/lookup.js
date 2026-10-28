@@ -148,6 +148,10 @@ function renderSettingsContent() {
   $("#settings-content").innerHTML = `<section class="interface-settings" data-settings-category="interface"><h3>Library information banner <span class="settings-mode">Immediate · this browser</span></h3>
     <p class="muted" data-notice-description>The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
     <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
+    </section><section class="metadata-editing-settings" data-settings-category="interface"><h3>Metadata editing <span class="settings-mode">Immediate · this browser</span></h3>
+    <label class="checkline"><input type="checkbox" id="apply-track-year-default" ${metadataEditingDefaults.applyYearToTracks ? "checked" : ""}> Apply the album release year to tracks by default</label>
+    <p class="muted">Preselects the option in new album drafts. You can untick it for each draft; individual track edits still take priority and all changes need review. Remembered in this browser or app profile.</p>
+    <p class="muted">For selected albums, applies when you enable Release year. Mixed disc years start unchecked. Applying a blank year or 0 also clears track years.</p>
     </section><section class="player-display-settings" data-settings-category="playback"><h3>Player display <span class="settings-mode">Immediate · this browser</span></h3>
     <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> Show file format and stream quality in the compact player</label>
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>

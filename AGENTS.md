@@ -300,6 +300,13 @@ their shared browsing/player state; a fast local response can otherwise race the
 - `create_artist` is not automatically retried after temporary failures.
 - Album year edits change track years only when the user chooses that option.
   Individual track edits take precedence over album-wide edits.
+  Settings → Interface → Metadata editing has an off-by-default browser/profile-local
+  `tagcast-apply-album-year-to-tracks` preference. It only preselects the existing
+  track-year checkbox in new album drafts; per-draft overrides and normal review/save
+  guards remain. Bulk selection starts unchecked until Release year is enabled;
+  disabling that field clears the track-year choice. Mixed disc years start unchecked
+  so their blank placeholder never clears track years merely from the preference.
+  Changing the preference never alters an existing draft, metadata, playback or the queue.
 - Genres: the first label goes to `genre`, the rest to `genres_additional`.
   Editor, legacy single-genre writes and cleanup accept at most 200 Unicode code points per
   label, 20 labels per track. Reject oversized input visibly and retain it; never truncate.
