@@ -95,6 +95,148 @@ class AlbumInformationTests(unittest.TestCase):
     def enable(self):
         self.studio.config['album_information'] = True
 
+    def select_title(self, title):
+        self.studio.library.albums.rows[10][0] = title
+        self.selection = {**self.selection, 'album': title}
+        self.data = {**self.data, 'album': title}
+        self.key = album_information_key('Artist A', title)
+
+    def test_recognised_edition_fallback_uses_exact_base_title_without_changing_the_library(self):
+        self.enable()
+        for title, base in (
+                ('Original (Expanded Edition)', 'Original'),
+                ('Original (Mono Edition)', 'Original'),
+                ('Original (20th Anniversary Deluxe Edition)', 'Original'),
+                ('Original (2011 Remastered Version)', 'Original'),
+                ('Original [2011 Remastered Version]', 'Original'),
+                ('Original [Deluxe]', 'Original'),
+                ('Original - 2011 Remaster', 'Original'),
+                ('Original (Expanded Edition) [2011 Remaster]', 'Original'),
+                ('Original II (Mono Edition)', 'Original II'),
+                ('Original (Live) (Deluxe Edition)', 'Original (Live)'),
+                ("(What's the Story) Original? (Expanded Edition)", "(What's the Story) Original?")):
+            with self.subTest(title=title):
+                self.select_title(title)
+                before = self.studio.library.to_cache()
+                self.studio.lookup.http.json.reset_mock()
+                row = {'idAlbum': '123', 'strArtist': 'Artist A', 'strAlbum': base,
+                       'strDescription': '<p>Album background.</p>'}
+                self.studio.lookup.http.json.side_effect = lambda url, params, ttl: {
+                    'album': [row] if params['a'] == base else None}
+                result = self.info.view({**self.selection, 'lookup': True})
+                self.assertEqual(result['status'], 'ready')
+                self.assertEqual(result['description'], 'Album background.')
+                self.assertEqual(result['album'], title)
+                self.assertEqual(result['lookup_album'], base)
+                self.assertEqual([call.args[1] for call in self.studio.lookup.http.json.call_args_list],
+                                 [{'s': 'Artist A', 'a': title}, {'s': 'Artist A', 'a': base}])
+                self.assertEqual(AlbumInformation(self.studio).view({**self.selection, 'lookup': True}), result)
+                self.assertEqual(self.studio.lookup.http.json.call_count, 2)
+                self.assertEqual(self.studio.library.to_cache(), before)
+        self.assertEqual(self.studio.client.mock_calls, [])
+
+    def test_full_edition_matches_keep_priority_including_ambiguity_and_missing_english_text(self):
+        self.enable()
+        self.select_title('Original (Expanded Edition)')
+        for status in ('ready', 'ambiguous', 'unavailable'):
+            with self.subTest(status=status), \
+                    patch.object(TheAudioDB, 'album_information', return_value={**self.data, 'status': status}) as fetch:
+                # Expire the previous result without changing the normal cache policy.
+                self.info._write(self.key, {**self.data, 'status': 'missing'})
+                result = self.info.view({**self.selection, 'lookup': True})
+                self.assertEqual(result['status'], status)
+                self.assertNotIn('lookup_album', result)
+                fetch.assert_called_once_with('Artist A', self.selection['album'])
+
+    def test_live_remix_subtitles_numbers_and_unknown_parentheses_are_not_dropped(self):
+        self.enable()
+        for title in ('Original (Live)', 'Original (Remix)', 'Original (Acoustic Version)',
+                      'Original (Taylor’s Version)', 'Original (Not an Edition)',
+                      'Original II', 'Original Vol. 2', 'Original!', 'Original (Deluxe Edition) (Live)',
+                      '(Expanded Edition)'):
+            with self.subTest(title=title):
+                self.select_title(title)
+                with patch.object(TheAudioDB, 'album_information',
+                                  return_value={**self.data, 'status': 'missing'}) as fetch:
+                    self.assertEqual(self.info.view({**self.selection, 'lookup': True})['status'], 'missing')
+                    fetch.assert_called_once_with('Artist A', title)
+
+    def test_edition_fallback_still_rejects_wrong_artists_titles_and_multiple_matches(self):
+        self.enable()
+        self.select_title('Original (Expanded Edition)')
+        row = {'idAlbum': '123', 'strArtist': 'Artist A', 'strAlbum': 'Original',
+               'strDescription': 'Text.'}
+        for rows, status in (([{**row, 'strArtist': 'The Artist A'}], 'missing'),
+                             ([{**row, 'strArtist': 'Ártist A'}], 'missing'),
+                             ([{**row, 'strAlbum': 'Original (Live)'}], 'missing'),
+                             ([{**row, 'strAlbum': 'Original II'}], 'missing'),
+                             ([row, {**row, 'idAlbum': '124'}], 'ambiguous')):
+            with self.subTest(rows=rows):
+                self.info._write(self.key, {**self.data, 'status': 'missing'})
+                self.studio.lookup.http.json.reset_mock()
+                self.studio.lookup.http.json.side_effect = lambda url, params, ttl: {
+                    'album': rows if params['a'] == 'Original' else None}
+                result = self.info.view({**self.selection, 'lookup': True})
+                self.assertEqual(result['status'], status)
+                self.assertEqual(result['description'], '')
+                self.assertEqual(result['album'], self.selection['album'])
+                self.assertEqual(self.studio.lookup.http.json.call_count, 2)
+
+    def test_only_legacy_edition_misses_refresh_once_and_new_negative_results_stay_cached(self):
+        self.enable()
+        self.select_title('Original (Mono Edition)')
+        self.info._write(self.key, {**self.data, 'status': 'missing', 'description': ''})
+        self.info._write(album_information_key('Artist A', 'Original'), self.data | {'album': 'Original'})
+        self.assertTrue(self.info.view(self.selection)['needs_lookup'])
+        self.studio.lookup.http.json.assert_not_called()
+        missing = {**self.data, 'status': 'missing', 'description': ''}
+        with patch.object(TheAudioDB, 'album_information', return_value=missing) as fetch:
+            result = self.info.view({**self.selection, 'lookup': True})
+            self.assertEqual([call.args for call in fetch.call_args_list],
+                             [('Artist A', self.selection['album']), ('Artist A', 'Original')])
+            self.assertFalse(result['needs_lookup'])
+            self.assertEqual(result['lookup_album'], 'Original')
+            self.assertEqual(result['expires_at'] - result['fetched_at'], 86400)
+            self.assertEqual(AlbumInformation(self.studio).view({**self.selection, 'lookup': True}), result)
+            self.assertEqual(fetch.call_count, 2)
+        # The base album's existing cache remains separate and valid.
+        base = self.info._read(album_information_key('Artist A', 'Original'))
+        self.assertEqual(base['status'], 'ready')
+        self.assertFalse(base['needs_lookup'])
+
+    def test_edition_fallback_failure_obeys_backoff_without_repeating_either_request(self):
+        self.enable()
+        self.select_title('Original (Expanded Edition)')
+        missing = {**self.data, 'status': 'missing', 'description': ''}
+        with patch.object(TheAudioDB, 'album_information', side_effect=[missing, SourceError('is busy')]) as fetch:
+            for _ in range(2):
+                with self.assertRaises(AlbumInformationRetryError):
+                    self.info.view({**self.selection, 'lookup': True})
+            self.assertEqual(fetch.call_count, 2)
+        self.assertIsNone(self.info._read(self.key))
+
+    def test_settings_or_session_changes_between_edition_requests_prevent_late_work(self):
+        for when, change in (('before_fallback', 'settings'), ('during_fallback', 'settings'),
+                             ('before_fallback', 'session'), ('during_fallback', 'session')):
+            with self.subTest(when=when, change=change):
+                self.setUp()
+                self.enable()
+                self.select_title('Original (Expanded Edition)')
+
+                def fetch(artist, album):
+                    if (when == 'before_fallback') == (album == self.selection['album']):
+                        if change == 'settings':
+                            self.studio.config['album_information'] = False
+                        else:
+                            self.studio.playback_session = 'other'
+                    return {**self.data, 'status': 'missing'}
+
+                with patch.object(TheAudioDB, 'album_information', side_effect=fetch) as lookup, \
+                        self.assertRaises(ConflictError):
+                    self.info.view({**self.selection, 'lookup': True})
+                self.assertEqual(lookup.call_count, 1 if when == 'before_fallback' else 2)
+                self.assertIsNone(self.info._read(self.key))
+
     def test_off_by_default_and_cache_only_reads_never_contact_any_service(self):
         self.assertEqual(self.info.view({**self.selection, 'lookup': True}), {'enabled': False})
         self.assertFalse((self.studio.home / 'album-information.sqlite3').exists())
@@ -265,7 +407,8 @@ class AlbumInformationTests(unittest.TestCase):
 
     def test_wrong_cached_identity_urls_or_timestamps_are_rejected(self):
         self.enable()
-        for changes in ({'album': 'Other'}, {'url': 'javascript:bad()'}, {'description': 'x' * 20001}):
+        for changes in ({'album': 'Other'}, {'url': 'javascript:bad()'}, {'description': 'x' * 20001},
+                        {'lookup_album': None}, {'lookup_album': 'Other'}, {'lookup_album': 'Original'}):
             self.info._write(self.key, {**self.data, **changes})
             with self.subTest(changes=list(changes)), self.assertRaisesRegex(LibraryError, 'local album information cache'):
                 self.info.view(self.selection)

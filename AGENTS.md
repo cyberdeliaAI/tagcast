@@ -50,7 +50,7 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
 - `src/tagcast/album_info.py`: opt-in TheAudioDB album background text for a visited
-  album, with strict artist/full-title matching and a separate bounded SQLite cache.
+  album, with exact artist/title matching, a conservative edition fallback and a separate bounded SQLite cache.
 - `src/tagcast/lyrics.py`: lazy native `gettrackuserdata` reads, an account/track-bound
   native text cache and a separate public LRCLIB SQLite cache; separately reviewed, single-use lyrics
   saves preserve all other native userdata and read back without ambiguous retries.
@@ -727,9 +727,13 @@ their shared browsing/player state; a fast local response can otherwise race the
   automatically or bypassing shared pacing.
 - `album_information` is independently off by default. Enabling alone never scans or
   fetches. A visited album reads `album-information.sqlite3` first; only missing/expired
-  text starts a provider request. Send only its stored primary artist and full album
-  title, never display placeholders, credentials or tracks. Preserve accents, punctuation,
-  numbered volumes and version text when matching; require one exact artist/title result.
+  text starts a provider request. Try its stored primary artist and full album title
+  first, never display placeholders, credentials or tracks. Only a missing match may
+  try one title without recognised trailing edition labels using `guide_title_text`;
+  keep live/remix distinctions, unknown subtitles, accents, punctuation and numbered volumes.
+  Require one exact artist/title result for each request; ambiguity, unavailable English
+  text and source errors never widen the search. Keep the original title/cache identity
+  and library unchanged. Revisit old edition misses once; new misses retain normal expiry.
   Cache public English text by source, strict identity and language for 30 days, negative
   matches for one day; bound to 5,000 records / 20 MiB plus SQLite overhead. Share source
   pacing with artist biographies and suggestions, coalesce simultaneous lookups and back
