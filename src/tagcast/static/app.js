@@ -597,6 +597,8 @@ function render() {
   if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   $("#trash-selection").hidden = !live();
+  $("#download-selection").hidden = !live();
+  $("#download-selection").disabled = saving || checking > 0 || state.loading || !state.selected.size;
   $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
   $("#edit-selection").hidden = !state.artist;
   const chosen = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id)));
@@ -616,6 +618,7 @@ function render() {
   if (typeof updateRandomControls === "function") updateRandomControls();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
   if (typeof syncHistory === "function") syncHistory();
+  if (typeof syncAudioDownloadsPage === "function") syncAudioDownloadsPage();
 }
 
 // On an artist's page the artist image takes the place of the library total.

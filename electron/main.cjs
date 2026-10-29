@@ -62,8 +62,8 @@ function createWindow() {
   contents.on("will-attach-webview", event => event.preventDefault());
   contents.on("will-prevent-unload", event => {
     const choice = dialog.showMessageBoxSync(window, {type: "question", buttons: ["Keep Tagcast open", "Close Tagcast"],
-      defaultId: 0, cancelId: 0, title: "Close Tagcast?", message: "There are unsaved changes or a save is still running.",
-      detail: "Closing loses unsaved drafts. Accepted requests finish before the local server stops."});
+      defaultId: 0, cancelId: 0, title: "Close Tagcast?", message: "There are unsaved changes, active downloads or a save is still running.",
+      detail: "Closing loses unsaved drafts and stops local downloads. Accepted library writes finish before the local server stops."});
     if (choice === 1) event.preventDefault();
   });
   contents.on("render-process-gone", () => { if (!stopping) dialog.showErrorBox("Tagcast's window stopped", "Restart Tagcast Desktop. The local server will finish accepted requests before closing."); app.quit(); });

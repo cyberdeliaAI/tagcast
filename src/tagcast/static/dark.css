@@ -182,6 +182,10 @@
 :root[data-theme="dark"] .state-operational.service-state-dot,:root[data-theme="dark"] .state-operational .service-state-dot{background:#7fc596}
 :root[data-theme="dark"] .state-degraded.service-state-dot,:root[data-theme="dark"] .state-degraded .service-state-dot{background:#db9c4f}
 :root[data-theme="dark"] .state-outage.service-state-dot,:root[data-theme="dark"] .state-outage .service-state-dot{background:#fd8985}
+:root[data-theme="dark"] #downloads-page .downloads-albums li{border-bottom:1px solid var(--palette-border,#3f403d)}
+:root[data-theme="dark"] #downloads-page .downloads-albums small{color:var(--palette-muted,#aeb6a3)}
+:root[data-theme="dark"] #downloads-page .downloads-advanced{border-top:1px solid var(--palette-border,#3f403d)}
+:root[data-theme="dark"] #downloads-page progress{accent-color:var(--palette-accent,#97b97b)}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -379,6 +383,10 @@
 :root:not([data-theme="light"]) .state-operational.service-state-dot,:root:not([data-theme="light"]) .state-operational .service-state-dot{background:#7fc596}
 :root:not([data-theme="light"]) .state-degraded.service-state-dot,:root:not([data-theme="light"]) .state-degraded .service-state-dot{background:#db9c4f}
 :root:not([data-theme="light"]) .state-outage.service-state-dot,:root:not([data-theme="light"]) .state-outage .service-state-dot{background:#fd8985}
+:root:not([data-theme="light"]) #downloads-page .downloads-albums li{border-bottom:1px solid var(--palette-border,#3f403d)}
+:root:not([data-theme="light"]) #downloads-page .downloads-albums small{color:var(--palette-muted,#aeb6a3)}
+:root:not([data-theme="light"]) #downloads-page .downloads-advanced{border-top:1px solid var(--palette-border,#3f403d)}
+:root:not([data-theme="light"]) #downloads-page progress{accent-color:var(--palette-accent,#97b97b)}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

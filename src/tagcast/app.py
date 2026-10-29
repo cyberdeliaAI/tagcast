@@ -202,6 +202,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/recently-played":
             self._run(lambda: self.studio.recently_played(query.get("q"), query.get("offset", "0"),
                                                         query.get("limit", "50"), query.get("refresh") == "1"))
+        elif url.path == "/api/downloads":
+            self._run(lambda: self.studio.audio_downloads.view(query.get("session")))
         elif url.path == "/api/cleanup":
             self._run(lambda: self.studio.cleanup.view(query.get("offset", "0"), query.get("limit", "25")))
         elif url.path == "/api/cleanup/report":
@@ -252,6 +254,12 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/cleanup/stop": lambda b: self.studio.cleanup.cancel(b.get("id")),
             "/api/year-review/analyse": lambda b: self.studio.year_review.analyse(),
             "/api/year-review/choice": self.studio.year_review.choice,
+            "/api/downloads/add": self.studio.audio_downloads.add,
+            "/api/downloads/remove": self.studio.audio_downloads.remove,
+            "/api/downloads/prepare": self.studio.audio_downloads.prepare,
+            "/api/downloads/start": self.studio.audio_downloads.start,
+            "/api/downloads/stop": self.studio.audio_downloads.cancel,
+            "/api/downloads/folder": self.studio.audio_downloads.folder,
             "/api/settings": self.studio.save_settings,
             "/api/lyrics": self.studio.lyrics.view,
             "/api/lyrics/review": self.studio.lyrics.prepare,
@@ -404,6 +412,7 @@ class Server(ThreadingHTTPServer):
         if studio:
             studio.queue_sync.disconnect()
             studio.metadata_export.close()
+            studio.audio_downloads.close()
         super().server_close()
 
 

@@ -3,6 +3,12 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  downloads: {title: "Downloads", scope: "#downloads-page", steps: [
+    ["Choose albums", "Use Download album in an album's More menu, or select albums and choose Download. Adding a selection only queues it here; it does not fetch audio or change your playing queue.", ["#audio-download-albums"]],
+    ["Review before starting", "Choose a folder on the computer running Tagcast, quality and file source. Review download shows the exact selection and example filenames before Start downloads creates local copies. Free accounts use 128 kbps MP3.", ["#audio-download-form", "#audio-download-review"]],
+    ["Current tags or the original upload", "Original downloads use iBroadcast's download service. Enable Download Updated Metadata in iBroadcast for its current tags. A visible Fallback note means the original upload was saved instead. The streaming source keeps the file's uploaded tags.", ["#audio-download-source-field", "#audio-download-source-note"]],
+    ["Stop and resume safely", "Stop preserves completed files and matching streaming partials. Review and start again to resume. Existing unverified or modified files are kept, never adopted automatically. Selection and progress are session-local; folder options and integrity records persist. Avoid simultaneous downloads to the same folder from ibfetch or another Tagcast profile.", ["#audio-download-progress"]],
+  ]},
   "playlist-order": {title: "Playlist order", scope: "#playlist-order", steps: [
     ["Find a track", "Search title, artist or album across the whole playlist, including positions on other pages. Search keeps your unsaved moves. Result numbers and Move to position refer to the complete current draft. Drag and arrow moves also use that full order, including hidden tracks. Clear the search to see every position again.", ["#playlist-order-search", "#playlist-order-content"]],
     ["Move saved positions", "Drag a handle to the insertion line for a nearby move. With the handle focused, use Up or Down. Move to position accepts any position in the whole playlist, including another page. Repeated and unavailable tracks remain separate positions.", ["#playlist-order-content"]],

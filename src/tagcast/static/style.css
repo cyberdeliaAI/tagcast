@@ -1036,3 +1036,37 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 .album-merge-tracks small{display:block;color:var(--muted);margin-top:4px}
 .album-merge-tracks li span{overflow-wrap:anywhere}
 @media(max-width:760px){.album-page-selection{flex-basis:100%}#album-merge{width:calc(100vw - 40px)}#selection-bar strong{flex:1;min-width:160px}}
+
+/* Explicit local audio downloads: page-scoped, independent of playback. */
+#downloads-page .downloads-grid { display:grid; grid-template-columns:minmax(0, .9fr) minmax(0, 1.3fr); gap:24px; align-items:start; }
+#downloads-page .card { min-width:0; padding:24px; }
+#downloads-page h2 { margin-top:0; }
+#downloads-page .downloads-heading { display:flex; align-items:baseline; justify-content:space-between; gap:16px; }
+#downloads-page .downloads-albums { list-style:none; margin:0; padding:0; max-height:420px; overflow:auto; }
+#downloads-page .downloads-albums li { display:flex; align-items:center; gap:16px; justify-content:space-between; padding:14px 0; border-bottom:1px solid var(--palette-border,#dedfd9); }
+#downloads-page .downloads-albums li:last-child { border-bottom:0; }
+#downloads-page .downloads-albums li div { min-width:0; overflow-wrap:anywhere; }
+#downloads-page .downloads-albums small { display:block; color:var(--palette-muted,#666e5c); margin-top:4px; }
+#downloads-page .downloads-albums button { flex:none; }
+#downloads-page fieldset { border:0; margin:0; padding:0; min-width:0; }
+#downloads-page .field { display:block; margin:18px 0; }
+#downloads-page .field input, #downloads-page .field select { width:100%; min-width:0; margin-top:6px; }
+#downloads-page .downloads-folder { display:flex; align-items:baseline; gap:8px; }
+#downloads-page .downloads-folder input { flex:1; }
+#downloads-page .downloads-folder button { flex:none; }
+#downloads-page .downloads-options { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+#downloads-page .downloads-advanced { border-top:1px solid var(--palette-border,#dedfd9); padding-top:16px; }
+#downloads-page .downloads-advanced summary { cursor:pointer; }
+#downloads-page .downloads-review, #downloads-page .downloads-progress { margin-top:24px; }
+#downloads-page .downloads-path, #downloads-page .downloads-examples { overflow-wrap:anywhere; }
+#downloads-page .downloads-examples { padding-left:20px; }
+#downloads-page .downloads-examples li { margin:8px 0; }
+#downloads-page .downloads-buttons { display:flex; gap:12px; flex-wrap:wrap; margin-top:20px; }
+#downloads-page progress { width:100%; accent-color:var(--palette-accent,#638348); }
+@media (max-width:1100px) { #downloads-page .downloads-grid { grid-template-columns:1fr; } }
+@media (max-width:760px) {
+  #downloads-page .card { padding:20px; }
+  #downloads-page .downloads-options { grid-template-columns:1fr; gap:0; }
+  #downloads-page .downloads-albums { max-height:none; }
+  #downloads-page .downloads-buttons button { width:100%; }
+}

@@ -29,6 +29,7 @@ from .album_merge import AlbumMerge
 from .artist_bios import ArtistBiographies
 from .cleanup import Cleanup
 from .collections import Collections
+from .downloads import AudioDownloads
 from .duplicate_cleanup import DuplicateCleanup
 from .library import (
     ConflictError,
@@ -73,6 +74,7 @@ KEY_ENV = {"lastfm_api_key": "LASTFM_API_KEY", "discogs_token": "DISCOGS_TOKEN",
 API_URL = "https://api.ibroadcast.com"
 LIBRARY_URL = "https://library.ibroadcast.com"
 ARTWORK_UPLOAD_URL = "https://artwork-upload.ibroadcast.com"
+AUDIO_DOWNLOAD_URL = "https://download.ibroadcast.com/"
 STREAM_URL = "https://streaming.ibroadcast.com"
 
 # Point everything at a test server, e.g. TAGCAST_IBROADCAST_BASE=http://127.0.0.1:9000
@@ -80,6 +82,7 @@ _test_base = os.environ.get("TAGCAST_IBROADCAST_BASE", "").rstrip("/")
 if _test_base:
     API_URL, LIBRARY_URL = f"{_test_base}/api", f"{_test_base}/library"
     ARTWORK_UPLOAD_URL, STREAM_URL = f"{_test_base}/artwork-upload", f"{_test_base}/stream"
+    AUDIO_DOWNLOAD_URL = f"{_test_base}/download"
     oauth.OAUTH_BASE = f"{_test_base}/oauth"
     oauth.AUTHORIZE_URL = f"{oauth.OAUTH_BASE}/authorize"
     oauth.TOKEN_URL = f"{oauth.OAUTH_BASE}/token"
@@ -322,7 +325,32 @@ class StudioClient(ibroadcast.iBroadcast):
                            or f"iBroadcast did not accept the image (HTTP {response.status_code}).")
         return number(result["artwork_id"])
 
-    def open_stream(self, path, file_id, user_id, expires, range_header=None):
+    def open_download(self, track_id, user_id):
+        """Read one original file from the official download service (streamed ZIP)."""
+        def send(access_token):
+            response = requests.post(AUDIO_DOWNLOAD_URL,
+                data={"_user_id": str(user_id), "_token": access_token,
+                      "mode": "downloadlibrary", "container_type": "track",
+                      "ids": str(track_id), "end_marker": "1"},
+                headers={"User-Agent": self._user_agent},
+                stream=True, allow_redirects=False, timeout=(10, 30))
+            content_type = response.headers.get("Content-Type", "").lower()
+            if response.status_code == 200 and ("json" in content_type or content_type.startswith("text/")):
+                try:
+                    answer = json.loads(response.raw.read(4096, decode_content=True))
+                except (ValueError, UnicodeError):
+                    answer = {}
+                # This service can reject a token in JSON with HTTP 200. Normalize
+                # only that explicit rejection for the existing shared refresh gate.
+                if isinstance(answer, dict) and answer.get("authenticated") is False:
+                    response.status_code = 401
+            return response
+        try:
+            return self._with_fresh_token(send)
+        except requests.RequestException as error:
+            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+
+    def open_stream(self, path, file_id, user_id, expires, range_header=None, *, timeout=TIMEOUT):
         """Open the audio of one track. The caller closes the returned response."""
         def send(access_token):
             params = {"Signature": access_token, "file_id": file_id, "user_id": user_id,
@@ -333,7 +361,7 @@ class StudioClient(ibroadcast.iBroadcast):
             if range_header:
                 headers["Range"] = range_header
             return requests.get(STREAM_URL + path, params=params, headers=headers,
-                                stream=True, timeout=TIMEOUT)
+                                stream=True, timeout=timeout)
         try:
             return self._with_fresh_token(send)
         except requests.RequestException as error:
@@ -369,6 +397,7 @@ class Studio:
         self.collections = Collections(self)
         self.playlist_import = PlaylistImport(self)
         self.metadata_export = MetadataExport(self)
+        self.audio_downloads = AudioDownloads(self)
         self.lyrics = Lyrics(self)
         self.tags = Tags(self)
         self.album_merge = AlbumMerge(self)
@@ -492,6 +521,7 @@ class Studio:
                                             "token_set": token_set.to_dict()})
 
     def _connect(self, token_set, save=True):
+        self.audio_downloads.close()
         self.queue_sync.disconnect()
         client = StudioClient(access_token=token_set.access_token,
                               refresh_token=token_set.refresh_token,
@@ -505,6 +535,7 @@ class Studio:
                 self._save_tokens(token_set, client)
 
     def _disconnect(self):
+        self.audio_downloads.close()
         self.queue_sync.disconnect()
         with self.lock:
             self.client = self.library = self.account = self.device = None

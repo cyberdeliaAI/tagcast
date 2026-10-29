@@ -64,6 +64,11 @@ iBroadcast Premium access.
 - **Keep track:** read-back checks distinguish confirmed saves from uncertain
   results; Change history records metadata outcomes and available artwork Undo.
 
+**In development:** reviewed [album downloads](docs/audio-downloads.md), using
+[ibfetch](https://github.com/cyberdeliaAI/ibfetch)'s transfer engine inside Tagcast
+with the existing account connection. Available from source for the next release;
+not part of the published 1.0.0 desktop downloads.
+
 ## Install
 
 ### Desktop app — no Python required
