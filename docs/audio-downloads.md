@@ -1,7 +1,7 @@
-# Audio downloads (next release)
+# Audio downloads
 
-Album downloads are available from source for the next release. They are **not in
-the published Tagcast 1.0.0 application**. No new release has been created.
+Available in **Tagcast 1.1.0** and from source. Tagcast 1.0.0 does not include
+audio downloads.
 
 ## Download albums
 
@@ -110,10 +110,16 @@ The real browser walkthrough confirms album selection → Downloads → review �
 completed local files with synthetic music. Four palettes in Light/Dark and
 420/760/761/768/1024/1280px layouts were checked without horizontal overflow.
 
+The macOS 1.1.0 packaged server was also checked against a local synthetic service:
+two files downloaded with verified bytes, a second run kept both completed files,
+and no metadata writes or play reports were made. Download assets and the ibfetch
+license were present in the bundle.
+
 The user has also successfully tested album downloads with their own account.
 That observation does not verify every embedded tag or output format. Native
-folder choosers and packaged Windows/Linux/macOS builds still need their
-platform/packaging checks.
+folder-chooser interaction and real-account transfers on each operating system
+remain manual checks. Platform builds and extracted-app smoke checks do not
+certify every filesystem, account or embedded metadata field.
 No claims are made that every iBroadcast tag field or source format is rewritten
 correctly by the download service. No real-account music has been downloaded
 for this integration's automated or visual checks.
