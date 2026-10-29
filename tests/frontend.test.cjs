@@ -8551,6 +8551,8 @@ test('album lyrics check starts explicitly, runs serially and keeps results unti
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics-import'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-download'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-trash'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'Home',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
@@ -10052,4 +10054,82 @@ test('upload group album pagination uses loaded summaries and keeps matching nat
   assert.equal(p.requests.length,requests);
   p.run('browseView.sort="title_za";refreshBrowseList()');await settle();
   assert.equal(p.requests.length,requests);
+});
+
+function audioDownloadsFixture() {
+  return {albums:[{id:"1",title:"<Live & Album>",artist:"Sample Artist",disc:1,tracks:3}],tracks:3,
+    options:{out:"/tmp/tagcast-test-music",work:"",quality:"orig",source:"download",workers:1,
+      layout:"{albumartist}/{album} ({year})/{disctrack} {title}",verify:false},
+    premium:true,preparing:false,review:null,error:"",transfer:null};
+}
+function prepareAudioDownloadsPage(p) {
+  p.run('state.mode="live";state.connection.playback_session="download-session";');
+  // The light DOM stand-in does not parse dynamic HTML; map page-local lookups.
+  p.nodes.get('#downloads-page').querySelector = selector => p.run(`document.querySelector(${JSON.stringify(selector)})`);
+  for (const selector of ['#audio-download-out','#audio-download-quality','#audio-download-source','#audio-download-review',
+                          '#audio-download-albums','#audio-download-progress']) p.run(`document.querySelector(${JSON.stringify(selector)})`);
+  p.nodes.get('#audio-download-progress').querySelector = selector => p.run(`document.querySelector(${JSON.stringify(selector)})`);
+  p.nodes.get('#audio-download-quality').value='orig';p.nodes.get('#audio-download-source').value='download';
+}
+
+test('Downloads uses a normal route and never fetches audio when opening or selecting albums', async()=>{
+  const p=page();await settle(); prepareAudioDownloadsPage(p);
+  const data=audioDownloadsFixture();
+  p.setFetch((url,options)=>{
+    assert.ok(url.startsWith('/api/downloads'),'Only the download metadata endpoints');
+    return {ok:true,json:async()=>data};
+  });
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  await p.run('addAudioDownloadAlbums(["1","1"])');await settle();
+  const added=p.requests.find(r=>r.url==='/api/downloads/add');
+  assert.deepEqual(JSON.parse(added.options.body),{albums:['1'],session:'download-session'});
+  assert.equal(p.location.hash,'#/downloads');
+  assert.match(p.nodes.get('#audio-download-albums').innerHTML,/&lt;Live &amp; Album&gt;/);
+  assert.equal(p.run('currentHelpContext()'),'downloads');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.equal(p.requests.filter(r=>r.url.includes('/api/stream')||r.url.includes('/start')).length,0);
+  p.run('showScreen("albums");syncHistory();');p.history.back();await settle();
+  assert.equal(p.run('state.screen'),'downloads');
+});
+
+test('Downloads demo is read-only and a late response cannot cross an account session',async()=>{
+  const p=page();await settle();
+  p.run('showScreen("downloads");');await settle();
+  assert.match(p.nodes.get('#downloads-page').innerHTML,/demo does not download music/);
+  assert.match(p.nodes.get('#downloads-page').innerHTML,/href="https:\/\/github\.com\/cyberdeliaAI\/ibfetch" target="_blank" rel="noopener noreferrer"/);
+  assert.match(p.run('audioDownloadsMarkup(audioDownloadsView.data || ' + JSON.stringify(audioDownloadsFixture()) + ')'),/id="audio-download-companion"/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/downloads')).length,0);
+  prepareAudioDownloadsPage(p);
+  let reply;p.setFetch(()=>new Promise(done=>{reply=done;}));
+  const pending=p.run('audioDownloadsView.session="download-session";loadAudioDownloads()');
+  p.run('state.screen="albums";state.connection.playback_session="replacement";syncAudioDownloadsPage();');
+  reply({ok:true,json:async()=>audioDownloadsFixture()});await pending;await settle();
+  assert.equal(p.run('audioDownloadsView.data'),null);
+});
+
+test('Download review focuses its heading and escapes filenames without replacing form inputs on updates',async()=>{
+  const p=page();await settle();prepareAudioDownloadsPage(p);
+  const data=audioDownloadsFixture();data.review={id:'single-use',tracks:3,discs:1,options:data.options,
+    examples:['Artist/<script>bad</script>.flac']};
+  p.run(`state.screen="downloads";audioDownloadsView.session="download-session";audioDownloadsView.data=${JSON.stringify(data)};audioDownloadsView.expectReview=true;renderAudioDownloads();`);
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#audio-download-review-heading'));
+  assert.match(p.nodes.get('#audio-download-review').innerHTML,/&lt;script&gt;bad&lt;\/script&gt;/);
+  const form=p.nodes.get('#downloads-page').innerHTML;
+  p.nodes.get('#audio-download-out').value='/my/unsent/change';
+  p.run('renderAudioDownloads();');
+  assert.equal(p.nodes.get('#downloads-page').innerHTML,form);
+  assert.equal(p.nodes.get('#audio-download-out').value,'/my/unsent/change');
+});
+
+test('Downloads has a single bounded status poll and stop sends no metadata or queue writes',async()=>{
+  const p=page();await settle();prepareAudioDownloadsPage(p);
+  const d=audioDownloadsFixture();d.preparing=true;
+  p.setFetch(url=>({ok:true,json:async()=>({...d,preparing:url!='/api/downloads/stop'})}));
+  p.run('audioDownloadsView.session="download-session";state.screen="downloads";');
+  await p.run('loadAudioDownloads()');await settle();
+  assert.ok(p.run('audioDownloadsView.timer')!==null);
+  await p.run('audioDownloadAction("stop")');await settle();
+  assert.equal(p.run('audioDownloadActive()'),false);
+  assert.ok(p.requests.filter(r=>r.url.startsWith('/api/downloads')).every(r=>!r.url.includes('save')));
+  assert.equal(p.requests.filter(r=>r.url==='/api/downloads/stop').length,1);
 });

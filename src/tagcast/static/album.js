@@ -52,7 +52,7 @@ $("#album-action-menu").addEventListener("keydown", event => {
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     event.preventDefault();
-    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-trash")].filter(item => !item.hidden);
+    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-trash")].filter(item => !item.hidden);
     const index = items.indexOf(document.activeElement);
     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
       : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
