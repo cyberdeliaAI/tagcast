@@ -171,7 +171,7 @@ class StatusTests(unittest.TestCase):
         from types import SimpleNamespace
 
         from tagcast.app import Handler, Server
-        handler = type("StatusHandler", (Handler,), {"studio": SimpleNamespace(service_status=self.status, queue_sync=Mock(), metadata_export=Mock()), "port": 0})
+        handler = type("StatusHandler", (Handler,), {"studio": SimpleNamespace(service_status=self.status, queue_sync=Mock(), metadata_export=Mock(), audio_downloads=Mock()), "port": 0})
         with TemporaryDirectory() as directory:
             server = Server(("127.0.0.1", 0), partial(handler, directory=directory))
             handler.port = server.server_port

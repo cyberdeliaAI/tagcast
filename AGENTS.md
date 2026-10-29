@@ -3,7 +3,8 @@
 ## Scope and communication
 
 - Tagcast is a local metadata editor and player for iBroadcast; it does not modify local
-  music files.
+  music files. Explicit audio downloads create separate local copies; existing files are never
+  retagged or automatically adopted.
 - Communicate with the user in Dutch. Preserve existing English file, variable
   and function names, code comments and documentation.
 - Examine relevant source code and tests before making changes.
@@ -46,6 +47,18 @@ The application consists of a Python server and a plain JavaScript frontend.
   and per-album/track assignments, separate from genres and metadata saves.
 - `src/tagcast/queue_sync.py`: opt-in server-side WebSocket bridge; extra OAuth queue
   scopes, sanitized account sessions, five-second reconnect pacing and controller roles.
+- `src/tagcast/downloads.py`: explicit album/disc download queue and single-use review,
+  bound to the existing account/session and loaded library; no second login or library fetch.
+  `download_engine.py` adapts ibfetch 1.3.1's MIT-licensed transfer, ZIP, safe naming,
+  partial-resume, checksum, local-lock and work-folder code. Preserve its on-disk
+  integrity contract (`.ibfetch.json`), original/stream source distinction and visible
+  metadata fallback notes. Never overwrite or silently trust existing unverified files.
+  Defaults: one worker, Original/download service for Premium, 128 kbps streaming for
+  Free. Only explicit Start downloads reads audio or creates music files. Queue/review
+  are memory-only; options persist in download-options.json. Do not hold Studio.lock
+  across planning, file/network I/O or transfers. Stop on session/account replacement,
+  close in-flight readers off the request thread, and release the captured library
+  after transfer completion. Keep playback and metadata saves independent.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.

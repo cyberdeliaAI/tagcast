@@ -64,6 +64,10 @@ iBroadcast Premium access.
 - **Keep track:** read-back checks distinguish confirmed saves from uncertain
   results; Change history records metadata outcomes and available artwork Undo.
 
+**In development:** reviewed [album downloads](docs/audio-downloads.md), using
+ibfetch's transfer engine inside Tagcast with the existing account connection.
+This is local development work, not part of the published 1.0.0 downloads.
+
 ## Install
 
 ### Desktop app — no Python required
