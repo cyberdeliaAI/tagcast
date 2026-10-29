@@ -65,8 +65,9 @@ iBroadcast Premium access.
   results; Change history records metadata outcomes and available artwork Undo.
 
 **In development:** reviewed [album downloads](docs/audio-downloads.md), using
-ibfetch's transfer engine inside Tagcast with the existing account connection.
-This is local development work, not part of the published 1.0.0 downloads.
+[ibfetch](https://github.com/cyberdeliaAI/ibfetch)'s transfer engine inside Tagcast
+with the existing account connection. Available from source for the next release;
+not part of the published 1.0.0 desktop downloads.
 
 ## Install
 

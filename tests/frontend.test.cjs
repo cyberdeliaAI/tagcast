@@ -10096,6 +10096,8 @@ test('Downloads demo is read-only and a late response cannot cross an account se
   const p=page();await settle();
   p.run('showScreen("downloads");');await settle();
   assert.match(p.nodes.get('#downloads-page').innerHTML,/demo does not download music/);
+  assert.match(p.nodes.get('#downloads-page').innerHTML,/href="https:\/\/github\.com\/cyberdeliaAI\/ibfetch" target="_blank" rel="noopener noreferrer"/);
+  assert.match(p.run('audioDownloadsMarkup(audioDownloadsView.data || ' + JSON.stringify(audioDownloadsFixture()) + ')'),/id="audio-download-companion"/);
   assert.equal(p.requests.filter(r=>r.url.startsWith('/api/downloads')).length,0);
   prepareAudioDownloadsPage(p);
   let reply;p.setFetch(()=>new Promise(done=>{reply=done;}));

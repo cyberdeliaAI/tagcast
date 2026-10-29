@@ -12,6 +12,10 @@ function audioDownloadsAvailable() {
   return live() && !state.loading && Boolean(state.connection.playback_session);
 }
 
+function audioDownloadsCompanion() {
+  return '<p class="muted" id="audio-download-companion">Need more download options? Use <a href="https://github.com/cyberdeliaAI/ibfetch" target="_blank" rel="noopener noreferrer">ibfetch ↗</a> for track and playlist selections, advanced filters and command-line downloads.</p>';
+}
+
 function audioDownloadsMarkup(data) {
   const o = data.options;
   return `<section class="page-intro"><div><div class="eyebrow">YOUR MUSIC, A LOCAL COPY</div><h1>Downloads<span>.</span></h1><p>Save selected albums to this computer. Your iBroadcast library and playback queue stay unchanged.</p></div></section>
@@ -30,6 +34,7 @@ function audioDownloadsMarkup(data) {
       <label class="checkline"><input type="checkbox" name="verify" id="audio-download-verify" ${o.verify ? "checked" : ""}> Recheck checksums of previously downloaded files</label></details></fieldset>
       <p class="muted">Existing files are never overwritten. Recognized completed downloads are kept; incomplete streaming downloads can resume. A small hidden integrity manifest is saved beside the music.</p>
       <button type="submit" class="button primary" id="audio-download-prepare">Review download →</button></form></section></div>
+    ${audioDownloadsCompanion()}
     <p id="audio-download-error" class="error-text" role="alert" hidden></p>
     <section id="audio-download-review" class="card downloads-review" hidden></section>
     <section class="card downloads-progress" id="audio-download-progress" hidden><div class="downloads-heading"><h2 tabindex="-1" id="audio-download-progress-heading">Download progress</h2><button type="button" class="button small" data-audio-download-stop>Stop</button></div><p id="audio-download-phase" role="status"></p><div id="audio-download-results"></div></section>`;
@@ -48,7 +53,7 @@ function renderAudioDownloads() {
   if (state.screen !== "downloads") return;
   const v = audioDownloadsView, page = $("#downloads-page");
   if (!audioDownloadsAvailable()) {
-    page.innerHTML = '<section class="page-intro"><div><div class="eyebrow">YOUR MUSIC, A LOCAL COPY</div><h1>Downloads<span>.</span></h1><p>Connect iBroadcast and load your library to download audio. The demo does not download music.</p></div></section>';
+    page.innerHTML = '<section class="page-intro"><div><div class="eyebrow">YOUR MUSIC, A LOCAL COPY</div><h1>Downloads<span>.</span></h1><p>Connect iBroadcast and load your library to download audio. The demo does not download music.</p></div></section>' + audioDownloadsCompanion();
     v.initialized = false; return;
   }
   const d = v.data;

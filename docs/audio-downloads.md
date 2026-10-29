@@ -1,6 +1,6 @@
-# Audio downloads (local development)
+# Audio downloads (next release)
 
-This first integration is available on `codex/ibfetch-downloads`. It is **not in
+Album downloads are available from source for the next release. They are **not in
 the published Tagcast 1.0.0 application**. No new release has been created.
 
 ## Download albums
@@ -73,10 +73,13 @@ output folder if you deliberately need another copy with different metadata.
 
 ## Scope and implementation
 
-The first UI covers albums and multi-album selections (at most 200 native discs /
-10,000 tracks per task). Playlist and individual-track download actions, persistent
-queue history and adoption of existing files are deliberately outside this first
-integration. The existing metadata export remains a separate feature.
+Tagcast covers albums and multi-album selections (at most 200 native discs /
+10,000 tracks per task). Individual-track and playlist download actions are
+deliberately left to [ibfetch](https://github.com/cyberdeliaAI/ibfetch), linked
+directly from the Downloads page. Use it for track/playlist selections, advanced
+filters and command-line downloads. Persistent queue history and adoption of
+existing files are also outside this integration. The existing metadata export
+remains a separate feature.
 
 `downloads.py` manages selection, single-use reviews, options, account/session
 ownership and a small result/status API. Reviews also bind the library snapshot
@@ -107,8 +110,10 @@ The real browser walkthrough confirms album selection → Downloads → review �
 completed local files with synthetic music. Four palettes in Light/Dark and
 420/760/761/768/1024/1280px layouts were checked without horizontal overflow.
 
-Actual account downloads, current-tag embedding by iBroadcast, native folder
-choosers and packaged Windows/Linux/macOS builds still require a user/CI test.
+The user has also successfully tested album downloads with their own account.
+That observation does not verify every embedded tag or output format. Native
+folder choosers and packaged Windows/Linux/macOS builds still need their
+platform/packaging checks.
 No claims are made that every iBroadcast tag field or source format is rewritten
 correctly by the download service. No real-account music has been downloaded
 for this integration's automated or visual checks.
