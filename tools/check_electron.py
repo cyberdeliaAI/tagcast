@@ -18,7 +18,10 @@ def check_app(executable, version, restart=False):
         profile.mkdir()
         (settings / "config.json").write_text('{"auto_updates":false,"auto_lookup":false}')
         report = root / "report.json"
-        env = dict(os.environ, TAGCAST_HOME=str(settings), TAGCAST_ELECTRON_PROFILE=str(profile),
+        # Build credentials must never reach the launched application or bundled CLI.
+        inherited = {key: value for key, value in os.environ.items()
+                     if not key.startswith(("CSC_", "WIN_CSC_", "APPLE_"))}
+        env = dict(inherited, TAGCAST_HOME=str(settings), TAGCAST_ELECTRON_PROFILE=str(profile),
                    TAGCAST_ELECTRON_SMOKE_REPORT=str(report), TAGCAST_PORT="0")
         for key in ("IBROADCAST_CLIENT_ID", "TAGCAST_IBROADCAST_BASE", "ELECTRON_RUN_AS_NODE"):
             env.pop(key, None)
