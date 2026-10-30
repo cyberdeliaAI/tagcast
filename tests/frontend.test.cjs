@@ -9,7 +9,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
-function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false} = {}) {
+function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
   const timers = new Map(), windowEvents = new Map();
@@ -77,6 +77,8 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   document.querySelector("#sort").value = "artist";
   document.querySelector("#now-playing-panel").hidden = true;
   const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
+  if (signInBridge) window.tagcastSignIn = signInBridge;
+  if (openWindow) window.open = openWindow;
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
     Event, AbortController, performance: {now: () => playbackClock},
@@ -168,6 +170,125 @@ test("new installations sign in with a code without client ID setup", async () =
   await p.click({'#device-start': {id: 'device-start'}});
   assert.match(content.innerHTML, /TEST-CODE/);
   assert.equal(p.requests.filter(r => r.url.startsWith('/api/config')).length, 0);
+});
+
+function signInDevice(request_id = "a".repeat(24)) {
+  return {request_id, state:"pending", user_code:"TEST-CODE", expires_at:Date.now()/1000+600,
+    verification_uri:"https://oauth.ibroadcast.com/device", verification_uri_complete:"https://oauth.ibroadcast.com/device?user_code=TEST-CODE"};
+}
+function signInPopup() {
+  return {closed:false,opener:{},document:{title:"",body:{textContent:""}},location:{replace(value){this.url=value;}},
+    close(){this.closed=true;},focus(){this.focused=true;}};
+}
+
+test("desktop sign-in opens the bound provider window and completes through the existing poller",async()=>{
+  const opened=[],closed=[];let onClosed;
+  const p=page({signInBridge:{open:async id=>{opened.push(id);return true;},close:id=>closed.push(id),onClosed:cb=>onClosed=cb}});await settle();p.run('openConnect()');
+  p.setFetch(url=>{assert.equal(url,'/api/auth/device');return {ok:true,json:async()=>({device:signInDevice()})};});
+  p.run('openConnect(); loadLive=()=>{globalThis.signInLoaded=(globalThis.signInLoaded||0)+1;}');
+  await p.run('beginSignIn({disabled:false})');
+  assert.deepEqual(opened,['a'.repeat(24)]);assert.equal(typeof onClosed,'function');
+  assert.match(p.nodes.get('#connect-content').innerHTML,/Approve Tagcast in the iBroadcast sign-in window/);
+  assert.match(p.nodes.get('#connect-content').innerHTML,/Use a code instead/);
+  p.setStatusFetch(()=>({ok:true,json:async()=>({connected:true,device:{state:'done'}})}));
+  p.flushTimers(2000);await settle();
+  assert.deepEqual(closed,['a'.repeat(24)]);assert.equal(p.run('signInLoaded'),1);
+  assert.equal(p.nodes.get('#connect').open,false);
+});
+
+test("browser popup is reserved in the click before the device request and cannot retain an opener",async()=>{
+  const order=[],popup=signInPopup();let release;
+  const p=page({openWindow:(url,target)=>{order.push('popup');assert.equal(url,'about:blank');assert.equal(target,'_blank');return popup;}});await settle();p.run('openConnect()');
+  p.setFetch(url=>{order.push('request');assert.equal(url,'/api/auth/device');return new Promise(resolve=>release=resolve);});
+  const pending=p.run('beginSignIn({disabled:false})');
+  assert.deepEqual(order,['popup','request']);assert.equal(popup.opener,null);
+  assert.match(popup.document.body.textContent,/Opening iBroadcast/);
+  release({ok:true,json:async()=>({device:signInDevice()})});await pending;
+  assert.equal(popup.location.url,signInDevice().verification_uri_complete);
+  await p.run('reopenSignIn()');assert.equal(popup.focused,true);assert.equal(order.filter(x=>x==='popup').length,1);
+});
+
+test("blocked browser and desktop popup failures keep the code and browser fallback available",async()=>{
+  for(const signInBridge of [null,{open:async()=>false,close(){},onClosed(){}}]) {
+    const p=page({openWindow:()=>null,signInBridge});await settle();p.run('openConnect()');
+    p.setFetch(()=>({ok:true,json:async()=>({device:signInDevice()})}));await p.run('beginSignIn({disabled:false})');
+    const html=p.nodes.get('#connect-content').innerHTML;
+    assert.match(html,/could not be opened/);assert.match(html,/<details open>/);assert.match(html,/TEST-CODE/);
+    assert.match(html,/https:\/\/oauth.ibroadcast.com\/device\?user_code=TEST-CODE/);
+    assert.equal(p.run('state.connection.device.state'),'pending');
+  }
+});
+
+test("browser window Close cancels its bound attempt and stops waiting",async()=>{
+  const popup=signInPopup(),p=page({openWindow:()=>popup});await settle();p.run('openConnect()');
+  p.setFetch((url,opts)=>{if(url==='/api/auth/device')return {ok:true,json:async()=>({device:signInDevice()})};
+    assert.equal(url,'/api/auth/cancel');assert.deepEqual(JSON.parse(opts.body),{request_id:'a'.repeat(24)});return {ok:true,json:async()=>({ok:true})};});
+  await p.run('beginSignIn({disabled:false})');popup.closed=true;
+  p.setStatusFetch(()=>({ok:true,json:async()=>({connected:false,using_default_client:true,device:null})}));
+  p.flushTimers(2000);await settle();p.flushTimers(0);await settle();
+  assert.match(p.nodes.get('#connect-content').innerHTML,/Sign in with iBroadcast/);
+  assert.equal(p.run('devicePoll'),null);assert.equal(p.run('signInFlow.requestId'),'');
+});
+
+test("native close and failure events ignore older attempts and retain a usable retry",async()=>{
+  let onClosed;
+  const p=page({signInBridge:{open:async()=>true,close(){},onClosed:cb=>onClosed=cb}});await settle();p.run('openConnect()');
+  p.setFetch(()=>({ok:true,json:async()=>({device:signInDevice()})}));await p.run('beginSignIn({disabled:false})');
+  onClosed({requestId:'b'.repeat(24),reason:'closed'});assert.equal(p.run('signInFlow.requestId'),'a'.repeat(24));
+  onClosed({requestId:'a'.repeat(24),reason:'load-failed'});
+  assert.match(p.nodes.get('#connect-content').innerHTML,/could not be loaded/);
+  assert.match(p.nodes.get('#connect-content').innerHTML,/<details open>/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/auth/cancel').length,0);
+  p.setStatusFetch(()=>({ok:true,json:async()=>({connected:false,device:null})}));
+  onClosed({requestId:'a'.repeat(24),reason:'closed'});p.flushTimers(0);await settle();
+  assert.equal(p.run('signInFlow.requestId'),'');
+});
+
+test("a late status response cannot restore a cancelled sign-in or start another polling loop",async()=>{
+  let release;let reads=0;
+  const p=page({signInBridge:{open:async()=>true,close(){},onClosed(){}}});await settle();p.run('openConnect()');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/auth/device'?{device:signInDevice()}:{ok:true}}));
+  await p.run('beginSignIn({disabled:false})');p.run('loadLive=()=>{throw Error("Cancelled status must not load a library");}');
+  p.setStatusFetch(()=>++reads===1?new Promise(resolve=>release=resolve):{ok:true,json:async()=>({connected:false,device:null})});
+  p.flushTimers(2000);await settle();await p.run('cancelSignIn()');p.flushTimers(0);await settle();
+  release({ok:true,json:async()=>({connected:true,device:{state:'done'}})});await settle();
+  assert.equal(p.run('state.connection.connected'),false);assert.equal(p.run('devicePoll'),null);
+});
+
+test("cancel while requesting a code cleans up only the late attempt, not a newer one",async()=>{
+  let release;let starts=0;const cancelled=[],opened=[];
+  const p=page({signInBridge:{open:async id=>{opened.push(id);return true;},close(){},onClosed(){}}});await settle();p.run('openConnect()');
+  p.setFetch((url,opts)=>{
+    if(url==='/api/auth/cancel'){cancelled.push(JSON.parse(opts.body).request_id);return {ok:true,json:async()=>({ok:true})};}
+    assert.equal(url,'/api/auth/device');
+    if(++starts===1)return new Promise(resolve=>release=resolve);
+    return {ok:true,json:async()=>({device:signInDevice('b'.repeat(24))})};
+  });
+  const first=p.run('beginSignIn({disabled:false})');await p.run('cancelSignIn()');
+  await p.run('beginSignIn({disabled:false})');release({ok:true,json:async()=>({device:signInDevice()})});await first;await settle();
+  assert.deepEqual(opened,['b'.repeat(24)]);assert.deepEqual(cancelled,['a'.repeat(24)]);
+  assert.equal(p.run('signInFlow.requestId'),'b'.repeat(24));
+  assert.equal(p.run('state.connection.device.request_id'),'b'.repeat(24));
+});
+
+test("closing the dialog during code creation prevents a late sign-in window",async()=>{
+  let release;const popup=signInPopup(),cancelled=[];
+  const p=page({openWindow:()=>popup});await settle();p.run('openConnect()');
+  p.setFetch((url,opts)=>{if(url==='/api/auth/device')return new Promise(resolve=>release=resolve);
+    assert.equal(url,'/api/auth/cancel');cancelled.push(JSON.parse(opts.body).request_id);return {ok:true,json:async()=>({ok:true})};});
+  const pending=p.run('beginSignIn({disabled:false})');
+  p.nodes.get('#connect').close();await p.nodes.get('#connect').emit('close');
+  release({ok:true,json:async()=>({device:signInDevice()})});await pending;await settle();
+  assert.equal(popup.closed,true);assert.equal(popup.location.url,undefined);
+  assert.deepEqual(cancelled,['a'.repeat(24)]);assert.equal(p.run('devicePoll'),null);
+});
+
+test("sign-in fallback never links to a non-iBroadcast origin or script URL",async()=>{
+  const p=page();await settle();
+  for(const uri of ['javascript:alert(1)','https://oauth.ibroadcast.com.evil.test/device','https://name:password@oauth.ibroadcast.com/device']) {
+    const value=JSON.stringify({...signInDevice(),verification_uri:uri,verification_uri_complete:uri});
+    assert.equal(p.run('signInVerificationUrl('+value+')'),'https://oauth.ibroadcast.com/device');
+  }
 });
 
 test("existing registrations stay connected and switching is explicit after disconnect", async () => {

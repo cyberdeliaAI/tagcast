@@ -244,7 +244,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/config/default": lambda b: (self.studio.use_default_client(),
                                               self.studio.status())[1],
             "/api/auth/device": lambda b: {"device": self.studio.start_device()},
-            "/api/auth/cancel": lambda b: (self.studio.cancel_device(), {"ok": True})[1],
+            "/api/auth/cancel": lambda b: {"ok": True, "cancelled": self.studio.cancel_device(b.get("request_id"))},
             "/api/auth/browser": lambda b: {"url": self.studio.browser_url(self._redirect_uri())},
             "/api/auth/logout": lambda b: (self.studio.logout(), {"ok": True})[1],
             "/api/save": lambda b: self.studio.save(b.get("changes")),

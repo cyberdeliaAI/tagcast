@@ -65,6 +65,31 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"device login did not finish: {studio.device}")
 
+    def test_sign_in_window_cancel_is_bound_to_one_attempt(self):
+        studio = client.Studio(self.home)
+        code = {"device_code": "private-device-code", "user_code": "PUBLIC-CODE"}
+        with patch.object(client.auth, "device_code_request", return_value=code), \
+                patch.object(client.threading.Thread, "start"):
+            first = studio.start_device()
+            first_stop = studio._device_stop
+            second = studio.start_device()
+        self.assertNotEqual(first["request_id"], second["request_id"])
+        self.assertNotIn("device_code", second)
+        self.assertTrue(first_stop.is_set())
+        self.assertFalse(studio.cancel_device(first["request_id"]))
+        self.assertEqual(studio.device["request_id"], second["request_id"])
+        self.assertFalse(studio._device_stop.is_set())
+        self.assertTrue(studio.cancel_device(second["request_id"]))
+        self.assertTrue(studio._device_stop.is_set())
+        self.assertIsNone(studio.device)
+
+    def test_window_cancellation_cannot_revoke_a_completed_sign_in(self):
+        studio = self.connect()
+        current = studio.client
+        self.assertTrue(studio.cancel_device(studio._device_request_id))
+        self.assertIs(studio.client, current)
+        self.assertTrue(studio.status()["connected"])
+
     def test_device_login_persists_private_tokens(self):
         studio = self.connect()
         self.assertEqual(studio.status()["account"], "wilfred")

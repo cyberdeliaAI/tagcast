@@ -1,18 +1,20 @@
 "use strict";
 
-const {app, BrowserWindow, Menu, dialog, session, shell} = require("electron");
+const {app, BrowserWindow, Menu, dialog, session, shell, screen} = require("electron");
 const http = require("node:http");
 const path = require("node:path");
 const {Backend, backendCommand} = require("./backend.cjs");
 const {applicationUrl, externalUrl, permissionAllowed, contentPolicy} = require("./security.cjs");
 const {helpMenu} = require("./help-menu.cjs");
 const {installMiniPlayer} = require("./mini-player.cjs");
+const {installSignIn} = require("./sign-in.cjs");
+const {windowSize, rememberWindowSize} = require("./window-size.cjs");
 const packageInfo = require("./package.json");
 
 app.setName("Tagcast");
 if (process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.resolve(process.env.TAGCAST_ELECTRON_PROFILE));
 app.enableSandbox();
-let window, backend, origin, miniPlayer, stopping, finished = false;
+let window, backend, origin, miniPlayer, signIn, stopping, finished = false;
 
 function readPage(url) {
   return new Promise((resolve, reject) => {
@@ -47,12 +49,16 @@ function installSession(ses, policy) {
 
 function createWindow() {
   const icon = app.isPackaged ? path.join(process.resourcesPath, "tagcast-icon.png") : path.join(__dirname, "../assets/tagcast-icon-512.png");
-  window = new BrowserWindow({width: 1420, height: 960, minWidth: 420, minHeight: 600, show: false,
+  const sizeFile = path.join(app.getPath("userData"), "main-window.json");
+  const size = windowSize(sizeFile, {width: 1420, height: 960, minWidth: 420, minHeight: 600}, screen.getPrimaryDisplay().workArea);
+  window = new BrowserWindow({...size, show: false,
     title: "Tagcast", icon, backgroundColor: "#192516",
     webPreferences: {preload: path.join(__dirname, "player-preload.cjs"), partition: "persist:tagcast", nodeIntegration: false, contextIsolation: true,
       sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false,
       devTools: !app.isPackaged, backgroundThrottling: false}});
+  rememberWindowSize(window, sizeFile);
   miniPlayer = installMiniPlayer(window, origin);
+  signIn = installSignIn(window, origin);
   const contents = window.webContents;
   contents.setWindowOpenHandler(({url}) => { openExternal(url); return {action: "deny"}; });
   contents.on("will-navigate", (event, url) => {
@@ -110,5 +116,6 @@ else {
     installMenu();
     createWindow();
     if (process.env.TAGCAST_ELECTRON_SMOKE_REPORT) require("./smoke.cjs").check({app, window, origin, backend, miniPlayer});
+    if (process.env.TAGCAST_SIGN_IN_SMOKE_REPORT) require("./sign-in-smoke.cjs").check({app, window, origin, signIn});
   }).catch(error => { dialog.showErrorBox("Could not start Tagcast Desktop", error.message + "\nSee tagcast.log in your Tagcast settings folder."); app.quit(); });
 }

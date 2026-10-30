@@ -1425,10 +1425,9 @@ function connectView(view, extra = {}) {
     box.innerHTML = `<div class="connect-step"><p class="muted">Connected${c.account ? ` as <strong>${escapeHtml(c.account)}</strong>` : ""}. Tagcast can read your library and save metadata you review.</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">Disconnect</button><button class="button" id="connect-redownload" title="Normally the library is only downloaded when iBroadcast reports a change">Download everything again</button><button class="button primary" id="connect-reload">Reload library</button></div>`;
   } else if (view === "ready") {
     const previous = c.using_default_client === false;
-    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in with a short code on the iBroadcast website. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name. Your password stays on iBroadcast.</p><p class="muted">${previous ? "Your previously configured app registration is still in use." : "Tagcast is already registered with iBroadcast. You do not need to create an app or enter a client ID."}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? '<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">Use Tagcast sign-in</button>' : ""}${previous ? '<button class="button" id="browser-start">Use browser redirect</button>' : ""}<button class="button primary" id="device-start">Sign in with a code →</button></div>${previous ? `<p class="muted">Browser redirect uses <code>http://127.0.0.1:${location.port || 80}/callback</code>; it must match your existing registration.</p>` : ""}`;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in on the official iBroadcast website and approve the connection. Tagcast returns here automatically. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name. Your password stays on iBroadcast.</p><p class="muted">${previous ? "Your previously configured app registration is still in use." : "Tagcast is already registered with iBroadcast. You do not need to create an app or enter a client ID."}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? '<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">Use Tagcast sign-in</button>' : ""}${previous ? '<button class="button" id="browser-start">Use browser redirect</button>' : ""}<button class="button primary" id="device-start">Sign in with iBroadcast →</button></div>${previous ? `<p class="muted">Browser redirect uses <code>http://127.0.0.1:${location.port || 80}/callback</code>; it must match your existing registration.</p>` : ""}`;
   } else if (view === "device") {
-    const d = extra.device, link = d.verification_uri_complete || d.verification_uri;
-    box.innerHTML = `<div class="connect-step"><p class="muted">Open the iBroadcast sign-in page and enter this code:</p><div class="device-code">${escapeHtml(d.user_code)}</div><p class="muted"><span class="spinner"></span>Waiting for you to approve Tagcast…</p>${error}</div><div class="dialog-footer"><button class="button" id="device-cancel">Cancel</button><a class="button primary" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open iBroadcast sign-in ↗</a></div>`;
+    box.innerHTML = signInDeviceMarkup(extra.device, {error, fallback: extra.fallback});
   }
 }
 
@@ -1439,23 +1438,31 @@ function openConnect() {
   $("#connect").showModal();
 }
 
-function stopPoll() { clearTimeout(devicePoll); devicePoll = null; }
+function stopPoll() { clearTimeout(devicePoll); devicePoll = null; signInPollGeneration += 1; }
 
-function pollDevice() {
+function pollDevice(delay = 2000) {
   stopPoll();
+  const generation = signInPollGeneration;
   devicePoll = setTimeout(async () => {
+    if (generation !== signInPollGeneration) return;
+    if (!signInDesktop() && signInFlow.popup?.closed) { await cancelSignIn(); return; }
     try {
       const status = await api("/api/status");
+      if (generation !== signInPollGeneration) return;
       state.connection = status;
-      if (status.connected && !["pending", "error"].includes(status.device?.state)) {
-        stopPoll(); $("#connect").close(); toast("Connected to iBroadcast."); updateChrome(); loadLive(); return;
+      if (status.connected && !["pending", "error"].includes(status.device?.state)) { finishSignIn(status); return; }
+      if (!status.device) {
+        stopPoll(); closeSignInChild(); signInFlow.requestId = "";
+        if ($("#connect").open) connectView("ready");
+        return;
       }
-      if (!status.device) { stopPoll(); return; }
-      if (status.device.state === "error") { stopPoll(); connectView("ready", {error: status.device.error}); return; }
-      if (status.device.expires_at && status.device.expires_at * 1000 < Date.now()) { stopPoll(); connectView("ready", {error: "The code expired. Start again."}); return; }
-    } catch { /* keep polling through brief hiccups */ }
-    pollDevice();
-  }, 2000);
+      if (status.device.state === "error" || (status.device.expires_at && status.device.expires_at * 1000 < Date.now())) {
+        stopPoll(); closeSignInChild(); signInFlow.requestId = "";
+        connectView("ready", {error: status.device.error || "The sign-in expired. Start again."}); return;
+      }
+    } catch { /* keep the existing single poller through brief hiccups */ }
+    if (generation === signInPollGeneration) pollDevice();
+  }, delay);
 }
 
 async function connectAction(target) {
@@ -1464,12 +1471,11 @@ async function connectAction(target) {
       state.connection = await api("/api/config/default", {});
       updateChrome(); connectView("ready");
     } else if (target.id === "device-start") {
-      target.disabled = true;
-      const {device} = await api("/api/auth/device", {});
-      state.connection.device = device;
-      connectView("device", {device}); pollDevice();
+      await beginSignIn(target);
+    } else if (target.id === "device-open") {
+      await reopenSignIn();
     } else if (target.id === "device-cancel") {
-      stopPoll(); await api("/api/auth/cancel", {}); state.connection.device = null; connectView("ready");
+      await cancelSignIn();
     } else if (target.id === "browser-start") {
       const {url} = await api("/api/auth/browser", {});
       location.href = url;
@@ -1645,7 +1651,7 @@ function showResults(result, overall, entry) {
 }
 
 document.addEventListener("click", event => {
-  const target = event.target.closest("#client-default, #device-start, #device-cancel, #browser-start, #connect-reload, #connect-redownload, #connect-logout, #reload-button, #logout-button");
+  const target = event.target.closest("#client-default, #device-start, #device-open, #device-cancel, #browser-start, #connect-reload, #connect-redownload, #connect-logout, #reload-button, #logout-button");
   if (target) connectAction(target);
 });
 $("#connect-button").addEventListener("click", openConnect);

@@ -411,6 +411,8 @@ class Studio:
         self.jobs = {}  # background read-backs after a save, by job ID
         self.device = None
         self._device_gen = 0
+        self._device_request_id = None
+        self._device_stop = threading.Event()
         self._pkce = {}
         self._pkce_gen = 0
         self.config = self._read("config.json") or {}
@@ -541,6 +543,8 @@ class Studio:
             self.client = self.library = self.account = self.device = None
             self.playback_session = ""
             self._device_gen += 1
+            self._device_request_id = None
+            self._device_stop.set()
             self._pkce.clear()
             self._pkce_gen += 1
             try:
@@ -584,6 +588,10 @@ class Studio:
             raise ApiError("Enter your app's client ID first.")
         with self.lock:
             self._device_gen += 1
+            self._device_stop.set()
+            self._device_stop = stop = threading.Event()
+            self._device_request_id = request_id = secrets.token_urlsafe(18)
+            self.device = None
             gen, client_id = self._device_gen, self.client_id
         try:
             code = auth.device_code_request(client_id, self.scopes)
@@ -596,35 +604,45 @@ class Studio:
                 raise ApiError("This sign-in was canceled. Try again.")
             self.device = {
                 "state": "pending",
+                "request_id": request_id,
                 "user_code": code["user_code"],
                 "verification_uri": code.get("verification_uri", "https://oauth.ibroadcast.com/device"),
                 "verification_uri_complete": code.get("verification_uri_complete", ""),
                 "expires_at": time.time() + number(code.get("expires_in") or 600),
                 "error": "",
             }
-        threading.Thread(target=self._poll, args=(gen, code["device_code"],
-                                                  number(code.get("interval")) or 5),
+        threading.Thread(target=self._poll, args=(gen, client_id, code["device_code"],
+                                                  number(code.get("interval")) or 5, stop),
                          daemon=True).start()
         return dict(self.device)
 
-    def _poll(self, gen, device_code, interval):
+    def _poll(self, gen, client_id, device_code, interval, stop):
         try:
-            token_set = auth.poll_for_token(self.client_id, device_code, interval)
+            token_set = auth.poll_for_token(client_id, device_code, interval, stop=stop)
         except Exception as error:  # report any failure to the browser
             with self.lock:
                 if gen == self._device_gen and self.device:
                     self.device.update(state="error", error=str(error) or "Sign-in failed.")
             return
         with self.lock:
-            if gen != self._device_gen:
+            if gen != self._device_gen or stop.is_set() or token_set is None:
                 return
             self._connect(token_set)
             self.device = {"state": "done"}
 
-    def cancel_device(self):
+    def cancel_device(self, request_id=None):
+        # Window-close notifications may arrive after a new sign-in has started.
+        # Keep the legacy unbound Cancel action, but bind all new UI cancellations.
+        if request_id is not None and (not isinstance(request_id, str) or len(request_id) > 96):
+            raise ApiError("Invalid sign-in request.")
         with self.lock:
+            if request_id is not None and request_id != self._device_request_id:
+                return False
             self._device_gen += 1
+            self._device_request_id = None
+            self._device_stop.set()
             self.device = None
+            return True
 
     def browser_url(self, redirect_uri):
         if not self.client_id:

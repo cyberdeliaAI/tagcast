@@ -120,8 +120,9 @@ No Node.js or Tk is required for normal Python/browser use.
 
 ## Connect iBroadcast
 
-Choose **Connect iBroadcast → Sign in with a code**, approve Tagcast on the
-iBroadcast website, then return. No client ID setup or client secret is needed;
+Choose **Connect iBroadcast → Sign in with iBroadcast** and approve Tagcast in the
+iBroadcast sign-in window. Tagcast returns automatically; a code and browser link
+remain available as a fallback. No client ID setup or client secret is needed;
 your password stays on iBroadcast. Without an account, a demo library lets you
 preview browsing and edits without saving to iBroadcast.
 

@@ -13,3 +13,10 @@ contextBridge.exposeInMainWorld("tagcastMiniOwner", {
   onActive: callback => listen("mini:active", callback),
   onCommand: callback => listen("mini:request", callback)
 });
+
+// No URL, token or general-purpose IPC access is exposed to the renderer.
+contextBridge.exposeInMainWorld("tagcastSignIn", {
+  open: requestId => ipcRenderer.invoke("signin:open", requestId),
+  close: requestId => ipcRenderer.send("signin:close", requestId),
+  onClosed: callback => listen("signin:closed", callback)
+});
