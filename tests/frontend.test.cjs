@@ -10307,3 +10307,31 @@ test('invalid or late theme files retain the draft, saved themes and current pag
  assert.equal(p.run('settingsView.category'),'playback');assert.equal(p.run('themeEditorView.draft.light.paper'),'#654321');
  assert.equal(p.run('TagcastThemes.snapshot().themes.length'),0);
 });
+
+test('sidebar playlist count is library-wide, formatted and hidden for unknown or local data',async()=>{
+ const p=page();await settle();const count=p.nodes.get('#playlist-count');
+ assert.equal(count.hidden,true);
+ p.run('state.mode="live";state.connection.connected=true;updatePlaylistCount(1234)');
+ assert.equal(count.textContent,'1,234');assert.equal(count.hidden,false);
+ p.run('state.loading=true;updateChrome()');assert.equal(count.hidden,true);
+ p.run('state.loading=false;updatePlaylistCount(0)');assert.equal(count.textContent,'0');assert.equal(count.hidden,false);
+ for(const invalid of ['12',-1,1.5,null,undefined]) { p.run('updatePlaylistCount('+JSON.stringify(invalid)+')');assert.equal(count.hidden,true); }
+ p.run('updatePlaylistCount(12);state.connection.connected=false;updateChrome()');assert.equal(count.hidden,true);
+ p.run('useLocal(demoLibrary(),"demo");updateChrome()');assert.equal(p.run('state.playlistsCount'),null);assert.equal(count.hidden,true);
+});
+
+test('playlist search and checked writes update the count without additional requests or playback changes',async()=>{
+ const p=page();await settle();p.run('state.mode="live";state.connection.connected=true;state.connection.playback_session="playlist-count-session";updatePlaylistCount(15)');
+ const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
+ p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/jobs/')?{state:'done',results:[],playlists_count:16}:{playlists:[],total:0,playlists_count:15}}));
+ p.run('showCollections("playlists",null,{query:"No matches"})');await settle();
+ assert.equal(p.nodes.get('#playlist-count').textContent,'15');
+ const requests=p.requests.length;
+ await p.run('collectionJob({job:"checked-count"},()=>true)');
+ assert.equal(p.nodes.get('#playlist-count').textContent,'16');assert.equal(p.requests.length,requests+1);
+ assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src})'),before);
+ let release;p.setFetch(()=>new Promise(resolve=>release=resolve));
+ const late=p.run('renderCollections()');p.run('useLocal(demoLibrary(),"demo");updateChrome()');
+ release({ok:true,json:async()=>({playlists:[],total:0,playlists_count:99})});await late;
+ assert.equal(p.nodes.get('#playlist-count').hidden,true);assert.equal(p.run('state.playlistsCount'),null);
+});

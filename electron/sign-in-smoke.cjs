@@ -82,10 +82,13 @@ function check({app, window, origin, signIn}) {
       stage="approval";await fetch(mock+'/_signin/outcome',{method:'POST',body:JSON.stringify('approve')});
       await until(()=>run('state.connection.connected&&state.mode==="live"&&!state.loading'));
       assert.equal(signIn.window,null);assert.equal(await run('signInOriginalAudio===audio'),true);
-      assert.equal(await run('document.querySelector("#connect").open'),false);await capture('connected');
+      assert.equal(await run('document.querySelector("#connect").open'),false);
+      assert.equal(await run('document.querySelector("#playlist-count").textContent'),"2");
+      assert.equal(await run('document.querySelector("#playlist-count").hidden'),false);
+      await capture('connected');
       const provider=await(await fetch(mock+'/_signin/check')).json();assert.equal(provider.writes,0);
       window.setSize(1100,760);await sleep(300);
-      done({ok:true,phase:'initial',openedOfficialOrigin:true,noPreload:true,sandbox:true,closedAndCancelled:true,deniedAndRetried:true,browserFallback:true,connectedAndReturned:true,sameAudio:true,layouts,windowSizeRemembered:true,provider});
+      done({ok:true,phase:'initial',openedOfficialOrigin:true,noPreload:true,sandbox:true,closedAndCancelled:true,deniedAndRetried:true,browserFallback:true,connectedAndReturned:true,sameAudio:true,playlistCount:2,layouts,windowSizeRemembered:true,provider});
     }catch(error){done({ok:false,error:error.message,stage,childOpen:Boolean(signIn.window),ui:await run('({pending:state.connection.device?.state,connected:state.connection.connected,opening:signInFlow.opening,modal:document.querySelector("#connect").open,polling:devicePoll!==null})').catch(()=>null)});}
     finally{if(intercepted)session.fromPartition(SIGN_IN_PARTITION).protocol.unhandle('https');}
   });

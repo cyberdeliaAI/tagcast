@@ -42,7 +42,7 @@ document.addEventListener("click", event => {
 
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {playlistsCount: null, albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
@@ -183,7 +183,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
-  libraryLoadRequest += 1; state.loading = false;
+  libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
   closeBrowseOptions();
   resetEditorArtistChoices();
@@ -1307,7 +1307,16 @@ function statusPill(status) {
   return `<span class="status ${escapeHtml(status)}">${escapeHtml(labels[status] || status)}</span>`;
 }
 
+function updatePlaylistCount(value = state.playlistsCount) {
+  state.playlistsCount = Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const node = $("#playlist-count");
+  const known = live() && state.connection.connected && !state.loading && state.playlistsCount !== null;
+  node.hidden = !known;
+  node.textContent = known ? state.playlistsCount.toLocaleString("en") : "";
+}
+
 function updateChrome() {
+  updatePlaylistCount();
   if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   if (typeof csvImportCurrent === "function" && $("#playlist-import").open && !csvImportCurrent()) resetPlaylistImport();
@@ -1378,7 +1387,7 @@ async function loadLive(refresh = false) {
   if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
-  state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
+  state.loading = true; state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
   $("#library-loading-detail").textContent = `${nextLibraryLoadingMessage()} ${refresh ? "Downloading a fresh copy of your collection. " : ""}Large libraries can take a little while.`;
@@ -1389,6 +1398,7 @@ async function loadLive(refresh = false) {
     completed = true;
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
     applyEditorNames(data.editor_names);
+    updatePlaylistCount(data.playlists_count);
     state.albumFavourites = new Set(data.album_favourites?.albums || []);
     state.albumFavouriteError = data.album_favourites?.error || "";
     state.artistFavourites = new Set(data.artist_favourites?.artists || []);

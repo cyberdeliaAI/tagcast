@@ -789,6 +789,7 @@ class Studio:
                 "editor_names": library.editor_names(),
                 "album_favourites": favourites,
                 "artist_favourites": artist_favourites,
+                "playlists_count": self.collections.playlist_count(library),
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": self.combine_sets}
@@ -1062,7 +1063,8 @@ class Studio:
         def run():
             try:
                 after, _ = self._current(client, after=written)
-                result = {"state": "done", "results": check(after)}
+                result = {"state": "done", "results": check(after),
+                          "playlists_count": self.collections.playlist_count(after)}
                 if include_albums:
                     result["albums"] = after.album_index()
                     result["editor_names"] = after.editor_names()

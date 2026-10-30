@@ -31,6 +31,12 @@ def main():
     sys.path.insert(0, str(ROOT / "tests"))
     import mock_ibroadcast
 
+    if not args.live_page:
+        mock_ibroadcast.STATE["playlists"] = {
+            880: {"name": "Empty list", "tracks": []},
+            881: {"name": "Nested list", "tracks": [900]},
+            882: {"name": "Folder", "type": "folder", "tracks": [881, 881]},
+        }
     state = {"number": 0, "outcome": "pending", "polls": 0}
 
     class Provider(mock_ibroadcast.H):
