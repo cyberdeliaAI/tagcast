@@ -50,7 +50,12 @@ def check_app(executable, version, restart=False):
                 process.terminate()
                 process.wait(timeout=15)
                 raise RuntimeError("The isolated Electron app did not finish its check") from None
-            data = json.loads(report.read_text()) if report.exists() else {"ok": False, "error": "No smoke report"}
+            finally:
+                data = json.loads(report.read_text()) if report.exists() else {"ok": False, "error": "No smoke report"}
+                reports = Path(__file__).resolve().parent.parent / "build/reports"
+                reports.mkdir(parents=True, exist_ok=True)
+                # Preserve the last bounded test phase even if the app exits or times out.
+                (reports / "electron.json").write_text(json.dumps(data, indent=2) + "\n")
             if result or not data.get("ok") or data.get("version") != version:
                 raise RuntimeError(f"Electron check failed: {data}")
             try:
