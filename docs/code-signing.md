@@ -28,6 +28,9 @@ enable **sign_macos**, and leave **tag empty**. The workflow creates CI artifact
 only, including Apple Silicon and Intel macOS ZIPs; it does not publish a release,
 create a tag or overwrite existing release assets. Ordinary pushes and pull
 requests keep their existing ad-hoc macOS checks without signing secrets.
+Automatic release builds accept only a successful Tests run triggered by a push
+in this same repository, with the existing explicit publication commit message;
+successful fork/pull-request runs cannot select the credential-bearing path.
 
 The equivalent command on macOS, with these five variables supplied securely, is:
 
