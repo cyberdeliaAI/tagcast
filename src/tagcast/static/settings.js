@@ -3,6 +3,7 @@
 // Page navigation changes presentation only; the existing controls/save API retain ownership.
 const SETTINGS_CATEGORIES = {
   interface: ["Interface", "Immediate preferences for this browser. No Save is needed."],
+  appearance: ["Appearance", "Create and save your own colour themes. Local to this browser or app profile."],
   playback: ["Playback", "Display and gapless choices are local. Save streaming, play reporting and device preferences below."],
   discovery: ["Discovery", "Choose optional background information and discovery tools. Save changes to apply."],
   sources: ["Sources & keys", "Choose online providers and manage keys on this computer. Save changes to apply."],
@@ -46,6 +47,7 @@ function updateSettingsPage() {
   }
   const back = document.querySelector("[data-settings-return]");
   if (back) back.hidden = !settingsView.editor;
+  if (settingsView.category === "appearance") mountThemeEditor();
   updateSettingsSaveState();
 }
 
@@ -53,7 +55,7 @@ function updateSettingsSaveState() {
   settingsView.dirty = settingsView.rendered && settingsFormSnapshot() !== settingsView.baseline;
   const save = $("#settings-save"), bar = $("#settings-save-bar");
   if (save) { save.disabled = settingsView.saving; save.textContent = settingsView.saving ? "Saving…" : "Save changes"; }
-  if (bar) bar.hidden = !lookup.sources.length || (!settingsView.dirty && ["interface", "data"].includes(settingsView.category));
+  if (bar) bar.hidden = !lookup.sources.length || (!settingsView.dirty && ["interface", "appearance", "data"].includes(settingsView.category));
   const hint = $("#settings-save-hint");
   if (hint) hint.textContent = settingsView.dirty ? "Unsaved server preferences · Save applies changes from every category."
     : "Server preferences apply after Save. Immediate preferences are already applied.";

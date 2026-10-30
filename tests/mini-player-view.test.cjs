@@ -2,7 +2,7 @@
 const {test}=require("node:test"), assert=require("node:assert/strict"), vm=require("node:vm"),fs=require("node:fs"),path=require("node:path");
 function view(){
  const nodes=new Map(),sent=[];let onState,resolve;
- const document={activeElement:null,documentElement:{dataset:{}},getElementById(id){if(!nodes.has(id)){const listeners={},attributes={},properties={};let text="",writes=0,disabled=false;
+ const document={activeElement:null,documentElement:{dataset:{},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}},getElementById(id){if(!nodes.has(id)){const listeners={},attributes={},properties={};let text="",writes=0,disabled=false;
   const node={dataset:{},hidden:false,value:"0",style:{setProperty(k,v){properties[k]=v;},properties},get textContent(){return text;},set textContent(v){text=v;writes++;},get writes(){return writes;},get disabled(){return disabled;},set disabled(value){disabled=value;if(value&&document.activeElement===node)document.activeElement=null;},setAttribute(k,v){attributes[k]=v;},getAttribute(k){return attributes[k];},removeAttribute(k){delete attributes[k];},addEventListener(k,v){listeners[k]=v;},emit(k){return listeners[k]?.();}};nodes.set(id,node);}return nodes.get(id);}};
  const bridge={onState(fn){onState=fn;},ready(){},openMain(){sent.push({action:"open"});},pin(value){sent.push({action:"pin",value});},command(value){sent.push(value);return new Promise(done=>{resolve=done;});}};
  const context=vm.createContext({window:{tagcastMini:bridge},document,console});
@@ -22,4 +22,10 @@ test("Mini Player keeps keyboard focus through a seek acknowledgement while seri
 });
 test("Unavailable controls remain disabled and a changed track discards a pending seek preview",()=>{
  const v=view();v.state();const slider=v.nodes.get("position");slider.emit("pointerdown");slider.value="90";slider.emit("input");v.state({entry:"new",position:3});slider.emit("change");assert.equal(v.sent.length,0);assert.equal(Number(slider.value),3);v.state({controllable:false,seekable:false,previous:false,next:false});for(const id of ["play","position","previous","next"])assert.equal(v.nodes.get(id).disabled,true);
+});
+test("Mini Player applies validated custom colours and clears them when returning to a built-in palette",()=>{
+ const v=view();v.state({colours:{paper:"#123456",ink:"#abcdef",unknown:"#ffffff",link:"url(secret)"}});
+ assert.deepEqual(v.document.documentElement.style.properties,{"--palette-paper":"#123456","--palette-ink":"#abcdef"});
+ v.state({colours:{paper:"#654321"}});assert.deepEqual(v.document.documentElement.style.properties,{"--palette-paper":"#654321"});
+ v.state();assert.deepEqual(v.document.documentElement.style.properties,{});
 });

@@ -4888,12 +4888,14 @@ test("colour palettes persist independently of appearance without requests or pl
   assert.equal(p.requests.length, requests);
   assert.equal(p.history.length, history);
   const reloaded = page({storage});
-  assert.equal(reloaded.nodes.get("#palette-forest").checked, true);
+  assert.equal(reloaded.nodes.get("#palette-warm").checked, true);
   assert.equal(reloaded.run('document.documentElement.dataset.theme'), undefined);
 });
 
 test("appearance restores before scripts load and invalid or unavailable storage stays usable", async () => {
-  const source = readFileSync(path.join(staticDir, "index.html"), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
+  const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
+  assert.ok(html.indexOf('<script src="themes.js"></script>') < html.indexOf('href="style.css"'), "Restore custom colours before styles paint");
+  const source = readFileSync(path.join(staticDir, "themes.js"), "utf8");
   for (const palette of ["ocean", "warm", "ibroadcast"]) {
     const document = {documentElement: {dataset: {}}};
     vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
@@ -9540,11 +9542,11 @@ test('a backward seek cancels pending forward preparation without shortening the
  assert.equal(p.nodes.get('#audio').currentTime,10);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
 });
 
-test('Settings is a routed page with six categories and preserves existing preference keys', async()=>{
+test('Settings is a routed page with seven categories and preserves existing preference keys', async()=>{
  const p=page({hash:'#/settings/playback',storage:{'tagcast-player-view':'window','tagcast-player-quality':'hidden','tagcast-gapless-test':'on'}});await settle();
  assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsView.category'),'playback');
  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');assert.match(html,/<section id="settings"/);assert.doesNotMatch(html,/<dialog id="settings"/);
- assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),6);
+ assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),7);
  assert.equal(p.run('visualPlayerMode'),'window');assert.equal(p.run('playerDisplay.quality'),false);assert.equal(p.run('gaplessTrial.enabled'),true);
  assert.match(p.nodes.get('#settings-content').innerHTML,/Supported audio and limitations/);
  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
@@ -10132,4 +10134,17 @@ test('Downloads has a single bounded status poll and stop sends no metadata or q
   assert.equal(p.run('audioDownloadActive()'),false);
   assert.ok(p.requests.filter(r=>r.url.startsWith('/api/downloads')).every(r=>!r.url.includes('save')));
   assert.equal(p.requests.filter(r=>r.url==='/api/downloads/stop').length,1);
+});
+
+test('custom themes keep the Theme menu safe and do not turn appearance edits into server settings',async()=>{
+ const theme={id:'custom-test1234',name:'<img src=x onerror=alert(1)>',base:'ocean',light:{paper:'#eeeeee'},dark:{paper:'#102030'}};
+ const p=page({storage:{'tagcast-custom-themes':JSON.stringify({version:1,active:theme.id,themes:[theme]})}});await settle();
+ assert.equal(p.run('document.documentElement.dataset.customTheme'),theme.id);
+ assert.match(p.nodes.get('#theme-custom-list').innerHTML,/&lt;img/);assert.doesNotMatch(p.nodes.get('#theme-custom-list').innerHTML,/<img/);
+ const posts=p.requests.filter(r=>r.options?.method==='POST').length;
+ p.run('showSettings("appearance");themeEditorColour("paper","#203040",false);');
+ assert.equal(p.run('themeEditorDirty()'),true);assert.equal(p.run('settingsView.dirty'),false);
+ assert.equal(p.run('TagcastThemes.active().light.paper'),'#eeeeee');
+ p.run('showSettings("interface");showSettings("appearance")');assert.equal(p.run('themeEditorView.draft.light.paper'),'#203040');
+ assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,posts);
 });

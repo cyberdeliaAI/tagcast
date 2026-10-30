@@ -1699,14 +1699,19 @@ document.addEventListener("click", event => {
 
 // Appearance and colour palette are independent, local-only preferences.
 function showTheme() {
+  TagcastThemes.apply();
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
   const label = {auto: "Auto", light: "Light", dark: "Dark"}[theme];
-  const colour = {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
+  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
   $("#theme-button").textContent = `${{auto: "◐", light: "☀", dark: "☾"}[theme]} Theme ▾`;
   $("#theme-button").title = `${colour} · ${label}. Choose colour and appearance.`;
   for (const value of ["auto", "light", "dark"]) $("#appearance-" + value).checked = theme === value;
-  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = palette === value;
+  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
+  const customFocus = document.activeElement?.dataset?.customThemeChoice !== undefined ? document.activeElement.value : null;
+  const custom = $("#theme-custom-list"), themes = TagcastThemes.snapshot().themes;
+  if (custom) custom.innerHTML = themes.length ? `<fieldset><legend>My themes</legend>${themes.map(item => `<label><input type="radio" name="palette" value="${item.id}" data-custom-theme-choice ${item.id === TagcastThemes.active()?.id ? "checked" : ""}> ${escapeHtml(item.name)}</label>`).join("")}</fieldset>` : "";
+  if (customFocus) custom?.querySelector(`[value="${customFocus}"]`)?.focus({preventScroll: true});
 }
 
 function setThemeMenu(open, restoreFocus = false) {
@@ -1716,8 +1721,11 @@ function setThemeMenu(open, restoreFocus = false) {
   else if (restoreFocus) $("#theme-button").focus();
 }
 $("#theme-button").addEventListener("click", () => setThemeMenu($("#theme-menu").hidden));
+document.addEventListener("click", event => { if (event.target.closest?.("[data-open-theme-editor]")) { setThemeMenu(false); showSettings("appearance"); } });
 $("#theme-menu").addEventListener("change", event => {
-  if (event.target.dataset.appearanceChoice !== undefined) {
+  if (event.target.dataset.customThemeChoice !== undefined) {
+    try { TagcastThemes.activate(event.target.value); showTheme(); } catch { showTheme(); toast("The theme could not be applied. Check that browser storage is available."); }
+  } else if (event.target.dataset.appearanceChoice !== undefined) {
     const value = event.target.value;
     if (!["auto", "light", "dark"].includes(value)) return;
     if (value === "auto") delete document.documentElement.dataset.theme;
@@ -1740,12 +1748,9 @@ document.addEventListener("keydown", event => {
 });
 
 function setColourPalette(value) {
-  const palette = ["ocean", "warm", "ibroadcast"].includes(value) ? value : "forest";
-  if (palette === "forest") delete document.documentElement.dataset.palette;
-  else document.documentElement.dataset.palette = palette;
+  const palette = TagcastThemes.builtin(value);
   showTheme();
   return palette;
 }
-try { setColourPalette(localStorage.getItem("tagcast-palette")); }
-catch { setColourPalette("forest"); }
+TagcastThemes.apply(); showTheme();
 setThemeMenu(false);
