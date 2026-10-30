@@ -18,7 +18,10 @@ def check_app(executable, version, restart=False):
         profile.mkdir()
         (settings / "config.json").write_text('{"auto_updates":false,"auto_lookup":false}')
         report = root / "report.json"
-        env = dict(os.environ, TAGCAST_HOME=str(settings), TAGCAST_ELECTRON_PROFILE=str(profile),
+        # Build credentials must never reach the launched application or bundled CLI.
+        inherited = {key: value for key, value in os.environ.items()
+                     if not key.startswith(("CSC_", "WIN_CSC_", "APPLE_"))}
+        env = dict(inherited, TAGCAST_HOME=str(settings), TAGCAST_ELECTRON_PROFILE=str(profile),
                    TAGCAST_ELECTRON_SMOKE_REPORT=str(report), TAGCAST_PORT="0")
         for key in ("IBROADCAST_CLIENT_ID", "TAGCAST_IBROADCAST_BASE", "ELECTRON_RUN_AS_NODE"):
             env.pop(key, None)
@@ -47,7 +50,12 @@ def check_app(executable, version, restart=False):
                 process.terminate()
                 process.wait(timeout=15)
                 raise RuntimeError("The isolated Electron app did not finish its check") from None
-            data = json.loads(report.read_text()) if report.exists() else {"ok": False, "error": "No smoke report"}
+            finally:
+                data = json.loads(report.read_text()) if report.exists() else {"ok": False, "error": "No smoke report"}
+                reports = Path(__file__).resolve().parent.parent / "build/reports"
+                reports.mkdir(parents=True, exist_ok=True)
+                # Preserve the last bounded test phase even if the app exits or times out.
+                (reports / "electron.json").write_text(json.dumps(data, indent=2) + "\n")
             if result or not data.get("ok") or data.get("version") != version:
                 raise RuntimeError(f"Electron check failed: {data}")
             try:
