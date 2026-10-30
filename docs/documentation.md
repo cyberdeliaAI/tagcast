@@ -23,6 +23,13 @@ changes (unreleased)** page. Link to it from affected guide pages and the home/s
 while keeping the released version's instructions usable. When releasing, move the
 instructions into the relevant guide sections and update/remove the availability notes.
 
+Keep the README's **Code signing policy** and `PRIVACY.md` linked beside desktop
+downloads and from release notes. State the signing status of the actual published
+artifacts; an application for signing support or a locally installed certificate
+does not make existing downloads signed. Keep privacy descriptions aligned with
+automatic checks, source defaults and available opt-outs. Updating these documents
+does not change application preferences, account MFA or the release pipeline.
+
 Screenshots stay in `docs/screenshots/` in the main repository. Keep earlier-interface
 examples labelled and preserve attribution for the bundled Wikipedia excerpts.
 
