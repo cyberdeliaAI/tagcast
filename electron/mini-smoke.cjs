@@ -4,9 +4,10 @@ const assert = require("node:assert/strict");
 const {once} = require("node:events");
 const {writeFileSync} = require("node:fs");
 const path = require("node:path");
-async function checkMini({window, miniPlayer}) {
+async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   const owner = window.webContents, originalBounds = window.getBounds(), nativeEvents=[];
   for(const name of ["show","hide","focus","blur"])window.on(name,()=>nativeEvents.push([name,window.isVisible(),Boolean(miniPlayer.window)]));
+  checkpoint("synthetic-audio");
   await owner.executeJavaScript(`(async()=>{
     globalThis.miniTestAudio=document.querySelector('#audio');
     globalThis.miniTestQueue=player.queue;gaplessTrial.enabled=false;
@@ -15,6 +16,7 @@ async function checkMini({window, miniPlayer}) {
     globalThis.miniTestUrl=URL.createObjectURL(new Blob([data],{type:'audio/wav'}));
     audio.muted=true;audio.src=miniTestUrl;await new Promise(resolve=>audio.addEventListener('loadedmetadata',resolve,{once:true}));await audio.play();
   })()`);
+  checkpoint("open");
   miniPlayer.open(); let mini = miniPlayer.window;
   await once(mini.webContents,"did-finish-load");
   if (!mini.isVisible()) await once(mini,"show");
@@ -23,6 +25,7 @@ async function checkMini({window, miniPlayer}) {
     for(let n=0;n<50;n++) { if(await miniPlayer.window.webContents.executeJavaScript(expression))return;await new Promise(resolve=>setTimeout(resolve,40)); }
     throw Error("Mini Player did not receive its current state: "+expression);
   }
+  checkpoint("state");
   await waitFor('Boolean(playback?.entry && playback.seekable)');
   assert.equal(window.isVisible(),false,'Only the Mini Player is visible');
   const security=mini.webContents.getLastWebPreferences();
@@ -34,6 +37,7 @@ async function checkMini({window, miniPlayer}) {
   assert.equal(await mini.webContents.executeJavaScript('(async()=>{try{await fetch("/api/status");return false;}catch{return true;}})()'),true);
   // The blocked fetch above is an intentional CSP probe.
   errors.length=0;
+  checkpoint("transport");
   const action=code=>mini.webContents.executeJavaScript(code);
   assert.equal(await action('bridge.command({...playback,action:"pause"})'),true);
   assert.equal(await owner.executeJavaScript('audio.paused'),true);
@@ -44,14 +48,17 @@ async function checkMini({window, miniPlayer}) {
   assert.equal(await owner.executeJavaScript('audio.paused'),true);
   assert.equal(await action('bridge.command({...playback,action:"play"})'),true);
   mini.restore();assert.equal(window.isVisible(),false);
+  checkpoint("return-to-main");
   await action('bridge.openMain()').catch(error=>{if(!mini.isDestroyed())throw error;});await new Promise(resolve=>setTimeout(resolve,80));assert.ok(window.isVisible()&&!window.isMinimized());
   assert.equal(miniPlayer.window,null,'Returning to Tagcast closes Mini Player');
   assert.equal(await owner.executeJavaScript('audio.paused'),false);
+  checkpoint("reopen");
   miniPlayer.open();mini=miniPlayer.window;await once(mini.webContents,'did-finish-load');if(!mini.isVisible())await once(mini,'show');await waitFor('Boolean(playback?.entry)');
   assert.equal(window.isVisible(),false);
   assert.equal(await action('bridge.pin(true)'),true);assert.equal(mini.isAlwaysOnTop(),true);
   await action('bridge.pin(false)');
   await owner.executeJavaScript(`player.queue[0].title="A long track title · Live at the concert hall (Original album version)";player.queue[0].artist="The Tagcast Test Ensemble";renderCurrentPlayerTrack();`);
+  checkpoint("presentation");
   const shots=process.env.TAGCAST_MINI_SCREENSHOTS;
   if(shots) {
     for(const [width,theme,palette] of ['forest','ocean','warm','ibroadcast'].flatMap(palette=>['light','dark'].map(theme=>[theme==='light'?420:520,theme,palette]))) {
@@ -70,6 +77,7 @@ async function checkMini({window, miniPlayer}) {
     writeFileSync(path.join(shots,'mini-200-percent.png'),(await mini.webContents.capturePage()).toPNG());mini.webContents.setZoomFactor(1);
   }
   if(process.env.TAGCAST_MINI_VISUAL_REPORT)await require("./mini-visual.cjs").captureMini({owner,mini});
+  checkpoint("close");
   const pausedBeforeClose=await owner.executeJavaScript("audio.paused");
   const preserved=await owner.executeJavaScript('miniTestAudio===audio&&miniTestQueue===player.queue');assert.equal(preserved,true);
   if(!mini.isDestroyed())mini.close();
@@ -77,11 +85,13 @@ async function checkMini({window, miniPlayer}) {
   assert.equal(await owner.executeJavaScript('audio.paused'),pausedBeforeClose);
   assert.equal(await owner.executeJavaScript('miniOwner.timer'),null);
   assert.equal(window.isVisible(),true,'Closing Mini Player restores Tagcast');
+  checkpoint("window-menu-return");
   miniPlayer.open();await once(miniPlayer.window.webContents,'did-finish-load');if(!miniPlayer.window.isVisible())await once(miniPlayer.window,'show');await waitFor('Boolean(playback?.entry)');
   window.show();window.focus();await new Promise(resolve=>setTimeout(resolve,80));
   for(let n=0;n<50&&miniPlayer.window;n++)await new Promise(resolve=>setTimeout(resolve,40));
   assert.equal(Boolean(miniPlayer.window),false,'Window-menu return: '+JSON.stringify({events:nativeEvents,ownerVisible:window.isVisible(),ownerFocused:window.isFocused(),miniVisible:miniPlayer.window?.isVisible()}));
   assert.equal(await owner.executeJavaScript('audio.paused'),pausedBeforeClose);
+  checkpoint("cleanup");
   await owner.executeJavaScript('audio.pause();audio.removeAttribute("src");audio.load();URL.revokeObjectURL(miniTestUrl);');
   window.setBounds(originalBounds);
   return {sameAudio:true,sameQueue:true,passiveWindow:true,seek:true,transport:true,hiddenOwner:true,minimizedMini:true,singleVisibleWindow:true,returnClosesMini:true,closeRestoresMain:true,closePreservesPlayback:true,reopen:true,sandbox:true,apiBlocked:true,errors};

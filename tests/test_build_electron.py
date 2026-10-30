@@ -84,6 +84,31 @@ class ElectronBuildTests(unittest.TestCase):
                 self.assertNotIn(key, env)
             self.assertEqual(env["TAGCAST_PORT"], "0")
 
+    def test_failed_smoke_preserves_diagnostic_report(self):
+        for timeout in (False, True):
+            with self.subTest(timeout=timeout), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                diagnostic = {"ok": False, "pending": True,
+                              "diagnostics": {"phase": "mini-player", "loaded": True}}
+
+                def launch(_arguments, **kwargs):
+                    Path(kwargs["env"]["TAGCAST_ELECTRON_SMOKE_REPORT"]).write_text(
+                        json.dumps(diagnostic))
+                    process = Mock()
+                    process.wait.side_effect = ([subprocess.TimeoutExpired("app", 90), 0]
+                                                if timeout else [1])
+                    return process
+
+                with (patch.object(check_electron, "__file__", str(root / "tools/check_electron.py")),
+                      patch.object(check_electron.subprocess, "run", return_value=Mock(
+                          stdout="usage: tagcast\nTagcast 1.1.0\n")),
+                      patch.object(check_electron.subprocess, "Popen", side_effect=launch)):
+                    with self.assertRaisesRegex(RuntimeError, "did not finish" if timeout
+                                                else "Electron check failed"):
+                        check_electron.check_app(Path("Test.app/Contents/MacOS/Tagcast"), "1.1.0")
+                saved = json.loads((root / "build/reports/electron.json").read_text())
+                self.assertEqual(saved, diagnostic)
+
     def test_signing_rejects_missing_credentials_and_untrusted_events_before_build(self):
         credentials = dict.fromkeys(build_electron.MAC_SIGNING_SECRETS, "sensitive-test-value")
         credentials["APPLE_TEAM_ID"] = "ABCDEFGHIJ"
