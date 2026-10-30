@@ -57,3 +57,26 @@ test("theme base colours match existing palette tokens and Mini Player allows ex
  assert.deepEqual(result.colours,{ink:"#abcdef",focus:"#123456"});assert.equal(Object.keys(result.colours).length,2);
  assert.equal(api.contrast("#000000","#ffffff"),21);
 });
+
+test("theme files round-trip both variants without local IDs, active state or other settings",()=>{
+  const b=browser({'tagcast-theme':'dark','private-setting':'do-not-export'}),t=theme();
+  b.api.save(t,true);const before=JSON.stringify(b.api.snapshot()),raw=b.api.exportTheme(t),data=JSON.parse(raw);
+  assert.deepEqual(Object.keys(data),['format','version','theme']);
+  assert.deepEqual(Object.keys(data.theme),['name','base','light','dark']);
+  assert.doesNotMatch(raw,/custom-|active|private-setting|do-not-export/);
+  const imported=b.api.importTheme('\uFEFF'+raw,'custom-imported1');
+  assert.equal(imported.id,'custom-imported1');assert.equal(imported.name,t.name);
+  assert.equal(imported.light.paper,'#f0f1f2');assert.equal(imported.dark.paper,'#102030');
+  assert.equal(JSON.stringify(b.api.snapshot()),before,'Parse/export never changes saved or active themes');
+  b.api.save(imported,false);assert.equal(b.api.snapshot().themes.length,2);assert.equal(b.api.active().id,t.id);
+});
+
+test("theme import rejects malformed, oversized, unsupported or executable values",()=>{
+  const api=browser().api,valid=JSON.parse(api.exportTheme(theme())),read=value=>api.importTheme(JSON.stringify(value),'custom-imported1');
+  for(const raw of ['not JSON','x'.repeat(api.fileLimit+1)])assert.throws(()=>api.importTheme(raw,'custom-imported1'),/valid Tagcast theme/);
+  for(const value of [null,[],{}, {...valid,format:'other'}, {...valid,version:2}, {...valid,active:'custom-12345678'},
+    {...valid,theme:{...valid.theme,id:'custom-overwrite'}}, {...valid,theme:{...valid.theme,token:'secret'}}])assert.throws(()=>read(value),/not a supported Tagcast theme/);
+  for(const value of [{...valid.theme,base:'external'}, {...valid.theme,light:{paper:'url(https://example.test)'}},
+    {...valid.theme,dark:{ink:'#fff'}}, {...valid.theme,light:{'__proto__':'#ffffff',unknown:'#ffffff'}}, {...valid.theme,name:''}])assert.throws(()=>read({...valid,theme:value}),/name.*palette.*hex/);
+  assert.throws(()=>api.exportTheme({...theme(),dark:{ink:'red'}}),/hex colours/);
+});

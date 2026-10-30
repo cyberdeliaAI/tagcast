@@ -10269,3 +10269,41 @@ test('custom themes keep the Theme menu safe and do not turn appearance edits in
  p.run('showSettings("interface");showSettings("appearance")');assert.equal(p.run('themeEditorView.draft.light.paper'),'#203040');
  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,posts);
 });
+
+test('theme import previews a new theme and export includes only valid draft colours',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance");');
+ const original=p.run('JSON.stringify(TagcastThemes.snapshot())'),posts=p.requests.length;
+ const text=JSON.stringify({format:'tagcast-theme',version:1,theme:{name:'Shared <theme>',base:'warm',light:{paper:'#fffefa'},dark:{paper:'#202020'}}});
+ const file={size:Buffer.byteLength(text),text:async()=>text};
+ // Give the real importer a browser File-shaped local object through the VM context.
+ const pending=p.run(`importCustomTheme({size:${file.size},text:async()=>${JSON.stringify(text)}})`);await pending;
+ assert.equal(p.run('themeEditorView.draft.name'),'Shared <theme>');
+ assert.equal(p.run('JSON.stringify(TagcastThemes.snapshot())'),original);
+ assert.equal(p.run('themeEditorDirty()'),true);assert.equal(p.run('TagcastThemes.active()'),null);
+ p.run('exportCustomTheme()');assert.equal(p.downloads.length,1);
+ assert.match(p.downloads[0].name,/^tagcast-theme-Shared-theme\.json$/);
+ const data=JSON.parse(await p.downloads[0].blob.text());assert.equal(data.theme.dark.paper,'#202020');
+ assert.deepEqual(Object.keys(data.theme),['name','base','light','dark']);
+ assert.equal(p.run('themeEditorDirty()'),true);
+ p.run('saveCustomTheme(false)');assert.equal(p.run('TagcastThemes.snapshot().themes.length'),1);assert.equal(p.run('TagcastThemes.active()'),null);
+ assert.equal(p.requests.length,posts,'No server or playback request for sharing themes');
+ p.run('themeEditorColour("ink","invalid",false);exportCustomTheme()');assert.equal(p.downloads.length,1);
+});
+
+test('invalid or late theme files retain the draft, saved themes and current page',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance");themeEditorColour("paper","#123456",false)');
+ const draft=p.run('JSON.stringify(themeEditorView.draft)');
+ for(const file of ['{size:17000,text:async()=>"{}"}','{size:2,text:async()=>"{}"}','{size:2,text:async()=>{throw Error("read failed")}}']) {
+   await p.run('importCustomTheme('+file+')');
+   assert.equal(p.run('JSON.stringify(themeEditorView.draft)'),draft);assert.match(p.run('themeEditorView.error'),/could not be imported/);
+ }
+ const valid=JSON.stringify({format:'tagcast-theme',version:1,theme:{name:'Late',base:'forest',light:{},dark:{}}});
+ p.run('confirm=()=>false');
+ await p.run(`importCustomTheme({size:100,text:async()=>${JSON.stringify(valid)}})`);
+ assert.equal(p.run('JSON.stringify(themeEditorView.draft)'),draft,'Declining discard keeps the unsaved draft');
+ p.run('globalThis.resolveThemeFile=null;globalThis.pendingThemeFile=importCustomTheme({size:100,text:()=>new Promise(resolve=>resolveThemeFile=resolve)})');
+ p.run('themeEditorColour("paper","#654321",false);showSettings("playback")');
+ await p.run(`resolveThemeFile(${JSON.stringify(valid)});pendingThemeFile`);
+ assert.equal(p.run('settingsView.category'),'playback');assert.equal(p.run('themeEditorView.draft.light.paper'),'#654321');
+ assert.equal(p.run('TagcastThemes.snapshot().themes.length'),0);
+});

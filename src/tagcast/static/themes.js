@@ -22,6 +22,29 @@ globalThis.TagcastThemes = (() => {
     }
     return result;
   }
+  const fileLimit = 16384;
+  function exportTheme(value) {
+    const theme = cleanTheme(value);
+    if (!theme) throw Error("Enter a name and valid six-digit hex colours before exporting.");
+    const {name, base, light, dark} = theme;
+    return JSON.stringify({format: "tagcast-theme", version: 1, theme: {name, base, light, dark}}, null, 2) + "\n";
+  }
+  function importTheme(raw, id) {
+    let value;
+    try {
+      if (typeof raw !== "string" || raw.length > fileLimit) throw Error();
+      value = JSON.parse(raw.replace(/^\uFEFF/, ""));
+    } catch { throw Error("Choose a valid Tagcast theme JSON file, up to 16 KB."); }
+    if (value?.format !== "tagcast-theme" || value.version !== 1
+        || Object.keys(value).some(key => !["format", "version", "theme"].includes(key))
+        || !value.theme || typeof value.theme !== "object" || Array.isArray(value.theme)
+        || Object.keys(value.theme).some(key => !["name", "base", "light", "dark"].includes(key))) {
+      throw Error("This file is not a supported Tagcast theme (version 1).");
+    }
+    const theme = cleanTheme({...value.theme, id});
+    if (!theme) throw Error("The theme needs a name, a built-in base palette and valid six-digit hex colours.");
+    return theme; // A new local identity; importing never overwrites or activates a saved theme.
+  }
   function decode(raw) {
     try {
       if (typeof raw !== "string" || raw.length > 65536) return empty();
@@ -92,6 +115,6 @@ globalThis.TagcastThemes = (() => {
     globalThis.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => { apply(); if (typeof showTheme === "function") showTheme(); });
     globalThis.addEventListener?.("storage", event => { if ([key, "tagcast-palette", "tagcast-theme", null].includes(event.key)) { store = read(); fallbackPalette = readPalette(); const appearance = (() => { try { return localStorage.getItem("tagcast-theme"); } catch { return null; } })(); if (["light", "dark"].includes(appearance)) document.documentElement.dataset.theme = appearance; else delete document.documentElement.dataset.theme; apply(); if (typeof showTheme === "function") showTheme(); } });
   }
-  return Object.freeze({key, roles, builtins, limit, hex, cleanTheme, decode, snapshot, active, mode, colours, apply, save, activate, remove, builtin, contrast});
+  return Object.freeze({key, roles, builtins, limit, fileLimit, hex, cleanTheme, exportTheme, importTheme, decode, snapshot, active, mode, colours, apply, save, activate, remove, builtin, contrast});
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = globalThis.TagcastThemes;

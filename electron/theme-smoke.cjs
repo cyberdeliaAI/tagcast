@@ -35,6 +35,21 @@ async function checkThemes({window, miniPlayer}) {
   assert.equal(await run('document.querySelector("#theme-name").value'),"Unsaved renamed draft");
   await run('document.querySelector("#theme-discard").click();');assert.equal(await run('document.querySelector("#theme-name").value'),"Midnight test");
   await run(`themeEditorColour('ink','#172037',false);`);assert.equal(await run('document.querySelector("#theme-contrast").textContent.includes("Low contrast")'),true);await run('document.querySelector("#theme-discard").click();');
+  // Exercise a real Chromium download, then import the same portable file as a new draft.
+  const exportPath=path.join(path.dirname(process.env.TAGCAST_ELECTRON_SMOKE_REPORT),'shared-theme.json');
+  const downloaded=new Promise((resolve,reject)=>owner.session.once('will-download',(_event,item)=>{
+   item.setSavePath(exportPath);item.once('done',(_event,state)=>state==='completed'?resolve():reject(Error('Theme download '+state)));
+  }));
+  await run("document.querySelector('#theme-export').click()");await downloaded;
+  const shared=fs.readFileSync(exportPath,'utf8');assert.equal(JSON.parse(shared).format,'tagcast-theme');
+  assert.deepEqual(Object.keys(JSON.parse(shared).theme),['name','base','light','dark']);
+  await run(`importCustomTheme(new File([${JSON.stringify(shared)}],'shared-theme.json',{type:'application/json'}))`);
+  assert.equal(await run('themeEditorDirty()'),true);
+  assert.equal(await run('themeEditorView.draft.id!==themeCheckId&&TagcastThemes.active().id===themeCheckId'),true);
+  assert.equal(await run('TagcastThemes.snapshot().themes.length'),1);
+  await capture('theme-import-preview');
+  await run('document.querySelector("#theme-save").click()');assert.equal(await run('TagcastThemes.snapshot().themes.length'),2);
+  await run('themeEditorLoad(TagcastThemes.snapshot().themes.find(t=>t.id===themeCheckId));renderThemeEditor();');
   // Palette changes must preserve the authoritative audio element and queue object.
   for(const palette of ['forest','ocean','warm','ibroadcast'])for(const appearance of ['light','dark']) {
    await run(`setColourPalette('${palette}');document.documentElement.dataset.theme='${appearance}';showTheme();showSettings('appearance');themeEditorView.mode='${appearance}';renderThemeEditor();document.querySelector('#theme-editor-form').scrollIntoView({block:'start'});window.scrollBy(0,-20);`);
@@ -75,7 +90,7 @@ async function checkThemes({window, miniPlayer}) {
   const saved=await run('TagcastThemes.active().id');
   await owner.reload();await once(owner,'did-finish-load');
   assert.equal(await run('TagcastThemes.active().id'),saved,'Saved theme survives a full reload');
-  return {savedAndReloaded:true,previewIsolated:true,invalidInputRetained:true,variantsIndependent:true,draftRetained:true,keyboard:true,sameAudioAndQueue:true,miniColours:true,layouts};
+  return {savedAndReloaded:true,exportedAndImported:true,previewIsolated:true,invalidInputRetained:true,variantsIndependent:true,draftRetained:true,keyboard:true,sameAudioAndQueue:true,miniColours:true,layouts};
  } finally {
   owner.setZoomFactor(1);window.setBounds(initialBounds);
   await run(`for(const [key,value]of Object.entries(${JSON.stringify({"tagcast-custom-themes":before.storage,"tagcast-theme":before.appearance,"tagcast-palette":before.palette})})){if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value);}themeEditorView.draft=null;themeEditorView.baseline=null;`).catch(()=>{});
