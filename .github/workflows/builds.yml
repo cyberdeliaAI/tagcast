@@ -20,6 +20,10 @@ on:
       tag:
         description: "Release tag to add the downloads to, for example v0.10.1 (empty: only build)"
         required: false
+      sign_macos:
+        description: "Sign and notarize macOS test artifacts (leave tag empty to avoid publishing)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,7 +36,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
        startsWith(github.event.workflow_run.head_commit.message, 'Publish Tagcast '))
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ startsWith(matrix.target, 'macos-') && 60 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +51,7 @@ jobs:
             target: linux-x64
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || '' }}
+      SIGN_MACOS: ${{ startsWith(matrix.target, 'macos-') && (github.event_name == 'release' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.sign_macos)) && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,8 +88,17 @@ jobs:
         if: runner.os == 'Linux' && hashFiles('electron/package.json') != ''
         run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py
       - name: Build and verify extracted Electron downloads
-        if: runner.os != 'Linux' && hashFiles('electron/package.json') != ''
+        if: runner.os != 'Linux' && hashFiles('electron/package.json') != '' && (env.SIGN_MACOS != '1' || hashFiles('tools/electron_signed.cjs') == '')
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py
+      - name: Build, notarize and verify signed macOS downloads
+        if: env.SIGN_MACOS == '1' && hashFiles('tools/electron_signed.cjs') != ''
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py --sign-macos
       - name: Build and verify older browser-launcher downloads (Linux)
         if: runner.os == 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == ''
         run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
