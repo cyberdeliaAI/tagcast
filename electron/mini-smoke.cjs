@@ -4,6 +4,28 @@ const assert = require("node:assert/strict");
 const {once} = require("node:events");
 const {writeFileSync} = require("node:fs");
 const path = require("node:path");
+
+async function waitForNativeState(predicate, description, timeout = 5000) {
+  const deadline = performance.now() + timeout;
+  while (!predicate()) {
+    if (performance.now() >= deadline) throw Error("Native window did not settle: " + description);
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+}
+
+async function closeFromRenderer(view, action) {
+  // A renderer destroyed by its own command may never settle executeJavaScript.
+  // Observe the native close before dispatching; still require an actual close.
+  const controller = new AbortController();
+  const closed = once(view, "closed", {signal: controller.signal});
+  try {
+    await Promise.race([closed, Promise.resolve().then(action).catch(error => {
+      if (!view.isDestroyed()) throw error;
+    })]);
+    await closed;
+  } finally { controller.abort(); }
+}
+
 async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   const owner = window.webContents, originalBounds = window.getBounds(), nativeEvents=[];
   for(const name of ["show","hide","focus","blur"])window.on(name,()=>nativeEvents.push([name,window.isVisible(),Boolean(miniPlayer.window)]));
@@ -16,10 +38,21 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
     globalThis.miniTestUrl=URL.createObjectURL(new Blob([data],{type:'audio/wav'}));
     audio.muted=true;audio.src=miniTestUrl;await new Promise(resolve=>audio.addEventListener('loadedmetadata',resolve,{once:true}));await audio.play();
   })()`);
+  let mini;
+  async function openMini() {
+    assert.equal(window.isVisible(), true, "Tagcast must be restored before another user opens Mini Player");
+    window.focus();
+    await waitForNativeState(() => window.isFocused(), "main-window focus before opening Mini Player");
+    miniPlayer.open(); mini = miniPlayer.window;
+    const view = mini;
+    await waitForNativeState(() => {
+      if (view.isDestroyed()) throw Error("Mini Player closed while opening: " + JSON.stringify(nativeEvents));
+      return view.isVisible() && !view.webContents.isLoadingMainFrame()
+        && view.webContents.getURL().endsWith("/mini-player/index.html");
+    }, "Mini Player load and visibility");
+  }
   checkpoint("open");
-  miniPlayer.open(); let mini = miniPlayer.window;
-  await once(mini.webContents,"did-finish-load");
-  if (!mini.isVisible()) await once(mini,"show");
+  await openMini();
   const errors=[];mini.webContents.on("console-message",(_event,details)=>{if(details.level==='error')errors.push(details.message);});
   async function waitFor(expression) {
     for(let n=0;n<50;n++) { if(await miniPlayer.window.webContents.executeJavaScript(expression))return;await new Promise(resolve=>setTimeout(resolve,40)); }
@@ -49,11 +82,12 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   assert.equal(await action('bridge.command({...playback,action:"play"})'),true);
   mini.restore();assert.equal(window.isVisible(),false);
   checkpoint("return-to-main");
-  await action('bridge.openMain()').catch(error=>{if(!mini.isDestroyed())throw error;});await new Promise(resolve=>setTimeout(resolve,80));assert.ok(window.isVisible()&&!window.isMinimized());
+  await closeFromRenderer(mini, () => action('bridge.openMain()'));
+  await waitForNativeState(() => window.isVisible() && !window.isMinimized(), "return to Tagcast");
   assert.equal(miniPlayer.window,null,'Returning to Tagcast closes Mini Player');
   assert.equal(await owner.executeJavaScript('audio.paused'),false);
   checkpoint("reopen");
-  miniPlayer.open();mini=miniPlayer.window;await once(mini.webContents,'did-finish-load');if(!mini.isVisible())await once(mini,'show');await waitFor('Boolean(playback?.entry)');
+  await openMini();await waitFor('Boolean(playback?.entry)');
   assert.equal(window.isVisible(),false);
   assert.equal(await action('bridge.pin(true)'),true);assert.equal(mini.isAlwaysOnTop(),true);
   await action('bridge.pin(false)');
@@ -80,13 +114,14 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   checkpoint("close");
   const pausedBeforeClose=await owner.executeJavaScript("audio.paused");
   const preserved=await owner.executeJavaScript('miniTestAudio===audio&&miniTestQueue===player.queue');assert.equal(preserved,true);
-  if(!mini.isDestroyed())mini.close();
-  await new Promise(resolve=>setTimeout(resolve,80));
+  const closed = once(mini, "closed");
+  mini.close(); await closed;
+  await waitForNativeState(() => window.isVisible(), "close restores Tagcast");
   assert.equal(await owner.executeJavaScript('audio.paused'),pausedBeforeClose);
   assert.equal(await owner.executeJavaScript('miniOwner.timer'),null);
   assert.equal(window.isVisible(),true,'Closing Mini Player restores Tagcast');
   checkpoint("window-menu-return");
-  miniPlayer.open();await once(miniPlayer.window.webContents,'did-finish-load');if(!miniPlayer.window.isVisible())await once(miniPlayer.window,'show');await waitFor('Boolean(playback?.entry)');
+  await openMini();await waitFor('Boolean(playback?.entry)');
   window.show();window.focus();await new Promise(resolve=>setTimeout(resolve,80));
   for(let n=0;n<50&&miniPlayer.window;n++)await new Promise(resolve=>setTimeout(resolve,40));
   assert.equal(Boolean(miniPlayer.window),false,'Window-menu return: '+JSON.stringify({events:nativeEvents,ownerVisible:window.isVisible(),ownerFocused:window.isFocused(),miniVisible:miniPlayer.window?.isVisible()}));
@@ -96,4 +131,4 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   window.setBounds(originalBounds);
   return {sameAudio:true,sameQueue:true,passiveWindow:true,seek:true,transport:true,hiddenOwner:true,minimizedMini:true,singleVisibleWindow:true,returnClosesMini:true,closeRestoresMain:true,closePreservesPlayback:true,reopen:true,sandbox:true,apiBlocked:true,errors};
 }
-module.exports={checkMini};
+module.exports={checkMini, closeFromRenderer, waitForNativeState};
