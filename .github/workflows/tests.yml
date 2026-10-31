@@ -9,8 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  scope:
+    uses: ./.github/workflows/ci-scope.yml
+
   tests:
     name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}
+    needs: scope
+    if: needs.scope.outputs.full == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -42,6 +47,8 @@ jobs:
 
   start-scripts:
     name: Start scripts · ${{ matrix.os }}
+    needs: scope
+    if: needs.scope.outputs.full == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -104,11 +111,36 @@ jobs:
           Write-Output $out
           if ($out -notmatch "usage: tagcast") { exit 1 }
 
+  required:
+    name: Tests required
+    needs: [scope, tests, start-scripts, gapless-measured-media]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected verification to pass
+        shell: python
+        env:
+          SCOPE: ${{ needs.scope.result }}
+          FULL: ${{ needs.scope.outputs.full }}
+          TESTS: ${{ needs.tests.result }}
+          START: ${{ needs.start-scripts.result }}
+          MEDIA: ${{ needs.gapless-measured-media.result }}
+        run: |
+          import os
+          expected = {"true": "success", "false": "skipped"}.get(os.environ["FULL"])
+          results = [os.environ[key] for key in ("TESTS", "START", "MEDIA")]
+          if os.environ["SCOPE"] != "success" or expected is None or any(result != expected for result in results):
+              raise SystemExit("Required verification failed, was cancelled or did not run.")
+          print("All application and media tests passed." if expected == "success" else
+                "Documentation checks passed; application tests were not needed.")
+
   release:
     name: Publish the tested Tagcast version
     if: >-
-      github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Publish Tagcast ')
-    needs: [tests, start-scripts, gapless-measured-media]
+      github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Publish Tagcast ') &&
+      needs.scope.outputs.full == 'true'
+    needs: [scope, required]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -127,6 +159,8 @@ jobs:
 
   gapless-measured-media:
     name: Gapless measured PCM · Linux Electron
+    needs: scope
+    if: needs.scope.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

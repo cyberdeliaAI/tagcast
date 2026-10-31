@@ -2,8 +2,8 @@ name: Builds
 
 # Electron apps bundle the shared PyInstaller server, for people without Python or uv.
 # Older tags retain their original browser launcher recipe. A release gets downloads:
-# and a "Publish Tagcast ..." commit once its release job in tests.yml has run. Every push
-# goes through native checks too. Run this workflow by hand with a tag to add the
+# and a "Publish Tagcast ..." commit once its release job in tests.yml has run.
+# Non-documentation pushes go through native checks too. Run by hand with a tag to add the
 # verified downloads and checksums to an existing release containing this build recipe.
 on:
   release:
@@ -29,14 +29,21 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and check · ${{ matrix.target }}
+  scope:
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository &&
        startsWith(github.event.workflow_run.head_commit.message, 'Publish Tagcast '))
+    uses: ./.github/workflows/ci-scope.yml
+    with:
+      ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+
+  build:
+    name: Build and check · ${{ matrix.target }}
+    needs: scope
+    if: needs.scope.outputs.full == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ startsWith(matrix.target, 'macos-') && 60 || 30 }}
     strategy:
@@ -130,12 +137,34 @@ jobs:
           path: build/reports/*.json
           if-no-files-found: ignore
 
+  required:
+    name: Builds required
+    needs: [scope, build]
+    if: always() && needs.scope.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected verification to pass
+        shell: python
+        env:
+          SCOPE: ${{ needs.scope.result }}
+          FULL: ${{ needs.scope.outputs.full }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          import os
+          expected = {"true": "success", "false": "skipped"}.get(os.environ["FULL"])
+          if os.environ["SCOPE"] != "success" or expected is None or os.environ["BUILD"] != expected:
+              raise SystemExit("Required verification failed, was cancelled or did not run.")
+          print("All four native builds passed." if expected == "success" else
+                "Documentation checks passed; native builds were not needed.")
+
   release:
     name: Add the downloads to the release
-    needs: build
+    needs: [scope, build, required]
     if: >-
-      github.event_name == 'release' || github.event_name == 'workflow_run' ||
-      (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+      needs.scope.outputs.full == 'true' &&
+      (github.event_name == 'release' || github.event_name == 'workflow_run' ||
+       (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
     runs-on: ubuntu-latest
     permissions:
       contents: write

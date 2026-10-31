@@ -1,0 +1,41 @@
+name: Choose CI scope
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+    outputs:
+      full:
+        description: Whether full application verification is required
+        value: ${{ jobs.scope.outputs.full }}
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: Check changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+      - name: Validate the scope classifier
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        run: python3 -m unittest discover -s tests -p test_ci_scope.py
+      - name: Choose full verification or check documentation
+        id: scope
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != push && "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            # Explicit builds/releases, including older tags, always build everything.
+            echo 'full=true' >> "$GITHUB_OUTPUT"
+          else
+            python3 tools/ci_scope.py
+          fi
