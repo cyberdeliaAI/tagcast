@@ -390,8 +390,8 @@ def plan_summary(items):
 
 def _shutdown(sock):
     try:
-        # The plain socket call, also for TLS sockets: it unblocks a waiting send or
-        # receive in another thread without touching that thread's TLS state.
+        # Avoid touching another thread's TLS state. On Windows shutdown cannot
+        # wake a read already blocked on a silent peer; see Transfer's limits.
         socket.socket.shutdown(sock, socket.SHUT_RDWR)
     except (OSError, TypeError, ValueError):
         pass
@@ -408,6 +408,8 @@ class Transfer:
     cut off the DNS lookup, the TCP connect or the handshake; those end on their own
     (the lookup only through the system resolver's limits), after which the stop
     applies before anything is sent. SOCKS proxies are not tracked.
+    On Windows, shutdown also cannot wake an already blocked read: stopping then
+    waits for the peer or the existing read timeout, without sending later files.
     """
 
     def __init__(self, stop=None, valid=None):

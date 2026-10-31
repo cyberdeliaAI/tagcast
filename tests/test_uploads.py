@@ -10,7 +10,6 @@ import sys
 import tempfile
 import threading
 import time
-import traceback
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -161,7 +160,7 @@ class FakeUploadService:
                 filename, data = files["file"]
                 with service.lock:
                     action = service.script.pop(0) if service.script else "ok"
-                    if action in ("ok", "accept_then_503", "unknown_ok_stored", "hold"):
+                    if action in ("ok", "accept_then_503", "unknown_ok_stored", "hold", "hold_then_503"):
                         service.md5s.add(md5(data))
                         service.uploads.append({"fields": fields, "filename": filename,
                                                 "data": data, "headers": dict(self.headers)})
@@ -178,9 +177,11 @@ class FakeUploadService:
                     return self.reply(200, b"<html>OK</html>", "text/html")
                 if action.startswith("redirect_"):
                     return self.reply(int(action[9:]), {}, location="/moved")
-                if action == "hold":
+                if action in ("hold", "hold_then_503"):
                     service.received.set()
                     service.release.wait(10)
+                    if action == "hold_then_503":
+                        return self.reply(503, {})
                 if action in answers:
                     return self.reply(*answers[action])
                 return self.reply(200, {"result": True,
@@ -523,24 +524,26 @@ class TransferTests(unittest.TestCase):
         self.wait_for(lambda: self.fake.incomplete == 1)
         self.assertEqual(self.fake.uploads, [])
 
-    def test_stop_cuts_off_a_request_waiting_for_its_answer(self):
+    def test_stop_preserves_uncertainty_when_waiting_for_its_answer(self):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
-        self.fake.script = ["hold"]
+        self.fake.script = ["hold_then_503"]
+        lists_before = self.fake.lists
         job = UploadJob(self.service(), items)
         job.start()
         self.assertTrue(self.fake.received.wait(5))
         started = time.monotonic()
         job.stop()
+        if sys.platform == "win32":
+            # Winsock shutdown does not wake an already blocked read. A late
+            # ambiguous answer must still stop without confirming or sending again.
+            job.join(0.1)
+            self.assertEqual(self.fake.attempts, 1)
+            self.fake.release.set()
         job.join(5)
-        elapsed = time.monotonic() - started
-        diagnostic = ""
-        if elapsed >= 3:
-            transfer = job._transfer
-            sockets = [(sock.fileno(), sock.gettimeout()) for sock in transfer._sockets]
-            frame = sys._current_frames().get(job._thread.ident)
-            diagnostic = f"Tracked sockets: {sockets}; worker: {''.join(traceback.format_stack(frame))}"
-        self.assertLess(elapsed, 3, diagnostic)
+        self.assertLess(time.monotonic() - started, 3)
         self.assertEqual((job.state, self.statuses(items)), ("stopped", [UNCERTAIN, NOT_SENT]))
+        self.assertEqual(self.fake.attempts, 1)
+        self.assertEqual(self.fake.lists, lists_before)
         self.assertNotIn("not uploaded", items[0].note.lower())
 
     # 4. Only a recognizable confirmation counts as sent.

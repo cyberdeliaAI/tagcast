@@ -1,6 +1,6 @@
 # Music uploads: engine and integration notes
 
-Status: integrated locally as an optional feature, disabled by default. The reviewed
+Available in Tagcast 1.2.0 as an optional feature, disabled by default. The reviewed
 v3 engine remains in `src/tagcast/uploads.py`; `music_uploads.py` adds account/session
 binding, background preparation, single-use reviews and bounded API responses.
 The same page is shared by browser and Electron. No real uploads were made during
@@ -141,8 +141,8 @@ about either and reports such files as uncertain.
   `Content-Length`. Requests go through `StudioClient._with_fresh_token`, so the shared
   OAuth refresh gate applies. Each request checks the stop flag and `valid()` first,
   including the resend after a token refresh. Its sockets are tracked once connected
-  (direct and HTTP proxy connections), so a stop cuts off a request that is sending or
-  waiting for an answer. See the limits below for the phase before that.
+  (direct and HTTP proxy connections), so a stop attempts to cut off the request.
+  See the Windows and connection-phase limits below.
 - **Job** (`UploadJob`): one file at a time; pause waits between files.
   - An uncertain answer is **never resent**. The engine checks the MD5 list after 2 s
     and 6 s: listed → `confirmed`; not listed → `uncertain`, and the job continues.
@@ -168,10 +168,18 @@ about either and reports such files as uncertain.
   operation and per address tried, not as a total for the phase. After the phase ends,
   the stop takes effect before any request data is sent.
 - **Read timeout:** 600 seconds per socket operation while waiting for an answer, not
-  a total. A stop cuts this wait off.
+  a total. On Windows, a stop cannot wake an already blocked read from a silent peer;
+  the current request may wait for a reply, remote closure or this timeout. No later
+  file is sent and no ambiguous upload is retried. A clear late acknowledgement can
+  still confirm the file already sent. Stop may therefore remain pending on Windows.
 - **SOCKS proxies** are not tracked (they need PySocks, which Tagcast does not ship).
 - **Windows:** file identity uses size, modification time and file index, without a
   change time.
+
+The Windows blocked-read limit was reproduced in both Python 3.11 and 3.13 CI.
+The regression checks prompt interruption on POSIX, and on Windows releases a
+delayed ambiguous reply after Stop to verify uncertain state, no read-back retry
+and no second upload. See [urllib3's independent report](https://github.com/urllib3/urllib3/issues/5337).
 
 ## Integration boundaries
 
