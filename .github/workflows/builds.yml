@@ -3,7 +3,7 @@ name: Builds
 # Electron apps bundle the shared PyInstaller server, for people without Python or uv.
 # Older tags retain their original browser launcher recipe. A release gets downloads:
 # and a "Publish Tagcast ..." commit once its release job in tests.yml has run. Every push
-# goes through native checks too. Run this workflow by hand with a tag to add the
+# that changes more than documentation goes through native checks too. Run by hand to add the
 # verified downloads and checksums to an existing release containing this build recipe.
 on:
   release:
@@ -29,15 +29,21 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and check · ${{ matrix.target }}
+  scope:
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository &&
        startsWith(github.event.workflow_run.head_commit.message, 'Publish Tagcast '))
-    runs-on: ${{ matrix.os }}
+    uses: ./.github/workflows/ci-scope.yml
+    with:
+      ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+
+  build:
+    needs: scope
+    name: Build and check · ${{ matrix.target }}
+    runs-on: ${{ needs.scope.outputs.full == 'true' && matrix.os || 'ubuntu-latest' }}
     timeout-minutes: ${{ startsWith(matrix.target, 'macos-') && 60 || 30 }}
     strategy:
       fail-fast: false
@@ -55,24 +61,39 @@ jobs:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || '' }}
       SIGN_MACOS: ${{ startsWith(matrix.target, 'macos-') && (github.event_name == 'release' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.sign_macos)) && '1' || '' }}
     steps:
+      - name: Select verification for this target
+        shell: python
+        env:
+          CI_FULL: ${{ needs.scope.outputs.full }}
+        run: |
+          import os
+          full = os.environ["CI_FULL"]
+          if full not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")
+          print("Full verification required." if full == "true" else
+                "Documentation checks passed; application tests/builds are not needed.")
       - uses: actions/checkout@v4
+        if: needs.scope.outputs.full == 'true'
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
       - name: Keep older releases on their one-file recipe
-        if: hashFiles('tagcast.spec') == ''
+        if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         run: git checkout 805bbeba3cec10a8b41fbb8672d0a8f34d23a87c -- tools/build_binary.py tools/pyinstaller_entry.py
       - uses: actions/setup-python@v5
+        if: needs.scope.outputs.full == 'true'
         with:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@v6
+        if: needs.scope.outputs.full == 'true'
       - uses: actions/setup-node@v4
-        if: hashFiles('electron/package.json') != ''
+        if: needs.scope.outputs.full == 'true' && (hashFiles('electron/package.json') != '')
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: electron/package-lock.json
       - name: Check release tag
+        if: needs.scope.outputs.full == 'true'
         shell: bash
         run: |
           python - <<'PY'
@@ -84,16 +105,16 @@ jobs:
               raise SystemExit(f'Release tag must be {tag}')
           PY
       - name: Install display support (Linux)
-        if: runner.os == 'Linux' && hashFiles('tagcast.spec') != ''
+        if: needs.scope.outputs.full == 'true' && (runner.os == 'Linux' && hashFiles('tagcast.spec') != '')
         run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
       - name: Build and verify extracted Electron downloads (Linux)
-        if: runner.os == 'Linux' && hashFiles('electron/package.json') != ''
+        if: needs.scope.outputs.full == 'true' && (runner.os == 'Linux' && hashFiles('electron/package.json') != '')
         run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py
       - name: Build and verify extracted Electron downloads
-        if: runner.os != 'Linux' && hashFiles('electron/package.json') != '' && (env.SIGN_MACOS != '1' || hashFiles('tools/electron_signed.cjs') == '')
+        if: needs.scope.outputs.full == 'true' && (runner.os != 'Linux' && hashFiles('electron/package.json') != '' && (env.SIGN_MACOS != '1' || hashFiles('tools/electron_signed.cjs') == ''))
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py
       - name: Build, notarize and verify signed macOS downloads
-        if: env.SIGN_MACOS == '1' && hashFiles('tools/electron_signed.cjs') != ''
+        if: needs.scope.outputs.full == 'true' && (env.SIGN_MACOS == '1' && hashFiles('tools/electron_signed.cjs') != '')
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -102,29 +123,29 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_electron.py --sign-macos
       - name: Build and verify older browser-launcher downloads (Linux)
-        if: runner.os == 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == ''
+        if: needs.scope.outputs.full == 'true' && (runner.os == 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == '')
         run: xvfb-run -a uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
       - name: Build and verify older browser-launcher downloads
-        if: runner.os != 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == ''
+        if: needs.scope.outputs.full == 'true' && (runner.os != 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == '')
         shell: bash
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
       - uses: actions/upload-artifact@v4
-        if: hashFiles('tagcast.spec') != ''
+        if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') != '')
         with:
           name: tagcast-${{ matrix.target }}
           path: dist/packages/*
           if-no-files-found: error
       - name: Build legacy console download
-        if: hashFiles('tagcast.spec') == ''
+        if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         run: uv run --frozen --python python --with pyinstaller==6.22.3 python tools/build_binary.py
       - uses: actions/upload-artifact@v4
-        if: hashFiles('tagcast.spec') == ''
+        if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         with:
           name: tagcast-${{ matrix.target }}
           path: dist/*.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && needs.scope.outputs.full == 'true'
         with:
           name: smoke-reports-${{ matrix.target }}
           path: build/reports/*.json
@@ -132,10 +153,11 @@ jobs:
 
   release:
     name: Add the downloads to the release
-    needs: build
+    needs: [scope, build]
     if: >-
-      github.event_name == 'release' || github.event_name == 'workflow_run' ||
-      (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+      needs.scope.outputs.full == 'true' &&
+      (github.event_name == 'release' || github.event_name == 'workflow_run' ||
+       (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
     runs-on: ubuntu-latest
     permissions:
       contents: write
