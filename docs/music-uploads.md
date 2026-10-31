@@ -199,15 +199,18 @@ about either and reports such files as uncertain.
   and `electron/tests/upload-picker.test.cjs`. Real browser checks use a separate
   synthetic service that cannot contact iBroadcast.
 
-## To verify against a real account
+## Validation and remaining live checks
 
 Read-only validation on 31 October 2026 confirmed that the granted OAuth token
 can read the upload service's MD5 list and that the explicit supported-types
 request above returns the file formats. No real audio was sent by these checks.
 
-Before any release, check with a test account and synthetic audio:
+Separately, the user reported that two complete album uploads succeeded and appeared
+in both iBroadcast and Tagcast. This supports the ordinary real-account workflow;
+it does not validate interrupted uploads or every possible service response.
 
-- that a Tagcast OAuth token with `user.upload` is accepted by `upload.ibroadcast.com`;
+The following cases remain unverified against the live service:
+
 - the exact answers for a new upload, an identical file and a refused file;
 - how soon a new MD5 appears in the list;
 - what happens to a request cut off before its closing boundary;

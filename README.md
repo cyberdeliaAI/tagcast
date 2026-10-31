@@ -86,6 +86,8 @@ macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
 Python or Node.js installation is required. Each archive has a SHA-256 companion.
 
+**[Code signing policy](#code-signing-policy)** · **[Privacy policy](PRIVACY.md)**
+
 The apps are not Developer ID notarized or Authenticode signed. If your system
 blocks opening, use **System Settings → Privacy & Security → Open Anyway** on
 macOS, or **More info → Run anyway** on Windows. See the
@@ -192,6 +194,29 @@ on its port rather than loading the old interface.
 For Homebrew: `brew update`, then `brew upgrade --cask cyberdeliaAI/apps/tagcast`.
 Tagcast's update check only notifies; it never installs updates automatically.
 [Update instructions](https://github.com/cyberdeliaAI/tagcast/wiki/Getting-started#updating-tagcast).
+
+## Code signing policy
+
+Tagcast has applied for Windows code signing through SignPath. Signing is
+**not yet active**; approval and integration are pending.
+The existing Tagcast 1.1.0 Windows downloads remain unsigned; publishing this
+policy does not change those files or their checksums.
+
+The planned signing service, subject to approval and integration, is:
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+- **Committers and reviewers:** [kaosnews](https://github.com/kaosnews).
+- **Approvers:** [kaosnews](https://github.com/kaosnews).
+- People with source-code or signing approval access are required to use MFA on
+  GitHub and SignPath. This policy does not certify individual account settings.
+- Once enabled, release signing requests must be manually approved by the
+  designated approver. Only verified builds from this repository will be submitted;
+  release notes will identify which downloads are signed.
+
+See the [privacy policy](PRIVACY.md) for iBroadcast connections, optional source
+lookups, automatic update checks and the public service-status feed, including
+the available controls. macOS signing and notarization are separate from SignPath.
 
 ## Community
 
