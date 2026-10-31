@@ -6,9 +6,11 @@ import os
 import re
 import shutil
 import socket
+import sys
 import tempfile
 import threading
 import time
+import traceback
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -530,7 +532,14 @@ class TransferTests(unittest.TestCase):
         started = time.monotonic()
         job.stop()
         job.join(5)
-        self.assertLess(time.monotonic() - started, 3)
+        elapsed = time.monotonic() - started
+        diagnostic = ""
+        if elapsed >= 3:
+            transfer = job._transfer
+            sockets = [(sock.fileno(), sock.gettimeout()) for sock in transfer._sockets]
+            frame = sys._current_frames().get(job._thread.ident)
+            diagnostic = f"Tracked sockets: {sockets}; worker: {''.join(traceback.format_stack(frame))}"
+        self.assertLess(elapsed, 3, diagnostic)
         self.assertEqual((job.state, self.statuses(items)), ("stopped", [UNCERTAIN, NOT_SENT]))
         self.assertNotIn("not uploaded", items[0].note.lower())
 
