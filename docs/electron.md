@@ -131,8 +131,11 @@ The separate `tagcast-cli` executable in `resources/backend/` (macOS:
 `Tagcast.app/Contents/Resources/backend/`) retains normal browser/terminal use.
 Keep the complete extracted package together.
 
-Builds use ad-hoc macOS integrity signatures, not Developer ID notarization, and no
-Windows Authenticode certificate. Platform opening requirements still apply.
+Ordinary builds use ad-hoc macOS integrity signatures, not Developer ID notarization,
+and no Windows Authenticode certificate. The explicit `--sign-macos` build route
+requires Developer ID credentials and Apple notarization, with final ZIP verification;
+see [Code signing](code-signing.md). Existing release archives are not changed by
+adding this route. Platform opening requirements still apply to unsigned downloads.
 The Electron MIT and Chromium notices remain in the app alongside the Python/runtime
 licenses. All package/server/page/lockfile versions must match.
 
