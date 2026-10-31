@@ -18,6 +18,31 @@ reference documents and screenshots. `_Sidebar.md` owns the topic navigation;
 `_Footer.md` contains source, release and issue links. Keep its links aligned with
 `Home.md` when adding or renaming a page. Wiki edits do not publish an app release.
 
+## Checks for documentation changes
+
+Wiki-only edits do not start the application's CI. README and screenshot changes
+in the main repository use a lightweight check when the **entire** pull request or
+push contains only allowlisted documentation: `README.md`, `PRIVACY.md`, `LICENSE`,
+Markdown and images under `docs/`, theme examples under `docs/themes/`, and Markdown
+release notes under `.github/release-notes/`. This check validates local image
+references, nonempty regular files and theme JSON without contacting providers.
+It does not build the application or run the measured Gapless audio suite.
+
+Code, test, dependency, configuration and workflow changes, unknown paths or an
+unreadable comparison always require the complete test/build matrix. Renames
+include both old and new paths. Explicit builds and releases always run the full
+checks, including a `Publish Tagcast VERSION` commit that changes only release notes.
+
+The existing fourteen required check names and branch-protection settings stay in
+place. For documentation, each check only confirms that the lightweight validation
+passed, on an Ubuntu runner; its application/build steps are skipped. The job log
+explicitly states that no application tests or builds were needed. A missing or
+invalid scope fails the check instead of silently passing. Do not skip the entire
+workflow with path filters or commit-message instructions: that can leave required
+checks pending indefinitely.
+
+## Publishing and screenshots
+
 Document changes on `main` that are not yet released on the Wiki's **Upcoming
 changes (unreleased)** page. Link to it from affected guide pages and the home/sidebar,
 while keeping the released version's instructions usable. When releasing, move the
