@@ -26,6 +26,20 @@ async function closeFromRenderer(view, action) {
   } finally { controller.abort(); }
 }
 
+async function ownerReturned(owner, now = () => performance.now()) {
+  // macOS may update isVisible/isFocused before delivering the matching events.
+  // Observe restoration before dispatch, then drain its native event burst before
+  // another synthetic user action. Some macOS versions emit focus without show.
+  const names = ["show", "hide", "focus", "blur"];
+  let observed = false, last = now();
+  const changed = () => { observed = true; last = now(); };
+  for (const name of names) owner.on(name, changed);
+  try {
+    await waitForNativeState(() => observed && owner.isVisible() && owner.isFocused()
+      && now() - last >= 250, "restored main window and settled native events");
+  } finally { for (const name of names) owner.removeListener(name, changed); }
+}
+
 async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   const owner = window.webContents, originalBounds = window.getBounds(), nativeEvents=[];
   for(const name of ["show","hide","focus","blur"])window.on(name,()=>nativeEvents.push([name,window.isVisible(),Boolean(miniPlayer.window)]));
@@ -41,8 +55,10 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   let mini;
   async function openMini() {
     assert.equal(window.isVisible(), true, "Tagcast must be restored before another user opens Mini Player");
-    window.focus();
-    await waitForNativeState(() => window.isFocused(), "main-window focus before opening Mini Player");
+    if (!window.isFocused()) {
+      const focused = once(window, "focus");
+      window.focus(); await focused;
+    }
     miniPlayer.open(); mini = miniPlayer.window;
     const view = mini;
     await waitForNativeState(() => {
@@ -82,7 +98,9 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   assert.equal(await action('bridge.command({...playback,action:"play"})'),true);
   mini.restore();assert.equal(window.isVisible(),false);
   checkpoint("return-to-main");
+  const returned = ownerReturned(window);
   await closeFromRenderer(mini, () => action('bridge.openMain()'));
+  await returned;
   await waitForNativeState(() => window.isVisible() && !window.isMinimized(), "return to Tagcast");
   assert.equal(miniPlayer.window,null,'Returning to Tagcast closes Mini Player');
   assert.equal(await owner.executeJavaScript('audio.paused'),false);
@@ -114,8 +132,9 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   checkpoint("close");
   const pausedBeforeClose=await owner.executeJavaScript("audio.paused");
   const preserved=await owner.executeJavaScript('miniTestAudio===audio&&miniTestQueue===player.queue');assert.equal(preserved,true);
+  const restored = ownerReturned(window);
   const closed = once(mini, "closed");
-  mini.close(); await closed;
+  mini.close(); await closed; await restored;
   await waitForNativeState(() => window.isVisible(), "close restores Tagcast");
   assert.equal(await owner.executeJavaScript('audio.paused'),pausedBeforeClose);
   assert.equal(await owner.executeJavaScript('miniOwner.timer'),null);
@@ -131,4 +150,4 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   window.setBounds(originalBounds);
   return {sameAudio:true,sameQueue:true,passiveWindow:true,seek:true,transport:true,hiddenOwner:true,minimizedMini:true,singleVisibleWindow:true,returnClosesMini:true,closeRestoresMain:true,closePreservesPlayback:true,reopen:true,sandbox:true,apiBlocked:true,errors};
 }
-module.exports={checkMini, closeFromRenderer, waitForNativeState};
+module.exports={checkMini, closeFromRenderer, waitForNativeState, ownerReturned};

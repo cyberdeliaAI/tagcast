@@ -2,7 +2,26 @@
 const assert = require("node:assert/strict");
 const {EventEmitter} = require("node:events");
 const test = require("node:test");
-const {closeFromRenderer, waitForNativeState} = require("../mini-smoke.cjs");
+const {closeFromRenderer, waitForNativeState, ownerReturned} = require("../mini-smoke.cjs");
+
+test("restoration waits for native events even when window properties already changed", async () => {
+  const owner = new EventEmitter();
+  owner.isVisible = owner.isFocused = () => true;
+  let completed = false, clock = 0;
+  const returned = ownerReturned(owner, () => clock).then(() => { completed = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completed, false);
+  owner.emit("focus"); clock = 200;
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(completed, false);
+  owner.emit("show"); clock = 260;
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(completed, false, "A later native event restarts the settling interval");
+  clock = 500; await returned;
+  assert.equal(completed, true);
+  assert.equal(owner.listenerCount("show"), 0);
+  assert.equal(owner.listenerCount("focus"), 0);
+});
 
 test("return to main completes when closing destroys the renderer's pending evaluation", async () => {
   const view = new EventEmitter();
