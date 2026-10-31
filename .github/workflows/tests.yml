@@ -13,61 +13,91 @@ jobs:
     uses: ./.github/workflows/ci-scope.yml
 
   tests:
-    name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}
     needs: scope
-    if: needs.scope.outputs.full == 'true'
-    runs-on: ${{ matrix.os }}
+    name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ needs.scope.outputs.full == 'true' && matrix.os || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.13"]
     steps:
+      - name: Select verification for this target
+        shell: python
+        env:
+          CI_FULL: ${{ needs.scope.outputs.full }}
+        run: |
+          import os
+          full = os.environ["CI_FULL"]
+          if full not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")
+          print("Full verification required." if full == "true" else
+                "Documentation checks passed; application tests/builds are not needed.")
       - uses: actions/checkout@v4
+        if: needs.scope.outputs.full == 'true'
       - uses: astral-sh/setup-uv@v6
+        if: needs.scope.outputs.full == 'true'
         with:
           python-version: ${{ matrix.python }}
       - name: Versions agree
+        if: needs.scope.outputs.full == 'true'
         run: uv run --frozen python tools/release_info.py
       - name: Tests
+        if: needs.scope.outputs.full == 'true'
         run: uv run --frozen pytest -q
       - name: Lint
+        if: needs.scope.outputs.full == 'true'
         run: uv run --frozen ruff check src tests tools
       - name: Page scripts parse
+        if: needs.scope.outputs.full == 'true'
         shell: bash
         run: for f in src/tagcast/static/*.js; do node --check "$f"; done
       - name: Frontend regressions
+        if: needs.scope.outputs.full == 'true'
         run: node --test tests/*.test.cjs
       - name: Electron shell regressions
-        if: hashFiles('electron/package.json') != ''
+        if: needs.scope.outputs.full == 'true' && (hashFiles('electron/package.json') != '')
         shell: bash
         env:
           TAGCAST_PYTHON: ${{ github.workspace }}/.venv/${{ runner.os == 'Windows' && 'Scripts/python.exe' || 'bin/python' }}
         run: node --test electron/tests/*.test.cjs
 
   start-scripts:
-    name: Start scripts · ${{ matrix.os }}
     needs: scope
-    if: needs.scope.outputs.full == 'true'
-    runs-on: ${{ matrix.os }}
+    name: Start scripts · ${{ matrix.os }}
+    runs-on: ${{ needs.scope.outputs.full == 'true' && matrix.os || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
+      - name: Select verification for this target
+        shell: python
+        env:
+          CI_FULL: ${{ needs.scope.outputs.full }}
+        run: |
+          import os
+          full = os.environ["CI_FULL"]
+          if full not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")
+          print("Full verification required." if full == "true" else
+                "Documentation checks passed; application tests/builds are not needed.")
       - uses: actions/checkout@v4
+        if: needs.scope.outputs.full == 'true'
       - uses: actions/setup-python@v5
+        if: needs.scope.outputs.full == 'true'
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
+        if: needs.scope.outputs.full == 'true'
       # --help makes Tagcast print its usage and stop, so the whole start-up path runs
       # without leaving a server behind.
       - name: With uv
-        if: runner.os != 'Windows'
+        if: needs.scope.outputs.full == 'true' && (runner.os != 'Windows')
         run: |
           ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
       - name: Without uv, installing into .venv
-        if: runner.os != 'Windows'
+        if: needs.scope.outputs.full == 'true' && (runner.os != 'Windows')
         env:
           TAGCAST_NO_UV: "1"
         run: |
@@ -75,7 +105,7 @@ jobs:
           ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
           test -x .venv/bin/tagcast
       - name: Recover unavailable interpreter
-        if: runner.os != 'Windows'
+        if: needs.scope.outputs.full == 'true' && (runner.os != 'Windows')
         env:
           TAGCAST_NO_UV: "1"
         run: |
@@ -83,14 +113,14 @@ jobs:
           ln -s "$PWD/missing-python" .venv/bin/python
           ./start-tagcast.sh --help | tee out.txt && grep -q "usage: tagcast" out.txt
       - name: With uv (Windows)
-        if: runner.os == 'Windows'
+        if: needs.scope.outputs.full == 'true' && (runner.os == 'Windows')
         shell: pwsh
         run: |
           $out = "" | cmd /c start-tagcast.bat --help 2>&1 | Out-String
           Write-Output $out
           if ($out -notmatch "usage: tagcast") { exit 1 }
       - name: Without uv, installing into .venv (Windows)
-        if: runner.os == 'Windows'
+        if: needs.scope.outputs.full == 'true' && (runner.os == 'Windows')
         shell: pwsh
         env:
           TAGCAST_NO_UV: "1"
@@ -101,7 +131,7 @@ jobs:
           if ($out -notmatch "usage: tagcast") { exit 1 }
           if (-not (Test-Path .venv\Scripts\tagcast.exe)) { exit 1 }
       - name: Recover unavailable interpreter (Windows)
-        if: runner.os == 'Windows'
+        if: needs.scope.outputs.full == 'true' && (runner.os == 'Windows')
         shell: pwsh
         env:
           TAGCAST_NO_UV: "1"
@@ -111,36 +141,12 @@ jobs:
           Write-Output $out
           if ($out -notmatch "usage: tagcast") { exit 1 }
 
-  required:
-    name: Tests required
-    needs: [scope, tests, start-scripts, gapless-measured-media]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require the selected verification to pass
-        shell: python
-        env:
-          SCOPE: ${{ needs.scope.result }}
-          FULL: ${{ needs.scope.outputs.full }}
-          TESTS: ${{ needs.tests.result }}
-          START: ${{ needs.start-scripts.result }}
-          MEDIA: ${{ needs.gapless-measured-media.result }}
-        run: |
-          import os
-          expected = {"true": "success", "false": "skipped"}.get(os.environ["FULL"])
-          results = [os.environ[key] for key in ("TESTS", "START", "MEDIA")]
-          if os.environ["SCOPE"] != "success" or expected is None or any(result != expected for result in results):
-              raise SystemExit("Required verification failed, was cancelled or did not run.")
-          print("All application and media tests passed." if expected == "success" else
-                "Documentation checks passed; application tests were not needed.")
-
   release:
     name: Publish the tested Tagcast version
     if: >-
       github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Publish Tagcast ') &&
       needs.scope.outputs.full == 'true'
-    needs: [scope, required]
+    needs: [scope, tests, start-scripts, gapless-measured-media]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -158,17 +164,30 @@ jobs:
         run: python tools/release_info.py --publish
 
   gapless-measured-media:
-    name: Gapless measured PCM · Linux Electron
     needs: scope
-    if: needs.scope.outputs.full == 'true'
+    name: Gapless measured PCM · Linux Electron
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: Select verification for this target
+        shell: python
+        env:
+          CI_FULL: ${{ needs.scope.outputs.full }}
+        run: |
+          import os
+          full = os.environ["CI_FULL"]
+          if full not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")
+          print("Full verification required." if full == "true" else
+                "Documentation checks passed; application tests/builds are not needed.")
       - uses: actions/checkout@v4
+        if: needs.scope.outputs.full == 'true'
       - uses: actions/setup-node@v4
+        if: needs.scope.outputs.full == 'true'
         with:
           node-version: "22"
       - name: Install test-only media tools and virtual output
+        if: needs.scope.outputs.full == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg xvfb pulseaudio
@@ -176,31 +195,39 @@ jobs:
           pactl load-module module-null-sink sink_name=gapless_test
           pactl set-default-sink gapless_test
       - name: Install pinned Electron test runtime
+        if: needs.scope.outputs.full == 'true'
         run: |
           npm ci --prefix electron
           node electron/node_modules/electron/install.js
       - name: Configure the Chromium sandbox for the disposable Linux runner
+        if: needs.scope.outputs.full == 'true'
         # Ubuntu's user-namespace restrictions require the bundled SUID helper.
         # Keep renderer sandboxing enabled; do not use --no-sandbox.
         run: |
           sudo chown root:root electron/node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 electron/node_modules/electron/dist/chrome-sandbox
       - name: Independently encode and round-trip sample-counter fixtures
+        if: needs.scope.outputs.full == 'true'
         run: node tools/gapless_lab/fixtures.cjs build/gapless-fixtures --stress
       - name: Measure the unmodified engine and single-file controls
+        if: needs.scope.outputs.full == 'true'
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/electron.cjs --fixtures build/gapless-fixtures --out build/gapless-results --suite smoke --stress
       - name: Verify ordinary fallback and transport in the full application
+        if: needs.scope.outputs.full == 'true'
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/application.cjs --fixtures build/gapless-fixtures --out build/gapless-application --stress
       # Mixed-block rejection is checked end-to-end in the full application.
       # Required PCM/lifecycle diagnostics fail CI on a regression.
       - name: Record mixed-block, starvation, startup and seek probes
+        if: needs.scope.outputs.full == 'true'
         run: xvfb-run -a electron/node_modules/.bin/electron tools/gapless_lab/electron.cjs --fixtures build/gapless-fixtures --out build/gapless-diagnostics --suite diagnostics --stress
       - name: Require complete measurement artifacts
+        if: needs.scope.outputs.full == 'true'
         run: node tools/gapless_lab/verify.cjs build/gapless-results build/gapless-diagnostics build/gapless-application
       - name: Prove failing media subprocesses return nonzero
+        if: needs.scope.outputs.full == 'true'
         run: xvfb-run -a node tools/gapless_lab/negative.cjs --fixtures build/gapless-fixtures --out build/gapless-negative
       - name: Preserve measurement evidence
-        if: always()
+        if: always() && needs.scope.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gapless-media-evidence

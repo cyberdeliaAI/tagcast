@@ -2,9 +2,9 @@
 
 import contextlib
 import io
-import itertools
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -103,27 +103,32 @@ class CIScopeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "symbolic link"):
                 check_documentation(["link.md"], root)
 
-    def test_required_gates_reject_failures_cancellation_missing_or_skipped_code_jobs(self):
-        # Execute the actual YAML shell blocks, including dependency failure paths.
-        for workflow, keys in (("tests.yml", ["TESTS", "START", "MEDIA"]),
-                               ("builds.yml", ["BUILD"])):
+    def test_existing_required_checks_report_scope_and_guard_all_expensive_steps(self):
+        jobs = (("tests.yml", "tests"), ("tests.yml", "start-scripts"),
+                ("tests.yml", "gapless-measured-media"), ("builds.yml", "build"))
+        for workflow, job in jobs:
             source = (ROOT / ".github/workflows" / workflow).read_text()
-            gate = source.split("      - name: Require the selected verification to pass\n", 1)[1]
-            script = textwrap.dedent(gate.split("        run: |\n", 1)[1].split("\n  release:", 1)[0])
-            for full, scope in itertools.product(("true", "false", ""), ("success", "failure", "cancelled", "skipped")):
-                for values in itertools.product(("success", "failure", "cancelled", "skipped", ""), repeat=len(keys)):
-                    env = dict(os.environ, FULL=full, SCOPE=scope, **dict(zip(keys, values)))
-                    expected = (scope == "success" and
-                                ((full == "true" and all(value == "success" for value in values)) or
-                                 (full == "false" and all(value == "skipped" for value in values))))
-                    passed = True
-                    with patch.dict(os.environ, env, clear=True), contextlib.redirect_stdout(io.StringIO()):
-                        try:
+            block = re.search(r"^  " + job + r":\n(.*?)(?=^  [a-z][a-z-]*:|\Z)",
+                              source, re.M | re.S)[1]
+            header, steps = block.split("    steps:\n", 1)
+            self.assertIn("needs: scope", header)
+            self.assertNotRegex(header, r"(?m)^    if:")
+            if job != "gapless-measured-media":
+                self.assertIn("&& matrix.os || 'ubuntu-latest'", header)
+            entries = re.split(r"(?m)^      - ", steps)[1:]
+            self.assertTrue(entries[0].startswith("name: Select verification for this target\n"))
+            self.assertIn("CI_FULL: ${{ needs.scope.outputs.full }}", entries[0])
+            script = textwrap.dedent(entries[0].split("        run: |\n", 1)[1])
+            for value in ("true", "false", "", "unknown", "failure", "cancelled"):
+                with patch.dict(os.environ, {"CI_FULL": value}), contextlib.redirect_stdout(io.StringIO()):
+                    if value in {"true", "false"}:
+                        exec(compile(script, workflow, "exec"), {})
+                    else:
+                        with self.assertRaises(SystemExit):
                             exec(compile(script, workflow, "exec"), {})
-                        except SystemExit:
-                            passed = False
-                    if passed != expected:
-                        self.fail(f"Incorrect gate result: {workflow}, {full}, {scope}, {values}")
+            for entry in entries[1:]:
+                # No checkout, installation, tests, native build or artifact upload on docs.
+                self.assertRegex(entry, r"(?m)^        if: (always\(\) && )?needs\.scope\.outputs\.full == 'true'")
 
 
 if __name__ == "__main__":
