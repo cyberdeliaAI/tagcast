@@ -21,14 +21,15 @@ create separate local copies. Optional music uploads read selected local audio a
 send copies to your own iBroadcast library only after review; see
 [setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [Tagcast 1.1.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.1.0):**
-Save selected albums as local audio copies, compare and reconcile album/track years,
-and choose whether new album drafts apply the release year to tracks by default.
-Optional TheAudioDB album information now handles recognised edition labels.
+**New in [Tagcast 1.2.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.2.0):**
+Create and share custom colour themes, upload selected local music after review,
+and browse large libraries with less repeated processing. Desktop sign-in opens
+iBroadcast directly, window sizes are remembered, and macOS downloads are now
+Developer ID signed and notarized by Apple.
 
 Experimental Gapless playback remains optional and off by default. Unsupported
 transitions safely use ordinary playback. See the
-[release notes](.github/release-notes/1.1.0.md) and
+[release notes](.github/release-notes/1.2.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
@@ -60,6 +61,10 @@ iBroadcast Premium access.
   complete albums for iBroadcast's trash. Nothing is permanently deleted.
 - **Download albums:** reviewed local audio copies using the existing account connection,
   with quality choices, resumable streaming transfers and existing-file protection.
+- **Upload music:** optional, reviewed uploads of selected local files or folders,
+  with identical-file checks and explicit Start, Pause and Stop controls.
+- **Personalise:** create custom Light/Dark colour themes, preview changes and share
+  themes through JSON import/export.
 - **Export:** full loaded-library metadata as JSON or linked CSVs in a ZIP.
 - **Keep track:** read-back checks distinguish confirmed saves from uncertain
   results; Change history records metadata outcomes and available artwork Undo.
@@ -73,14 +78,14 @@ tracks, playlists and advanced command-line download options, use ibfetch.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 1.1.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.1.0):
+[Tagcast 1.2.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.2.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.1.0/tagcast-1.1.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.1.0/tagcast-1.1.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.1.0/tagcast-1.1.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.1.0/tagcast-1.1.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.2.0/tagcast-1.2.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.2.0/tagcast-1.2.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.2.0/tagcast-1.2.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.2.0/tagcast-1.2.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
@@ -88,9 +93,9 @@ Python or Node.js installation is required. Each archive has a SHA-256 companion
 
 **[Code signing policy](#code-signing-policy)** · **[Privacy policy](PRIVACY.md)**
 
-The apps are not Developer ID notarized or Authenticode signed. If your system
-blocks opening, use **System Settings → Privacy & Security → Open Anyway** on
-macOS, or **More info → Run anyway** on Windows. See the
+The macOS downloads are **Developer ID signed and notarized by Apple**. Windows
+downloads are not yet Authenticode signed; Windows may show **More info → Run anyway**
+after you review the download. See the
 [installation guide](https://github.com/cyberdeliaAI/tagcast/wiki/Getting-started)
 for details and the bundled browser CLI.
 
@@ -199,8 +204,8 @@ Tagcast's update check only notifies; it never installs updates automatically.
 
 Tagcast has applied for Windows code signing through SignPath. Signing is
 **not yet active**; approval and integration are pending.
-The existing Tagcast 1.1.0 Windows downloads remain unsigned; publishing this
-policy does not change those files or their checksums.
+Tagcast 1.2.0 Windows downloads remain unsigned. The macOS downloads are Developer
+ID signed and notarized by Apple, independently of SignPath.
 
 The planned signing service, subject to approval and integration, is:
 Free code signing provided by [SignPath.io](https://signpath.io/), certificate by

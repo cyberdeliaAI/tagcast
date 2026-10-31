@@ -24,8 +24,11 @@ both the draft and the previously saved custom theme.
 
 Themes are local to the browser origin or Electron profile, like the existing
 palette and appearance preferences. They are not synchronized with iBroadcast.
-A different source-server port has a different browser origin. This version stores
-at most 20 themes and does not include theme import/export.
+A different source-server port has a different browser origin. Tagcast 1.2.0 stores
+at most 20 themes. **Export JSON** saves one theme, including both variants.
+**Import JSON…** validates a Tagcast theme file and opens it as a new unsaved
+preview; existing themes are preserved. Review the colours, then save explicitly.
+Theme files contain no credentials, account details or library data.
 
 ## Colour and accessibility boundaries
 
