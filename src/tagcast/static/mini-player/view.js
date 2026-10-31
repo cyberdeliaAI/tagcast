@@ -2,6 +2,7 @@
 // This page deliberately has no audio element, library client or playback engine.
 const bridge = window.tagcastMini;
 const nodes = Object.fromEntries(["cover", "title", "artist", "album", "previous", "play", "next", "elapsed", "duration", "position", "status", "pin", "open"].map(id => [id, document.getElementById(id)]));
+const miniColourRoles = ["brand-background", "brand-ink", "brand-paper", "sidebar", "accent", "shell-ink", "shell-muted", "shell-active", "shell-line", "ink", "muted", "paper", "line", "link", "surface", "soft", "tint", "focus", "primary", "primary-hover", "chart", "primary-ink"];
 let playback = null, draft = null, busy = false, cover = "", failure = "";
 function clock(value) {
   const n = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
@@ -59,6 +60,11 @@ if (bridge) {
     nodes.pin.title = !value.canPin ? "Pinning is unavailable on this desktop" : value.pinned ? "Unpin Mini Player" : "Keep Mini Player on top";
     nodes.pin.setAttribute("aria-label", nodes.pin.title);
     if (playback) { document.documentElement.dataset.theme = playback.theme; document.documentElement.dataset.palette = playback.palette; }
+    for (const role of miniColourRoles) {
+      const colour = playback?.colours?.[role];
+      if (typeof colour === "string" && /^#[0-9a-f]{6}$/i.test(colour)) document.documentElement.style.setProperty(`--palette-${role}`, colour);
+      else document.documentElement.style.removeProperty(`--palette-${role}`);
+    }
     render();
   });
   bridge.ready();

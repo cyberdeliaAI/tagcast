@@ -9,7 +9,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
-function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false} = {}) {
+function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
   const timers = new Map(), windowEvents = new Map();
@@ -77,6 +77,8 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   document.querySelector("#sort").value = "artist";
   document.querySelector("#now-playing-panel").hidden = true;
   const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
+  if (signInBridge) window.tagcastSignIn = signInBridge;
+  if (openWindow) window.open = openWindow;
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
     Event, AbortController, performance: {now: () => playbackClock},
@@ -168,6 +170,125 @@ test("new installations sign in with a code without client ID setup", async () =
   await p.click({'#device-start': {id: 'device-start'}});
   assert.match(content.innerHTML, /TEST-CODE/);
   assert.equal(p.requests.filter(r => r.url.startsWith('/api/config')).length, 0);
+});
+
+function signInDevice(request_id = "a".repeat(24)) {
+  return {request_id, state:"pending", user_code:"TEST-CODE", expires_at:Date.now()/1000+600,
+    verification_uri:"https://oauth.ibroadcast.com/device", verification_uri_complete:"https://oauth.ibroadcast.com/device?user_code=TEST-CODE"};
+}
+function signInPopup() {
+  return {closed:false,opener:{},document:{title:"",body:{textContent:""}},location:{replace(value){this.url=value;}},
+    close(){this.closed=true;},focus(){this.focused=true;}};
+}
+
+test("desktop sign-in opens the bound provider window and completes through the existing poller",async()=>{
+  const opened=[],closed=[];let onClosed;
+  const p=page({signInBridge:{open:async id=>{opened.push(id);return true;},close:id=>closed.push(id),onClosed:cb=>onClosed=cb}});await settle();p.run('openConnect()');
+  p.setFetch(url=>{assert.equal(url,'/api/auth/device');return {ok:true,json:async()=>({device:signInDevice()})};});
+  p.run('openConnect(); loadLive=()=>{globalThis.signInLoaded=(globalThis.signInLoaded||0)+1;}');
+  await p.run('beginSignIn({disabled:false})');
+  assert.deepEqual(opened,['a'.repeat(24)]);assert.equal(typeof onClosed,'function');
+  assert.match(p.nodes.get('#connect-content').innerHTML,/Approve Tagcast in the iBroadcast sign-in window/);
+  assert.match(p.nodes.get('#connect-content').innerHTML,/Use a code instead/);
+  p.setStatusFetch(()=>({ok:true,json:async()=>({connected:true,device:{state:'done'}})}));
+  p.flushTimers(2000);await settle();
+  assert.deepEqual(closed,['a'.repeat(24)]);assert.equal(p.run('signInLoaded'),1);
+  assert.equal(p.nodes.get('#connect').open,false);
+});
+
+test("browser popup is reserved in the click before the device request and cannot retain an opener",async()=>{
+  const order=[],popup=signInPopup();let release;
+  const p=page({openWindow:(url,target)=>{order.push('popup');assert.equal(url,'about:blank');assert.equal(target,'_blank');return popup;}});await settle();p.run('openConnect()');
+  p.setFetch(url=>{order.push('request');assert.equal(url,'/api/auth/device');return new Promise(resolve=>release=resolve);});
+  const pending=p.run('beginSignIn({disabled:false})');
+  assert.deepEqual(order,['popup','request']);assert.equal(popup.opener,null);
+  assert.match(popup.document.body.textContent,/Opening iBroadcast/);
+  release({ok:true,json:async()=>({device:signInDevice()})});await pending;
+  assert.equal(popup.location.url,signInDevice().verification_uri_complete);
+  await p.run('reopenSignIn()');assert.equal(popup.focused,true);assert.equal(order.filter(x=>x==='popup').length,1);
+});
+
+test("blocked browser and desktop popup failures keep the code and browser fallback available",async()=>{
+  for(const signInBridge of [null,{open:async()=>false,close(){},onClosed(){}}]) {
+    const p=page({openWindow:()=>null,signInBridge});await settle();p.run('openConnect()');
+    p.setFetch(()=>({ok:true,json:async()=>({device:signInDevice()})}));await p.run('beginSignIn({disabled:false})');
+    const html=p.nodes.get('#connect-content').innerHTML;
+    assert.match(html,/could not be opened/);assert.match(html,/<details open>/);assert.match(html,/TEST-CODE/);
+    assert.match(html,/https:\/\/oauth.ibroadcast.com\/device\?user_code=TEST-CODE/);
+    assert.equal(p.run('state.connection.device.state'),'pending');
+  }
+});
+
+test("browser window Close cancels its bound attempt and stops waiting",async()=>{
+  const popup=signInPopup(),p=page({openWindow:()=>popup});await settle();p.run('openConnect()');
+  p.setFetch((url,opts)=>{if(url==='/api/auth/device')return {ok:true,json:async()=>({device:signInDevice()})};
+    assert.equal(url,'/api/auth/cancel');assert.deepEqual(JSON.parse(opts.body),{request_id:'a'.repeat(24)});return {ok:true,json:async()=>({ok:true})};});
+  await p.run('beginSignIn({disabled:false})');popup.closed=true;
+  p.setStatusFetch(()=>({ok:true,json:async()=>({connected:false,using_default_client:true,device:null})}));
+  p.flushTimers(2000);await settle();p.flushTimers(0);await settle();
+  assert.match(p.nodes.get('#connect-content').innerHTML,/Sign in with iBroadcast/);
+  assert.equal(p.run('devicePoll'),null);assert.equal(p.run('signInFlow.requestId'),'');
+});
+
+test("native close and failure events ignore older attempts and retain a usable retry",async()=>{
+  let onClosed;
+  const p=page({signInBridge:{open:async()=>true,close(){},onClosed:cb=>onClosed=cb}});await settle();p.run('openConnect()');
+  p.setFetch(()=>({ok:true,json:async()=>({device:signInDevice()})}));await p.run('beginSignIn({disabled:false})');
+  onClosed({requestId:'b'.repeat(24),reason:'closed'});assert.equal(p.run('signInFlow.requestId'),'a'.repeat(24));
+  onClosed({requestId:'a'.repeat(24),reason:'load-failed'});
+  assert.match(p.nodes.get('#connect-content').innerHTML,/could not be loaded/);
+  assert.match(p.nodes.get('#connect-content').innerHTML,/<details open>/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/auth/cancel').length,0);
+  p.setStatusFetch(()=>({ok:true,json:async()=>({connected:false,device:null})}));
+  onClosed({requestId:'a'.repeat(24),reason:'closed'});p.flushTimers(0);await settle();
+  assert.equal(p.run('signInFlow.requestId'),'');
+});
+
+test("a late status response cannot restore a cancelled sign-in or start another polling loop",async()=>{
+  let release;let reads=0;
+  const p=page({signInBridge:{open:async()=>true,close(){},onClosed(){}}});await settle();p.run('openConnect()');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/auth/device'?{device:signInDevice()}:{ok:true}}));
+  await p.run('beginSignIn({disabled:false})');p.run('loadLive=()=>{throw Error("Cancelled status must not load a library");}');
+  p.setStatusFetch(()=>++reads===1?new Promise(resolve=>release=resolve):{ok:true,json:async()=>({connected:false,device:null})});
+  p.flushTimers(2000);await settle();await p.run('cancelSignIn()');p.flushTimers(0);await settle();
+  release({ok:true,json:async()=>({connected:true,device:{state:'done'}})});await settle();
+  assert.equal(p.run('state.connection.connected'),false);assert.equal(p.run('devicePoll'),null);
+});
+
+test("cancel while requesting a code cleans up only the late attempt, not a newer one",async()=>{
+  let release;let starts=0;const cancelled=[],opened=[];
+  const p=page({signInBridge:{open:async id=>{opened.push(id);return true;},close(){},onClosed(){}}});await settle();p.run('openConnect()');
+  p.setFetch((url,opts)=>{
+    if(url==='/api/auth/cancel'){cancelled.push(JSON.parse(opts.body).request_id);return {ok:true,json:async()=>({ok:true})};}
+    assert.equal(url,'/api/auth/device');
+    if(++starts===1)return new Promise(resolve=>release=resolve);
+    return {ok:true,json:async()=>({device:signInDevice('b'.repeat(24))})};
+  });
+  const first=p.run('beginSignIn({disabled:false})');await p.run('cancelSignIn()');
+  await p.run('beginSignIn({disabled:false})');release({ok:true,json:async()=>({device:signInDevice()})});await first;await settle();
+  assert.deepEqual(opened,['b'.repeat(24)]);assert.deepEqual(cancelled,['a'.repeat(24)]);
+  assert.equal(p.run('signInFlow.requestId'),'b'.repeat(24));
+  assert.equal(p.run('state.connection.device.request_id'),'b'.repeat(24));
+});
+
+test("closing the dialog during code creation prevents a late sign-in window",async()=>{
+  let release;const popup=signInPopup(),cancelled=[];
+  const p=page({openWindow:()=>popup});await settle();p.run('openConnect()');
+  p.setFetch((url,opts)=>{if(url==='/api/auth/device')return new Promise(resolve=>release=resolve);
+    assert.equal(url,'/api/auth/cancel');cancelled.push(JSON.parse(opts.body).request_id);return {ok:true,json:async()=>({ok:true})};});
+  const pending=p.run('beginSignIn({disabled:false})');
+  p.nodes.get('#connect').close();await p.nodes.get('#connect').emit('close');
+  release({ok:true,json:async()=>({device:signInDevice()})});await pending;await settle();
+  assert.equal(popup.closed,true);assert.equal(popup.location.url,undefined);
+  assert.deepEqual(cancelled,['a'.repeat(24)]);assert.equal(p.run('devicePoll'),null);
+});
+
+test("sign-in fallback never links to a non-iBroadcast origin or script URL",async()=>{
+  const p=page();await settle();
+  for(const uri of ['javascript:alert(1)','https://oauth.ibroadcast.com.evil.test/device','https://name:password@oauth.ibroadcast.com/device']) {
+    const value=JSON.stringify({...signInDevice(),verification_uri:uri,verification_uri_complete:uri});
+    assert.equal(p.run('signInVerificationUrl('+value+')'),'https://oauth.ibroadcast.com/device');
+  }
 });
 
 test("existing registrations stay connected and switching is explicit after disconnect", async () => {
@@ -4888,12 +5009,14 @@ test("colour palettes persist independently of appearance without requests or pl
   assert.equal(p.requests.length, requests);
   assert.equal(p.history.length, history);
   const reloaded = page({storage});
-  assert.equal(reloaded.nodes.get("#palette-forest").checked, true);
+  assert.equal(reloaded.nodes.get("#palette-warm").checked, true);
   assert.equal(reloaded.run('document.documentElement.dataset.theme'), undefined);
 });
 
 test("appearance restores before scripts load and invalid or unavailable storage stays usable", async () => {
-  const source = readFileSync(path.join(staticDir, "index.html"), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
+  const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
+  assert.ok(html.indexOf('<script src="themes.js"></script>') < html.indexOf('href="style.css"'), "Restore custom colours before styles paint");
+  const source = readFileSync(path.join(staticDir, "themes.js"), "utf8");
   for (const palette of ["ocean", "warm", "ibroadcast"]) {
     const document = {documentElement: {dataset: {}}};
     vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
@@ -9540,11 +9663,11 @@ test('a backward seek cancels pending forward preparation without shortening the
  assert.equal(p.nodes.get('#audio').currentTime,10);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
 });
 
-test('Settings is a routed page with six categories and preserves existing preference keys', async()=>{
+test('Settings is a routed page with seven categories and preserves existing preference keys', async()=>{
  const p=page({hash:'#/settings/playback',storage:{'tagcast-player-view':'window','tagcast-player-quality':'hidden','tagcast-gapless-test':'on'}});await settle();
  assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsView.category'),'playback');
  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');assert.match(html,/<section id="settings"/);assert.doesNotMatch(html,/<dialog id="settings"/);
- assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),6);
+ assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),7);
  assert.equal(p.run('visualPlayerMode'),'window');assert.equal(p.run('playerDisplay.quality'),false);assert.equal(p.run('gaplessTrial.enabled'),true);
  assert.match(p.nodes.get('#settings-content').innerHTML,/Supported audio and limitations/);
  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
@@ -10132,4 +10255,313 @@ test('Downloads has a single bounded status poll and stop sends no metadata or q
   assert.equal(p.run('audioDownloadActive()'),false);
   assert.ok(p.requests.filter(r=>r.url.startsWith('/api/downloads')).every(r=>!r.url.includes('save')));
   assert.equal(p.requests.filter(r=>r.url==='/api/downloads/stop').length,1);
+});
+
+test('custom themes keep the Theme menu safe and do not turn appearance edits into server settings',async()=>{
+ const theme={id:'custom-test1234',name:'<img src=x onerror=alert(1)>',base:'ocean',light:{paper:'#eeeeee'},dark:{paper:'#102030'}};
+ const p=page({storage:{'tagcast-custom-themes':JSON.stringify({version:1,active:theme.id,themes:[theme]})}});await settle();
+ assert.equal(p.run('document.documentElement.dataset.customTheme'),theme.id);
+ assert.match(p.nodes.get('#theme-custom-list').innerHTML,/&lt;img/);assert.doesNotMatch(p.nodes.get('#theme-custom-list').innerHTML,/<img/);
+ const posts=p.requests.filter(r=>r.options?.method==='POST').length;
+ p.run('showSettings("appearance");themeEditorColour("paper","#203040",false);');
+ assert.equal(p.run('themeEditorDirty()'),true);assert.equal(p.run('settingsView.dirty'),false);
+ assert.equal(p.run('TagcastThemes.active().light.paper'),'#eeeeee');
+ p.run('showSettings("interface");showSettings("appearance")');assert.equal(p.run('themeEditorView.draft.light.paper'),'#203040');
+ assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,posts);
+});
+
+test('theme import previews a new theme and export includes only valid draft colours',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance");');
+ const original=p.run('JSON.stringify(TagcastThemes.snapshot())'),posts=p.requests.length;
+ const text=JSON.stringify({format:'tagcast-theme',version:1,theme:{name:'Shared <theme>',base:'warm',light:{paper:'#fffefa'},dark:{paper:'#202020'}}});
+ const file={size:Buffer.byteLength(text),text:async()=>text};
+ // Give the real importer a browser File-shaped local object through the VM context.
+ const pending=p.run(`importCustomTheme({size:${file.size},text:async()=>${JSON.stringify(text)}})`);await pending;
+ assert.equal(p.run('themeEditorView.draft.name'),'Shared <theme>');
+ assert.equal(p.run('JSON.stringify(TagcastThemes.snapshot())'),original);
+ assert.equal(p.run('themeEditorDirty()'),true);assert.equal(p.run('TagcastThemes.active()'),null);
+ p.run('exportCustomTheme()');assert.equal(p.downloads.length,1);
+ assert.match(p.downloads[0].name,/^tagcast-theme-Shared-theme\.json$/);
+ const data=JSON.parse(await p.downloads[0].blob.text());assert.equal(data.theme.dark.paper,'#202020');
+ assert.deepEqual(Object.keys(data.theme),['name','base','light','dark']);
+ assert.equal(p.run('themeEditorDirty()'),true);
+ p.run('saveCustomTheme(false)');assert.equal(p.run('TagcastThemes.snapshot().themes.length'),1);assert.equal(p.run('TagcastThemes.active()'),null);
+ assert.equal(p.requests.length,posts,'No server or playback request for sharing themes');
+ p.run('themeEditorColour("ink","invalid",false);exportCustomTheme()');assert.equal(p.downloads.length,1);
+});
+
+test('invalid or late theme files retain the draft, saved themes and current page',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance");themeEditorColour("paper","#123456",false)');
+ const draft=p.run('JSON.stringify(themeEditorView.draft)');
+ for(const file of ['{size:17000,text:async()=>"{}"}','{size:2,text:async()=>"{}"}','{size:2,text:async()=>{throw Error("read failed")}}']) {
+   await p.run('importCustomTheme('+file+')');
+   assert.equal(p.run('JSON.stringify(themeEditorView.draft)'),draft);assert.match(p.run('themeEditorView.error'),/could not be imported/);
+ }
+ const valid=JSON.stringify({format:'tagcast-theme',version:1,theme:{name:'Late',base:'forest',light:{},dark:{}}});
+ p.run('confirm=()=>false');
+ await p.run(`importCustomTheme({size:100,text:async()=>${JSON.stringify(valid)}})`);
+ assert.equal(p.run('JSON.stringify(themeEditorView.draft)'),draft,'Declining discard keeps the unsaved draft');
+ p.run('globalThis.resolveThemeFile=null;globalThis.pendingThemeFile=importCustomTheme({size:100,text:()=>new Promise(resolve=>resolveThemeFile=resolve)})');
+ p.run('themeEditorColour("paper","#654321",false);showSettings("playback")');
+ await p.run(`resolveThemeFile(${JSON.stringify(valid)});pendingThemeFile`);
+ assert.equal(p.run('settingsView.category'),'playback');assert.equal(p.run('themeEditorView.draft.light.paper'),'#654321');
+ assert.equal(p.run('TagcastThemes.snapshot().themes.length'),0);
+});
+
+test('sidebar playlist count is library-wide, formatted and hidden for unknown or local data',async()=>{
+ const p=page();await settle();const count=p.nodes.get('#playlist-count');
+ assert.equal(count.hidden,true);
+ p.run('state.mode="live";state.connection.connected=true;updatePlaylistCount(1234)');
+ assert.equal(count.textContent,'1,234');assert.equal(count.hidden,false);
+ p.run('state.loading=true;updateChrome()');assert.equal(count.hidden,true);
+ p.run('state.loading=false;updatePlaylistCount(0)');assert.equal(count.textContent,'0');assert.equal(count.hidden,false);
+ for(const invalid of ['12',-1,1.5,null,undefined]) { p.run('updatePlaylistCount('+JSON.stringify(invalid)+')');assert.equal(count.hidden,true); }
+ p.run('updatePlaylistCount(12);state.connection.connected=false;updateChrome()');assert.equal(count.hidden,true);
+ p.run('useLocal(demoLibrary(),"demo");updateChrome()');assert.equal(p.run('state.playlistsCount'),null);assert.equal(count.hidden,true);
+});
+
+test('playlist search and checked writes update the count without additional requests or playback changes',async()=>{
+ const p=page();await settle();p.run('state.mode="live";state.connection.connected=true;state.connection.playback_session="playlist-count-session";updatePlaylistCount(15)');
+ const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
+ p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/jobs/')?{state:'done',results:[],playlists_count:16}:{playlists:[],total:0,playlists_count:15}}));
+ p.run('showCollections("playlists",null,{query:"No matches"})');await settle();
+ assert.equal(p.nodes.get('#playlist-count').textContent,'15');
+ const requests=p.requests.length;
+ await p.run('collectionJob({job:"checked-count"},()=>true)');
+ assert.equal(p.nodes.get('#playlist-count').textContent,'16');assert.equal(p.requests.length,requests+1);
+ assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src})'),before);
+ let release;p.setFetch(()=>new Promise(resolve=>release=resolve));
+ const late=p.run('renderCollections()');p.run('useLocal(demoLibrary(),"demo");updateChrome()');
+ release({ok:true,json:async()=>({playlists:[],total:0,playlists_count:99})});await late;
+ assert.equal(p.nodes.get('#playlist-count').hidden,true);assert.equal(p.run('state.playlistsCount'),null);
+});
+
+function musicUploadsFixture() {
+  return {preparing:false,phase:'Review ready. No music has been uploaded.',error:'',checked:2,total:2,ignored:1,
+    review:'review-once',summary:{files:2,counts:{new:1,uploaded:1},bytes_to_send:200},job:null,page:0,pages:1,
+    items:[{label:'Album/<script>track</script>.flac',size:200,status:'new',note:'',sent:0,verified:false},
+      {label:'Album/old.flac',size:100,status:'uploaded',note:'Already present.',sent:0,verified:false}]};
+}
+function prepareMusicUploadsPage(p) {
+  p.run('state.mode="live";state.connection.playback_session="uploads-session";state.connection.music_uploads_authorized=true;musicUploadsView.enabled=true;musicUploadsView.authorized=true;musicUploadsView.session="uploads-session";');
+}
+
+test('Music uploads are opt-in; opening disabled/demo pages sends no upload requests',async()=>{
+  const p=page();await settle();p.run('showScreen("uploads")');await settle();
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/Enable music uploads/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+  assert.equal(p.nodes.get('#show-uploads').hidden,true);
+  p.run('applyMusicUploadSettings({music_uploads:true,music_uploads_authorized:false})');await settle();
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/demo never uploads/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+  assert.match(p.run('musicUploadsSettingsPanel()'),/name="music_uploads" checked/);
+});
+
+test('Upload navigation preserves playback and only reads the reviewed file list',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.setFetch(url=>({ok:true,json:async()=>musicUploadsFixture()}));
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  p.run('showScreen("uploads")');await settle();
+  assert.equal(p.location.hash,'#/uploads');assert.equal(p.run('currentHelpContext()'),'uploads');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.ok(p.requests.filter(r=>r.url.startsWith('/api/uploads')).every(r=>r.url.startsWith('/api/uploads?')));
+  p.run('showScreen("albums");syncHistory()');p.history.back();await settle();
+  assert.equal(p.run('state.screen'),'uploads');
+});
+
+test('Upload review escapes filenames, keeps inputs and locks the reviewed selection',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};musicUploadsView.focus=true;renderMusicUploads()`);
+  assert.match(p.nodes.get('#music-upload-files').innerHTML,/&lt;script&gt;track&lt;/);
+  assert.doesNotMatch(p.nodes.get('#music-upload-files').innerHTML,/<script>/);
+  assert.equal(p.nodes.get('#music-upload-selection').disabled,true);
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-heading'));
+  const html=p.nodes.get('#uploads-page').innerHTML;p.run('$("#music-upload-paths")');
+  p.nodes.get('#music-upload-paths').value='/chosen/Album';p.run('renderMusicUploads()');
+  assert.equal(p.nodes.get('#uploads-page').innerHTML,html);
+  assert.equal(p.nodes.get('#music-upload-paths').value,'/chosen/Album');
+  assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+});
+
+test('Upload start is explicit, single-click guarded and bound to the reviewed session',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};renderMusicUploads()`);
+  let reply;p.setFetch(()=>new Promise(resolve=>{reply=resolve;}));
+  const one=p.run('musicUploadAction("start",{review:musicUploadsView.data.review})');
+  await p.run('musicUploadAction("start",{review:"review-once"})');
+  const calls=p.requests.filter(r=>r.url==='/api/uploads/start');assert.equal(calls.length,1);
+  assert.deepEqual(JSON.parse(calls[0].options.body),{review:'review-once',session:'uploads-session'});
+  p.run('state.mode="demo";state.connection.playback_session="replaced";syncMusicUploadsPage()');
+  reply({ok:true,json:async()=>musicUploadsFixture()});await one;await settle();
+  assert.equal(p.run('musicUploadsView.data'),null);
+});
+
+test('Active upload polling stops off-page and warnings preserve uncertain outcomes',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  const d=musicUploadsFixture();d.review=null;d.job={state:'running',message:'',current:'track.flac',counts:{uncertain:1},bytes:{total:200,sent:100}};
+  p.setFetch(()=>({ok:true,json:async()=>d}));
+  p.run('state.screen="uploads"');await p.run('loadMusicUploads()');
+  assert.ok(p.run('musicUploadsView.timer')!==null);assert.equal(p.nodes.get('#music-upload-uncertain').hidden,false);
+  p.run('showScreen("albums")');assert.equal(p.run('musicUploadsView.timer'),null);
+  assert.equal(p.requests.filter(r=>r.url.includes('/api/uploads/start')).length,0);
+});
+
+test('Uploads waits for live library loading and never mistakes loading for missing permission',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('state.loading=true;state.screen="uploads";renderMusicUploads()');
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/Waiting for your library/);
+  assert.doesNotMatch(p.nodes.get('#uploads-page').innerHTML,/Approve upload permission<\/h2>/);
+  p.setFetch(()=>({ok:true,json:async()=>musicUploadsFixture()}));
+  p.run('state.loading=false;syncMusicUploadsPage()');await settle();
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/Choose local music/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+});
+
+test('Changing an upload selection returns keyboard focus to its path field',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};renderMusicUploads()`);
+  const cleared=musicUploadsFixture();Object.assign(cleared,{review:null,phase:'',items:[],summary:{files:0,counts:{},bytes_to_send:0}});
+  p.setFetch(()=>({ok:true,json:async()=>cleared}));await p.run('musicUploadAction("clear")');
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-paths'));
+  assert.equal(p.nodes.get('#music-upload-selection').disabled,false);
+});
+
+test('Upload permission action disappears after approval and returns when permission is missing',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  assert.match(p.run('musicUploadsSettingsPanel()'),/id="music-upload-authorize"[^>]* hidden/);
+  assert.match(p.run('musicUploadPermissionNote()'),/is approved/);
+  p.run('state.connection.music_uploads_authorized=false;updateMusicUploadPermission()');
+  assert.equal(p.nodes.get('#music-upload-authorize').hidden,false);
+  assert.match(p.nodes.get('#music-upload-permission-note').textContent,/reconnect once/);
+  p.nodes.get('#music-upload-authorize').focus();
+  p.run('state.connection.music_uploads_authorized=true;syncMusicUploadsPage()');
+  assert.equal(p.nodes.get('#music-upload-authorize').hidden,true);
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-open'));
+  assert.equal(p.requests.filter(r=>r.url.includes('/api/uploads')).length,0);
+});
+
+function finishedMusicUploadsFixture() {
+  const d=musicUploadsFixture();d.review=null;d.summary.counts={sent:1,confirmed:1};
+  d.job={state:'done',message:'',current:'',counts:{sent:1,confirmed:1},bytes:{total:300,sent:300}};
+  d.items[0].status='sent';d.items[0].note='Confirmed by the upload answer, but not listed yet.';
+  Object.assign(d.items[1],{status:'confirmed',verified:true,note:''});
+  return d;
+}
+
+test('Successful upload receipt has one Uploaded label; optional list verification stays distinct',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(finishedMusicUploadsFixture())};renderMusicUploads()`);
+  const list=p.nodes.get('#music-upload-files').innerHTML;
+  assert.equal((list.match(/>Uploaded<\/span>/g)||[]).length,2);
+  assert.doesNotMatch(list,/Accepted by|· Listed|Outcome uncertain/);
+  assert.match(list,/additional uploaded-file list check has not confirmed/);
+  assert.match(list,/found in iBroadcast’s uploaded-file list/);
+  assert.match(p.nodes.get('#music-upload-summary').textContent,/2 uploaded/);
+  assert.equal(p.nodes.get('#music-upload-progress').hidden,true);
+  assert.equal(p.nodes.get('#music-upload-pagination').hidden,true);
+  assert.equal(p.nodes.get('#music-upload-setup').hidden,true);
+});
+
+test('Only a fully successful upload clears old paths, once, and New upload starts empty',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('state.screen="uploads";renderMusicUploads();$("#music-upload-paths").value="/old/Album"');
+  p.run(`musicUploadsView.data=${JSON.stringify(finishedMusicUploadsFixture())};renderMusicUploads()`);
+  assert.equal(p.nodes.get('#music-upload-paths').value,'');
+  assert.equal(p.nodes.get('#music-upload-clear').textContent,'New upload');
+  // Routine redraws must never erase a later draft.
+  p.nodes.get('#music-upload-paths').value='/next/Album';p.run('renderMusicUploads()');
+  assert.equal(p.nodes.get('#music-upload-paths').value,'/next/Album');
+  p.nodes.get('#music-upload-paths').value='';
+  const empty={...musicUploadsFixture(),review:null,phase:'',items:[],summary:{files:0,counts:{},bytes_to_send:0}};
+  p.setFetch(()=>({ok:true,json:async()=>empty}));await p.run('musicUploadAction("clear")');
+  assert.equal(p.nodes.get('#music-upload-setup').hidden,false);
+  assert.equal(p.nodes.get('#music-upload-paths').value,'');
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-paths'));
+  assert.equal(p.nodes.get('#music-upload-path-details').open,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+});
+
+test('Partial, failed, uncertain and skipped-problem results preserve the chosen paths',async()=>{
+  for(const status of ['uncertain','failed','not_sent','unsupported']) {
+    const p=page();await settle();prepareMusicUploadsPage(p);
+    p.run('state.screen="uploads";renderMusicUploads();$("#music-upload-paths").value="/keep/Album"');
+    const d=finishedMusicUploadsFixture();d.job.counts={sent:1,[status]:1};d.items[1].status=status;
+    d.items[1].note='Check <this> before sending again.';
+    p.run(`musicUploadsView.data=${JSON.stringify(d)};renderMusicUploads()`);
+    assert.equal(p.nodes.get('#music-upload-paths').value,'/keep/Album',status);
+    assert.equal(p.nodes.get('#music-upload-clear').textContent,'Change selection');
+    assert.match(p.nodes.get('#music-upload-phase').textContent,/files to check/);
+    assert.match(p.nodes.get('#music-upload-files').innerHTML,/Check &lt;this&gt;/);
+    assert.equal(p.nodes.get('#music-upload-uncertain').hidden,status!=='uncertain');
+  }
+});
+
+test('Upload file groups retain ordering and escaped full names without repeated folder prefixes',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  const rows=[
+    {label:'Artist/A & B/01 - One.flac',size:1,status:'new'},
+    {label:'Artist/A & B/02 - Two.flac',size:1,status:'new'},
+    {label:'Other/Long <title>.mp3',size:1,status:'new'},
+  ];
+  const html=p.run(`musicUploadFileRows(${JSON.stringify(rows)},false)`);
+  assert.equal((html.match(/<h3>Artist\/A &amp; B<\/h3>/g)||[]).length,1);
+  assert.match(html,/<strong>Long &lt;title&gt;\.mp3<\/strong>/);
+  assert.ok(html.indexOf('01 - One')<html.indexOf('02 - Two'));
+  assert.ok(html.indexOf('02 - Two')<html.indexOf('Long &lt;title&gt;'));
+});
+
+test('Upload byte polling keeps row Details intact and pause shows the current transfer honestly',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  const d=finishedMusicUploadsFixture();d.job.state='paused';d.job.counts={sent:1,sending:1};d.items[1].status='sending';
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(d)};renderMusicUploads()`);
+  assert.match(p.nodes.get('#music-upload-phase').textContent,/Pausing after this file/);
+  assert.equal(p.nodes.get('#music-upload-progress').hidden,false);
+  const list=p.nodes.get('#music-upload-files');list.innerHTML='existing opened Details';
+  p.run('musicUploadsView.data.items[1].sent=200;musicUploadsView.data.job.bytes.sent=250;renderMusicUploads()');
+  assert.equal(list.innerHTML,'existing opened Details');
+  assert.equal(p.nodes.get('#music-upload-progress').value,250);
+  p.run('musicUploadsView.data.job.counts={sent:1,queued:1};renderMusicUploads()');
+  assert.equal(p.nodes.get('#music-upload-phase').textContent,'Paused.');
+});
+
+test('Invalid hidden upload paths are revealed for keyboard correction without requests',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('state.screen="uploads";renderMusicUploads()');
+  const field=p.nodes.get('#music-upload-paths');field.id='music-upload-paths';
+  await p.emitDocument('invalid',{target:field});
+  assert.equal(p.nodes.get('#music-upload-path-details').open,true);
+  assert.equal(p.run('document.activeElement'),field);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+});
+
+test('Native upload picker keeps paths collapsed and returns focus after unlocking the form',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('window.tagcastUploads={choose:async()=>({paths:["/chosen/Album"]})};state.screen="uploads";renderMusicUploads();$("#music-upload-prepare")');
+  const prepare=p.nodes.get('#music-upload-prepare');let disabledAtFocus;
+  prepare.focus=()=>{disabledAtFocus=p.nodes.get('#music-upload-selection').disabled;};
+  await p.click({'[data-music-upload-choose]':{dataset:{musicUploadChoose:'folder'}}});
+  assert.equal(p.nodes.get('#music-upload-paths').value,'/chosen/Album');
+  assert.equal(disabledAtFocus,false);
+  assert.match(p.nodes.get('#music-upload-chosen').textContent,/1 file or folder chosen/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+});
+
+test('Cancelling the native upload picker restores focus without changing the selection',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('window.tagcastUploads={choose:async()=>({canceled:true,paths:[]})};state.screen="uploads";renderMusicUploads();$("#music-upload-paths").value="/keep/Album"');
+  let focused=false;
+  await p.click({'[data-music-upload-choose]':{dataset:{musicUploadChoose:'folder'},focus(){focused=true;}}});
+  assert.equal(focused,true);assert.equal(p.nodes.get('#music-upload-paths').value,'/keep/Album');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+});
+
+test('Upload status polling preserves expanded Details and keyboard focus across row updates',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(finishedMusicUploadsFixture())};renderMusicUploads()`);
+  const list=p.nodes.get('#music-upload-files'), label='Album/old.flac';let focused=false;
+  const detail={dataset:{uploadFile:label},querySelector(){return {focus(){focused=true;}};}};
+  list.querySelectorAll=()=>[detail];
+  p.run('document.activeElement={closest:()=>({dataset:{uploadFile:"Album/old.flac"}})};musicUploadsView.data.items[1].note="Updated check";renderMusicUploads()');
+  assert.match(list.innerHTML,/data-upload-file="Album\/old\.flac" open/);
+  assert.equal(focused,true);
 });

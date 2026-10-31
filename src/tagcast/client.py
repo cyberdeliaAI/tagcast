@@ -44,6 +44,7 @@ from .library import (
 )
 from .lyrics import Lyrics
 from .metadata_export import MetadataExport
+from .music_uploads import MusicUploads, upload_authorized
 from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
 from .service_status import ServiceStatus
@@ -398,6 +399,7 @@ class Studio:
         self.playlist_import = PlaylistImport(self)
         self.metadata_export = MetadataExport(self)
         self.audio_downloads = AudioDownloads(self)
+        self.music_uploads = MusicUploads(self)
         self.lyrics = Lyrics(self)
         self.tags = Tags(self)
         self.album_merge = AlbumMerge(self)
@@ -411,6 +413,8 @@ class Studio:
         self.jobs = {}  # background read-backs after a save, by job ID
         self.device = None
         self._device_gen = 0
+        self._device_request_id = None
+        self._device_stop = threading.Event()
         self._pkce = {}
         self._pkce_gen = 0
         self.config = self._read("config.json") or {}
@@ -488,7 +492,8 @@ class Studio:
 
     @property
     def scopes(self):
-        return SCOPES + (QUEUE_SCOPES if self.config.get("queue_sync") is True else [])
+        return SCOPES + (QUEUE_SCOPES if self.config.get("queue_sync") is True else []) \
+            + (["user.upload"] if self.config.get("music_uploads") is True else [])
 
     def set_client_id(self, client_id):
         client_id = str(client_id or "").strip()
@@ -522,6 +527,7 @@ class Studio:
 
     def _connect(self, token_set, save=True):
         self.audio_downloads.close()
+        self.music_uploads.close()
         self.queue_sync.disconnect()
         client = StudioClient(access_token=token_set.access_token,
                               refresh_token=token_set.refresh_token,
@@ -536,11 +542,14 @@ class Studio:
 
     def _disconnect(self):
         self.audio_downloads.close()
+        self.music_uploads.close()
         self.queue_sync.disconnect()
         with self.lock:
             self.client = self.library = self.account = self.device = None
             self.playback_session = ""
             self._device_gen += 1
+            self._device_request_id = None
+            self._device_stop.set()
             self._pkce.clear()
             self._pkce_gen += 1
             try:
@@ -564,6 +573,7 @@ class Studio:
             "account": self.account or "",
             "device": device,
             "scopes": self.scopes,
+            "music_uploads_authorized": upload_authorized(client),
             "playback_session": self.playback_session if client else "",
         }
 
@@ -584,6 +594,10 @@ class Studio:
             raise ApiError("Enter your app's client ID first.")
         with self.lock:
             self._device_gen += 1
+            self._device_stop.set()
+            self._device_stop = stop = threading.Event()
+            self._device_request_id = request_id = secrets.token_urlsafe(18)
+            self.device = None
             gen, client_id = self._device_gen, self.client_id
         try:
             code = auth.device_code_request(client_id, self.scopes)
@@ -596,35 +610,45 @@ class Studio:
                 raise ApiError("This sign-in was canceled. Try again.")
             self.device = {
                 "state": "pending",
+                "request_id": request_id,
                 "user_code": code["user_code"],
                 "verification_uri": code.get("verification_uri", "https://oauth.ibroadcast.com/device"),
                 "verification_uri_complete": code.get("verification_uri_complete", ""),
                 "expires_at": time.time() + number(code.get("expires_in") or 600),
                 "error": "",
             }
-        threading.Thread(target=self._poll, args=(gen, code["device_code"],
-                                                  number(code.get("interval")) or 5),
+        threading.Thread(target=self._poll, args=(gen, client_id, code["device_code"],
+                                                  number(code.get("interval")) or 5, stop),
                          daemon=True).start()
         return dict(self.device)
 
-    def _poll(self, gen, device_code, interval):
+    def _poll(self, gen, client_id, device_code, interval, stop):
         try:
-            token_set = auth.poll_for_token(self.client_id, device_code, interval)
+            token_set = auth.poll_for_token(client_id, device_code, interval, stop=stop)
         except Exception as error:  # report any failure to the browser
             with self.lock:
                 if gen == self._device_gen and self.device:
                     self.device.update(state="error", error=str(error) or "Sign-in failed.")
             return
         with self.lock:
-            if gen != self._device_gen:
+            if gen != self._device_gen or stop.is_set() or token_set is None:
                 return
             self._connect(token_set)
             self.device = {"state": "done"}
 
-    def cancel_device(self):
+    def cancel_device(self, request_id=None):
+        # Window-close notifications may arrive after a new sign-in has started.
+        # Keep the legacy unbound Cancel action, but bind all new UI cancellations.
+        if request_id is not None and (not isinstance(request_id, str) or len(request_id) > 96):
+            raise ApiError("Invalid sign-in request.")
         with self.lock:
+            if request_id is not None and request_id != self._device_request_id:
+                return False
             self._device_gen += 1
+            self._device_request_id = None
+            self._device_stop.set()
             self.device = None
+            return True
 
     def browser_url(self, redirect_uri):
         if not self.client_id:
@@ -771,6 +795,7 @@ class Studio:
                 "editor_names": library.editor_names(),
                 "album_favourites": favourites,
                 "artist_favourites": artist_favourites,
+                "playlists_count": self.collections.playlist_count(library),
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": self.combine_sets}
@@ -1044,7 +1069,8 @@ class Studio:
         def run():
             try:
                 after, _ = self._current(client, after=written)
-                result = {"state": "done", "results": check(after)}
+                result = {"state": "done", "results": check(after),
+                          "playlists_count": self.collections.playlist_count(after)}
                 if include_albums:
                     result["albums"] = after.album_index()
                     result["editor_names"] = after.editor_names()
@@ -1096,6 +1122,8 @@ class Studio:
                 "record_plays": self.config.get("record_plays") is True,
                 "stream_quality": self.config.get("stream_quality", "128"),
                 "queue_sync": self.config.get("queue_sync") is True,
+                "music_uploads": self.config.get("music_uploads") is True,
+                "music_uploads_authorized": upload_authorized(self.client),
                 "album_guide": self.config.get("album_guide") is True,
                 "artist_biographies": self.config.get("artist_biographies") is True,
                 "artist_biographies_revision": self.artist_bios.revision,
@@ -1130,6 +1158,8 @@ class Studio:
                 raise ApiError("Choose whether automatic update checks are enabled.")
             if "record_plays" in body and not isinstance(body["record_plays"], bool):
                 raise ApiError("Choose whether playback is recorded in iBroadcast.")
+            if "music_uploads" in body and type(body["music_uploads"]) is not bool:
+                raise ApiError("Choose whether music uploads are enabled.")
             if "stream_quality" in body:
                 if body["stream_quality"] not in ("96", "128", "192", "256", "320", "orig"):
                     raise ApiError("Choose a supported streaming quality.")
@@ -1138,6 +1168,8 @@ class Studio:
                 if type(body["queue_sync"]) is not bool:
                     raise ApiError("Choose whether queue synchronisation is enabled.")
                 self.config["queue_sync"] = body["queue_sync"]
+            if "music_uploads" in body:
+                self.config["music_uploads"] = body["music_uploads"]
             for key in KEY_ENV:
                 if key in body:
                     value = str(body[key] or "").strip()
@@ -1170,6 +1202,8 @@ class Studio:
             self._write("config.json", self.config)
         if not self.config.get("queue_sync"):
             self.queue_sync.disconnect()
+        if not self.config.get("music_uploads"):
+            self.music_uploads.close()
         return self.settings()
 
     def _library(self):

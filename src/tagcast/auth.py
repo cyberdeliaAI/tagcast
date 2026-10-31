@@ -31,11 +31,16 @@ def _tokens(response, action):
     return oauth.TokenSet.from_response(response.json())
 
 
-def poll_for_token(client_id, device_code, interval=5):
+def poll_for_token(client_id, device_code, interval=5, stop=None):
     while True:
-        time.sleep(interval)
+        if stop is None:
+            time.sleep(interval)
+        elif stop.wait(interval):
+            return None
         response = _token_request({"grant_type": "device_code", "client_id": client_id,
                                    "device_code": device_code})
+        if stop is not None and stop.is_set():
+            return None
         data = response.json()
         if response.ok:
             return oauth.TokenSet.from_response(data)
