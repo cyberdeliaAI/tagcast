@@ -10335,3 +10335,233 @@ test('playlist search and checked writes update the count without additional req
  release({ok:true,json:async()=>({playlists:[],total:0,playlists_count:99})});await late;
  assert.equal(p.nodes.get('#playlist-count').hidden,true);assert.equal(p.run('state.playlistsCount'),null);
 });
+
+function musicUploadsFixture() {
+  return {preparing:false,phase:'Review ready. No music has been uploaded.',error:'',checked:2,total:2,ignored:1,
+    review:'review-once',summary:{files:2,counts:{new:1,uploaded:1},bytes_to_send:200},job:null,page:0,pages:1,
+    items:[{label:'Album/<script>track</script>.flac',size:200,status:'new',note:'',sent:0,verified:false},
+      {label:'Album/old.flac',size:100,status:'uploaded',note:'Already present.',sent:0,verified:false}]};
+}
+function prepareMusicUploadsPage(p) {
+  p.run('state.mode="live";state.connection.playback_session="uploads-session";state.connection.music_uploads_authorized=true;musicUploadsView.enabled=true;musicUploadsView.authorized=true;musicUploadsView.session="uploads-session";');
+}
+
+test('Music uploads are opt-in; opening disabled/demo pages sends no upload requests',async()=>{
+  const p=page();await settle();p.run('showScreen("uploads")');await settle();
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/Enable music uploads/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+  assert.equal(p.nodes.get('#show-uploads').hidden,true);
+  p.run('applyMusicUploadSettings({music_uploads:true,music_uploads_authorized:false})');await settle();
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/demo never uploads/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+  assert.match(p.run('musicUploadsSettingsPanel()'),/name="music_uploads" checked/);
+});
+
+test('Upload navigation preserves playback and only reads the reviewed file list',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.setFetch(url=>({ok:true,json:async()=>musicUploadsFixture()}));
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})');
+  p.run('showScreen("uploads")');await settle();
+  assert.equal(p.location.hash,'#/uploads');assert.equal(p.run('currentHelpContext()'),'uploads');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,history:state.history})'),before);
+  assert.ok(p.requests.filter(r=>r.url.startsWith('/api/uploads')).every(r=>r.url.startsWith('/api/uploads?')));
+  p.run('showScreen("albums");syncHistory()');p.history.back();await settle();
+  assert.equal(p.run('state.screen'),'uploads');
+});
+
+test('Upload review escapes filenames, keeps inputs and locks the reviewed selection',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};musicUploadsView.focus=true;renderMusicUploads()`);
+  assert.match(p.nodes.get('#music-upload-files').innerHTML,/&lt;script&gt;track&lt;/);
+  assert.doesNotMatch(p.nodes.get('#music-upload-files').innerHTML,/<script>/);
+  assert.equal(p.nodes.get('#music-upload-selection').disabled,true);
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-heading'));
+  const html=p.nodes.get('#uploads-page').innerHTML;p.run('$("#music-upload-paths")');
+  p.nodes.get('#music-upload-paths').value='/chosen/Album';p.run('renderMusicUploads()');
+  assert.equal(p.nodes.get('#uploads-page').innerHTML,html);
+  assert.equal(p.nodes.get('#music-upload-paths').value,'/chosen/Album');
+  assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+});
+
+test('Upload start is explicit, single-click guarded and bound to the reviewed session',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};renderMusicUploads()`);
+  let reply;p.setFetch(()=>new Promise(resolve=>{reply=resolve;}));
+  const one=p.run('musicUploadAction("start",{review:musicUploadsView.data.review})');
+  await p.run('musicUploadAction("start",{review:"review-once"})');
+  const calls=p.requests.filter(r=>r.url==='/api/uploads/start');assert.equal(calls.length,1);
+  assert.deepEqual(JSON.parse(calls[0].options.body),{review:'review-once',session:'uploads-session'});
+  p.run('state.mode="demo";state.connection.playback_session="replaced";syncMusicUploadsPage()');
+  reply({ok:true,json:async()=>musicUploadsFixture()});await one;await settle();
+  assert.equal(p.run('musicUploadsView.data'),null);
+});
+
+test('Active upload polling stops off-page and warnings preserve uncertain outcomes',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  const d=musicUploadsFixture();d.review=null;d.job={state:'running',message:'',current:'track.flac',counts:{uncertain:1},bytes:{total:200,sent:100}};
+  p.setFetch(()=>({ok:true,json:async()=>d}));
+  p.run('state.screen="uploads"');await p.run('loadMusicUploads()');
+  assert.ok(p.run('musicUploadsView.timer')!==null);assert.equal(p.nodes.get('#music-upload-uncertain').hidden,false);
+  p.run('showScreen("albums")');assert.equal(p.run('musicUploadsView.timer'),null);
+  assert.equal(p.requests.filter(r=>r.url.includes('/api/uploads/start')).length,0);
+});
+
+test('Uploads waits for live library loading and never mistakes loading for missing permission',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('state.loading=true;state.screen="uploads";renderMusicUploads()');
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/Waiting for your library/);
+  assert.doesNotMatch(p.nodes.get('#uploads-page').innerHTML,/Approve upload permission<\/h2>/);
+  p.setFetch(()=>({ok:true,json:async()=>musicUploadsFixture()}));
+  p.run('state.loading=false;syncMusicUploadsPage()');await settle();
+  assert.match(p.nodes.get('#uploads-page').innerHTML,/Choose local music/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+});
+
+test('Changing an upload selection returns keyboard focus to its path field',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};renderMusicUploads()`);
+  const cleared=musicUploadsFixture();Object.assign(cleared,{review:null,phase:'',items:[],summary:{files:0,counts:{},bytes_to_send:0}});
+  p.setFetch(()=>({ok:true,json:async()=>cleared}));await p.run('musicUploadAction("clear")');
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-paths'));
+  assert.equal(p.nodes.get('#music-upload-selection').disabled,false);
+});
+
+test('Upload permission action disappears after approval and returns when permission is missing',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  assert.match(p.run('musicUploadsSettingsPanel()'),/id="music-upload-authorize"[^>]* hidden/);
+  assert.match(p.run('musicUploadPermissionNote()'),/is approved/);
+  p.run('state.connection.music_uploads_authorized=false;updateMusicUploadPermission()');
+  assert.equal(p.nodes.get('#music-upload-authorize').hidden,false);
+  assert.match(p.nodes.get('#music-upload-permission-note').textContent,/reconnect once/);
+  p.nodes.get('#music-upload-authorize').focus();
+  p.run('state.connection.music_uploads_authorized=true;syncMusicUploadsPage()');
+  assert.equal(p.nodes.get('#music-upload-authorize').hidden,true);
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-open'));
+  assert.equal(p.requests.filter(r=>r.url.includes('/api/uploads')).length,0);
+});
+
+function finishedMusicUploadsFixture() {
+  const d=musicUploadsFixture();d.review=null;d.summary.counts={sent:1,confirmed:1};
+  d.job={state:'done',message:'',current:'',counts:{sent:1,confirmed:1},bytes:{total:300,sent:300}};
+  d.items[0].status='sent';d.items[0].note='Confirmed by the upload answer, but not listed yet.';
+  Object.assign(d.items[1],{status:'confirmed',verified:true,note:''});
+  return d;
+}
+
+test('Successful upload receipt has one Uploaded label; optional list verification stays distinct',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(finishedMusicUploadsFixture())};renderMusicUploads()`);
+  const list=p.nodes.get('#music-upload-files').innerHTML;
+  assert.equal((list.match(/>Uploaded<\/span>/g)||[]).length,2);
+  assert.doesNotMatch(list,/Accepted by|· Listed|Outcome uncertain/);
+  assert.match(list,/additional uploaded-file list check has not confirmed/);
+  assert.match(list,/found in iBroadcast’s uploaded-file list/);
+  assert.match(p.nodes.get('#music-upload-summary').textContent,/2 uploaded/);
+  assert.equal(p.nodes.get('#music-upload-progress').hidden,true);
+  assert.equal(p.nodes.get('#music-upload-pagination').hidden,true);
+  assert.equal(p.nodes.get('#music-upload-setup').hidden,true);
+});
+
+test('Only a fully successful upload clears old paths, once, and New upload starts empty',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('state.screen="uploads";renderMusicUploads();$("#music-upload-paths").value="/old/Album"');
+  p.run(`musicUploadsView.data=${JSON.stringify(finishedMusicUploadsFixture())};renderMusicUploads()`);
+  assert.equal(p.nodes.get('#music-upload-paths').value,'');
+  assert.equal(p.nodes.get('#music-upload-clear').textContent,'New upload');
+  // Routine redraws must never erase a later draft.
+  p.nodes.get('#music-upload-paths').value='/next/Album';p.run('renderMusicUploads()');
+  assert.equal(p.nodes.get('#music-upload-paths').value,'/next/Album');
+  p.nodes.get('#music-upload-paths').value='';
+  const empty={...musicUploadsFixture(),review:null,phase:'',items:[],summary:{files:0,counts:{},bytes_to_send:0}};
+  p.setFetch(()=>({ok:true,json:async()=>empty}));await p.run('musicUploadAction("clear")');
+  assert.equal(p.nodes.get('#music-upload-setup').hidden,false);
+  assert.equal(p.nodes.get('#music-upload-paths').value,'');
+  assert.equal(p.run('document.activeElement'),p.nodes.get('#music-upload-paths'));
+  assert.equal(p.nodes.get('#music-upload-path-details').open,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+});
+
+test('Partial, failed, uncertain and skipped-problem results preserve the chosen paths',async()=>{
+  for(const status of ['uncertain','failed','not_sent','unsupported']) {
+    const p=page();await settle();prepareMusicUploadsPage(p);
+    p.run('state.screen="uploads";renderMusicUploads();$("#music-upload-paths").value="/keep/Album"');
+    const d=finishedMusicUploadsFixture();d.job.counts={sent:1,[status]:1};d.items[1].status=status;
+    d.items[1].note='Check <this> before sending again.';
+    p.run(`musicUploadsView.data=${JSON.stringify(d)};renderMusicUploads()`);
+    assert.equal(p.nodes.get('#music-upload-paths').value,'/keep/Album',status);
+    assert.equal(p.nodes.get('#music-upload-clear').textContent,'Change selection');
+    assert.match(p.nodes.get('#music-upload-phase').textContent,/files to check/);
+    assert.match(p.nodes.get('#music-upload-files').innerHTML,/Check &lt;this&gt;/);
+    assert.equal(p.nodes.get('#music-upload-uncertain').hidden,status!=='uncertain');
+  }
+});
+
+test('Upload file groups retain ordering and escaped full names without repeated folder prefixes',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  const rows=[
+    {label:'Artist/A & B/01 - One.flac',size:1,status:'new'},
+    {label:'Artist/A & B/02 - Two.flac',size:1,status:'new'},
+    {label:'Other/Long <title>.mp3',size:1,status:'new'},
+  ];
+  const html=p.run(`musicUploadFileRows(${JSON.stringify(rows)},false)`);
+  assert.equal((html.match(/<h3>Artist\/A &amp; B<\/h3>/g)||[]).length,1);
+  assert.match(html,/<strong>Long &lt;title&gt;\.mp3<\/strong>/);
+  assert.ok(html.indexOf('01 - One')<html.indexOf('02 - Two'));
+  assert.ok(html.indexOf('02 - Two')<html.indexOf('Long &lt;title&gt;'));
+});
+
+test('Upload byte polling keeps row Details intact and pause shows the current transfer honestly',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  const d=finishedMusicUploadsFixture();d.job.state='paused';d.job.counts={sent:1,sending:1};d.items[1].status='sending';
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(d)};renderMusicUploads()`);
+  assert.match(p.nodes.get('#music-upload-phase').textContent,/Pausing after this file/);
+  assert.equal(p.nodes.get('#music-upload-progress').hidden,false);
+  const list=p.nodes.get('#music-upload-files');list.innerHTML='existing opened Details';
+  p.run('musicUploadsView.data.items[1].sent=200;musicUploadsView.data.job.bytes.sent=250;renderMusicUploads()');
+  assert.equal(list.innerHTML,'existing opened Details');
+  assert.equal(p.nodes.get('#music-upload-progress').value,250);
+  p.run('musicUploadsView.data.job.counts={sent:1,queued:1};renderMusicUploads()');
+  assert.equal(p.nodes.get('#music-upload-phase').textContent,'Paused.');
+});
+
+test('Invalid hidden upload paths are revealed for keyboard correction without requests',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('state.screen="uploads";renderMusicUploads()');
+  const field=p.nodes.get('#music-upload-paths');field.id='music-upload-paths';
+  await p.emitDocument('invalid',{target:field});
+  assert.equal(p.nodes.get('#music-upload-path-details').open,true);
+  assert.equal(p.run('document.activeElement'),field);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+});
+
+test('Native upload picker keeps paths collapsed and returns focus after unlocking the form',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('window.tagcastUploads={choose:async()=>({paths:["/chosen/Album"]})};state.screen="uploads";renderMusicUploads();$("#music-upload-prepare")');
+  const prepare=p.nodes.get('#music-upload-prepare');let disabledAtFocus;
+  prepare.focus=()=>{disabledAtFocus=p.nodes.get('#music-upload-selection').disabled;};
+  await p.click({'[data-music-upload-choose]':{dataset:{musicUploadChoose:'folder'}}});
+  assert.equal(p.nodes.get('#music-upload-paths').value,'/chosen/Album');
+  assert.equal(disabledAtFocus,false);
+  assert.match(p.nodes.get('#music-upload-chosen').textContent,/1 file or folder chosen/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+});
+
+test('Cancelling the native upload picker restores focus without changing the selection',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run('window.tagcastUploads={choose:async()=>({canceled:true,paths:[]})};state.screen="uploads";renderMusicUploads();$("#music-upload-paths").value="/keep/Album"');
+  let focused=false;
+  await p.click({'[data-music-upload-choose]':{dataset:{musicUploadChoose:'folder'},focus(){focused=true;}}});
+  assert.equal(focused,true);assert.equal(p.nodes.get('#music-upload-paths').value,'/keep/Album');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/uploads')).length,0);
+});
+
+test('Upload status polling preserves expanded Details and keyboard focus across row updates',async()=>{
+  const p=page();await settle();prepareMusicUploadsPage(p);
+  p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(finishedMusicUploadsFixture())};renderMusicUploads()`);
+  const list=p.nodes.get('#music-upload-files'), label='Album/old.flac';let focused=false;
+  const detail={dataset:{uploadFile:label},querySelector(){return {focus(){focused=true;}};}};
+  list.querySelectorAll=()=>[detail];
+  p.run('document.activeElement={closest:()=>({dataset:{uploadFile:"Album/old.flac"}})};musicUploadsView.data.items[1].note="Updated check";renderMusicUploads()');
+  assert.match(list.innerHTML,/data-upload-file="Album\/old\.flac" open/);
+  assert.equal(focused,true);
+});

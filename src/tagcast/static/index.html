@@ -54,6 +54,7 @@
   <script src="settings.js" defer></script>
   <script src="mini-player.js" defer></script>
   <script src="downloads.js" defer></script>
+  <script src="uploads.js" defer></script>
   <script src="navigation.js" defer></script>
 </head>
 <body>
@@ -95,6 +96,7 @@
     <button class="nav" id="show-recently-played" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg> Recently played</button>
     <button class="nav" id="show-album-guide" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v16M12 5C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 1Z"/></svg> 1001 Albums</button>
     <button class="nav" id="show-downloads"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5M4 17v4h16v-4"/></svg> Downloads</button>
+    <button class="nav" id="show-uploads" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3M7 8l5-5 5 5M4 15v6h16v-6"/></svg> Uploads</button>
       <button class="nav" id="show-overview"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></svg> Overview</button>
     <button class="nav" id="show-history"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6h6"/></svg> Change history <b id="history-count">0</b></button>
     </nav>
@@ -122,6 +124,7 @@
     <section id="collections-page" hidden aria-label="Playlists and favourite albums"></section>
     <section id="settings" class="settings-page" aria-labelledby="settings-title" hidden><div class="page-intro"><div><div class="eyebrow">MAKE TAGCAST YOUR OWN</div><h1 id="settings-title" tabindex="-1">Settings<span>.</span></h1><p>Preferences for this browser and your local Tagcast server.</p></div></div><div class="settings-layout"><nav id="settings-nav" aria-label="Settings categories"></nav><div class="settings-body"><div class="settings-category-heading"><h2 id="settings-category-title" tabindex="-1"></h2><p id="settings-category-description" class="muted"></p></div><p id="settings-feedback" role="status" aria-live="polite"></p><button type="button" class="text-action settings-editor-return" data-settings-return hidden>← Return to your open editor</button><div id="settings-content"></div></div></div></section>
     <section id="downloads-page" hidden></section>
+    <section id="uploads-page" hidden></section>
     <section id="overview-page" class="overview" hidden aria-live="polite"></section>
     <section id="album-guide-page" hidden aria-label="1001 Albums">
       <div class="page-intro"><div><div class="eyebrow">DISCOVER YOUR COLLECTION</div><h1>1001 Albums<span>.</span></h1><p>Based on <cite><a href="https://en.wikipedia.org/wiki/1001_Albums_You_Must_Hear_Before_You_Die" target="_blank" rel="noopener noreferrer">1001 Albums You Must Hear Before You Die</a></cite>, edited by Robert Dimery. Explore the albums you already have from this selection, covering 1955–2007.</p></div></div>

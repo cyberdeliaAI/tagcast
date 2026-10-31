@@ -20,3 +20,7 @@ contextBridge.exposeInMainWorld("tagcastSignIn", {
   close: requestId => ipcRenderer.send("signin:close", requestId),
   onClosed: callback => listen("signin:closed", callback)
 });
+
+contextBridge.exposeInMainWorld("tagcastUploads", {
+  choose: kind => ipcRenderer.invoke("uploads:choose", kind)
+});

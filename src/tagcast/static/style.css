@@ -1070,3 +1070,45 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
   #downloads-page .downloads-albums { max-height:none; }
   #downloads-page .downloads-buttons button { width:100%; }
 }
+
+/* Optional music uploads: page-local layout, shared controls and palette roles. */
+#uploads-page .card { min-width:0; padding:24px; }
+#uploads-page h2 { margin:0; }
+#uploads-page fieldset { min-width:0; border:0; margin:0; padding:0; }
+#uploads-page .field { display:block; margin:16px 0; }
+#uploads-page textarea { display:block; width:100%; margin:8px 0; resize:vertical; min-height:110px; font:inherit; font-size:13px; background:var(--palette-surface,#fff); color:var(--ink); border:1px solid var(--palette-line,#d7dfd0); border-radius:6px; padding:11px 13px; }
+#uploads-page textarea:focus-visible, #uploads-page summary:focus-visible, #music-upload-heading:focus-visible { outline:3px solid var(--palette-focus,#759345); outline-offset:3px; }
+#uploads-page .uploads-setup > p { margin:12px 0 20px; }
+#uploads-page #music-upload-path-details { margin-top:16px; }
+#uploads-page .uploads-guide { border-top:1px solid var(--line); margin-top:24px; padding-top:16px; }
+#uploads-page .uploads-guide p { max-width:85ch; }
+#uploads-page .downloads-buttons, .music-upload-settings .downloads-buttons { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:16px; }
+#uploads-page .downloads-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; }
+#uploads-page .downloads-heading .downloads-buttons { margin:0; }
+#uploads-page #music-upload-phase { margin:20px 0 8px; }
+#uploads-page #music-upload-summary { margin:0 0 16px; }
+#uploads-page .uploads-current { font-size:12px; overflow-wrap:anywhere; }
+#uploads-page .uploads-files, #uploads-page .uploads-folder > ul { list-style:none; padding:0; margin:0; }
+#uploads-page .uploads-folder { margin-top:28px; }
+#uploads-page .uploads-folder > h3 { font-size:14px; font-weight:600; color:var(--muted); overflow-wrap:anywhere; margin:0 0 8px; }
+#uploads-page .uploads-file { display:flex; align-items:baseline; gap:20px; justify-content:space-between; padding:14px 0; border-top:1px solid var(--line); }
+#uploads-page .uploads-file-info { min-width:0; overflow-wrap:anywhere; }
+#uploads-page .uploads-file-info strong { font-size:14px; }
+#uploads-page .uploads-file-info small { display:block; margin-top:4px; color:var(--muted); font-size:12px; }
+#uploads-page .uploads-file-info details { font-size:12px; color:var(--muted); margin-top:6px; }
+#uploads-page .uploads-file-info details p { max-width:75ch; margin:8px 0 0; }
+#uploads-page .uploads-file-note { margin:6px 0 0; font-size:13px; }
+#uploads-page .uploads-file-status { flex:none; max-width:40%; font-size:13px; font-weight:600; text-align:right; }
+#uploads-page .uploads-file-status::before { content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--muted); margin-right:8px; }
+#uploads-page .uploads-file-status.is-uploaded::before { background:#427c4c; }
+#uploads-page .uploads-file-status.is-problem::before { background:#af6b36; }
+#uploads-page .uploads-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:16px; justify-content:center; margin-top:24px; }
+#uploads-page progress { width:100%; accent-color:var(--palette-primary,#638348); }
+@media(max-width:760px) {
+  #uploads-page .card { padding:20px; }
+  #uploads-page .uploads-file { flex-direction:column; gap:8px; }
+  #uploads-page .uploads-file-status { max-width:100%; text-align:left; }
+  #uploads-page .downloads-buttons { width:100%; }
+  #uploads-page .downloads-buttons button { flex:1 1 auto; }
+  #uploads-page #music-upload-start { flex-basis:100%; }
+}

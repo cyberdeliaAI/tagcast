@@ -44,6 +44,7 @@ from .library import (
 )
 from .lyrics import Lyrics
 from .metadata_export import MetadataExport
+from .music_uploads import MusicUploads, upload_authorized
 from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
 from .service_status import ServiceStatus
@@ -398,6 +399,7 @@ class Studio:
         self.playlist_import = PlaylistImport(self)
         self.metadata_export = MetadataExport(self)
         self.audio_downloads = AudioDownloads(self)
+        self.music_uploads = MusicUploads(self)
         self.lyrics = Lyrics(self)
         self.tags = Tags(self)
         self.album_merge = AlbumMerge(self)
@@ -490,7 +492,8 @@ class Studio:
 
     @property
     def scopes(self):
-        return SCOPES + (QUEUE_SCOPES if self.config.get("queue_sync") is True else [])
+        return SCOPES + (QUEUE_SCOPES if self.config.get("queue_sync") is True else []) \
+            + (["user.upload"] if self.config.get("music_uploads") is True else [])
 
     def set_client_id(self, client_id):
         client_id = str(client_id or "").strip()
@@ -524,6 +527,7 @@ class Studio:
 
     def _connect(self, token_set, save=True):
         self.audio_downloads.close()
+        self.music_uploads.close()
         self.queue_sync.disconnect()
         client = StudioClient(access_token=token_set.access_token,
                               refresh_token=token_set.refresh_token,
@@ -538,6 +542,7 @@ class Studio:
 
     def _disconnect(self):
         self.audio_downloads.close()
+        self.music_uploads.close()
         self.queue_sync.disconnect()
         with self.lock:
             self.client = self.library = self.account = self.device = None
@@ -568,6 +573,7 @@ class Studio:
             "account": self.account or "",
             "device": device,
             "scopes": self.scopes,
+            "music_uploads_authorized": upload_authorized(client),
             "playback_session": self.playback_session if client else "",
         }
 
@@ -1116,6 +1122,8 @@ class Studio:
                 "record_plays": self.config.get("record_plays") is True,
                 "stream_quality": self.config.get("stream_quality", "128"),
                 "queue_sync": self.config.get("queue_sync") is True,
+                "music_uploads": self.config.get("music_uploads") is True,
+                "music_uploads_authorized": upload_authorized(self.client),
                 "album_guide": self.config.get("album_guide") is True,
                 "artist_biographies": self.config.get("artist_biographies") is True,
                 "artist_biographies_revision": self.artist_bios.revision,
@@ -1150,6 +1158,8 @@ class Studio:
                 raise ApiError("Choose whether automatic update checks are enabled.")
             if "record_plays" in body and not isinstance(body["record_plays"], bool):
                 raise ApiError("Choose whether playback is recorded in iBroadcast.")
+            if "music_uploads" in body and type(body["music_uploads"]) is not bool:
+                raise ApiError("Choose whether music uploads are enabled.")
             if "stream_quality" in body:
                 if body["stream_quality"] not in ("96", "128", "192", "256", "320", "orig"):
                     raise ApiError("Choose a supported streaming quality.")
@@ -1158,6 +1168,8 @@ class Studio:
                 if type(body["queue_sync"]) is not bool:
                     raise ApiError("Choose whether queue synchronisation is enabled.")
                 self.config["queue_sync"] = body["queue_sync"]
+            if "music_uploads" in body:
+                self.config["music_uploads"] = body["music_uploads"]
             for key in KEY_ENV:
                 if key in body:
                     value = str(body[key] or "").strip()
@@ -1190,6 +1202,8 @@ class Studio:
             self._write("config.json", self.config)
         if not self.config.get("queue_sync"):
             self.queue_sync.disconnect()
+        if not self.config.get("music_uploads"):
+            self.music_uploads.close()
         return self.settings()
 
     def _library(self):

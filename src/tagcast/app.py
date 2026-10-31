@@ -202,6 +202,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/recently-played":
             self._run(lambda: self.studio.recently_played(query.get("q"), query.get("offset", "0"),
                                                         query.get("limit", "50"), query.get("refresh") == "1"))
+        elif url.path == "/api/uploads":
+            self._run(lambda: self.studio.music_uploads.view(query.get("session"), query.get("page", 0)))
         elif url.path == "/api/downloads":
             self._run(lambda: self.studio.audio_downloads.view(query.get("session")))
         elif url.path == "/api/cleanup":
@@ -254,6 +256,10 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/cleanup/stop": lambda b: self.studio.cleanup.cancel(b.get("id")),
             "/api/year-review/analyse": lambda b: self.studio.year_review.analyse(),
             "/api/year-review/choice": self.studio.year_review.choice,
+            "/api/uploads/prepare": self.studio.music_uploads.prepare,
+            "/api/uploads/start": self.studio.music_uploads.start,
+            **{f"/api/uploads/{action}": lambda body, action=action: self.studio.music_uploads.control(action, body)
+               for action in ("pause", "resume", "stop", "clear")},
             "/api/downloads/add": self.studio.audio_downloads.add,
             "/api/downloads/remove": self.studio.audio_downloads.remove,
             "/api/downloads/prepare": self.studio.audio_downloads.prepare,
@@ -413,6 +419,7 @@ class Server(ThreadingHTTPServer):
             studio.queue_sync.disconnect()
             studio.metadata_export.close()
             studio.audio_downloads.close()
+            studio.music_uploads.close()
         super().server_close()
 
 

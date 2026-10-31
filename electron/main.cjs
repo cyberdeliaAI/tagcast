@@ -8,6 +8,7 @@ const {applicationUrl, externalUrl, permissionAllowed, contentPolicy} = require(
 const {helpMenu} = require("./help-menu.cjs");
 const {installMiniPlayer} = require("./mini-player.cjs");
 const {installSignIn} = require("./sign-in.cjs");
+const {installUploadPicker} = require("./upload-picker.cjs");
 const {windowSize, rememberWindowSize} = require("./window-size.cjs");
 const packageInfo = require("./package.json");
 
@@ -59,6 +60,7 @@ function createWindow() {
   rememberWindowSize(window, sizeFile);
   miniPlayer = installMiniPlayer(window, origin);
   signIn = installSignIn(window, origin);
+  installUploadPicker(window, origin);
   const contents = window.webContents;
   contents.setWindowOpenHandler(({url}) => { openExternal(url); return {action: "deny"}; });
   contents.on("will-navigate", (event, url) => {
@@ -68,8 +70,8 @@ function createWindow() {
   contents.on("will-attach-webview", event => event.preventDefault());
   contents.on("will-prevent-unload", event => {
     const choice = dialog.showMessageBoxSync(window, {type: "question", buttons: ["Keep Tagcast open", "Close Tagcast"],
-      defaultId: 0, cancelId: 0, title: "Close Tagcast?", message: "There are unsaved changes, active downloads or a save is still running.",
-      detail: "Closing loses unsaved drafts and stops local downloads. Accepted library writes finish before the local server stops."});
+      defaultId: 0, cancelId: 0, title: "Close Tagcast?", message: "There are unsaved changes, active music transfers or a save is still running.",
+      detail: "Closing loses unsaved drafts and stops downloads/uploads. Files already sent may still arrive in iBroadcast. Accepted library writes finish before the local server stops."});
     if (choice === 1) event.preventDefault();
   });
   contents.on("render-process-gone", () => { if (!stopping) dialog.showErrorBox("Tagcast's window stopped", "Restart Tagcast Desktop. The local server will finish accepted requests before closing."); app.quit(); });

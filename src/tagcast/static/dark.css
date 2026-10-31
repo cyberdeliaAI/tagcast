@@ -186,6 +186,11 @@
 :root[data-theme="dark"] #downloads-page .downloads-albums small{color:var(--palette-muted,#aeb6a3)}
 :root[data-theme="dark"] #downloads-page .downloads-advanced{border-top:1px solid var(--palette-border,#3f403d)}
 :root[data-theme="dark"] #downloads-page progress{accent-color:var(--palette-accent,#97b97b)}
+:root[data-theme="dark"] #uploads-page textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root[data-theme="dark"] #uploads-page textarea:focus-visible,:root[data-theme="dark"] #uploads-page summary:focus-visible,:root[data-theme="dark"] #music-upload-heading:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root[data-theme="dark"] #uploads-page .uploads-file-status.is-uploaded::before{background:#87c38f}
+:root[data-theme="dark"] #uploads-page .uploads-file-status.is-problem::before{background:#dd9561}
+:root[data-theme="dark"] #uploads-page progress{accent-color:var(--palette-primary,#97b97b)}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
@@ -387,6 +392,11 @@
 :root:not([data-theme="light"]) #downloads-page .downloads-albums small{color:var(--palette-muted,#aeb6a3)}
 :root:not([data-theme="light"]) #downloads-page .downloads-advanced{border-top:1px solid var(--palette-border,#3f403d)}
 :root:not([data-theme="light"]) #downloads-page progress{accent-color:var(--palette-accent,#97b97b)}
+:root:not([data-theme="light"]) #uploads-page textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root:not([data-theme="light"]) #uploads-page textarea:focus-visible,:root:not([data-theme="light"]) #uploads-page summary:focus-visible,:root:not([data-theme="light"]) #music-upload-heading:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root:not([data-theme="light"]) #uploads-page .uploads-file-status.is-uploaded::before{background:#87c38f}
+:root:not([data-theme="light"]) #uploads-page .uploads-file-status.is-problem::before{background:#dd9561}
+:root:not([data-theme="light"]) #uploads-page progress{accent-color:var(--palette-primary,#97b97b)}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}

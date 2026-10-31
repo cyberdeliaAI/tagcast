@@ -7,7 +7,7 @@ const SETTINGS_CATEGORIES = {
   playback: ["Playback", "Display and gapless choices are local. Save streaming, play reporting and device preferences below."],
   discovery: ["Discovery", "Choose optional background information and discovery tools. Save changes to apply."],
   sources: ["Sources & keys", "Choose online providers and manage keys on this computer. Save changes to apply."],
-  data: ["Data & exports", "Explicit exports of your saved library metadata and local change history. No settings are saved."],
+  data: ["Data & exports", "Export saved metadata and choose whether to enable music uploads. Save upload preferences to apply."],
   about: ["About & updates", "Check releases and find the community. Save changes to apply the automatic update preference."],
 };
 const settingsView = {category: "interface", rendered: false, baseline: "", dirty: false, saving: false, editor: null};

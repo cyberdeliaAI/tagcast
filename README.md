@@ -17,7 +17,9 @@ Linux. This helps us focus on reliable playback and safe metadata editing, while
 keeping the interface shared with the browser version.
 
 **Your existing local music files are never changed.** Optional album downloads
-create separate local copies. Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
+create separate local copies. Optional music uploads read selected local audio and
+send copies to your own iBroadcast library only after review; see
+[setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
 **New in [Tagcast 1.1.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.1.0):**
 Save selected albums as local audio copies, compare and reconcile album/track years,
