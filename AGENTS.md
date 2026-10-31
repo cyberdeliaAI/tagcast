@@ -59,6 +59,15 @@ The application consists of a Python server and a plain JavaScript frontend.
   across planning, file/network I/O or transfers. Stop on session/account replacement,
   close in-flight readers off the request thread, and release the captured library
   after transfer completion. Keep playback and metadata saves independent.
+- `src/tagcast/uploads.py`: reviewed v3 OAuth music upload engine; `music_uploads.py`
+  integrates opt-in `user.upload`, background preparation of explicitly chosen paths,
+  account/session-bound single-use reviews, paginated results and serialized uploads.
+  Default off; reconnect explicitly for permission. No watching, remote deletion or
+  local edits. Never send audio on opening, preparing or reloading; only explicit
+  Start uploads sends reviewed new files. Stop on disable/disconnect/replacement.
+  Never hold Studio.lock during file/network I/O or socket abort. Keep uncertain
+  uploads distinct and never retry them automatically. Only the local hash index
+  persists, using the existing private atomic storage. Playback remains independent.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.

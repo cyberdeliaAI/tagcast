@@ -31,6 +31,7 @@ async function loadSettings() {
     if (typeof applyAlbumGuideSettings === "function") applyAlbumGuideSettings(data);
     if (typeof applyArtistSettings === "function") applyArtistSettings(data);
     if (typeof applyAlbumInformationSettings === "function") applyAlbumInformationSettings(data);
+    if (typeof applyMusicUploadSettings === "function") applyMusicUploadSettings(data);
     if (typeof applyPlaybackSettings === "function") applyPlaybackSettings(data);
     applyUpdateSettings(data);
     if (typeof settingsView !== "undefined" && state.screen === "settings" && !settingsView.dirty && !settingsView.saving) renderSettingsContent();
@@ -159,6 +160,7 @@ function renderSettingsContent() {
     <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
     <p class="muted">Fullscreen fills the screen; In app window stays inside Tagcast. Applied the next time you open Now playing.</p></section>`
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
+    + themeEditorPanel()
     + sidebarSettingsPanel()
     + metadataExportPanel()
     + `<section class="history-settings" data-settings-category="data"><h3>Change history</h3>
@@ -202,6 +204,7 @@ function renderSettingsContent() {
     <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in selected sources as soon as you open it</label>
     <p class="muted">Looking up sends the artist and album name to each selected source with an available key, if required. Tagcast waits between requests so it stays within each source's limits.</p>
     </section>
+    ${typeof musicUploadsSettingsPanel === "function" ? musicUploadsSettingsPanel() : ""}
     ${updateSettingsPanel()}
     <div class="settings-save-bar" id="settings-save-bar"><p id="settings-save-hint">Server preferences apply after Save. Immediate preferences are already applied.</p><div><button type="button" class="button" data-settings-discard>Discard changes</button><button class="button primary" id="settings-save">Save changes</button></div></div></form>`);
   settingsView.rendered = true;
@@ -219,6 +222,7 @@ async function saveSettings(form, clear) {
   const sources = [...form.querySelectorAll("[data-source-toggle]")];
   if (sources.length) body.disabled_sources = sources.filter(input => !input.checked).map(input => input.dataset.sourceToggle);
   if (form.elements.stream_quality) body.stream_quality = form.elements.stream_quality.value;
+  if (form.elements.music_uploads) body.music_uploads = form.elements.music_uploads.checked;
   if (form.elements.queue_sync) body.queue_sync = form.elements.queue_sync.checked;
   if (form.elements.record_plays) body.record_plays = form.elements.record_plays.checked;
   if (form.elements.album_guide) body.album_guide = form.elements.album_guide.checked;
@@ -237,6 +241,7 @@ async function saveSettings(form, clear) {
     applyArtistSettings(data);
     applyAlbumInformationSettings(data);
     applyPlaybackSettings(data);
+    if (typeof applyMusicUploadSettings === "function") applyMusicUploadSettings(data);
     const wasAutomatic = updateNotice.automatic;
     applyUpdateSettings(data); renderUpdateNotice();
     if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
@@ -245,7 +250,10 @@ async function saveSettings(form, clear) {
     toast("Settings saved.");
   } catch (error) { $("#settings-feedback").textContent = error.message; toast(error.message); }
   finally { for (const [input, disabled] of locked) input.disabled = disabled; settingsView.saving = false; updateSettingsSaveState();
-    if (state.screen === "settings" && settingsFocus?.closest?.("#settings-form") && (document.activeElement === settingsFocus || document.activeElement === document.body)) $("#settings-save").focus({preventScroll: true});
+    if (state.screen === "settings" && settingsFocus?.closest?.("#settings-form") && (document.activeElement === settingsFocus || document.activeElement === document.body)) {
+      const focus = $("#settings-save-bar").hidden ? $("#settings-category-title") : $("#settings-save");
+      focus.focus({preventScroll: true});
+    }
   }
 }
 

@@ -1,8 +1,9 @@
 # macOS Developer ID signing and notarization
 
-This is a build procedure, not a claim about already-published downloads. The
-existing 1.1.0 archives and checksums are unchanged. Windows signing through
-SignPath is separate and still awaiting approval/integration.
+Tagcast 1.2.0 macOS downloads use Developer ID signing and Apple notarization,
+with verification after final archive extraction. Earlier 1.1.0 archives and
+checksums are unchanged. Windows signing through SignPath is separate and still
+awaiting approval/integration.
 
 ## Credentials
 

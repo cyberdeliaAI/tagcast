@@ -3,6 +3,11 @@
 // Read-only tours: highlight existing controls without navigating, opening forms,
 // loading data or invoking the controls. Native modality also protects open drafts.
 const HELP_TOPICS = {
+  uploads: {title: "Music uploads", scope: "#uploads-page", steps: [
+    ["Choose and prepare", "Enable Music uploads under Settings → Data & exports, save, and reconnect once to approve upload permission. Choose local files or a folder on the computer running Tagcast. Preparation reads selected files and checks identical uploads; it does not send audio.", ["#music-upload-form"]],
+    ["Review before sending", "Check filenames and skipped-file reasons. Only Ready to upload files are sent after Start uploads. Byte-identical files already in your account or repeated in this selection are skipped. Different tags count as different files.", ["#music-upload-results"]],
+    ["Pause, stop and verify", "Pause waits between files. Stop interrupts a current transfer where possible. Already sent files may still arrive. Uncertain outcomes are not retried automatically; check iBroadcast before preparing again. Uploaded means iBroadcast confirmed receipt; Details explains the additional file-list check. After full success the old selection is cleared; New upload starts a fresh selection. Reload the library explicitly after processing. Local files, your playback queue and existing metadata drafts stay unchanged.", ["#music-upload-phase"]],
+  ]},
   downloads: {title: "Downloads", scope: "#downloads-page", steps: [
     ["Choose albums", "Use Download album in an album's More menu, or select albums and choose Download. Adding a selection only queues it here; it does not fetch audio or change your playing queue.", ["#audio-download-albums"]],
     ["Review before starting", "Choose a folder on the computer running Tagcast, quality and file source. Review download shows the exact selection and example filenames before Start downloads creates local copies. Free accounts use 128 kbps MP3.", ["#audio-download-form", "#audio-download-review"]],

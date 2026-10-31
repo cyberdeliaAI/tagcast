@@ -278,6 +278,8 @@ class Library:
         self._upload_dates = {}
         self._genre_labels = None
         self._editor_names = None
+        self._album_summaries = None
+        self._summary_lock = Lock()
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""
@@ -509,20 +511,37 @@ class Library:
             "repeated_numbers": len(positions) - len(set(positions)),
         }
 
-    def album_index(self):
-        names = {"genres": set(), "composers": set()} if self._editor_names is None else None
-        albums = [self.album_summary(i, names) for i in self.album_ids()]
-        if names is not None:
+    def _ensure_album_summaries(self):
+        # Native tables are a downloaded snapshot. Studio replaces the Library after
+        # changes; never carry derived data across snapshots, even at the same revision.
+        if self._album_summaries is not None:
+            return
+        with self._summary_lock:
+            if self._album_summaries is not None:
+                return
+            names = {"genres": set(), "composers": set()}
+            albums = [self.album_summary(i, names) for i in self.album_ids()]
             names["composers"] = {text(self.artists.get(i, {}).get("name"))
                                   for i in names["composers"]
                                   if text(self.artists.get(i, {}).get("name")).strip()}
             self._editor_names = {key: sorted(values, key=str.casefold) for key, values in names.items()}
-        return albums
+            # Publish only a complete build, with its matching editor names. Concurrent
+            # loads share this pass; an exception leaves it retryable, without a partial index.
+            self._album_summaries = albums
+
+    def album_index(self):
+        """Reuse this snapshot's summaries; callers own all returned mutable values."""
+        self._ensure_album_summaries()
+        # Only these three summary fields contain mutable values. Copy their
+        # containers rather than revisiting all the immutable strings/numbers.
+        return [{**album, "genres": list(album["genres"]),
+                 "upload_dates": list(album["upload_dates"]),
+                 "album_artists": [dict(artist) for artist in album["album_artists"]]}
+                for album in self._album_summaries]
 
     def editor_names(self):
         """Exact active labels/credits collected with summaries, without another track scan."""
-        if self._editor_names is None:
-            self.album_index()
+        self._ensure_album_summaries()
         return {key: list(values) for key, values in self._editor_names.items()}
 
     def album_set_key(self, album_id):

@@ -29,19 +29,19 @@ function uploadBrowseTitle() {
 // https://rockhall.com/inductees/joy-division-new-order/
 // https://www.ifpi.org/resources/
 const decadeIntroductions = {
-  "1900": "Ragtime, brass bands and popular songs filled theatres and homes, while early records brought performers to new listeners. In concert music, late Romantic richness met new approaches to harmony and colour.",
-  "1910": "Ragtime and dance bands shared the stage with blues and the first jazz recordings. Composers explored new rhythms and harmonies, while folk traditions continued to shape everyday music.",
-  "1920": "Jazz, blues and dance orchestras reached growing audiences through records and radio. Improvisation and distinctive voices flourished alongside country recordings, popular songs and adventurous concert music.",
-  "1930": "Big-band swing brought dance rhythms, memorable singers and inventive soloists to a wide audience. Blues, country and orchestral music offered equally rich paths through the decade.",
-  "1940": "New jazz directions, including bebop, grew alongside swing. Rhythm and blues and bluegrass developed distinctive sounds, while vocalists brought both intimacy and energy to popular songs.",
-  "1950": "Rock and roll brought the energy of rhythm and blues and country to new audiences. Doo-wop, vocal pop, electric blues and varied jazz styles added to the decade's colourful sound.",
-  "1960": "Pop and rock became a space for rapid experimentation, from the British beat boom and folk-rock to psychedelic studio sounds. Soul, jazz and folk traditions offered a wealth of distinctive voices.",
-  "1970": "Funk and disco filled dance floors, progressive rock stretched the album format, and punk brought a sharper edge. Reggae, singer-songwriters, jazz fusion and electronic experiments added their own distinctive sounds.",
-  "1980": "Synth-pop, new wave and electronic dance sounds grew around synthesisers, drum machines and sampling. Hip-hop expanded its reach, while guitar-driven rock and metal continued to flourish.",
-  "1990": "Grunge, alternative rock and Britpop gave guitar music fresh directions, while hip-hop and R&B became major creative forces. House, techno and other club sounds flourished alongside a wide range of independent scenes.",
-  "2000": "Hip-hop, R&B, pop, indie rock and electronic music shared an increasingly digital world. Downloads and online discovery changed how listeners found music, while albums and independent scenes continued to evolve.",
-  "2010": "Streaming and playlists changed everyday listening, bringing music from many places within easy reach. Pop, hip-hop and electronic dance music crossed paths, while independent artists found new ways to reach listeners.",
-  "2020": "Streaming connects pop, hip-hop and electronic music with regional scenes around the world. New releases sit alongside rediscovered recordings, bringing fresh voices and older favourites into the same listening space.",
+  "1900": "Ragtime, brass bands and parlour songs filled theatres and homes, while cylinders and early discs carried performers to new listeners. In concert music, late Romantic richness met new approaches to harmony and colour.",
+  "1910": "Ragtime and dance bands shared the stage with early blues and, by 1917, the first jazz recordings. Concert music broke with tradition through bold rhythms and unfamiliar harmonies, and Tin Pan Alley songs travelled widely as sheet music.",
+  "1920": "Jazz, blues and dance orchestras reached growing audiences through records and the new medium of radio. Improvising soloists and expressive singers came to the fore, alongside the first country recordings, Broadway songs and adventurous concert music.",
+  "1930": "Big-band swing brought dance rhythms, memorable singers and inventive soloists to a wide audience. Film musicals, blues, gospel and country found loyal followings, and Latin rhythms such as the rumba found eager dancers.",
+  "1940": "Bebop gave jazz a fast, adventurous language as the swing era wound down. Jump blues fed into rhythm and blues, bluegrass took shape and crooners lent popular song a softer intimacy.",
+  "1950": "Rock and roll carried the energy of rhythm and blues and country to teenage audiences through radio and 45 rpm singles. Doo-wop, electric blues, mambo and modern jazz thrived as well, and the long-playing record gave albums room to grow.",
+  "1960": "Pop and rock became a space for rapid experimentation, from the British beat boom and folk-rock to psychedelic studio sounds. Soul, bossa nova, free jazz and the folk revival added a wealth of other voices.",
+  "1970": "Funk and disco filled dance floors, progressive rock stretched the album format and punk brought a sharper edge. Reggae, heavy metal, singer-songwriters and jazz fusion found large audiences, while early hip-hop and electronic experiments pointed ahead.",
+  "1980": "Synth-pop, new wave and the first house and techno tracks grew around synthesisers, drum machines and sampling. Music videos and portable cassette players changed how songs were seen and heard, as hip-hop widened its reach and rock and metal filled arenas.",
+  "1990": "Grunge, alternative rock and Britpop gave guitar music fresh directions, while hip-hop and R&B became major creative forces. House, techno and drum and bass filled clubs and raves, and CD reissues put older recordings back into circulation.",
+  "2000": "Hip-hop, R&B, pop, indie rock and electronic music shared an increasingly digital world. Downloads, digital music players and music blogs changed how listeners discovered songs, opening new routes for independent artists.",
+  "2010": "Streaming and playlists changed everyday listening, bringing music from many places within easy reach. Pop, hip-hop and electronic dance music crossed paths, K-pop and Latin pop reached charts worldwide and independent artists built audiences online.",
+  "2020": "Streaming and short video clips connect pop, hip-hop and electronic music with regional scenes around the world. New releases sit alongside rediscovered recordings, bringing fresh voices and older favourites into the same listening space.",
 };
 
 function decadeIntroduction(key) {

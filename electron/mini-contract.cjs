@@ -1,6 +1,7 @@
 "use strict";
 
 // A presentation snapshot only. No stream URLs, account data or renderer objects.
+const themeRoles = Object.freeze(["brand-background", "brand-ink", "brand-paper", "sidebar", "accent", "shell-ink", "shell-muted", "shell-active", "shell-line", "ink", "muted", "paper", "line", "link", "surface", "soft", "tint", "focus", "primary", "primary-hover", "chart", "primary-ink"]);
 const actions = new Set(["play", "pause", "previous", "next", "seek"]);
 function command(value) {
   if (!value || !actions.has(value.action) || !["document", "entry", "segment"].every(key => typeof value[key] === "string" && value[key].length <= 100)) return null;
@@ -20,6 +21,7 @@ function snapshot(value) {
     position: Number.isFinite(value.position) ? Math.max(0, Math.min(duration, value.position)) : 0, duration,
     paused: value.paused === true, controllable: value.controllable === true, seekable: value.seekable === true,
     previous: value.previous === true, next: value.next === true,
+    colours: Object.fromEntries(themeRoles.filter(role => typeof value.colours?.[role] === "string" && /^#[0-9a-f]{6}$/i.test(value.colours[role])).map(role => [role, value.colours[role].toLowerCase()])),
     theme: value.theme === "dark" ? "dark" : "light",
     palette: ["ocean", "warm", "ibroadcast"].includes(value.palette) ? value.palette : "forest"};
 }
@@ -30,4 +32,4 @@ function bounds(value, area) {
     x: Math.round(Math.max(area.x, Math.min(area.x + area.width - width, Number.isFinite(value?.x) ? value.x : area.x + (area.width - width) / 2))),
     y: Math.round(Math.max(area.y, Math.min(area.y + area.height - height, Number.isFinite(value?.y) ? value.y : area.y + 80)))};
 }
-module.exports = {command, snapshot, bounds};
+module.exports = {command, snapshot, bounds, themeRoles};

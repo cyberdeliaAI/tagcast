@@ -24,7 +24,8 @@ function miniSnapshot() {
     previous: controllable && player.index > 0, next: controllable && player.index < player.queue.length - 1,
     status: !available ? "" : !controllable ? "Playback is controlled on another device" : audio.error ? "Playback error · try Next or open Tagcast" : g && (!ready || g.seekIntent) ? "Preparing audio…" : audio.readyState < 3 && !audio.paused ? "Buffering…" : g ? "Gapless · experimental" : "",
     theme: theme === "dark" || (!theme && globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
-    palette: document.documentElement.dataset.palette || "forest"};
+    palette: document.documentElement.dataset.palette || "forest",
+    colours: TagcastThemes.active() ? {...TagcastThemes.active()[TagcastThemes.mode()]} : {}};
 }
 function publishMiniPlayer() {
   if (miniOwner.active) window.tagcastMiniOwner?.publish(miniSnapshot());
@@ -62,6 +63,7 @@ if (window.tagcastMiniOwner) {
   });
   for (const name of ["loadstart", "ended"]) audio.addEventListener(name, () => { miniOwner.normal += 1; publishMiniPlayer(); });
   for (const name of ["play", "pause", "playing", "waiting", "stalled", "ended", "error", "emptied", "loadedmetadata", "seeked"]) audio.addEventListener(name, publishMiniPlayer);
+  document.addEventListener("tagcast-theme-change", publishMiniPlayer);
   document.addEventListener("DOMContentLoaded", () => {
     const button = $("#visual-player-mini"); button.hidden = false;
     button.addEventListener("click", () => window.tagcastMiniOwner.open());

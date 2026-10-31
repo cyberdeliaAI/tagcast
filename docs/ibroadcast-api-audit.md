@@ -123,7 +123,7 @@ authorization category, not documentation for every possible endpoint within it.
 | `user.devices:read` / `user.devices:write` | No / No |
 | `user.library:read` / `user.library:write` | Yes / Yes |
 | `user.queue:read` / `user.queue:write` | Only when queue sync is enabled |
-| `user.upload` | No |
+| `user.upload` | Optional: only with Music uploads enabled; explicit reauthorization |
 
 ## Metadata and image operations outside the public reference
 
@@ -173,7 +173,7 @@ and permissions would need confirmation before implementation.
 | Hide/archive tracks by tags | `archivetracks` | No; archived tags can be read and removed from a selection, but not added/archived here. |
 | Track Dashboard | `dashboard_files`, `dashboard_meta`, `dashboard_suggestions`, `dashboard_missing_meta_count`, `dashboard_upload_issue_count`, `dashboard_upload_status` | No |
 | Dashboard restoration/deletion | `restore_file`, `dashboard_delete` | No |
-| Audio uploads | Upload server and processing flow | No; Tagcast edits the existing cloud library. |
+| Audio uploads | OAuth upload server, supported types and MD5 read-back | Optional, reviewed integration; the user reported two successful album uploads. Error/recovery behaviour is covered with a fake service, not verified live. No sync/delete route. |
 | Playlist-file import | `upload_playlist` | No |
 | Download/export | `downloadlibrary`, download server | No library audio export. Current development adds read-only JSON / CSV ZIP metadata snapshots from the loaded library; no download server API is used. |
 | Single-track sharing | `sharetrack` | No |
@@ -228,7 +228,7 @@ every private endpoint or dynamic mode name.
 | OAuth PKCE/state | Verifier length 43–128; state at most 128 characters | Uses dependency PKCE generation and random state; verifies callback state | Covered by the current flow; no generic user-supplied verifier. |
 | Device-code polling | Use server interval; handle pending and slowdown | Uses returned interval, adds five seconds on slowdown; handles expiry/denial | Covered for normal responses. |
 | General API request rate | No published universal requests/second or request-size quota found | Retries eligible transient failures after 2 and 6 seconds; unsafe mutations/history excluded | Not a documented-rate-limit policy. Generic JSON retries do not honor `Retry-After`. |
-| Audio upload | Help center states 1.5 GB per file | No music-upload feature or `user.upload` permission | Not applicable to current Tagcast; this is not an artwork limit. |
+| Audio upload | Help center states 1.5 GB per file | Optional `user.upload`, explicit review/start, 1.5 GB per file and 1,000 files per review | Synthetic integration tests and user-reported successful album uploads; live failure/recovery cases remain unverified. This is not an artwork limit. |
 | Overall cloud library size | Help center states no total-size limit | No arbitrary album/track total cap; full library is held server-side, compact summaries/lazy detail in browser | Hardware/memory and specific feature bounds remain relevant. |
 
 Service sources: [Artwork](https://help.ibroadcast.com/en/developer/components/artwork),

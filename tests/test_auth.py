@@ -1,5 +1,6 @@
 """OAuth HTTP controls without contacting a real account."""
 
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -49,6 +50,22 @@ class AuthTests(unittest.TestCase):
                 patch.object(auth.requests, "post", side_effect=requests.Timeout):
             with self.assertRaises(requests.Timeout):
                 auth.poll_for_token("test", "device", 1)
+
+    def test_cancelled_poll_never_requests_or_returns_credentials(self):
+        stop = threading.Event()
+        stop.set()
+        with patch.object(auth.requests, "post") as post:
+            self.assertIsNone(auth.poll_for_token("test", "device", 0, stop=stop))
+            post.assert_not_called()
+        stop.clear()
+
+        def response_after_cancel(*args, **kwargs):
+            stop.set()
+            return response(TOKENS)
+
+        with patch.object(auth.requests, "post", side_effect=response_after_cancel) as post:
+            self.assertIsNone(auth.poll_for_token("test", "device", 0, stop=stop))
+            self.assertEqual(post.call_count, 1)
 
     def test_refresh_preserves_the_refresh_token_when_not_rotated(self):
         with patch.object(auth.requests, "post", return_value=response(

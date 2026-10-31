@@ -65,6 +65,31 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"device login did not finish: {studio.device}")
 
+    def test_sign_in_window_cancel_is_bound_to_one_attempt(self):
+        studio = client.Studio(self.home)
+        code = {"device_code": "private-device-code", "user_code": "PUBLIC-CODE"}
+        with patch.object(client.auth, "device_code_request", return_value=code), \
+                patch.object(client.threading.Thread, "start"):
+            first = studio.start_device()
+            first_stop = studio._device_stop
+            second = studio.start_device()
+        self.assertNotEqual(first["request_id"], second["request_id"])
+        self.assertNotIn("device_code", second)
+        self.assertTrue(first_stop.is_set())
+        self.assertFalse(studio.cancel_device(first["request_id"]))
+        self.assertEqual(studio.device["request_id"], second["request_id"])
+        self.assertFalse(studio._device_stop.is_set())
+        self.assertTrue(studio.cancel_device(second["request_id"]))
+        self.assertTrue(studio._device_stop.is_set())
+        self.assertIsNone(studio.device)
+
+    def test_window_cancellation_cannot_revoke_a_completed_sign_in(self):
+        studio = self.connect()
+        current = studio.client
+        self.assertTrue(studio.cancel_device(studio._device_request_id))
+        self.assertIs(studio.client, current)
+        self.assertTrue(studio.status()["connected"])
+
     def test_device_login_persists_private_tokens(self):
         studio = self.connect()
         self.assertEqual(studio.status()["account"], "wilfred")
@@ -912,6 +937,66 @@ class ClientTests(unittest.TestCase):
         job = self.wait_job(studio, result["job"])
         self.assertEqual([r["status"] for r in job["results"]], ["saved"])
         self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+
+    def test_repeated_load_reuses_summaries_but_still_checks_remote_state(self):
+        studio = self.connect()
+        first = studio.load_library()
+        library = studio.library
+        downloads = mock_ibroadcast.STATE["downloads"]
+        with patch.object(library, "album_summary", side_effect=AssertionError("Repeated scan")), \
+                patch.object(studio, "_remote_state", wraps=studio._remote_state) as status:
+            second = studio.load_library()
+            second["albums"][0]["album_artists"][0]["name"] = "Changed response"
+            third = studio.load_library()
+        self.assertEqual(third["albums"], first["albums"])
+        self.assertEqual(third["source"], "memory")
+        self.assertEqual(status.call_count, 2)
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
+
+    def test_read_back_replaces_cached_summaries_even_at_the_same_revision(self):
+        studio = self.connect()
+        before = studio.load_library()
+        library = studio.library
+        album = studio.album_details(["74"])[0]
+        track = album["tracks"][0]
+        downloads = mock_ibroadcast.STATE["downloads"]
+        self.addCleanup(mock_ibroadcast.STATE["albums"][74].update,
+                        copy.deepcopy(mock_ibroadcast.STATE["albums"][74]))
+        self.addCleanup(mock_ibroadcast.STATE["tracks"][904].update,
+                        copy.deepcopy(mock_ibroadcast.STATE["tracks"][904]))
+        mock_ibroadcast.STATE["frozen"] = True
+        result = studio.save([
+            edit("album", 74, 74, year=(album["year"], 2007)),
+            edit("track", track["id"], 74, year=(track["year"], 2007),
+                 genre=(track["genre"], "Fresh read-back genre")),
+        ])
+        job = self.wait_job(studio, result["job"])
+        self.assertEqual([row["status"] for row in job["results"]], ["saved", "saved"])
+        self.assertIsNot(studio.library, library)
+        self.assertEqual(studio.library.lastmodified, library.lastmodified)
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+        after = next(row for row in job["albums"] if row["id"] == "74")
+        self.assertEqual(after["year"], 2007)
+        self.assertEqual(after["genres"], ["Fresh read-back genre"])
+        self.assertIn("Fresh read-back genre", job["editor_names"]["genres"])
+        self.assertEqual(library.album_index(), before["albums"])
+        # The next response reuses only the newly verified snapshot.
+        with patch.object(studio.library, "album_summary", side_effect=AssertionError("Repeated scan")):
+            reloaded = studio.load_library()
+        self.assertEqual(reloaded["albums"], job["albums"])
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+
+    def test_cached_summaries_do_not_hide_external_write_conflicts(self):
+        studio = self.connect()
+        studio.load_library()
+        album = studio.album_details(["74"])[0]
+        with patch.dict(mock_ibroadcast.STATE["albums"][74], year=2008):
+            mock_ibroadcast.STATE["version"] += 1
+            with self.assertRaises(ConflictError):
+                studio.save([edit("album", 74, 74, year=(album["year"], 2007))])
+            updated = next(row for row in studio.load_library()["albums"] if row["id"] == "74")
+            self.assertEqual(updated["year"], 2008)
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
 
     def test_a_download_finishing_after_disconnect_is_thrown_away(self):
         studio = self.connect()

@@ -14,6 +14,7 @@ async function collectionJob(response, current) {
     if (job.state === "checking") await new Promise(resolve => setTimeout(resolve, 1000));
   } while (job.state === "checking");
   if (job.state !== "done") throw Error(job.error || "Read-back failed. Reload to check the result.");
+  if (Object.hasOwn(job, "playlists_count")) updatePlaylistCount(job.playlists_count);
   return job;
 }
 
@@ -159,6 +160,7 @@ async function renderCollections() {
     const data = await api(`/api/playlists?${collectionsView.playlist ? `id=${encodeURIComponent(collectionsView.playlist)}${collectionsView.query ? `&q=${encodeURIComponent(collectionsView.query)}` : ""}` : `q=${encodeURIComponent(collectionsView.query)}&browse=1`}&offset=${collectionsView.offset}`);
     if (request !== collectionsView.request || details !== state.details || state.screen !== "playlists") return;
     collectionsView.data = data;
+    if (Object.hasOwn(data, "playlists_count")) updatePlaylistCount(data.playlists_count);
     if (data.is_folder) {
       page.innerHTML = playlistFolderPage(data);
     } else if (collectionsView.playlist) {

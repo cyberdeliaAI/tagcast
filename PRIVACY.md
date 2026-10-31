@@ -1,6 +1,6 @@
 # Tagcast privacy policy
 
-Last updated: 30 October 2026.
+Last updated: 31 October 2026.
 
 This policy describes the Tagcast application distributed from
 [cyberdeliaAI/tagcast](https://github.com/cyberdeliaAI/tagcast), including its
@@ -39,7 +39,7 @@ Playback requests the selected audio and may prepare subsequent tracks. Metadata
 lyrics, tags, playlists and trash changes require the relevant explicit action
 and review. Local audio downloads start only when you choose Start downloads.
 
-Two additional features are **off by default**:
+Three additional features are **off by default**:
 
 - **Settings → Playback → Record played tracks in iBroadcast:** when enabled,
   sends the track ID and playback timestamp after more than ten seconds of actual
@@ -48,6 +48,15 @@ Two additional features are **off by default**:
   after enabling and approving the additional OAuth permissions, explicitly
   connecting through Devices exchanges queue and playback state with iBroadcast's
   queue service. Disable and save to stop using this feature.
+- **Settings → Data & exports → Music uploads:** after enabling, saving and
+  approving the additional `user.upload` permission, preparation reads only your
+  chosen local paths and checks supported formats and your account's uploaded-file
+  MD5 list. Preparation sends no audio. **Start uploads** sends the reviewed audio
+  files and relative folder/filename labels to iBroadcast's upload service. A local
+  hash index stores paths and file identities in the private Tagcast settings
+  directory. Disable and save to stop the task. No folder watching, local file
+  changes or automatic library deletions are performed. See
+  [Music uploads](docs/music-uploads.md) for stopping and uncertain outcomes.
 
 Use **Disconnect** to stop the account connection. Settings or integrations you
 enable directly in iBroadcast, such as its Last.fm scrobbling, are controlled by

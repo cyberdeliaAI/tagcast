@@ -42,7 +42,7 @@ document.addEventListener("click", event => {
 
 const colors = ["#627b70", "#ab7555", "#6c7b89", "#a98a56", "#836d7b", "#71856b"];
 // state.albums holds small album summaries (no tracks); full albums live in state.details.
-const state = {albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
+const state = {playlistsCount: null, albums: [], details: new Map(), albumFavourites: new Set(), albumFavouriteError: "", artistFavourites: new Set(), artistFavouriteError: "", artistNames: [], editorNames: {genres: [], composers: []}, artist: null, view: storedView(), perPage: storedPageSize("tagcast-per-page"), history: storedHistory(), selected: new Set(), page: 0, mode: "demo", loading: false, connection: {connected: false, configured: false, account: ""}};
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
@@ -183,7 +183,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
-  libraryLoadRequest += 1; state.loading = false;
+  libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
   closeBrowseOptions();
   resetEditorArtistChoices();
@@ -1307,7 +1307,16 @@ function statusPill(status) {
   return `<span class="status ${escapeHtml(status)}">${escapeHtml(labels[status] || status)}</span>`;
 }
 
+function updatePlaylistCount(value = state.playlistsCount) {
+  state.playlistsCount = Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const node = $("#playlist-count");
+  const known = live() && state.connection.connected && !state.loading && state.playlistsCount !== null;
+  node.hidden = !known;
+  node.textContent = known ? state.playlistsCount.toLocaleString("en") : "";
+}
+
 function updateChrome() {
+  updatePlaylistCount();
   if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
   if (typeof csvImportCurrent === "function" && $("#playlist-import").open && !csvImportCurrent()) resetPlaylistImport();
@@ -1378,7 +1387,7 @@ async function loadLive(refresh = false) {
   if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
-  state.loading = true; state.mode = "live"; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
+  state.loading = true; state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
   $("#library-loading-detail").textContent = `${nextLibraryLoadingMessage()} ${refresh ? "Downloading a fresh copy of your collection. " : ""}Large libraries can take a little while.`;
@@ -1389,6 +1398,7 @@ async function loadLive(refresh = false) {
     completed = true;
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
     applyEditorNames(data.editor_names);
+    updatePlaylistCount(data.playlists_count);
     state.albumFavourites = new Set(data.album_favourites?.albums || []);
     state.albumFavouriteError = data.album_favourites?.error || "";
     state.artistFavourites = new Set(data.artist_favourites?.artists || []);
@@ -1415,6 +1425,7 @@ async function loadLive(refresh = false) {
     if (state.screen === "overview" && typeof loadOverview === "function") loadOverview();
     if (typeof refreshPlayerRatings === "function") refreshPlayerRatings();
     if (typeof restorePendingRoute === "function") restorePendingRoute();
+    if (typeof syncMusicUploadsPage === "function") syncMusicUploadsPage();
   }
 }
 
@@ -1425,10 +1436,9 @@ function connectView(view, extra = {}) {
     box.innerHTML = `<div class="connect-step"><p class="muted">Connected${c.account ? ` as <strong>${escapeHtml(c.account)}</strong>` : ""}. Tagcast can read your library and save metadata you review.</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">Disconnect</button><button class="button" id="connect-redownload" title="Normally the library is only downloaded when iBroadcast reports a change">Download everything again</button><button class="button primary" id="connect-reload">Reload library</button></div>`;
   } else if (view === "ready") {
     const previous = c.using_default_client === false;
-    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in with a short code on the iBroadcast website. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name. Your password stays on iBroadcast.</p><p class="muted">${previous ? "Your previously configured app registration is still in use." : "Tagcast is already registered with iBroadcast. You do not need to create an app or enter a client ID."}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? '<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">Use Tagcast sign-in</button>' : ""}${previous ? '<button class="button" id="browser-start">Use browser redirect</button>' : ""}<button class="button primary" id="device-start">Sign in with a code →</button></div>${previous ? `<p class="muted">Browser redirect uses <code>http://127.0.0.1:${location.port || 80}/callback</code>; it must match your existing registration.</p>` : ""}`;
+    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in on the official iBroadcast website and approve the connection. Tagcast returns here automatically. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name. Your password stays on iBroadcast.${typeof musicUploadsView !== "undefined" && musicUploadsView.enabled ? " Music uploads are enabled: this sign-in also requests permission to upload your selected files." : ""}</p><p class="muted">${previous ? "Your previously configured app registration is still in use." : "Tagcast is already registered with iBroadcast. You do not need to create an app or enter a client ID."}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? '<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">Use Tagcast sign-in</button>' : ""}${previous ? '<button class="button" id="browser-start">Use browser redirect</button>' : ""}<button class="button primary" id="device-start">Sign in with iBroadcast →</button></div>${previous ? `<p class="muted">Browser redirect uses <code>http://127.0.0.1:${location.port || 80}/callback</code>; it must match your existing registration.</p>` : ""}`;
   } else if (view === "device") {
-    const d = extra.device, link = d.verification_uri_complete || d.verification_uri;
-    box.innerHTML = `<div class="connect-step"><p class="muted">Open the iBroadcast sign-in page and enter this code:</p><div class="device-code">${escapeHtml(d.user_code)}</div><p class="muted"><span class="spinner"></span>Waiting for you to approve Tagcast…</p>${error}</div><div class="dialog-footer"><button class="button" id="device-cancel">Cancel</button><a class="button primary" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open iBroadcast sign-in ↗</a></div>`;
+    box.innerHTML = signInDeviceMarkup(extra.device, {error, fallback: extra.fallback});
   }
 }
 
@@ -1439,23 +1449,31 @@ function openConnect() {
   $("#connect").showModal();
 }
 
-function stopPoll() { clearTimeout(devicePoll); devicePoll = null; }
+function stopPoll() { clearTimeout(devicePoll); devicePoll = null; signInPollGeneration += 1; }
 
-function pollDevice() {
+function pollDevice(delay = 2000) {
   stopPoll();
+  const generation = signInPollGeneration;
   devicePoll = setTimeout(async () => {
+    if (generation !== signInPollGeneration) return;
+    if (!signInDesktop() && signInFlow.popup?.closed) { await cancelSignIn(); return; }
     try {
       const status = await api("/api/status");
+      if (generation !== signInPollGeneration) return;
       state.connection = status;
-      if (status.connected && !["pending", "error"].includes(status.device?.state)) {
-        stopPoll(); $("#connect").close(); toast("Connected to iBroadcast."); updateChrome(); loadLive(); return;
+      if (status.connected && !["pending", "error"].includes(status.device?.state)) { finishSignIn(status); return; }
+      if (!status.device) {
+        stopPoll(); closeSignInChild(); signInFlow.requestId = "";
+        if ($("#connect").open) connectView("ready");
+        return;
       }
-      if (!status.device) { stopPoll(); return; }
-      if (status.device.state === "error") { stopPoll(); connectView("ready", {error: status.device.error}); return; }
-      if (status.device.expires_at && status.device.expires_at * 1000 < Date.now()) { stopPoll(); connectView("ready", {error: "The code expired. Start again."}); return; }
-    } catch { /* keep polling through brief hiccups */ }
-    pollDevice();
-  }, 2000);
+      if (status.device.state === "error" || (status.device.expires_at && status.device.expires_at * 1000 < Date.now())) {
+        stopPoll(); closeSignInChild(); signInFlow.requestId = "";
+        connectView("ready", {error: status.device.error || "The sign-in expired. Start again."}); return;
+      }
+    } catch { /* keep the existing single poller through brief hiccups */ }
+    if (generation === signInPollGeneration) pollDevice();
+  }, delay);
 }
 
 async function connectAction(target) {
@@ -1464,12 +1482,11 @@ async function connectAction(target) {
       state.connection = await api("/api/config/default", {});
       updateChrome(); connectView("ready");
     } else if (target.id === "device-start") {
-      target.disabled = true;
-      const {device} = await api("/api/auth/device", {});
-      state.connection.device = device;
-      connectView("device", {device}); pollDevice();
+      await beginSignIn(target);
+    } else if (target.id === "device-open") {
+      await reopenSignIn();
     } else if (target.id === "device-cancel") {
-      stopPoll(); await api("/api/auth/cancel", {}); state.connection.device = null; connectView("ready");
+      await cancelSignIn();
     } else if (target.id === "browser-start") {
       const {url} = await api("/api/auth/browser", {});
       location.href = url;
@@ -1645,7 +1662,7 @@ function showResults(result, overall, entry) {
 }
 
 document.addEventListener("click", event => {
-  const target = event.target.closest("#client-default, #device-start, #device-cancel, #browser-start, #connect-reload, #connect-redownload, #connect-logout, #reload-button, #logout-button");
+  const target = event.target.closest("#client-default, #device-start, #device-open, #device-cancel, #browser-start, #connect-reload, #connect-redownload, #connect-logout, #reload-button, #logout-button");
   if (target) connectAction(target);
 });
 $("#connect-button").addEventListener("click", openConnect);
@@ -1699,14 +1716,19 @@ document.addEventListener("click", event => {
 
 // Appearance and colour palette are independent, local-only preferences.
 function showTheme() {
+  TagcastThemes.apply();
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
   const label = {auto: "Auto", light: "Light", dark: "Dark"}[theme];
-  const colour = {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
+  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
   $("#theme-button").textContent = `${{auto: "◐", light: "☀", dark: "☾"}[theme]} Theme ▾`;
   $("#theme-button").title = `${colour} · ${label}. Choose colour and appearance.`;
   for (const value of ["auto", "light", "dark"]) $("#appearance-" + value).checked = theme === value;
-  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = palette === value;
+  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
+  const customFocus = document.activeElement?.dataset?.customThemeChoice !== undefined ? document.activeElement.value : null;
+  const custom = $("#theme-custom-list"), themes = TagcastThemes.snapshot().themes;
+  if (custom) custom.innerHTML = themes.length ? `<fieldset><legend>My themes</legend>${themes.map(item => `<label><input type="radio" name="palette" value="${item.id}" data-custom-theme-choice ${item.id === TagcastThemes.active()?.id ? "checked" : ""}> ${escapeHtml(item.name)}</label>`).join("")}</fieldset>` : "";
+  if (customFocus) custom?.querySelector(`[value="${customFocus}"]`)?.focus({preventScroll: true});
 }
 
 function setThemeMenu(open, restoreFocus = false) {
@@ -1716,8 +1738,11 @@ function setThemeMenu(open, restoreFocus = false) {
   else if (restoreFocus) $("#theme-button").focus();
 }
 $("#theme-button").addEventListener("click", () => setThemeMenu($("#theme-menu").hidden));
+document.addEventListener("click", event => { if (event.target.closest?.("[data-open-theme-editor]")) { setThemeMenu(false); showSettings("appearance"); } });
 $("#theme-menu").addEventListener("change", event => {
-  if (event.target.dataset.appearanceChoice !== undefined) {
+  if (event.target.dataset.customThemeChoice !== undefined) {
+    try { TagcastThemes.activate(event.target.value); showTheme(); } catch { showTheme(); toast("The theme could not be applied. Check that browser storage is available."); }
+  } else if (event.target.dataset.appearanceChoice !== undefined) {
     const value = event.target.value;
     if (!["auto", "light", "dark"].includes(value)) return;
     if (value === "auto") delete document.documentElement.dataset.theme;
@@ -1740,12 +1765,9 @@ document.addEventListener("keydown", event => {
 });
 
 function setColourPalette(value) {
-  const palette = ["ocean", "warm", "ibroadcast"].includes(value) ? value : "forest";
-  if (palette === "forest") delete document.documentElement.dataset.palette;
-  else document.documentElement.dataset.palette = palette;
+  const palette = TagcastThemes.builtin(value);
   showTheme();
   return palette;
 }
-try { setColourPalette(localStorage.getItem("tagcast-palette")); }
-catch { setColourPalette("forest"); }
+TagcastThemes.apply(); showTheme();
 setThemeMenu(false);

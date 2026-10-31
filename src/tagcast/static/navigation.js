@@ -14,7 +14,7 @@ const SIDEBAR_ITEMS = [
   ["show-genres", "Genres"], ["show-tags", "Tags"], ["show-years", "Release year"], ["show-decades", "Decades"],
   ["show-upload-folders", "Upload folders", false, true], ["show-uploaded", "Date uploaded", false, true],
   ["show-tracks", "Tracks"], ["show-favourites", "Favourites"], ["show-playlists", "Playlists"],
-  ["show-recently-played", "Recently played"], ["show-downloads", "Downloads"],
+  ["show-recently-played", "Recently played"], ["show-downloads", "Downloads"], ["show-uploads", "Uploads"],
   ["show-album-guide", "1001 Albums"], ["show-overview", "Overview"], ["show-history", "Change history", true],
 ];
 const sidebarLayout = readSidebarLayout();
@@ -43,6 +43,7 @@ function applySidebarLayout() {
   const buttons = sidebarLayout.order.map(id => {
     const button = $(`#${id}`);
     button.hidden = sidebarLayout.hidden.includes(id)
+      || (id === "show-uploads" && (typeof musicUploadsView === "undefined" || !musicUploadsView.enabled))
       || (id === "show-album-guide" && !albumGuide.enabled)
       || (id === "show-recently-played" && (!live() || !playReporting.enabled));
     return button;
@@ -67,6 +68,7 @@ function sidebarSettingsRows() {
   return sidebarLayout.order.map((id, index) => {
     const [, label, required] = SIDEBAR_ITEMS.find(item => item[0] === id);
     const note = required ? "Always available" : id === "show-album-guide" && !albumGuide.enabled ? "Enable 1001 Albums under Discovery to show it"
+      : id === "show-uploads" && (typeof musicUploadsView === "undefined" || !musicUploadsView.enabled) ? "Enable Music uploads under Data & exports to show it"
       : id === "show-recently-played" && !playReporting.enabled ? "Enable play reporting under Playback to show it" : "";
     return `<li class="sidebar-setting-row"><label><input type="checkbox" data-sidebar-item="${id}" ${sidebarLayout.hidden.includes(id) ? "" : "checked"} ${required ? "disabled" : ""}><span>${label}${note ? `<small>${note}</small>` : ""}</span></label><div><button type="button" class="button small" data-sidebar-move="${id}" data-direction="-1" aria-label="Move ${label} up" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="button small" data-sidebar-move="${id}" data-direction="1" aria-label="Move ${label} down" ${index === sidebarLayout.order.length - 1 ? "disabled" : ""}>↓</button></div></li>`;
   }).join("");
@@ -132,7 +134,7 @@ function currentRoute() {
   if (state.screen === "browse") return `${browseView.kind}${browseView.key === null ? "" : `/${encodeURIComponent(browseView.key)}`}`;
   if (state.screen === "playlists" && collectionsView.playlist) return `playlist/${encodeURIComponent(collectionsView.playlist)}`;
   if (state.screen === "album" && albumView.id) return `album/${encodeURIComponent(albumView.id)}`;
-  if (["downloads", "overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
+  if (["uploads", "downloads", "overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
   return state.artist ? `artist/${encodeURIComponent(state.artist)}` : "albums";
 }
 
@@ -142,7 +144,7 @@ function parseRoute(hash) {
   try { value = decodeURIComponent(rest.join("/")); } catch { return null; }
   if (kind === "settings") return {screen: "settings", category: Object.hasOwn(SETTINGS_CATEGORIES, value) ? value : "interface"};
   if (Object.hasOwn(browseKinds, kind)) return {screen: "browse", kind, key: rest.length ? value : null};
-  if (["downloads", "artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
+  if (["uploads", "downloads", "artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
   if (kind === "playlist" && /^\d+$/.test(value)) return {screen: "playlists", playlist: value};
   if (kind === "artist" && value) return {screen: "albums", artist: value};
   if (kind === "album" && value) return {screen: "album", album: value};
@@ -157,7 +159,7 @@ function routeLabel(hash, saved = history.state) {
   if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : saved?.browse?.label || browseKinds[route.kind].label;
   if (route.playlist) return saved?.label || (String(collectionsView.data?.id) === route.playlist ? collectionsView.data.name : "Playlist");
   if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || "the album";
-  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourite tracks", playlists: "Playlists", "album-favourites": "Album favourites", "artist-favourites": "Favourite album artists", "recently-played": "Recently played", overview: "Overview", downloads: "Downloads"}[route.screen];
+  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourite tracks", playlists: "Playlists", "album-favourites": "Album favourites", "artist-favourites": "Favourite album artists", "recently-played": "Recently played", overview: "Overview", downloads: "Downloads", uploads: "Uploads"}[route.screen];
 }
 
 function viewState(index, from) {
@@ -337,8 +339,8 @@ function showRoute(route, saved = {}) {
     showRecentlyPlayed(saved.recentPage || 0);
   } else if (["playlists", "album-favourites"].includes(route.screen)) {
     showCollections(route.screen, route.playlist || null, saved.collections || {});
-  } else if (route.screen === "downloads") {
-    showScreen("downloads");
+  } else if (["downloads", "uploads"].includes(route.screen)) {
+    showScreen(route.screen);
   } else if (route.screen === "overview") {
     showScreen("overview");
   } else if (route.screen === "album" && state.albums.some(a => String(a.id) === route.album)) {

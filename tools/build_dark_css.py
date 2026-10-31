@@ -33,7 +33,7 @@ CURVE = [(0.0, 0.98), (0.30, 0.92), (0.45, 0.80), (0.58, 0.74), (0.75, 0.62),
 HAND = """
 /* set by hand */
 :root{color-scheme:dark}
-.button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:#fff}
+.button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:var(--palette-primary-ink,#fff)}
 .button.primary:hover{background:var(--palette-primary-hover,#469a6e)}
 .button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
 .button.danger.primary:hover{background:#bd3944;border-color:#bd3944}

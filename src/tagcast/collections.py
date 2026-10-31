@@ -254,6 +254,12 @@ class Collections:
     def editable(row):
         return not row.get("system_created") and row.get("type") in (None, "", "playlist")
 
+    def playlist_count(self, library):
+        # Count native user playlists once, including nested/empty lists, not folders or system lists.
+        if not library.playlists_loaded:
+            return None
+        return sum(1 for row in library.playlists.values() if self.editable(row))
+
     def playlist_snapshot(self, row, playlist_id):
         payload = [str(playlist_id), self.studio.library_user, self.studio.playback_session,
                    self.studio.library.combine_sets, text(row.get("name")),
@@ -279,10 +285,11 @@ class Collections:
             raise LibraryError("Choose a valid playlist page.") from None
         if offset < 0 or len(text(query)) > 200:
             raise LibraryError("Choose a valid playlist page or shorter search.")
+        counts = {"playlists_count": self.playlist_count(library)}
         if playlist_id is not None:
             row = library.playlists.get(number(playlist_id))
             if row and self.folder(row):
-                return self.folder_view(library, number(playlist_id), offset)
+                return {**self.folder_view(library, number(playlist_id), offset), **counts}
             if not row or not self.editable(row):
                 raise LibraryError("This playlist is unavailable or managed by iBroadcast.")
             active = [(position, i) for position, i in enumerate(
@@ -308,7 +315,7 @@ class Collections:
                                  "position": index, "stored_position": active[index][0]})
                 except LibraryError:
                     continue
-            return {"id": str(number(playlist_id)), "name": text(row.get("name")),
+            return {**counts, "id": str(number(playlist_id)), "name": text(row.get("name")),
                     "description": text(row.get("description")),
                     **self.playlist_image(library, row),
                     "tracks": [i for _, i in page] if large else ids,
@@ -319,7 +326,7 @@ class Collections:
                     "matched_total": len(matches), "page_positions": [index for index, _ in page],
                     "duration": sum(lengths), "duration_missing": lengths.count(0)}
         if browse:
-            return self.playlist_catalogue(library, query, offset)
+            return {**self.playlist_catalogue(library, query, offset), **counts}
         words = fold(query).split()
         rows = [{"id": str(i), "name": text(p.get("name")),
                  "description": text(p.get("description")), "count": len(p.get("tracks") or []),
@@ -327,7 +334,7 @@ class Collections:
                 for i, p in library.playlists.items() if self.editable(p)
                 and all(w in fold(text(p.get("name"))) for w in words)]
         rows.sort(key=lambda p: fold(p["name"]))
-        return {"playlists": rows[offset:offset + 100], "total": len(rows), "offset": offset}
+        return {**counts, "playlists": rows[offset:offset + 100], "total": len(rows), "offset": offset}
 
     @staticmethod
     def folder(row):
