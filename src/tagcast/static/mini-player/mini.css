@@ -24,7 +24,7 @@
 .mini-page input[type=range]:disabled{opacity:.45;cursor:default}
 .mini-transport{display:grid;grid-template-columns:40px 44px 40px;gap:4px;justify-content:center;align-items:center;min-height:44px}
 .mini-transport button{width:40px;height:40px;color:var(--muted)}
-.mini-transport #play{width:44px;height:44px;background:var(--palette-primary,#2d654d);color:#fff}
+.mini-transport #play{width:44px;height:44px;background:var(--palette-primary,#2d654d);color:var(--palette-primary-ink,#fff)}
 .mini-transport #play:hover:not(:disabled){background:var(--palette-primary-hover,#24553f)}
 .mini-transport #play svg{width:22px;height:22px}.mini-play-glyph{transform:translateX(1px)}
 #play[data-paused=true] .mini-pause-glyph,#play[data-paused=false] .mini-play-glyph{display:none}

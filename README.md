@@ -17,7 +17,9 @@ Linux. This helps us focus on reliable playback and safe metadata editing, while
 keeping the interface shared with the browser version.
 
 **Your existing local music files are never changed.** Optional album downloads
-create separate local copies. Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
+create separate local copies. Optional music uploads read selected local audio and
+send copies to your own iBroadcast library only after review; see
+[setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
 **New in [Tagcast 1.1.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.1.0):**
 Save selected albums as local audio copies, compare and reconcile album/track years,
@@ -122,8 +124,9 @@ No Node.js or Tk is required for normal Python/browser use.
 
 ## Connect iBroadcast
 
-Choose **Connect iBroadcast → Sign in with a code**, approve Tagcast on the
-iBroadcast website, then return. No client ID setup or client secret is needed;
+Choose **Connect iBroadcast → Sign in with iBroadcast** and approve Tagcast in the
+iBroadcast sign-in window. Tagcast returns automatically; a code and browser link
+remain available as a fallback. No client ID setup or client secret is needed;
 your password stays on iBroadcast. Without an account, a demo library lets you
 preview browsing and edits without saving to iBroadcast.
 

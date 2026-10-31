@@ -6,15 +6,18 @@
   <meta name="referrer" content="no-referrer">
   <title>Tagcast · metadata editor &amp; player for iBroadcast</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script src="themes.js"></script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="dark.css">
   <link rel="stylesheet" href="palettes.css">
   <link rel="stylesheet" href="gapless-controls.css">
-  <script>try { const theme = localStorage.getItem("tagcast-theme"); if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; const palette = localStorage.getItem("tagcast-palette"); if (["ocean", "warm", "ibroadcast"].includes(palette)) document.documentElement.dataset.palette = palette; } catch { /* private window */ }</script>
+  <link rel="stylesheet" href="theme-editor.css">
+
   <script>try { if (localStorage.getItem("tagcast-library-notice") === "hidden") document.documentElement.dataset.libraryNotice = "hidden"; } catch { /* private window */ }</script>
   <script src="genres.js" defer></script>
   <script src="credits.js" defer></script>
   <script src="app.js" defer></script>
+  <script src="sign-in.js" defer></script>
   <script src="metadata-export.js" defer></script>
   <script src="lookup.js" defer></script>
   <script src="updates.js" defer></script>
@@ -47,9 +50,11 @@
   <script src="queue-sync.js" defer></script>
   <script src="album-guide.js" defer></script>
   <script src="help.js" defer></script>
+  <script src="theme-editor.js" defer></script>
   <script src="settings.js" defer></script>
   <script src="mini-player.js" defer></script>
   <script src="downloads.js" defer></script>
+  <script src="uploads.js" defer></script>
   <script src="navigation.js" defer></script>
 </head>
 <body>
@@ -87,10 +92,11 @@
     <button class="nav" id="show-uploaded" data-browse-kind="uploaded" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3M7 8l5-5 5 5M4 15v6h16v-6"/></svg> Date uploaded</button>
     <button class="nav" id="show-tracks"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 18V4l10-2v14M10 8l10-2"/><ellipse cx="7" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/></svg> Tracks <b id="track-count">0</b></button>
     <button class="nav" id="show-favourites"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg> Favourites</button>
-    <button class="nav" id="show-playlists"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5h12M3 10h12M3 15h7M17 18V9l4-1"/><ellipse cx="14" cy="18" rx="3" ry="2"/></svg> Playlists</button>
+    <button class="nav" id="show-playlists"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5h12M3 10h12M3 15h7M17 18V9l4-1"/><ellipse cx="14" cy="18" rx="3" ry="2"/></svg> Playlists <b id="playlist-count" hidden></b></button>
     <button class="nav" id="show-recently-played" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg> Recently played</button>
     <button class="nav" id="show-album-guide" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v16M12 5C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 1Z"/></svg> 1001 Albums</button>
     <button class="nav" id="show-downloads"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5M4 17v4h16v-4"/></svg> Downloads</button>
+    <button class="nav" id="show-uploads" hidden><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3M7 8l5-5 5 5M4 15v6h16v-6"/></svg> Uploads</button>
       <button class="nav" id="show-overview"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></svg> Overview</button>
     <button class="nav" id="show-history"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6h6"/></svg> Change history <b id="history-count">0</b></button>
     </nav>
@@ -98,7 +104,7 @@
     </div>
   </aside>
   <main>
-    <header class="topbar"><nav class="page-breadcrumbs" aria-label="Breadcrumb"><button type="button" class="breadcrumb" data-breadcrumb-root>Workspace</button><span class="slash">/</span><span id="breadcrumb">Album artists</span></nav><div class="top-actions"><button type="button" class="button small help-trigger" id="help-button" aria-haspopup="dialog" aria-controls="help-dialog" aria-label="Help for this page" title="Help for this page">?</button><button class="button small update-button" id="update-button" hidden></button><div class="appearance-controls"><button class="button small theme-button" id="theme-button" aria-expanded="false" aria-controls="theme-menu" title="Choose colour and appearance">◐ Theme ▾</button><div class="theme-menu" id="theme-menu" hidden><fieldset><legend>Appearance</legend><label><input type="radio" name="appearance" id="appearance-auto" value="auto" data-appearance-choice> Auto · follow system</label><label><input type="radio" name="appearance" id="appearance-light" value="light" data-appearance-choice> Light</label><label><input type="radio" name="appearance" id="appearance-dark" value="dark" data-appearance-choice> Dark</label></fieldset><fieldset><legend>Colour</legend><label><input type="radio" name="palette" id="palette-forest" value="forest" data-palette-choice> Forest</label><label><input type="radio" name="palette" id="palette-ocean" value="ocean" data-palette-choice> Ocean</label><label><input type="radio" name="palette" id="palette-warm" value="warm" data-palette-choice> Warm</label><label><input type="radio" name="palette" id="palette-ibroadcast" value="ibroadcast" data-palette-choice> iBroadcast inspired</label></fieldset></div></div><button class="button small" id="devices-button" hidden>Devices</button><button class="button small mode-badge" id="mode-badge">Demo · Connect</button></div></header>
+    <header class="topbar"><nav class="page-breadcrumbs" aria-label="Breadcrumb"><button type="button" class="breadcrumb" data-breadcrumb-root>Workspace</button><span class="slash">/</span><span id="breadcrumb">Album artists</span></nav><div class="top-actions"><button type="button" class="button small help-trigger" id="help-button" aria-haspopup="dialog" aria-controls="help-dialog" aria-label="Help for this page" title="Help for this page">?</button><button class="button small update-button" id="update-button" hidden></button><div class="appearance-controls"><button class="button small theme-button" id="theme-button" aria-expanded="false" aria-controls="theme-menu" title="Choose colour and appearance">◐ Theme ▾</button><div class="theme-menu" id="theme-menu" hidden><fieldset><legend>Appearance</legend><label><input type="radio" name="appearance" id="appearance-auto" value="auto" data-appearance-choice> Auto · follow system</label><label><input type="radio" name="appearance" id="appearance-light" value="light" data-appearance-choice> Light</label><label><input type="radio" name="appearance" id="appearance-dark" value="dark" data-appearance-choice> Dark</label></fieldset><fieldset><legend>Colour</legend><label><input type="radio" name="palette" id="palette-forest" value="forest" data-palette-choice> Forest</label><label><input type="radio" name="palette" id="palette-ocean" value="ocean" data-palette-choice> Ocean</label><label><input type="radio" name="palette" id="palette-warm" value="warm" data-palette-choice> Warm</label><label><input type="radio" name="palette" id="palette-ibroadcast" value="ibroadcast" data-palette-choice> iBroadcast inspired</label></fieldset><div id="theme-custom-list"></div><button type="button" class="text-action" data-open-theme-editor>Edit themes…</button></div></div><button class="button small" id="devices-button" hidden>Devices</button><button class="button small mode-badge" id="mode-badge">Demo · Connect</button></div></header>
     <section class="library-loading" id="library-loading" role="status" aria-live="polite" hidden><strong>Loading your iBroadcast library…</strong><p id="library-loading-detail">Checking for changes and retrieving your collection.</p><progress aria-label="Library loading"></progress></section>
     <div class="notice" id="library-notice"><span aria-hidden="true">ⓘ</span><span id="data-notice">Demo library with sample records. Nothing you edit here changes iBroadcast.</span><button type="button" class="notice-dismiss" id="notice-dismiss" aria-label="Hide library information banner" title="Hide this banner; restore it in Settings">×</button></div>
     <div id="favourites-hub" hidden>
@@ -118,6 +124,7 @@
     <section id="collections-page" hidden aria-label="Playlists and favourite albums"></section>
     <section id="settings" class="settings-page" aria-labelledby="settings-title" hidden><div class="page-intro"><div><div class="eyebrow">MAKE TAGCAST YOUR OWN</div><h1 id="settings-title" tabindex="-1">Settings<span>.</span></h1><p>Preferences for this browser and your local Tagcast server.</p></div></div><div class="settings-layout"><nav id="settings-nav" aria-label="Settings categories"></nav><div class="settings-body"><div class="settings-category-heading"><h2 id="settings-category-title" tabindex="-1"></h2><p id="settings-category-description" class="muted"></p></div><p id="settings-feedback" role="status" aria-live="polite"></p><button type="button" class="text-action settings-editor-return" data-settings-return hidden>← Return to your open editor</button><div id="settings-content"></div></div></div></section>
     <section id="downloads-page" hidden></section>
+    <section id="uploads-page" hidden></section>
     <section id="overview-page" class="overview" hidden aria-live="polite"></section>
     <section id="album-guide-page" hidden aria-label="1001 Albums">
       <div class="page-intro"><div><div class="eyebrow">DISCOVER YOUR COLLECTION</div><h1>1001 Albums<span>.</span></h1><p>Based on <cite><a href="https://en.wikipedia.org/wiki/1001_Albums_You_Must_Hear_Before_You_Die" target="_blank" rel="noopener noreferrer">1001 Albums You Must Hear Before You Die</a></cite>, edited by Robert Dimery. Explore the albums you already have from this selection, covering 1955–2007.</p></div></div>

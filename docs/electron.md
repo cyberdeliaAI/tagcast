@@ -31,7 +31,9 @@ external browser opener. These additions first ship in 0.80.0.
 
 ## Settings in 0.85.0
 
-Settings is a routed page; **Playback** contains Now playing view, compact-player preferences and optional [experimental Gapless playback](gapless-playback.md). The existing normal app identifier/profile, backend folder and stable port remain unchanged. The private Gapless Test app's temporary port and write restrictions are not used by the release. The earlier 0.80.0 download has the dialog described above.
+Settings is a routed page; **Playback** contains Now playing view, compact-player preferences and optional [experimental Gapless playback](gapless-playback.md). Appearance also imports/exports individual custom themes as bounded JSON files. Imports are new unsaved previews; existing themes and the active Light/Dark/Auto preference stay unchanged until explicitly saved/applied. Files contain only a name, built-in base palette and colour overrides.
+
+The existing normal app identifier/profile, backend folder and stable port remain unchanged. The private Gapless Test app's temporary port and write restrictions are not used by the release. The earlier 0.80.0 download has the dialog described above.
 
 <a id="mini-player-development"></a>
 
@@ -75,8 +77,19 @@ Light/Dark follow the main interface. Python/browser use keeps its existing play
 - Closing the last window quits the desktop app. Only its owned server is stopped.
   Reviewed requests/read-backs finish; running cleanup batches stop between batches.
   There is no automatic forced kill or automatic resumption of writes.
-- Existing unsaved-change/save warnings remain in force. Sign-in and external HTTPS
-  links open in the system browser; web pages do not replace the application window.
+- Existing unsaved-change/save warnings remain in force. **Sign in with iBroadcast**
+  opens the official approval page in a separate native window. Approval returns to
+  Tagcast automatically; closing the sign-in window cancels that pending attempt.
+  **Use a code instead** retains a system-browser link if the window fails or a
+  provider login requires another website. No password or token enters the Tagcast UI.
+  The existing server-side device flow and requested scopes are unchanged. Provider
+  cookies are separate from the main app and from your system browser.
+- The main window and sign-in window remember their normal width and height in the
+  desktop profile. Maximized/fullscreen dimensions do not replace the normal size.
+  Restored sizes are clamped to the current display; position is not persisted here.
+  Mini Player keeps its existing separate size, position and Pin preferences.
+- Other external HTTPS links open in the system browser; web pages do not replace
+  the application window.
   For an existing custom OAuth browser-redirect registration, return to Electron and
   use View > Reload after the browser confirms sign-in. Device-code sign-in updates
   the window normally and is the default.
@@ -131,7 +144,11 @@ No Electron auto-updater is enabled. Tagcast's existing release check only notif
 
 The renderers are sandboxed and isolated, with no Node.js or generic IPC.
 The desktop Mini Player uses narrow, validated preload bridges for presentation
-snapshots and existing transport commands only.
+snapshots and existing transport commands only. Sign-in adds a separate, fixed
+bridge accepting only the pending server-issued request ID, never a renderer URL.
+Its remote window has its own session, no preload/Node/IPC, and no device permissions
+or downloads. Navigation stays on the official OAuth origin; other login routes
+offer the system-browser fallback without cancelling the pending code.
 It can navigate only to the shared application's entry pages. External links are
 parsed as HTTPS URLs; native/file/JavaScript protocols and new app windows are denied.
 Permissions are restricted to the main application frame's fullscreen, audio output
@@ -152,3 +169,16 @@ check the bundled CLI's help and version. Python tests cover owned
 and reused servers, foreign/old servers, parent EOF, HTTP guards and graceful writes.
 Manual playback/output/fullscreen checks are still needed on each platform; an app
 loading successfully does not establish support for every audio device.
+
+An opt-in native sign-in check uses a temporary profile and loopback mock provider:
+
+```sh
+uv run --frozen python tools/check_sign_in.py --report /tmp/tagcast-sign-in.json
+```
+
+It checks approval/denial/cancellation, return to the existing audio element,
+responsive layouts and both window sizes across restart. `--app` selects a packaged
+executable. `--live-page` only opens the public iBroadcast login form and cancels it;
+it never enters credentials or approves a real account. Reports contain no tokens,
+provider URLs or personal account details. Real account approval and third-party
+login still need a user check on supported platforms.

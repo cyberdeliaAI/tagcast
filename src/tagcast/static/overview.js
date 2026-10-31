@@ -42,6 +42,8 @@ function showScreen(name) {
   if (wasSettings && name !== "settings") settingsPageLeft();
   $("#collections-page").hidden = !["playlists", "album-favourites"].includes(name);
   $("#show-playlists").classList.toggle("active", name === "playlists");
+  $("#uploads-page").hidden = name !== "uploads";
+  $("#show-uploads").classList.toggle("active", name === "uploads");
   $("#downloads-page").hidden = name !== "downloads";
   $("#show-downloads").classList.toggle("active", name === "downloads");
   $("#overview-page").hidden = name !== "overview";
@@ -69,12 +71,13 @@ function showScreen(name) {
   $("#all-albums").classList.toggle("active", name === "albums" && !state.artist);
   $("#show-artists").classList.toggle("active", name === "artists");
   $("#show-tracks").classList.toggle("active", name === "tracks");
-  $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "settings" ? "Settings" : name === "downloads" ? "Downloads" : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
+  $("#breadcrumb").textContent = name === "album-guide" ? "1001 Albums" : name === "browse" ? browseKinds[browseView.kind].label : name === "settings" ? "Settings" : name === "uploads" ? "Uploads" : name === "downloads" ? "Downloads" : name === "overview" ? "Overview" : name === "artists" ? "Album artists" : name === "tracks" ? "Tracks" : name === "favourites" ? "Favourites" : name === "recently-played" ? "Recently played"
     : name === "album" ? state.albums.find(a => String(a.id) === albumView.id)?.name || "Album" : state.artist || "Albums";
   if (["playlists", "album-favourites"].includes(name) && typeof renderCollections === "function") renderCollections();
   renderFavouriteHub();
   if (name === "overview") loadOverview();
   syncServiceStatusPage();
+  if (typeof syncMusicUploadsPage === "function") syncMusicUploadsPage();
   if (typeof syncAudioDownloadsPage === "function") syncAudioDownloadsPage();
   if (typeof syncHistory === "function") syncHistory();
   if (wasSettings && name !== "settings") resumeSettingsEditor();

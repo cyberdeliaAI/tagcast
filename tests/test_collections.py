@@ -44,6 +44,36 @@ class CollectionTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('Read-back did not finish')
 
+    def test_sidebar_playlist_count_includes_nested_and_empty_lists_once_without_extra_reads(self):
+        mock_ibroadcast.STATE['playlists'].update({
+            880: {'name': 'Empty', 'tracks': []},
+            881: {'name': 'Nested', 'tracks': [900]},
+            882: {'name': 'Folder', 'type': 'folder', 'tracks': [881, 881]},
+            883: {'name': 'System', 'system_created': True, 'tracks': [900]},
+            884: {'name': 'Other protected type', 'type': 'recently_played', 'tracks': [900]},
+        })
+        mock_ibroadcast.STATE['version'] += 1
+        loaded = self.studio.load_library(refresh=True)
+        self.assertEqual(loaded['playlists_count'], 2)
+        with patch.object(self.studio, '_remote_state', side_effect=AssertionError('No status call')), \
+                patch.object(self.studio.client, 'fetch_library', side_effect=AssertionError('No download')):
+            for options in ({}, {'query': 'Empty'}, {'browse': True}, {'offset': '100'},
+                            {'playlist_id': '882'}, {'playlist_id': '881'}):
+                self.assertEqual(self.studio.collections.playlists(**options)['playlists_count'], 2)
+        self.studio.library.playlists_loaded = False
+        self.assertIsNone(self.studio.collections.playlist_count(self.studio.library))
+
+    def test_sidebar_playlist_count_follows_existing_create_and_delete_readback(self):
+        self.assertEqual(self.studio.load_library()['playlists_count'], 0)
+        created = self.studio.collections.save_playlist({'action': 'create', 'name': 'Counted', 'tracks': [900]})
+        checked = self.job(created)
+        self.assertEqual(checked['results'][0]['status'], 'saved')
+        self.assertEqual(checked['playlists_count'], 1)
+        view = self.studio.collections.playlists(playlist_id=created['id'])
+        deleted = self.studio.collections.save_playlist({'action': 'delete', 'playlist': view['id'],
+            'before': view['before'], 'before_name': view['name'], 'confirm_delete': True})
+        self.assertEqual(self.job(deleted)['playlists_count'], 0)
+
     def test_playlist_duration_counts_every_active_position_without_extra_library_reads(self):
         mock_ibroadcast.STATE['playlists'][888] = {
             'name': 'Long list', 'tracks': [900] * 101 + [901, 903, 904, 999999]}

@@ -6,7 +6,7 @@
 :root[data-theme="dark"] .preview-badge{color:var(--palette-link,#97a68d)}
 :root[data-theme="dark"] .button{border:1px solid var(--palette-line,#4d524c);background:var(--palette-surface,#1b2520)}
 :root[data-theme="dark"] .button:hover{background:var(--palette-tint,#2d2f2a)}
-:root[data-theme="dark"] .button.primary{color:#1b2520}
+:root[data-theme="dark"] .button.primary{color:var(--palette-primary-ink,#1b2520)}
 :root[data-theme="dark"] .button.primary:hover{background:var(--palette-primary-hover,#a2d6bb)}
 :root[data-theme="dark"] .notice{background:var(--palette-tint,#2e3029);color:var(--palette-link,#a6b896);border:1px solid var(--palette-line,#393c33)}
 :root[data-theme="dark"] .eyebrow{color:var(--palette-muted,#a8b5a0)}
@@ -186,10 +186,15 @@
 :root[data-theme="dark"] #downloads-page .downloads-albums small{color:var(--palette-muted,#aeb6a3)}
 :root[data-theme="dark"] #downloads-page .downloads-advanced{border-top:1px solid var(--palette-border,#3f403d)}
 :root[data-theme="dark"] #downloads-page progress{accent-color:var(--palette-accent,#97b97b)}
+:root[data-theme="dark"] #uploads-page textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root[data-theme="dark"] #uploads-page textarea:focus-visible,:root[data-theme="dark"] #uploads-page summary:focus-visible,:root[data-theme="dark"] #music-upload-heading:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root[data-theme="dark"] #uploads-page .uploads-file-status.is-uploaded::before{background:#87c38f}
+:root[data-theme="dark"] #uploads-page .uploads-file-status.is-problem::before{background:#dd9561}
+:root[data-theme="dark"] #uploads-page progress{accent-color:var(--palette-primary,#97b97b)}
 
 /* set by hand */
 :root[data-theme="dark"]{color-scheme:dark}
-:root[data-theme="dark"] .button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:#fff}
+:root[data-theme="dark"] .button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:var(--palette-primary-ink,#fff)}
 :root[data-theme="dark"] .button.primary:hover{background:var(--palette-primary-hover,#469a6e)}
 :root[data-theme="dark"] .button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
 :root[data-theme="dark"] .button.danger.primary:hover{background:#bd3944;border-color:#bd3944}
@@ -207,7 +212,7 @@
 :root:not([data-theme="light"]) .preview-badge{color:var(--palette-link,#97a68d)}
 :root:not([data-theme="light"]) .button{border:1px solid var(--palette-line,#4d524c);background:var(--palette-surface,#1b2520)}
 :root:not([data-theme="light"]) .button:hover{background:var(--palette-tint,#2d2f2a)}
-:root:not([data-theme="light"]) .button.primary{color:#1b2520}
+:root:not([data-theme="light"]) .button.primary{color:var(--palette-primary-ink,#1b2520)}
 :root:not([data-theme="light"]) .button.primary:hover{background:var(--palette-primary-hover,#a2d6bb)}
 :root:not([data-theme="light"]) .notice{background:var(--palette-tint,#2e3029);color:var(--palette-link,#a6b896);border:1px solid var(--palette-line,#393c33)}
 :root:not([data-theme="light"]) .eyebrow{color:var(--palette-muted,#a8b5a0)}
@@ -387,10 +392,15 @@
 :root:not([data-theme="light"]) #downloads-page .downloads-albums small{color:var(--palette-muted,#aeb6a3)}
 :root:not([data-theme="light"]) #downloads-page .downloads-advanced{border-top:1px solid var(--palette-border,#3f403d)}
 :root:not([data-theme="light"]) #downloads-page progress{accent-color:var(--palette-accent,#97b97b)}
+:root:not([data-theme="light"]) #uploads-page textarea{background:var(--palette-surface,#1b2520);border:1px solid var(--palette-line,#40443d)}
+:root:not([data-theme="light"]) #uploads-page textarea:focus-visible,:root:not([data-theme="light"]) #uploads-page summary:focus-visible,:root:not([data-theme="light"]) #music-upload-heading:focus-visible{outline:3px solid var(--palette-focus,#8fae60)}
+:root:not([data-theme="light"]) #uploads-page .uploads-file-status.is-uploaded::before{background:#87c38f}
+:root:not([data-theme="light"]) #uploads-page .uploads-file-status.is-problem::before{background:#dd9561}
+:root:not([data-theme="light"]) #uploads-page progress{accent-color:var(--palette-primary,#97b97b)}
 
 /* set by hand */
 :root:not([data-theme="light"]){color-scheme:dark}
-:root:not([data-theme="light"]) .button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:#fff}
+:root:not([data-theme="light"]) .button.primary{background:var(--palette-primary,#3e8a62);border-color:var(--palette-primary,#3e8a62);color:var(--palette-primary-ink,#fff)}
 :root:not([data-theme="light"]) .button.primary:hover{background:var(--palette-primary-hover,#469a6e)}
 :root:not([data-theme="light"]) .button.danger.primary{background:#a52f38;border-color:#a52f38;color:#fff}
 :root:not([data-theme="light"]) .button.danger.primary:hover{background:#bd3944;border-color:#bd3944}
