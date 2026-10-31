@@ -34,9 +34,9 @@ transitions safely use ordinary playback. See the
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
-![Tagcast 0.80.0 album page showing Ananda Shankar, multiple genres, ratings, album information and the compact player](docs/screenshots/2026-10-23-album/album-details-ananda-shankar.png)
+![Tagcast 1.2.0 showing CMAT's EURO-COUNTRY album, track credits, lyrics, Now playing and the compact player](docs/screenshots/2026-10-31-readme/album-now-playing.png)
 
-*Tagcast 0.80.0 — album details and compact player, captured on 23 October 2026.*
+*Tagcast 1.2.0 — album details, lyrics and Now playing, captured on 31 October 2026.*
 
 ## What you can do
 
