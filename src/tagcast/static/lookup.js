@@ -159,6 +159,7 @@ function renderSettingsContent() {
     <p class="muted">These browser preferences apply immediately. Album pages and expanded Now playing keep their information.</p>
     <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
     <p class="muted">Fullscreen fills the screen; In app window stays inside Tagcast. Applied the next time you open Now playing.</p></section>`
+    + (typeof visualizerSettings === "function" ? visualizerSettings() : "")
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
     + themeEditorPanel()
     + sidebarSettingsPanel()
