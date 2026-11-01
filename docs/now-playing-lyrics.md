@@ -32,7 +32,8 @@ including ordinary line-timed or untimed text, keeps priority.
    Typographic quotation marks/dashes and spacing can match; Live, Remix, Edit,
    collaborators, accents and other recording identity are retained. There is
    no free-text search or guessing the primary artist from a combined credit.
-4. Synced LRC drives the existing per-track line highlighting. Plain text remains
+4. Supported word-timed Lyricsfile data, enhanced LRC or ordinary synced LRC drives
+   the per-track highlighting. Plain text remains
    readable without timing; a confirmed instrumental result is identified.
 
 With no known duration, require a full album match; ambiguous search results are
@@ -61,6 +62,37 @@ backend; its Electron-only networking, cover searches and extra providers are no
 imported. Its partial-word matching and version removal are not used.
 
 The supplied `ttml.js` describes word timings, singer labels and background vocals.
-Tagcast currently renders timed **lines**, not word-by-word karaoke. Existing TTML
-parsing and playback architecture are unchanged by the LRCLIB fallback. No NetEase
-or Kugou integration is introduced.
+Tagcast reads word/segment timing from Unison TTML and enhanced LRC. LRCLIB's
+`lyricsfile` field supports the [Lyricsfile 1.0 draft](https://github.com/tranxuanthang/lyricsfile/blob/main/SPECIFICATION.md),
+including `lines[].words`; `hasWordSync` is only a hint, never a substitute for
+validating the actual words. No NetEase, Kugou or additional provider is introduced.
+
+## Word-timed display
+
+The active line stays bold with a moving underline beneath its timed words or
+syllables. All text retains the theme's normal contrast. Overlapping lines can be
+active together; no separate singer columns or translated/background-vocal layout
+is inferred. Without word timing, the same view follows lines or displays plain
+text. Timing quality and word coverage depend on the contributed source.
+
+Both providers use one internal display format: `{start, end, text}` in seconds,
+with optional `words: [{start, end, text}]` on a line. Word text must reconstruct
+the complete line, timings must be ordered and fit its boundaries, and explicit
+overlaps are preserved. Missing ends may be inferred for display only. Invalid
+word segments leave the complete readable line in place.
+
+Lyricsfile uses PyYAML's safe loader with document, nesting, node and text limits.
+Aliases, anchors, duplicate keys and non-basic YAML tags are rejected. The version
+must be exactly `"1.0"`; nonzero `offset_ms` is unsupported because the draft does
+not yet define its meaning. Embedded title/artist and optional duration must agree
+with the already matched LRCLIB record. Unsupported documents fall back to legacy
+LRC/plain text, without further requests. Limits: 2,000 lines, 50,000 text characters,
+12,000 word segments overall and 1,000 per line, within the existing response limit.
+
+The display reads the authoritative player's track-relative clock, including
+Gapless Playback. Seeking, pause/resume and speed changes use that same clock.
+Animation frames run only while the word-timed lyrics view is visible and playing;
+close, hide, pause and reset cancel them. Reduced motion uses stepped underlines
+with ordinary player updates. There is no second audio element, new audio graph
+or provider polling. Audio, queue, native lyrics caches, editor and reviewed plain
+text saves are unchanged.

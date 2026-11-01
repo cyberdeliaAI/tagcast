@@ -7,9 +7,11 @@ from unittest.mock import Mock, patch
 
 import requests
 import test_lyrics
+import yaml
 
 from tagcast.library import ConflictError, LibraryError
 from tagcast.playback_lyrics import (
+    _lrclib_lines,
     fetch_lrclib_display,
     fetch_unison,
     lyric_time,
@@ -36,6 +38,10 @@ class TimedLyricsTests(unittest.TestCase):
         self.assertEqual(result["lines"][0]["text"], "First line")
         self.assertEqual(result["lines"][1]["text"], "")
         self.assertEqual(result["lines"][0]["end"], 3.5)
+        self.assertEqual(result["lines"][0]["words"], [
+            {"start": 1.5, "end": 2, "text": "First "},
+            {"start": 2, "end": 3.5, "text": "line"}])
+        self.assertEqual(result["lines"][2]["words"][0]["start"], 5.5)
 
     def test_ttml_apple_absolute_song_times_and_plain_text(self):
         value = ('<tt xmlns="http://www.w3.org/ns/ttml" '
@@ -44,7 +50,9 @@ class TimedLyricsTests(unittest.TestCase):
                  '<span begin="10s" end="11s">First </span><span begin="11s">line &amp; more</span>'
                  '</p><p begin="15s" end="18s">Next line</p></div></body></tt>')
         result = parse_ttml(value, 20)
-        self.assertEqual(result["lines"][0], {"start": 10, "end": 12, "text": "First line & more"})
+        self.assertEqual(result["lines"][0], {"start": 10, "end": 12, "text": "First line & more",
+            "words": [{"start": 10, "end": 11, "text": "First "},
+                      {"start": 11, "end": 12, "text": "line & more"}]})
         self.assertTrue(result["timed"])
         self.assertFalse(parse_ttml('<tt><body><p>Plain line</p></body></tt>', 20)["timed"])
 
@@ -74,6 +82,125 @@ class TimedLyricsTests(unittest.TestCase):
         result = parse_lrc('Untimed heading\n[00:01.00]First line', 20)
         self.assertFalse(result['timed'])
         self.assertTrue(all(line['start'] is None for line in result['lines']))
+
+
+class WordLyricsTests(unittest.TestCase):
+    def setUp(self):
+        self.document = {"version": "1.0", "metadata": {
+            "title": "Synthetic (Live)", "artist": "Test Artist", "duration_ms": 10000},
+            "lines": [{"text": "First line", "start_ms": 1000, "end_ms": 4000, "words": [
+                {"text": "First ", "start_ms": 1000, "end_ms": 2000},
+                {"text": "line", "start_ms": 2000, "end_ms": 3500}]}]}
+        self.record = {"trackName": "Synthetic (Live)", "artistName": "Test Artist", "duration": 10,
+                       "syncedLyrics": "[00:01]Legacy line", "plainLyrics": "Legacy text"}
+
+    def read(self, document=None, **record):
+        value = self.document if document is None else document
+        return _lrclib_lines({**self.record, "lyricsfile": value if isinstance(value, str)
+                             else yaml.safe_dump(value, allow_unicode=True), **record}, 10)
+
+    def test_lyricsfile_words_are_seconds_and_work_without_legacy_fields_or_hint(self):
+        result = self.read(syncedLyrics=None, plainLyrics=None, hasWordSync=True)
+        self.assertEqual(result["lines"][0], {"text": "First line", "start": 1, "end": 4,
+            "words": [{"text": "First ", "start": 1, "end": 2},
+                      {"text": "line", "start": 2, "end": 3.5}]})
+        self.assertTrue(result["timed"])
+        self.assertEqual(result["source"], "lrclib")
+        self.assertIn("words", self.read(hasWordSync=False)["lines"][0])
+
+    def test_unicode_segments_overlap_and_missing_ends_preserve_text_and_line_timing(self):
+        self.document["lines"] = [
+            {"text": "日本語 & <test>", "start_ms": 1000, "end_ms": 4000, "words": [
+                {"text": "日本", "start_ms": 1000, "end_ms": 2500},
+                {"text": "語 & <test>", "start_ms": 2000}]},
+            {"text": "Other singer", "start_ms": 2000, "end_ms": 5000}]
+        lines = self.read()["lines"]
+        self.assertEqual([line["end"] for line in lines], [4, 5])
+        self.assertEqual(lines[0]["words"][1]["end"], 4)
+        self.assertEqual("".join(word["text"] for word in lines[0]["words"]), lines[0]["text"])
+
+    def test_bad_optional_word_data_falls_back_to_the_complete_line(self):
+        for change in ({"start_ms": True}, {"start_ms": -1}, {"start_ms": 20000},
+                       {"end_ms": 6000}, {"end_ms": 500}, {"text": "Wrong text"},
+                       {"start_ms": 2500}):
+            document = copy.deepcopy(self.document)
+            document["lines"][0]["words"][0].update(change)
+            with self.subTest(change=change):
+                line = self.read(document)["lines"][0]
+                self.assertEqual(line["text"], "First line")
+                self.assertNotIn("words", line)
+                self.assertEqual((line["start"], line["end"]), (1, 4))
+
+    def test_unknown_versions_identity_duration_offsets_and_invalid_lines_use_legacy(self):
+        changes = [({"version": "2.0"}, {}), ({"version": 1}, {}),
+                   ({}, {"title": "Synthetic"}), ({}, {"artist": "Wrong artist"}),
+                   ({}, {"duration_ms": 13000}), ({}, {"duration_ms": True}),
+                   ({}, {"offset_ms": 10}), ({}, {"offset_ms": False})]
+        for fields, meta in changes:
+            document = copy.deepcopy(self.document)
+            document.update(fields)
+            document["metadata"].update(meta)
+            self.assertEqual(self.read(document)["lines"][0]["text"], "Legacy line")
+        for value in (True, -1, "1000", 90000000):
+            document = copy.deepcopy(self.document)
+            document["lines"][0]["start_ms"] = value
+            self.assertEqual(self.read(document)["lines"][0]["text"], "Legacy line")
+
+    def test_yaml_is_bounded_and_rejects_objects_aliases_duplicates_and_extra_documents(self):
+        valid = yaml.safe_dump(self.document)
+        bad = [valid + "\nversion: '2.0'", valid + "\n---\nversion: '1.0'",
+               valid + "\nextra: &a [1, 2]\ncopy: *a", valid + "\nextra: !!python/object/apply:os.system ['false']",
+               valid + "\nextra: !!binary SGVsbG8=", valid + "\nextra: " + "[" * 50 + "]" * 50,
+               valid + "\nextra: {key: first, key: second}", "x" * 512001, "\x00"]
+        for value in bad:
+            with self.subTest(value=value[-65:]):
+                self.assertEqual(self.read(value)["lines"][0]["text"], "Legacy line")
+        self.assertEqual(self.read(valid + "\nextra: [1, true, null, text]")["lines"][0]["text"], "First line")
+
+    def test_plain_lyricsfile_does_not_displace_legacy_timing(self):
+        self.document.update(lines=[], plain="Plain words\n\nAnother verse")
+        self.assertEqual(self.read()["lines"][0]["text"], "Legacy line")
+        result = self.read(syncedLyrics=None, plainLyrics=None)
+        self.assertFalse(result["timed"])
+        self.assertEqual([line["text"] for line in result["lines"]], ["Plain words", "", "Another verse"])
+
+    def test_optional_word_and_line_limits_do_not_expand_the_display(self):
+        self.document["lines"][0]["words"] *= 1001
+        self.assertNotIn("words", self.read()["lines"][0])
+        self.document["lines"] *= 2001
+        self.assertEqual(self.read()["lines"][0]["text"], "Legacy line")
+
+    def test_ttml_nested_relative_spans_and_spaces(self):
+        result = parse_ttml('<tt><body begin="10s"><p begin="1s" dur="5s"> '
+            '<span><span begin="0s" dur="1s"><span>One</span></span> '
+            '<span begin="1s" dur="2s">two</span></span> </p></body></tt>', 20)
+        line = result["lines"][0]
+        self.assertEqual(line, {"text": "One two", "start": 11, "end": 16,
+            "words": [{"text": "One ", "start": 11, "end": 12},
+                      {"text": "two", "start": 12, "end": 14}]})
+
+    def test_ttml_incomplete_invalid_or_unordered_spans_keep_readable_lines(self):
+        for content in ('Unmarked <span begin="1s">word</span>',
+                        '<span begin="1s" end="9s">Outside</span>',
+                        '<span begin="2s">Two </span><span begin="1s">one</span>',
+                        '<span begin="1s" end="NaN">Unknown end</span>',
+                        '<span begin="NaN">Unknown</span>'):
+            result = parse_ttml('<tt><p begin="0s" end="5s">' + content + '</p></tt>', 10)
+            self.assertTrue(result["timed"])
+            self.assertNotIn("words", result["lines"][0])
+            self.assertTrue(result["lines"][0]["text"])
+        with self.assertRaises(SourceError):
+            parse_ttml('<tt><p begin="1s">' + '<span>' * 42 + 'Text' + '</span>' * 42 + '</p></tt>', 10)
+        with self.assertRaises(SourceError):
+            parse_ttml('<tt><p begin="1s"><span begin="0s">' + '<span>' * 42
+                       + 'Text' + '</span>' * 42 + '</span></p></tt>', 10)
+
+    def test_enhanced_lrc_end_marker_and_missing_or_invalid_words(self):
+        result = parse_lrc('[00:01]<00:01>First <00:02>line<00:03>', 10)
+        self.assertEqual([word["end"] for word in result["lines"][0]["words"]], [2, 3])
+        for value in ('[00:01]Prefix <00:02>line', '[00:01]<00:99>Invalid',
+                      'Heading\n[00:01]<00:01>Word'):
+            self.assertNotIn("words", parse_lrc(value, 10)["lines"][0])
 
 
 class UnisonRequestTests(unittest.TestCase):
@@ -186,6 +313,17 @@ class LRCLIBDisplayTests(unittest.TestCase):
         self.assertFalse(self.session.trust_env)
         self.assertEqual(set(self.session.headers), {'User-Agent', 'Accept'})
         self.assertEqual(self.current.call_count, 2)
+
+    def test_exact_request_reads_word_timing_without_extra_network_or_legacy_text(self):
+        document = {"version": "1.0", "metadata": {"title": self.track["title"], "artist": "U2"},
+                    "lines": [{"text": "Synthetic timing", "start_ms": 1000, "end_ms": 4000,
+                               "words": [{"text": "Synthetic ", "start_ms": 1000, "end_ms": 2000},
+                                         {"text": "timing", "start_ms": 2000, "end_ms": 4000}]}]}
+        result = self.fetch([(200, {**self.record, "hasWordSync": True,
+                                   "lyricsfile": yaml.safe_dump(document),
+                                   "plainLyrics": None, "syncedLyrics": None})])
+        self.assertEqual([word["start"] for word in result["lines"][0]["words"]], [1, 2])
+        self.session.get.assert_called_once()
 
     def test_search_chooses_nearest_duration_only_with_full_title_and_artist(self):
         hits = [{**self.record, 'id': 2, 'duration': 199},

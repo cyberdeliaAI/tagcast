@@ -86,7 +86,7 @@ def prepare_assets(include_tk=True):
                 copy_tk_license(name, library, versions[name], licenses / name)
         finally:
             root.destroy()
-    for name in ("ibroadcast", "websocket-client", "requests", "certifi", "charset-normalizer", "idna", "urllib3", "PyInstaller"):
+    for name in ("ibroadcast", "websocket-client", "requests", "certifi", "charset-normalizer", "idna", "urllib3", "PyYAML", "PyInstaller"):
         dist = metadata.distribution(name)
         versions[name] = dist.version
         copied = False
