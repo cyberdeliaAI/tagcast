@@ -54,6 +54,12 @@ output folder if you deliberately need another copy with different metadata.
   previously completed files for full checksum verification.
 - A hidden `.ibfetch.json` manifest lives beside the downloaded music. Matching
   `.part` files can resume over validated HTTP byte ranges on the streaming route.
+  The original total size and any strong ETag (otherwise Last-Modified) are saved
+  before receiving bytes. A changed total or missing/changed saved validator blocks
+  resumption and preserves the partial file. Older partials without an original
+  size also remain untouched; choose a different folder to start a fresh copy.
+  Size checks alone cannot detect same-size changes when the server supplies no
+  validator; local SHA-256 baselines do not prove remote content identity.
   ZIP downloads restart their own incomplete attempt and validate the archive's
   end marker, directory, CRC and size before completion.
 - Local OS locks serialize matching targets inside the same Tagcast settings
