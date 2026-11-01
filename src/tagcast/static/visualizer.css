@@ -1,0 +1,24 @@
+/* Optional compact-player spectrum (visualizer.js). The bars take the shell accent colour. */
+.player-visualizer{display:block;pointer-events:none;color:var(--accent)}
+
+/* Next to the title: the title and the bars share the first line; the other lines stay full width. */
+.player-text.has-visualizer{flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:8px}
+.player-text.has-visualizer>*{flex:1 1 100%}
+.player-text.has-visualizer>#player-title{flex:0 1 auto;min-width:0;max-width:calc(100% - 42px)}
+.player-text.has-visualizer>.player-visualizer{flex:none;width:34px;height:14px}
+
+/* Over the cover: bars on a dark fade along the cover's lower edge. */
+.player-cover-button.has-visualizer{position:relative;overflow:hidden;border-radius:4px}
+.player-cover-button>.player-visualizer{position:absolute;left:0;bottom:0;width:100%;height:18px}
+
+/* Along the top edge: a quiet row of bars hanging from the player's upper border, inside the
+   dark player so they stay visible on light and dark pages alike. */
+.player>.player-visualizer[data-style="edge"]{position:absolute;left:24px;top:0;width:calc(100% - 48px);height:10px;opacity:.65}
+
+/* The playing row in album and playlist tracklists: four bars instead of the speaker. */
+html[data-player-visualizer]:not([data-player-visualizer="off"]) .album-tracklist tr.playing .track-playing-icon{display:none}
+html[data-player-visualizer]:not([data-player-visualizer="off"]) .album-tracklist tr.playing .album-track-play::after{content:"";flex:none;width:15px;height:15px;background:
+  linear-gradient(currentColor,currentColor) 0 100%/3px calc(2px + 13px * var(--player-eq-0,0)) no-repeat,
+  linear-gradient(currentColor,currentColor) 4px 100%/3px calc(2px + 13px * var(--player-eq-1,0)) no-repeat,
+  linear-gradient(currentColor,currentColor) 8px 100%/3px calc(2px + 13px * var(--player-eq-2,0)) no-repeat,
+  linear-gradient(currentColor,currentColor) 12px 100%/3px calc(2px + 13px * var(--player-eq-3,0)) no-repeat}
