@@ -12,6 +12,10 @@ from ibroadcast import oauth
 REQUEST_TIMEOUT = 45
 
 
+class RefreshRejected(oauth.OAuthError):
+    """The OAuth service explicitly rejected the refresh credentials."""
+
+
 def device_code_request(client_id, scopes):
     response = requests.get(oauth.DEVICE_CODE_URL,
                             params={"client_id": client_id, "scope": " ".join(scopes)},
@@ -67,8 +71,17 @@ def refresh_access_token(client_id, refresh_token):
     response = _token_request({"grant_type": "refresh_token", "client_id": client_id,
                                "refresh_token": refresh_token})
     if not response.ok:
-        raise oauth.OAuthError(f"Token refresh failed: HTTP {response.status_code}.")
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if (response.status_code in (400, 401, 403) and isinstance(data, dict)
+                and data.get("error") in ("invalid_grant", "invalid_client", "unauthorized_client")):
+            raise RefreshRejected("iBroadcast rejected the refresh credentials.")
+        raise oauth.OAuthError(f"Token refresh unavailable: HTTP {response.status_code}.")
     data = response.json()
+    if not isinstance(data, dict):
+        raise ValueError("Invalid token response")
     data.setdefault("refresh_token", refresh_token)
     return oauth.TokenSet.from_response(data)
 
