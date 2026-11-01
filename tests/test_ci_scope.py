@@ -130,6 +130,31 @@ class CIScopeTests(unittest.TestCase):
                 # No checkout, installation, tests, native build or artifact upload on docs.
                 self.assertRegex(entry, r"(?m)^        if: (always\(\) && )?needs\.scope\.outputs\.full == 'true'")
 
+    def test_final_gates_reject_failed_missing_and_skipped_dependencies(self):
+        for filename, expected in (("tests.yml", ["scope", "tests", "start-scripts", "gapless-measured-media"]),
+                                   ("builds.yml", ["scope", "build"])):
+            source = (ROOT / ".github/workflows" / filename).read_text()
+            gate = source.split("\n  verified:\n", 1)[1]
+            self.assertIn("if: ${{ !cancelled() }}", gate)
+            script = textwrap.dedent(gate.split("        run: |\n", 1)[1])
+            good = {name: {"result": "success"} for name in expected}
+            good["scope"]["outputs"] = {"full": "true"}
+            variants = [good, {**good, "scope": {"result": "success", "outputs": {"full": "false"}}}]
+            for jobs in variants:
+                with patch.dict(os.environ, {"CI_NEEDS": json.dumps(jobs)}):
+                    exec(compile(script, filename, "exec"), {})
+            bad = [{}, {key: value for key, value in good.items() if key != expected[-1]},
+                   {**good, "scope": {"result": "success", "outputs": {"full": ""}}}]
+            for state in ("failure", "cancelled", "skipped"):
+                for name in expected:
+                    bad.append({**good, name: {**good[name], "result": state}})
+            for jobs in bad:
+                with self.subTest(workflow=filename, jobs=jobs), patch.dict(os.environ, {"CI_NEEDS": json.dumps(jobs)}):
+                    with self.assertRaises(SystemExit):
+                        exec(compile(script, filename, "exec"), {})
+            release = re.search(r"^  release:\n(.*?)(?=^  [a-z][a-z-]*:|\Z)", source.split("jobs:\n", 1)[1], re.M | re.S)[1]
+            self.assertIn("verified", release)
+
 
 if __name__ == "__main__":
     unittest.main()
