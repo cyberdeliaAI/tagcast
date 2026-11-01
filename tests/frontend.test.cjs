@@ -10630,3 +10630,12 @@ test("Gapless to Queue Sync handover retains a paused ordinary source and track 
   assert.equal(p.nodes.get('#audio').currentTime,17);
   assert.equal(p.run('queueSync.handover'),null);
 });
+
+test("Cleanup actions release their busy state after an independent details replacement", async () => {
+  for (const [view, action] of [['cleanupView','cleanupAction'],['duplicateCleanupView','duplicateCleanupAction']]) {
+    const p=livePage(); await settle();
+    p.setFetch(()=>{p.run('state.details=new Map(state.details)'); return {ok:true,json:async()=>({id:'preview',state:'preview',groups:[],items:[],excluded:[]})};});
+    await p.run(`${action}('preview')`);
+    assert.equal(p.run(`${view}.busy`),false,view);
+  }
+});
