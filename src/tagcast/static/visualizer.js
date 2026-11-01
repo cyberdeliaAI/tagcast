@@ -108,19 +108,33 @@ function connectVisualizerTrack(track) {
   } catch { /* a track that ended meanwhile; the next one connects */ }
 }
 
+function visualizerCaptureTrack(event) { connectVisualizerTrack(event.track); }
+
+// Off releases the listening copy as well as the animation; the audio element keeps playing.
+function releaseVisualizerGraph() {
+  const context = visualizer.context, stream = visualizer.stream;
+  visualizer.context = null; visualizer.analyser = null; visualizer.bins = null;
+  stream?.removeEventListener?.("addtrack", visualizerCaptureTrack);
+  try { visualizer.source?.disconnect(); } catch { /* already disconnected */ }
+  visualizer.source = null; visualizer.track = null; visualizer.stream = null;
+  for (const track of stream?.getAudioTracks() || []) track.stop();
+  if (context) { try { context.close()?.catch(() => {}); } catch { /* already closed */ } }
+}
+
 function ensureVisualizerGraph() {
   if (visualizer.context || visualizerActiveMode() === "off") return;
   try {
     const context = new AudioContext();
+    visualizer.context = context;
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.5;
     visualizer.context = context; visualizer.analyser = analyser;
     visualizer.bins = new Float32Array(analyser.frequencyBinCount);
     visualizer.stream = audio.captureStream();
-    visualizer.stream.addEventListener("addtrack", event => connectVisualizerTrack(event.track));
+    visualizer.stream.addEventListener("addtrack", visualizerCaptureTrack);
     connectVisualizerTrack(visualizer.stream.getAudioTracks().filter(track => track.readyState === "live").pop());
   } catch {
-    visualizer.context = null; visualizer.analyser = null; visualizer.stream = null;
+    releaseVisualizerGraph();
   }
 }
 
@@ -152,7 +166,7 @@ function applyVisualizer() {
   const mode = visualizerActiveMode();
   document.documentElement.dataset.playerVisualizer = mode;
   placeVisualizer(mode);
-  if (mode === "off") { stopVisualizer(); return; }
+  if (mode === "off") { stopVisualizer(); releaseVisualizerGraph(); return; }
   if (!audio.paused) { ensureVisualizerGraph(); visualizer.context?.resume?.().catch(() => {}); }
   startVisualizer();
 }
