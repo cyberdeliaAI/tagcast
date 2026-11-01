@@ -385,18 +385,27 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
 
+class PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """Create replacement logs privately too, independent of the process umask."""
+
+    def _open(self):
+        fd = os.open(self.baseFilename, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        return os.fdopen(fd, self.mode, encoding=self.encoding, errors=self.errors)
+
+
 def _log_to_file(home):
     """Problems also go to <settings folder>/tagcast.log (kept small)."""
     try:
-        home.mkdir(parents=True, exist_ok=True)
-        handler = logging.handlers.RotatingFileHandler(home / "tagcast.log", encoding="utf-8",
+        home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        handler = PrivateRotatingFileHandler(home / "tagcast.log", encoding="utf-8",
                                                        maxBytes=1_000_000, backupCount=2)
     except OSError:
         return
-    try:
-        os.chmod(home / "tagcast.log", 0o600)  # it can contain titles from your library
-    except OSError:
-        pass
+    for name in ("tagcast.log", "tagcast.log.1", "tagcast.log.2"):
+        try:
+            os.chmod(home / name, 0o600)  # logs can contain titles from your library
+        except OSError:
+            pass
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.getLogger().addHandler(handler)
 
