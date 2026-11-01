@@ -7,8 +7,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from importlib.metadata import version
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import certifi
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import build_electron  # noqa: E402
@@ -72,6 +75,7 @@ class ElectronBuildTests(unittest.TestCase):
     def test_smoke_app_and_cli_never_inherit_signing_credentials(self):
         credentials = dict.fromkeys(build_electron.MAC_SIGNING_SECRETS, "sensitive-test-value")
         with (patch.dict(os.environ, credentials),
+              patch.object(check_electron, "check_certificates", return_value={}),
               patch.object(check_electron.subprocess, "run",
                            return_value=Mock(stdout="usage: tagcast\nTagcast 1.1.0\n")) as cli,
               patch.object(check_electron.subprocess, "Popen",
@@ -100,6 +104,7 @@ class ElectronBuildTests(unittest.TestCase):
                     return process
 
                 with (patch.object(check_electron, "__file__", str(root / "tools/check_electron.py")),
+                      patch.object(check_electron, "check_certificates", return_value={}),
                       patch.object(check_electron.subprocess, "run", return_value=Mock(
                           stdout="usage: tagcast\nTagcast 1.1.0\n")),
                       patch.object(check_electron.subprocess, "Popen", side_effect=launch)):
@@ -108,6 +113,42 @@ class ElectronBuildTests(unittest.TestCase):
                         check_electron.check_app(Path("Test.app/Contents/MacOS/Tagcast"), "1.1.0")
                 saved = json.loads((root / "build/reports/electron.json").read_text())
                 self.assertEqual(saved, diagnostic)
+
+    def test_extracted_package_requires_the_patched_actual_ca_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            resources = Path(directory)
+            internal = resources / "backend/_internal"
+            (internal / "certifi").mkdir(parents=True)
+            (internal / "licenses").mkdir()
+            ca, inventory = internal / "certifi/cacert.pem", internal / "licenses/versions.json"
+            expected = Path(certifi.where()).read_bytes()
+            ca.write_bytes(expected)
+            inventory.write_text(json.dumps({"certifi": version("certifi")}))
+            result = check_electron.check_certificates(resources)
+            self.assertEqual(result["certifi"], version("certifi"))
+            self.assertGreater(result["root_count"], 0)
+            self.assertFalse(result["compromised_root_present"])
+            for mode in ("missing", "different", "old-version"):
+                with self.subTest(mode=mode):
+                    if mode == "missing":
+                        ca.unlink()
+                    elif mode == "different":
+                        ca.write_bytes(expected + b"changed bundle")
+                    else:
+                        inventory.write_text('{"certifi":"2026.7.22"}')
+                    with self.assertRaises((RuntimeError, FileNotFoundError)):
+                        check_electron.check_certificates(resources)
+                    ca.write_bytes(expected)
+                    inventory.write_text(json.dumps({"certifi": version("certifi")}))
+
+    def test_unsafe_packaged_certificates_block_cli_and_app_launch(self):
+        with (patch.object(check_electron, "check_certificates", side_effect=RuntimeError("unsafe CA")),
+              patch.object(check_electron.subprocess, "run") as cli,
+              patch.object(check_electron.subprocess, "Popen") as app):
+            with self.assertRaisesRegex(RuntimeError, "unsafe CA"):
+                check_electron.check_app(Path("Test.app/Contents/MacOS/Tagcast"), "1.2.0")
+            cli.assert_not_called()
+            app.assert_not_called()
 
     def test_signing_rejects_missing_credentials_and_untrusted_events_before_build(self):
         credentials = dict.fromkeys(build_electron.MAC_SIGNING_SECRETS, "sensitive-test-value")
