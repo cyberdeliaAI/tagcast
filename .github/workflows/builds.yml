@@ -197,7 +197,9 @@ jobs:
 
   verified:
     name: Distribution verification
-    if: ${{ !cancelled() }}
+    # Tests completions for ordinary commits deliberately skip this release follow-up.
+    # Failed scope checks, and unexpected skips on PR/push/manual runs, still fail closed.
+    if: ${{ !cancelled() && (github.event_name != 'workflow_run' || needs.scope.result != 'skipped') }}
     needs: [scope, build]
     runs-on: ubuntu-latest
     steps:
