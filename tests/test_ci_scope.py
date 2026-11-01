@@ -155,6 +155,13 @@ class CIScopeTests(unittest.TestCase):
             release = re.search(r"^  release:\n(.*?)(?=^  [a-z][a-z-]*:|\Z)", source.split("jobs:\n", 1)[1], re.M | re.S)[1]
             self.assertIn("verified", release)
 
+    def test_tagged_rebuild_requires_signing_and_cannot_clobber_assets(self):
+        source = (ROOT / ".github/workflows/builds.yml").read_text()
+        setting = next(line for line in source.splitlines() if "SIGN_MACOS: " in line)
+        self.assertIn("inputs.sign_macos || inputs.tag != ''", setting)
+        self.assertNotIn("--clobber", source)
+        self.assertIn("hashFiles('tools/electron_signed.cjs')", source)
+
 
 if __name__ == "__main__":
     unittest.main()

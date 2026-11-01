@@ -59,7 +59,7 @@ jobs:
             target: linux-x64
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || '' }}
-      SIGN_MACOS: ${{ startsWith(matrix.target, 'macos-') && (github.event_name == 'release' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.sign_macos)) && '1' || '' }}
+      SIGN_MACOS: ${{ startsWith(matrix.target, 'macos-') && (github.event_name == 'release' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && (inputs.sign_macos || inputs.tag != ''))) && '1' || '' }}
     steps:
       - name: Select verification for this target
         shell: python
@@ -182,7 +182,7 @@ jobs:
             echo "No release for this commit, so there is nothing to add the downloads to."
             exit 0
           fi
-          gh release upload "$TAG" downloads/* --clobber
+          gh release upload "$TAG" downloads/*
 
   verified:
     name: Distribution verification
