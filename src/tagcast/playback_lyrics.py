@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from collections import OrderedDict
 
 import requests
+import yaml
 
 from .library import ConflictError, LibraryError
 from .sources import USER_AGENT, SourceError, artist_name_key
@@ -21,6 +22,7 @@ MAX_RESPONSE = 512000
 MAX_TEXT = 50000
 MAX_LINES = 2000
 MAX_TIME = 86400
+MAX_WORDS = 12000
 UNISON_URL = "https://unison.boidu.dev/lyrics"
 LRCLIB_URL = "https://lrclib.net/api/"
 
@@ -66,8 +68,42 @@ def _finish(lines, duration, source="unison"):
     else:
         for line in lines:
             line.update(start=None, end=None)
+    word_count = sum(len(line.get("words", [])) for line in lines)
+    for line in lines:
+        words = line.pop("words", None)
+        if timed and word_count <= MAX_WORDS and _valid_words(words, line):
+            line["words"] = words
     return {"status": "ready" if lines else "missing", "source": source,
             "timed": timed, "lines": lines}
+
+
+def _valid_words(words, line):
+    """Optional display segments; never invent words or lose the complete line."""
+    if not isinstance(words, list) or not words or len(words) > 1000:
+        return False
+    if any(not isinstance(word, dict) or not isinstance(word.get("text"), str)
+           or not word["text"] or "\x00" in word["text"] for word in words):
+        return False
+    if "".join(word["text"] for word in words) != line["text"]:
+        return False
+    starts = [word.get("start") for word in words]
+    if any(type(start) not in (int, float) or not math.isfinite(start)
+           or not line["start"] <= start <= line["end"] for start in starts) \
+            or starts != sorted(starts):
+        return False
+    # Equal starts/overlapping segments are valid. Infer only absent end times.
+    next_end, later = line["end"], None
+    for word in reversed(words):
+        if later is not None and word["start"] < later:
+            next_end = later
+        if word.get("end") is None:
+            word["end"] = next_end
+        end = word["end"]
+        if type(end) not in (int, float) or not math.isfinite(end) \
+                or not word["start"] <= end <= line["end"]:
+            return False
+        later = word["start"]
+    return True
 
 
 def parse_lrc(value, duration, source="unison"):
@@ -80,7 +116,10 @@ def parse_lrc(value, duration, source="unison"):
             if raw.strip() and not re.match(r"^\[[a-z_]+:", raw, re.I):
                 lines.append({"start": None, "end": None, "text": raw.strip()})
             continue
-        text = re.sub(r"<\d{1,3}:\d{2}(?:\.\d+)?>", "", raw[stamps.end():]).strip()
+        content = raw[stamps.end():]
+        markers = list(re.finditer(r"<(\d{1,3}:\d{2}(?:\.\d+)?)>", content))
+        text = re.sub(r"<\d{1,3}:\d{2}(?:\.\d+)?>", "", content).strip()
+        first_start = None
         # Blank timestamped lines mark instrumental breaks as well as the ending.
         for stamp in re.findall(r"\[([^]]+)\]", stamps[0]):
             stamp = re.sub(r"^(\d+:\d+):", r"\1.", stamp)
@@ -88,7 +127,27 @@ def parse_lrc(value, duration, source="unison"):
             if start is None:
                 label = "LRCLIB" if source == "lrclib" else "Unison"
                 raise SourceError(f"{label} returned invalid LRC timing.")
-            lines.append({"start": max(0, start + offset), "end": None, "text": text})
+            if first_start is None:
+                first_start = start
+            line = {"start": max(0, start + offset), "end": None, "text": text}
+            if markers and not content[:markers[0].start()].strip():
+                words = []
+                for i, marker in enumerate(markers):
+                    word_start = lyric_time(marker[1])
+                    word_text = content[marker.end():markers[i + 1].start() if i + 1 < len(markers) else len(content)]
+                    if word_text:
+                        words.append({"start": word_start + offset + start - first_start
+                                      if word_start is not None else None,
+                                      "end": None, "text": word_text})
+                # A final empty marker supplies an explicit ending, not a word.
+                if words and markers[-1].end() == len(content):
+                    last = lyric_time(markers[-1][1])
+                    words[-1]["end"] = last + offset + start - first_start if last is not None else None
+                if words:
+                    words[0]["text"] = words[0]["text"].lstrip()
+                    words[-1]["text"] = words[-1]["text"].rstrip()
+                line["words"] = words
+            lines.append(line)
     return _finish(lines, duration, source)
 
 
@@ -103,13 +162,17 @@ def parse_ttml(value, duration):
     nodes = list(root.iter())
     if len(nodes) > 12000:
         raise SourceError("Unison returned too much TTML data.")
+    pending = [(root, 0)]
+    while pending:
+        node, depth = pending.pop()
+        if depth > 40:
+            raise SourceError("Unison TTML is nested too deeply.")
+        pending.extend((child, depth + 1) for child in node)
     # Apple lyric TTML uses absolute song times, including inside div/p elements.
     apple = any("itunes.apple.com" in name for node in nodes for name in node.attrib)
     lines = []
 
-    def visit(node, parent_start=0, depth=0):
-        if depth > 40:
-            raise SourceError("Unison TTML is nested too deeply.")
+    def times(node, parent_start):
         begin = lyric_time(node.get("begin"))
         start = (begin if apple else parent_start + begin) if begin is not None else parent_start
         end = lyric_time(node.get("end"))
@@ -118,14 +181,52 @@ def parse_ttml(value, duration):
         length = lyric_time(node.get("dur"))
         if end is None and length is not None:
             end = start + length
+        return begin, start, end
+
+    def segments(node, parent_start, depth=0):
+        if depth > 40:
+            raise SourceError("Unison TTML is nested too deeply.")
+        begin, start, end = times(node, parent_start)
+        if any(node.get(key) is not None and lyric_time(node.get(key)) is None
+               for key in ("begin", "end", "dur")):
+            return [{"start": None, "end": None, "text": "".join(node.itertext())}]
+        descendants = list(node.iter())[1:]
+        if node.tag.rsplit("}", 1)[-1] == "span" and begin is not None \
+                and not any(child.get("begin") is not None for child in descendants):
+            return [{"start": start, "end": end, "text": "".join(node.itertext())}]
+        parts = [{"start": None, "end": None, "text": node.text}] if node.text else []
+        for child in node:
+            parts.extend(segments(child, start, depth + 1))
+            if child.tail:
+                parts.append({"start": None, "end": None, "text": child.tail})
+        return parts
+
+    def visit(node, parent_start=0, depth=0):
+        if depth > 40:
+            raise SourceError("Unison TTML is nested too deeply.")
+        begin, start, end = times(node, parent_start)
         if node.tag.rsplit("}", 1)[-1] == "p":
             for child in node.iter():
                 if child.tag.rsplit("}", 1)[-1] == "br":
                     child.text = "\n"
             text = "".join(node.itertext()).strip()
             if text:
+                words, prefix = [], ""
+                for part in segments(node, parent_start):
+                    if part["start"] is None and not part["text"].strip():
+                        if words:
+                            words[-1]["text"] += part["text"]
+                        else:
+                            prefix += part["text"]
+                    else:
+                        part["text"] = prefix + part["text"]
+                        prefix = ""
+                        words.append(part)
+                if words:
+                    words[0]["text"] = words[0]["text"].lstrip()
+                    words[-1]["text"] = words[-1]["text"].rstrip()
                 lines.append({"start": start if begin is not None else None,
-                              "end": end, "text": text})
+                              "end": end, "text": text, "words": words})
             return
         for child in node:
             visit(child, start, depth + 1)
@@ -213,6 +314,95 @@ def _lrclib_match(data, track, album):
     return bool(album.strip()) and lyrics_name_key(data.get("albumName")) == lyrics_name_key(album)
 
 
+class _LyricsfileLoader(yaml.SafeLoader):
+    """Small, non-extensible YAML subset; no aliases, tags or duplicate keys."""
+
+    def __init__(self, stream):
+        super().__init__(stream)
+        self.lyric_depth = self.lyric_nodes = 0
+
+    def compose_node(self, parent, index):
+        event = self.peek_event()
+        self.lyric_nodes += 1
+        if isinstance(event, yaml.AliasEvent) or getattr(event, "anchor", None) \
+                or self.lyric_depth >= 40 or self.lyric_nodes > 100000:
+            raise ValueError("Unsupported or excessive Lyricsfile structure")
+        self.lyric_depth += 1
+        try:
+            node = super().compose_node(parent, index)
+        finally:
+            self.lyric_depth -= 1
+        if node.tag not in {"tag:yaml.org,2002:" + kind
+                            for kind in ("map", "seq", "str", "int", "bool", "null")}:
+            raise ValueError("Unsupported Lyricsfile value")
+        return node
+
+    def construct_mapping(self, node, deep=False):
+        result = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if not isinstance(key, str) or key in result:
+                raise ValueError("Invalid or repeated Lyricsfile key")
+            result[key] = self.construct_object(value_node, deep=deep)
+        return result
+
+
+def _lyricsfile_lines(value, data, duration):
+    """Read the documented 1.0 draft only; unsupported documents use legacy LRC."""
+    if not isinstance(value, str) or not value or len(value) > MAX_RESPONSE or "\x00" in value:
+        return None
+    try:
+        document = yaml.load(value, Loader=_LyricsfileLoader)
+        if not isinstance(document, dict) or document.get("version") != "1.0":
+            return None
+        meta = document.get("metadata")
+        if not isinstance(meta, dict) or any(not isinstance(meta.get(key), str)
+                or lyrics_name_key(meta[key]) != lyrics_name_key(data.get(record))
+                for key, record in (("title", "trackName"), ("artist", "artistName"))):
+            return None
+        # The draft explicitly leaves offset semantics unresolved. Never guess.
+        if type(meta.get("offset_ms", 0)) is not int or meta.get("offset_ms", 0) != 0:
+            return None
+        length = meta.get("duration_ms")
+        if length is not None and (type(length) is not int or not 0 <= length <= MAX_TIME * 1000
+                                   or abs(length / 1000 - data["duration"]) > 2):
+            return None
+        raw_lines = document.get("lines", [])
+        if not isinstance(raw_lines, list) or len(raw_lines) > MAX_LINES:
+            return None
+
+        def segment(raw):
+            if not isinstance(raw, dict) or not isinstance(raw.get("text"), str) \
+                    or "\x00" in raw["text"] or len(raw["text"]) > MAX_TEXT:
+                raise ValueError("Invalid Lyricsfile text")
+            start, end = raw.get("start_ms"), raw.get("end_ms")
+            if type(start) is not int or not 0 <= start <= MAX_TIME * 1000 \
+                    or end is not None and (type(end) is not int or not start <= end <= MAX_TIME * 1000):
+                raise ValueError("Invalid Lyricsfile timing")
+            return {"text": raw["text"], "start": start / 1000,
+                    "end": end / 1000 if end is not None else None}
+
+        lines = []
+        for raw in raw_lines:
+            line = segment(raw)
+            words = raw.get("words")
+            if isinstance(words, list) and len(words) <= 1000:
+                try:
+                    line["words"] = [segment(word) for word in words]
+                except ValueError:
+                    pass  # A malformed optional word never removes its complete line.
+            lines.append(line)
+        if lines:
+            return _finish(lines, duration, "lrclib")
+        plain = document.get("plain", "")
+        if not isinstance(plain, str) or "\x00" in plain or len(plain) > MAX_TEXT:
+            return None
+        return _finish([{"start": None, "end": None, "text": line}
+                        for line in plain.splitlines()], duration, "lrclib")
+    except (yaml.YAMLError, ValueError, SourceError):
+        return None
+
+
 def _lrclib_lines(data, duration):
     result = _finish([], duration, "lrclib")
     if data.get("instrumental") is True:
@@ -221,8 +411,13 @@ def _lrclib_lines(data, duration):
     if any(value is not None and (not isinstance(value, str) or len(value) > MAX_TEXT
                                   or "\x00" in value) for value in (synced, plain)):
         raise SourceError("LRCLIB returned invalid or oversized lyrics.")
+    rich = _lyricsfile_lines(data.get("lyricsfile"), data, duration)
+    if rich and rich["timed"]:
+        return rich
     if synced and synced.strip():
         return parse_lrc(synced, duration, "lrclib")
+    if rich and rich["status"] == "ready":
+        return rich
     return _finish([{"start": None, "end": None, "text": line}
                     for line in (plain or "").splitlines()], duration, "lrclib")
 

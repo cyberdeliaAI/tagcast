@@ -201,6 +201,84 @@ test('LRCLIB plain lyrics stay untimed and instrumental results are clearly desc
   }
 });
 
+const wordLyricsFixture = {status:'ready',source:'lrclib',timed:true,lines:[
+  {start:1,end:5,text:'First <word>',words:[{start:1,end:2,text:'First '},{start:2,end:4,text:'<word>'}]},
+  {start:3,end:6,text:'Other singer',words:[{start:3,end:6,text:'Other singer'}]}]};
+
+test('word lyric markup escapes every segment and malformed words keep the complete line',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  const html=p.nodes.get('#visual-lyrics-lines').innerHTML;
+  assert.match(html,/data-lyric-word="1">&lt;word&gt;<\/span>/);
+  assert.doesNotMatch(html,/<word>/);assert.match(p.nodes.get('#visual-lyrics-message').textContent,/Word-timed/);
+  assert.equal(p.run('playbackLyricWords({start:0,end:1,text:"All text",words:[{start:0,end:1,text:"Wrong"}]}).length'),0);
+  assert.equal(p.run('playbackLyricWords({start:0,end:1,text:"All text",words:[{start:0,end:2,text:"All text"}]}).length'),0);
+  p.run('playbackLyricsView.data.timed=false;paintPlaybackLyrics()');
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-lines').innerHTML,/data-lyric-word/);
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/First &lt;word&gt;/);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+});
+
+test('word progress uses supplied timestamps without dividing zero-length segments',()=>{
+  const p=page();
+  for(const [time,expected] of [[0,0],[1,0],[1.5,.25],[2,.5],[3,1],[4,1]])
+    assert.equal(p.run(`playbackWordProgress({start:1,end:3},${time})`),expected);
+  assert.equal(p.run('playbackWordProgress({start:1,end:1},1)'),1);
+});
+
+test('word progress seeks both directions using gapless track time and highlights overlapping singers',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  p.run(`playbackLyricsView.lineNodes=[0,1].map(()=>({offsetTop:100,setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];}}));
+    playbackLyricsView.wordNodes=[[0,1],[0]].map(a=>a.map(()=>({style:{setProperty(k,v){this[k]=v;}}})));
+    audio.currentTime=999;gaplessPosition=()=>3;syncPlaybackLyrics(true);`);
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][0].style["--lyric-progress"]'),'100%');
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][1].style["--lyric-progress"]'),'50%');
+  assert.equal(p.run('playbackLyricsView.lineNodes.every(n=>n["aria-current"]==="true")'),true);
+  p.run('gaplessPosition=()=>1.5;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][0].style["--lyric-progress"]'),'50%');
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][1].style["--lyric-progress"]'),'0%');
+  assert.equal(p.run('playbackLyricsView.lineNodes[1]["aria-current"]'),undefined);
+  p.run('gaplessPosition=()=>7;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.highlighted.size'),0);
+});
+
+test('word animation is single, visibility-bound, pause-aware and releases nodes on reset',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.run(`globalThis.lyricFrames=new Map();globalThis.lyricFrameId=0;
+    globalThis.requestAnimationFrame=cb=>{lyricFrames.set(++lyricFrameId,cb);return lyricFrameId;};
+    globalThis.cancelAnimationFrame=id=>lyricFrames.delete(id);`);
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  assert.equal(p.run('lyricFrames.size'),1,'Playback was already started by the test helper');
+  p.run('syncPlaybackLyrics();syncPlaybackLyrics()');assert.equal(p.run('lyricFrames.size'),1);
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})');
+  p.run('audio.paused=true');await p.nodes.get('#audio').emit('pause');await settle();
+  assert.equal(p.run('lyricFrames.size'),0);
+  p.run('audio.paused=false');await p.nodes.get('#audio').emit('play');await settle();
+  assert.equal(p.run('lyricFrames.size'),1);
+  p.run('document.hidden=true');await p.emitDocument('visibilitychange');await settle();
+  assert.equal(p.run('lyricFrames.size'),0);
+  p.run('document.hidden=false');await p.emitDocument('visibilitychange');await settle();
+  assert.equal(p.run('lyricFrames.size'),1);
+  await p.nodes.get('#visual-player-lyrics-toggle').emit('click');
+  assert.equal(p.run('lyricFrames.size'),0);
+  p.run('resetPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.lineNodes.length'),0);
+  assert.equal(p.run('playbackLyricsView.wordNodes.length'),0);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})'),before);
+});
+
+test('reduced motion uses stepped word underlines without a continuous animation',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  p.run(`globalThis.matchMedia=()=>({matches:true});
+    globalThis.requestAnimationFrame=()=>{throw Error("Animation in reduced motion");};
+    playbackLyricsView.lineNodes=[{setAttribute(){},removeAttribute(){}}];
+    playbackLyricsView.wordNodes=[[{style:{setProperty(k,v){this[k]=v;}}}]];
+    gaplessPosition=()=>1.1;syncPlaybackLyrics();`);
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][0].style["--lyric-progress"]'),'100%');
+  assert.equal(p.run('playbackLyricsView.frame'),0);
+});
+
 function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();

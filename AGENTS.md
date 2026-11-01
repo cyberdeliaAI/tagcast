@@ -113,7 +113,8 @@ their shared browsing/player state; a fast local response can otherwise race the
 
 - Source runs require Python 3.11 or newer; standalone downloads bundle Python.
   The desktop launcher uses Tk; normal source/CLI browser use does not require Tk.
-- Runtime dependencies: `ibroadcast>=2.0.1,<3` and `websocket-client>=1.9,<2`; the code also uses `requests`,
+- Runtime dependencies include `ibroadcast>=2.0.1,<3`, `websocket-client>=1.9,<2` and
+  `PyYAML>=6.0.3,<7` for bounded, safe Lyricsfile parsing; the code also uses `requests`,
   currently a transitive dependency of `ibroadcast`.
 - Packaging uses Hatchling; the CLI entry point is `tagcast.app:main`.
 - `pyproject.toml` contains dependency and lint configuration; `uv.lock` pins
