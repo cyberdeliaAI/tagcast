@@ -146,7 +146,7 @@ function healthCard(s) {
 
 function accountCard(a) {
   const yes = v => v == null ? "—" : v ? "On" : "Off";
-  const bitrate = {orig: "Original", auto: "Automatic"}[a.preferences.bitrate] || (a.preferences.bitrate ? `${a.preferences.bitrate} kbps` : "—");
+  const bitrate = {orig: "Original", auto: "Automatic"}[a.preferences.bitrate] || (a.preferences.bitrate ? `${escapeHtml(a.preferences.bitrate)} kbps` : "—");
   const sub = a.subscription;
   const rows = [
     ["Account", escapeHtml(a.username || "—")],

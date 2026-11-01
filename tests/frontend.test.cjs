@@ -10565,3 +10565,17 @@ test('Upload status polling preserves expanded Details and keyboard focus across
   assert.match(list.innerHTML,/data-upload-file="Album\/old\.flac" open/);
   assert.equal(focused,true);
 });
+
+test("account streaming quality escapes external text while preserving known labels and markup", () => {
+  const p = page();
+  for (const value of ['<img src=x onerror="globalThis.injected=true">', '<svg onload="alert(1)">', '256 & "fast"']) {
+    const html = p.run(`accountCard({preferences:{bitrate:${JSON.stringify(value)}},linked:{}})`);
+    assert.doesNotMatch(html, /<img|<svg|<script/i);
+    assert.ok(html.includes(p.run(`escapeHtml(${JSON.stringify(value)})`) + ' kbps'));
+  }
+  for (const [value, expected] of [['orig','Original'],['auto','Automatic'],['256','256 kbps'],['','—']]) {
+    const html = p.run(`accountCard({preferences:{bitrate:${JSON.stringify(value)},combine_sets:true},linked:{}})`);
+    assert.ok(html.includes(`<dd>${expected}</dd>`));
+    assert.match(html, /<small class="warn">iBroadcast refuses album changes/);
+  }
+});
