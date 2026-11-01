@@ -153,7 +153,7 @@ jobs:
 
   release:
     name: Add the downloads to the release
-    needs: [scope, build]
+    needs: [scope, build, verified]
     if: >-
       needs.scope.outputs.full == 'true' &&
       (github.event_name == 'release' || github.event_name == 'workflow_run' ||
@@ -183,3 +183,22 @@ jobs:
             exit 0
           fi
           gh release upload "$TAG" downloads/* --clobber
+
+  verified:
+    name: Distribution verification
+    if: ${{ !cancelled() }}
+    needs: [scope, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require complete successful validation
+        shell: python
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          import json, os
+          jobs = json.loads(os.environ["CI_NEEDS"])
+          expected = {'build', 'scope'}
+          if set(jobs) != expected or any(job.get("result") != "success" for job in jobs.values()):
+              raise SystemExit("Required validation failed or did not run.")
+          if jobs["scope"].get("outputs", {}).get("full") not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")

@@ -146,7 +146,7 @@ jobs:
     if: >-
       github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Publish Tagcast ') &&
       needs.scope.outputs.full == 'true'
-    needs: [scope, tests, start-scripts, gapless-measured-media]
+    needs: [scope, verified]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -239,3 +239,22 @@ jobs:
             build/gapless-application/*.json
             build/gapless-negative/**/*.json
             build/gapless-negative/*.log
+
+  verified:
+    name: Application verification
+    if: ${{ !cancelled() }}
+    needs: [scope, tests, start-scripts, gapless-measured-media]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require complete successful validation
+        shell: python
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          import json, os
+          jobs = json.loads(os.environ["CI_NEEDS"])
+          expected = {'gapless-measured-media', 'tests', 'start-scripts', 'scope'}
+          if set(jobs) != expected or any(job.get("result") != "success" for job in jobs.values()):
+              raise SystemExit("Required validation failed or did not run.")
+          if jobs["scope"].get("outputs", {}).get("full") not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")
