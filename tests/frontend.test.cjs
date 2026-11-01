@@ -10668,3 +10668,23 @@ test("A repeated compact read-back keeps current library summaries",async()=>{
   assert.deepEqual(p.json('state.albums'),albums);
   assert.equal(p.run('state.history[0].status'),'saved');
 });
+
+test("A late read-back cannot replace a deliberately selected local library",async()=>{
+  const p=livePage();await settle();
+  p.run(`state.history=[{status:'sent',source:'ibroadcast',selection:[],changes:[]}]`);
+  const old=p.json('state.albums');
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',results:[],albums:old})}));
+  const done=p.run('followJob("old-library",state.history[0])');
+  p.run('useLocal([],"local")'); p.flushTimers(2000);await done;
+  assert.deepEqual(p.json('state.albums'),[]);
+});
+
+test("An editor response from a replaced library cannot open a stale draft",async()=>{
+  const p=livePage();await settle();
+  const album=p.json('state.details.get("1")');
+  p.run('state.details.delete("1")');
+  p.setFetch(()=>{p.run('state.details=new Map(); libraryLoadRequest+=1'); return {ok:true,json:async()=>({albums:[album]})};});
+  await p.run('openEditor(["1"])');
+  assert.equal(p.nodes.get('#editor').open||false,false);
+  assert.equal(p.run('editing'),null);
+});

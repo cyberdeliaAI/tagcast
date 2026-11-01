@@ -183,6 +183,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  saveOrder += 1;
   libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
   closeBrowseOptions();
@@ -828,6 +829,7 @@ async function openEditor(ids) {
     toast("Choose albums within one artist."); return;
   }
   let albums;
+  const details = state.details, loadRequest = libraryLoadRequest;
   opening = true; document.body.classList.add("busy");
   try {
     albums = await albumDetails(chosen.map(a => String(a.id)));
@@ -835,6 +837,9 @@ async function openEditor(ids) {
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
     toast(`Could not open the album: ${error.message}`); return;
   } finally { opening = false; document.body.classList.remove("busy"); }
+  if (details !== state.details || loadRequest !== libraryLoadRequest) {
+    toast("The library changed while opening the editor. Open the album again."); return;
+  }
   if (albums.length !== chosen.length) { toast("This album is no longer in your library. Reload the library."); return; }
   if (whole) albums.sort((a, b) => (a.disc || 0) - (b.disc || 0));
   const album = albums[0], bulk = albums.length > 1 && !whole, single = !bulk;
@@ -1366,6 +1371,7 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  saveOrder += 1;
   const request = ++libraryLoadRequest, session = state.connection.playback_session;
   const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
   let completed = false;
