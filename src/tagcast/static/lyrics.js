@@ -5,6 +5,7 @@ const trackLyrics = {details: null, entries: new Map(), cacheRead: null, review:
 let albumLyricsCheck = null;
 
 function resetTrackLyrics() {
+  if (typeof resetPlaybackLyrics === "function") resetPlaybackLyrics();
   cancelAlbumLyricsCheck();
   if (typeof resetAlbumLyricsImport === "function") resetAlbumLyricsImport();
   trackLyrics.revision += 1; trackLyrics.entries.clear(); trackLyrics.review = null;

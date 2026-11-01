@@ -268,6 +268,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/downloads/folder": self.studio.audio_downloads.folder,
             "/api/settings": self.studio.save_settings,
             "/api/lyrics": self.studio.lyrics.view,
+            "/api/lyrics/display": self.studio.lyrics.display.view,
             "/api/lyrics/review": self.studio.lyrics.prepare,
             "/api/lyrics/save": self.studio.lyrics.save,
             "/api/metadata-export": self.studio.metadata_export.start,
