@@ -10595,3 +10595,20 @@ test("Queue restore cannot seek a replacement album or reuse unrelated rows on a
   assert.equal(p.run('player.queue[player.index].id'), '100');
   assert.equal(p.requests.filter(r => r.url === '/api/queue-tracks').length, 2);
 });
+
+test("Connecting Queue Sync retains the local queue until an explicit restore choice", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("3")); queueSync.enabled=true; state.connection.playback_session="choice-session"');
+  const local = p.json('player.queue.map(t=>t.id)');
+  p.setFetch((url, options) => ({ok:true,json:async()=>p.json(`({session:"choice-session",status:"connected",revision:4,own:true,owner:queueSync.browser,
+    state:{role:"player",tracks:[100,101],play_next:[],pause:true,start_position:10,start_time:0,volume:0.5,
+      data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}})`)}));
+  await p.run('connectQueue()'); await settle();
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),local);
+  assert.equal(p.requests.filter(r=>r.url==='/api/queue-tracks').length,0);
+  assert.equal(p.nodes.get('#audio').paused,true);
+  await p.click({'[data-device-local]': {}});
+  const sent = p.requests.filter(r => r.options?.body).map(r => JSON.parse(r.options.body)).find(b => b.action === 'state');
+  assert.deepEqual(sent.state.tracks, local.map(Number));
+  assert.equal(p.run('queueSync.choicePending'),false);
+});
