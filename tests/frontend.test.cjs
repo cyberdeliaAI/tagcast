@@ -10639,3 +10639,22 @@ test("Cleanup actions release their busy state after an independent details repl
     assert.equal(p.run(`${view}.busy`),false,view);
   }
 });
+
+for (const next of [false,true]) test(`An exhausted queue starts appended music, including Play next=${next}`, async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1'),state.details.get('1').tracks.at(-1).id); step(1); audio.ended=false;
+    appendToQueue(state.details.get('3'),null,${next});`);
+  const first=p.run('String(state.details.get("3").tracks[0].id)');
+  assert.equal(p.run('player.queue[player.index].id'),first);
+  assert.match(p.nodes.get('#audio').src,new RegExp(`/api/stream/${first}`));
+  assert.equal(p.nodes.get('#audio').paused,false);
+  p.run('step(1)');
+  assert.equal(p.run('player.queue[player.index].id'),p.run('String(state.details.get("3").tracks[1].id)'));
+});
+
+test("System Next wraps a Repeat queue without dropping its base tracks", async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get("1"),state.details.get("1").tracks.at(-1).id); player.repeat="queue"; step(1)');
+  assert.equal(p.run('player.index'),0);
+  assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
+});
