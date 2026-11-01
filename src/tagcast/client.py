@@ -360,8 +360,10 @@ class StudioClient(ibroadcast.iBroadcast):
             return response
         try:
             return self._with_fresh_token(send)
+        except requests.exceptions.SSLError:
+            raise ConnectionSecurityError("Could not verify iBroadcast's secure audio connection.") from None
         except requests.RequestException as error:
-            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+            raise ConnectionUnavailable(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
 
     def open_stream(self, path, file_id, user_id, expires, range_header=None, *, timeout=TIMEOUT):
         """Open the audio of one track. The caller closes the returned response."""
@@ -377,8 +379,10 @@ class StudioClient(ibroadcast.iBroadcast):
                                 stream=True, timeout=timeout)
         try:
             return self._with_fresh_token(send)
+        except requests.exceptions.SSLError:
+            raise ConnectionSecurityError("Could not verify iBroadcast's secure audio connection.") from None
         except requests.RequestException as error:
-            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+            raise ConnectionUnavailable(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
 
 
 class Studio:

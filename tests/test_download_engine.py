@@ -667,6 +667,20 @@ class DownloadServiceTests(unittest.TestCase):
         return app.fetch_track(self.session, self.lib, self.out, Path("song.flac"), "/orig/one", 1,
                                self.stop, progress, "orig", source=source, **options)
 
+    def test_disk_error_never_retries_or_falls_back_to_stream(self):
+        import errno
+        self.stop.wait = Mock(return_value=False)
+        for code in (errno.ENOSPC, errno.EACCES, errno.EIO, errno.ENAMETOOLONG):
+            with self.subTest(errno=code), patch.object(app, "copy_zip_entry", side_effect=OSError(code, "Local write failed")):
+                self.session.download.reset_mock()
+                self.session.download.side_effect = lambda *args: Response(service_zip())
+                self.session.stream.reset_mock()
+                with self.assertRaises(OSError) as caught:
+                    self.fetch()
+                self.assertEqual(caught.exception.errno, code)
+                self.assertEqual(self.session.download.call_count, 1)
+                self.session.stream.assert_not_called()
+
     def serve(self, *bodies):
         """Answer each request with the next archive; the last one repeats."""
         replies = iter(bodies)
