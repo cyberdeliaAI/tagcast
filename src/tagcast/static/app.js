@@ -1726,11 +1726,11 @@ function showTheme() {
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
   const label = {auto: "Auto", light: "Light", dark: "Dark"}[theme];
-  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
+  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired", apple: "Apple Music Classic"}[palette];
   $("#theme-button").textContent = `${{auto: "◐", light: "☀", dark: "☾"}[theme]} Theme ▾`;
   $("#theme-button").title = `${colour} · ${label}. Choose colour and appearance.`;
   for (const value of ["auto", "light", "dark"]) $("#appearance-" + value).checked = theme === value;
-  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
+  for (const value of TagcastThemes.builtins) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
   const customFocus = document.activeElement?.dataset?.customThemeChoice !== undefined ? document.activeElement.value : null;
   const custom = $("#theme-custom-list"), themes = TagcastThemes.snapshot().themes;
   if (custom) custom.innerHTML = themes.length ? `<fieldset><legend>My themes</legend>${themes.map(item => `<label><input type="radio" name="palette" value="${item.id}" data-custom-theme-choice ${item.id === TagcastThemes.active()?.id ? "checked" : ""}> ${escapeHtml(item.name)}</label>`).join("")}</fieldset>` : "";
