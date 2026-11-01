@@ -10612,3 +10612,21 @@ test("Connecting Queue Sync retains the local queue until an explicit restore ch
   assert.deepEqual(sent.state.tracks, local.map(Number));
   assert.equal(p.run('queueSync.choicePending'),false);
 });
+
+test("Gapless to Queue Sync handover retains a paused ordinary source and track position", async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1')); queueSync.active=true; queueSync.allowed=false;
+    queueSync.view={own:true,owner:queueSync.browser,state:{role:'player'}};
+    const handoverEngine={session:state.connection.playback_session,started:true,controllers:new Set(),
+      current:{entry:player.queue[player.index],start:200,end:240}};
+    gaplessTrial.active=handoverEngine; audio.currentTime=217;
+    audio.load=()=>{audio.currentTime=0;}; gaplessRetire(handoverEngine);`);
+  assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
+  assert.equal(p.nodes.get('#audio').paused,true);
+  assert.equal(p.run('gaplessTrial.active'),null);
+  assert.equal(p.run('queueSync.allowed'),false);
+  assert.equal(p.run('encodedLocalQueue().start_position'),17);
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime,17);
+  assert.equal(p.run('queueSync.handover'),null);
+});

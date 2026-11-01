@@ -26,10 +26,11 @@ function bridgeBody(action) {
 
 function encodedLocalQueue() {
   const track = player.queue[player.index];
+  if (queueSync.handover && queueSync.handover.entry !== track) queueSync.handover = null;
   const normal = player.queue.filter(t => !t.upNext), next = player.queue.slice(Math.max(0, player.index)).filter(t => t.upNext);
   return {tracks: normal.map(t => Number(t.id)), play_next: next.map(t => Number(t.id)),
     current_song: Number(track?.id) || 0, name: track?.title || "", pause: audio.paused || !track,
-    shuffle: Boolean(player.shuffle), start_position: Number(audio.currentTime) || 0, start_time: Date.now() / 1000,
+    shuffle: Boolean(player.shuffle), start_position: queueSync.handover?.position ?? (Number(audio.currentTime) || 0), start_time: Date.now() / 1000,
     volume: Number.isFinite(audio.volume) ? audio.volume : 1,
     data: {play_from: track?.upNext ? "play_next" : "tracks", repeat_mode: player.repeat, crossfade: false,
       play_index: player.index < 0 ? 0 : player.queue.slice(0, player.index).filter(t => !t.upNext).length}};
