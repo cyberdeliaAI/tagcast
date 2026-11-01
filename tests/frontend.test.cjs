@@ -10658,3 +10658,13 @@ test("System Next wraps a Repeat queue without dropping its base tracks", async 
   assert.equal(p.run('player.index'),0);
   assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
 });
+
+test("A repeated compact read-back keeps current library summaries",async()=>{
+  const p=page(); await settle();
+  const albums=p.json('state.albums');
+  p.run(`state.history=[{status:'sent',source:'ibroadcast',selection:[],changes:[{kind:'track',id:'100',status:'sent'}]}]`);
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',results:[{kind:'track',id:'100',status:'saved'}]})}));
+  const done=p.run('followJob("already-delivered",state.history[0])'); p.flushTimers(2000); await done;
+  assert.deepEqual(p.json('state.albums'),albums);
+  assert.equal(p.run('state.history[0].status'),'saved');
+});

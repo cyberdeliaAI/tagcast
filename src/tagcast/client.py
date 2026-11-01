@@ -552,6 +552,7 @@ class Studio:
         client.token_set = token_set
         with self.lock:
             self.client, self.library, self.account = client, None, None
+            self.jobs.clear()
             self.playback_session = secrets.token_hex(16)
             if save:
                 self._save_tokens(token_set, client)
@@ -562,6 +563,7 @@ class Studio:
         self.queue_sync.disconnect()
         with self.lock:
             self.client = self.library = self.account = self.device = None
+            self.jobs.clear()
             self.playback_session = ""
             self._device_gen += 1
             self._device_request_id = None
@@ -1084,10 +1086,9 @@ class Studio:
         another one.
         """
         job_id = secrets.token_urlsafe(9)
+        marker = {"state": "checking"}
         with self.lock:
-            self.jobs[job_id] = {"state": "checking"}
-            for old in list(self.jobs)[:-20]:
-                del self.jobs[old]
+            self.jobs[job_id] = marker
 
         def run():
             try:
@@ -1104,7 +1105,11 @@ class Studio:
                 log.exception("Read-back failed")
                 result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
-                self.jobs[job_id] = result
+                if self.jobs.get(job_id) is marker:
+                    self.jobs[job_id] = result
+                    finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
+                    for old in finished[:-20]:
+                        del self.jobs[old]
 
         threading.Thread(target=run, daemon=True).start()
         return job_id
@@ -1113,7 +1118,12 @@ class Studio:
         with self.lock:
             if job_id not in self.jobs:
                 raise ApiError("This read-back is no longer available. Reload the library.")
-            return self.jobs[job_id]
+            result = self.jobs[job_id]
+            if "albums" in result or "editor_names" in result:
+                # Deliver the large payload once without mutating an in-flight response.
+                self.jobs[job_id] = {key: value for key, value in result.items()
+                                     if key not in {"albums", "editor_names"}}
+            return result
 
 
     # -- overview -----------------------------------------------------------------

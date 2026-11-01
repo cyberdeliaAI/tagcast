@@ -1629,7 +1629,7 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   }
   entry.status = overallStatus(entry.changes.map(c => c.status));
   rememberHistory();
-  if (order !== saveOrder) { /* a later save's read-back brings newer albums */ }
+  if (order !== saveOrder || !Array.isArray(job.albums)) { /* summaries are delivered once; keep the current library otherwise */ }
   else if (!$("#editor").open && !$("#review").open) {
     applyEditorNames(job.editor_names);
     state.albums = colorize(job.albums); state.details = new Map();
