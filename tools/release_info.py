@@ -83,7 +83,7 @@ def main():
     if not info["prerelease"]:
         wait_for_native_builds(commit)
     command = ["gh", "release", "create", info["tag"], "--target", commit,
-               "--title", f'Tagcast {info["display"]}', "--notes-file", info["notes"]]
+               "--title", f'Tagcast {info["display"]}', "--notes-file", info["notes"], "--draft"]
     command += ["--prerelease", "--latest=false"] if info["prerelease"] else ["--latest"]
     subprocess.run(command, check=True, cwd=ROOT)
 

@@ -97,13 +97,17 @@ the Tagcast entry in `uv.lock` and the Electron package/lockfile versions consis
 `python tools/release_info.py` checks them. Store release notes in
 `.github/release-notes/VERSION.md`.
 
-A main commit named exactly `Publish Tagcast VERSION` creates the stable release
+A main commit named exactly `Publish Tagcast VERSION` creates a draft stable release
 after all regression, start-script and native build checks pass. The beta branch
 retains the `Publish Tagcast X.Y.Z beta N` convention, Python version `X.Y.ZbN`,
 release tag `vX.Y.Z-beta.N` and matching `X.Y.Z-beta.N.md` notes. Beta releases do
 not replace the latest stable release.
 
-`Builds` then attaches all four verified archives and checksums. Publishing a
+`Builds` requires its final verification gate, all four archives/checksums and
+archive-bound signing/notarization reports for both macOS architectures. It uploads
+to the draft, checks the resulting asset set and only then makes the release public.
+Failures leave the draft unpublished. An interrupted partial upload needs explicit
+maintainer review before assets can be replaced. Publishing a
 release manually also triggers native builds. To rebuild an existing compatible
 release, run `Builds` manually with its tag; an empty tag builds artifacts only.
 A nonempty tag requires macOS signing regardless of the test-signing checkbox.
