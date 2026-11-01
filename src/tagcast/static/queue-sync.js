@@ -2,13 +2,13 @@
 
 // One explicitly connected browser owns the bridge. Other tabs cannot play its queue.
 const queueSync = {enabled: false, active: false, browser: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-  view: null, timer: null, publishing: false, applying: false, allowed: false, request: 0, revision: -1, error: ""};
+  view: null, timer: null, publishing: false, applying: false, allowed: false, choicePending: false, request: 0, revision: -1, error: ""};
 
 function applyQueueSettings(data) {
   lookup.queueSync = data.queue_sync === true; queueSync.enabled = lookup.queueSync;
   $("#devices-button").hidden = !queueSync.enabled;
   if (!queueSync.enabled) {
-    clearTimeout(queueSync.timer); queueSync.active = false; queueSync.view = null; queueSync.allowed = false;
+    clearTimeout(queueSync.timer); queueSync.active = false; queueSync.view = null; queueSync.allowed = false; queueSync.choicePending = false;
     $("#player").hidden = !player.queue.length;
     document.body.classList.toggle("has-player", Boolean(player.queue.length));
   }
@@ -42,7 +42,7 @@ async function publishQueueState() {
   try {
     const view = await api("/api/queue-sync", {...bridgeBody("state"), revision: queueSync.view.revision, state: encodedLocalQueue()});
     if (session !== state.connection.playback_session || !queueSync.active) return;
-    queueSync.view = view; queueSync.revision = view.revision; queueSync.error = "";
+    queueSync.view = view; queueSync.revision = view.revision; queueSync.error = ""; return true;
   } catch (error) { queueSync.error = error.message; }
   finally { queueSync.publishing = false; }
 }
@@ -104,7 +104,7 @@ async function pollQueue() {
     }
     if (queueSync.active && view.session !== session) { queueSync.active = false; queueSync.allowed = false; }
     if (queueSync.active && !localPlaybackAllowed()) { audio.pause(); playReporting.watch = null; }
-    if (queueSync.active && view.revision !== queueSync.revision && !queueSync.publishing) {
+    if (queueSync.active && !queueSync.choicePending && view.revision !== queueSync.revision && !queueSync.publishing) {
       queueSync.revision = view.revision;
       if (view.own && view.state?.role === "player") await restoreQueue(view);
     }
@@ -132,7 +132,7 @@ async function connectQueue(target = "") {
   if (!queueSync.enabled || !live()) return;
   try {
     queueSync.view = await api("/api/queue-sync", {...bridgeBody("connect"), target});
-    queueSync.active = true; queueSync.allowed = false; queueSync.revision = -1; queueSync.fingerprint = null;
+    queueSync.active = true; queueSync.allowed = false; queueSync.choicePending = !target; queueSync.request += 1; queueSync.revision = -1; queueSync.fingerprint = null;
     queueSync.error = ""; audio.pause(); playReporting.watch = null; pollQueue();
   } catch (error) { queueSync.error = error.message; renderDevices(); }
 }
@@ -176,11 +176,11 @@ document.addEventListener("click", async event => {
   }
   if (target.closest("[data-device-disconnect], [data-device-force]")) {
     if (target.closest("[data-device-force]") && !confirm("Disconnect the other tab’s queue bridge? This does not stop a remote device’s audio.")) return;
-    try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.view = null; clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
+    try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.choicePending = false; queueSync.request += 1; queueSync.view = null; clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
     catch (error) { toast(error.message); }
   }
-  if (target.closest("[data-device-local]")) { queueSync.allowed = true; await publishQueueState(); renderDevices(); }
-  if (target.closest("[data-device-resume]")) { queueSync.allowed = true; await restoreQueue(queueSync.view, true); if (player.queue.length) await audio.play().catch(() => toast("Press Play in the player.")); $("#devices-dialog").close(); scheduleQueuePublish(); }
+  if (target.closest("[data-device-local]")) { queueSync.allowed = true; if (await publishQueueState()) queueSync.choicePending = false; else queueSync.allowed = false; renderDevices(); }
+  if (target.closest("[data-device-resume]")) { queueSync.choicePending = false; queueSync.allowed = true; await restoreQueue(queueSync.view, true); if (player.queue.length) await audio.play().catch(() => toast("Press Play in the player.")); $("#devices-dialog").close(); scheduleQueuePublish(); }
   const command = target.closest("[data-device-command]");
   if (command) remoteCommand(command.dataset.deviceCommand);
 });
