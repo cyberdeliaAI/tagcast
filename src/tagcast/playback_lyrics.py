@@ -1,4 +1,4 @@
-"""Read-only, opt-in Unison lyrics for Now playing. Nothing is written to disk.
+"""Read-only, opt-in Unison/LRCLIB lyrics for Now playing. No disk writes.
 
 Independent implementation of the documented Unison API and TTML/LRC formats;
 no provider code or lyrics corpus is bundled. Audio and metadata saves stay separate.
@@ -22,6 +22,7 @@ MAX_TEXT = 50000
 MAX_LINES = 2000
 MAX_TIME = 86400
 UNISON_URL = "https://unison.boidu.dev/lyrics"
+LRCLIB_URL = "https://lrclib.net/api/"
 
 
 def lyric_time(value):
@@ -41,16 +42,17 @@ def lyric_time(value):
     return result if math.isfinite(result) and 0 <= result <= MAX_TIME else None
 
 
-def _finish(lines, duration):
+def _finish(lines, duration, source="unison"):
+    label = "LRCLIB" if source == "lrclib" else "Unison"
     if len(lines) > MAX_LINES or sum(len(line["text"]) for line in lines) > MAX_TEXT:
-        raise SourceError("Unison returned too much lyrics text.")
+        raise SourceError(f"{label} returned too much lyrics text.")
     timed = bool(lines) and all(line["start"] is not None for line in lines)
     if timed:
         lines.sort(key=lambda line: line["start"])
         if any(not 0 <= line["start"] <= MAX_TIME for line in lines):
-            raise SourceError("Unison returned invalid lyrics timing.")
+            raise SourceError(f"{label} returned invalid lyrics timing.")
         if duration > 0 and any(line["start"] > duration + 2 for line in lines):
-            raise SourceError("Unison timing does not fit this recording.")
+            raise SourceError(f"{label} timing does not fit this recording.")
         next_start = duration if duration > 0 else MAX_TIME
         later_start = None
         for line in reversed(lines):
@@ -59,16 +61,16 @@ def _finish(lines, duration):
             if line["end"] is None:
                 line["end"] = next_start
             if not line["start"] <= line["end"] <= MAX_TIME:
-                raise SourceError("Unison returned invalid lyrics timing.")
+                raise SourceError(f"{label} returned invalid lyrics timing.")
             later_start = line["start"]
     else:
         for line in lines:
             line.update(start=None, end=None)
-    return {"status": "ready" if lines else "missing", "source": "unison",
+    return {"status": "ready" if lines else "missing", "source": source,
             "timed": timed, "lines": lines}
 
 
-def parse_lrc(value, duration):
+def parse_lrc(value, duration, source="unison"):
     lines = []
     offset = re.search(r"(?im)^\[offset:([+-]?\d{1,7})\]", value)
     offset = int(offset[1]) / 1000 if offset else 0
@@ -84,9 +86,10 @@ def parse_lrc(value, duration):
             stamp = re.sub(r"^(\d+:\d+):", r"\1.", stamp)
             start = lyric_time(stamp)
             if start is None:
-                raise SourceError("Unison returned invalid LRC timing.")
+                label = "LRCLIB" if source == "lrclib" else "Unison"
+                raise SourceError(f"{label} returned invalid LRC timing.")
             lines.append({"start": max(0, start + offset), "end": None, "text": text})
-    return _finish(lines, duration)
+    return _finish(lines, duration, source)
 
 
 def parse_ttml(value, duration):
@@ -186,6 +189,134 @@ def fetch_unison(track, album):
     raise SourceError("Unison returned an unsupported lyrics format.")
 
 
+def lyrics_name_key(value):
+    """Typography-only variants; keep accents, collaborators and version text."""
+    return artist_name_key(value).translate(str.maketrans({
+        "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+        "\u2013": "-", "\u2014": "-",
+    }))
+
+
+def _lrclib_match(data, track, album):
+    if not isinstance(data, dict) or any(not isinstance(data.get(key), str)
+                                         for key in ("trackName", "artistName")):
+        return False
+    if any(lyrics_name_key(data[key]) != lyrics_name_key(track[name])
+           for key, name in (("trackName", "title"), ("artistName", "artist"))):
+        return False
+    length = data.get("duration")
+    if type(length) not in (int, float) or not math.isfinite(length) or not 0 < length <= MAX_TIME:
+        return False
+    if track["length"] > 0:
+        return abs(length - track["length"]) <= 2
+    # Without a known duration, require a unique full album identity instead.
+    return bool(album.strip()) and lyrics_name_key(data.get("albumName")) == lyrics_name_key(album)
+
+
+def _lrclib_lines(data, duration):
+    result = _finish([], duration, "lrclib")
+    if data.get("instrumental") is True:
+        return {**result, "status": "instrumental"}
+    synced, plain = data.get("syncedLyrics"), data.get("plainLyrics")
+    if any(value is not None and (not isinstance(value, str) or len(value) > MAX_TEXT
+                                  or "\x00" in value) for value in (synced, plain)):
+        raise SourceError("LRCLIB returned invalid or oversized lyrics.")
+    if synced and synced.strip():
+        return parse_lrc(synced, duration, "lrclib")
+    return _finish([{"start": None, "end": None, "text": line}
+                    for line in (plain or "").splitlines()], duration, "lrclib")
+
+
+def fetch_lrclib_display(track, album, check_current):
+    """Exact get, then at most two sequential searches; display-only and bounded."""
+    deadline, previous = time.monotonic() + 12, 0
+
+    def read(session, endpoint, params):
+        nonlocal previous
+        delay = max(0, previous + .25 - time.monotonic())
+        if delay:
+            time.sleep(delay)
+        check_current()  # Recheck account, session and source before every request.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SourceError("LRCLIB took too long. Try again later.")
+        previous = time.monotonic()
+        session.cookies.clear()
+        with session.get(LRCLIB_URL + endpoint, params=params,
+                         timeout=(min(4, remaining), min(5, remaining)), stream=True,
+                         allow_redirects=False) as response:
+            if response.status_code == 404:
+                return None
+            if response.status_code != 200:
+                error = SourceError("LRCLIB is unavailable. Try again later.")
+                retry = response.headers.get("Retry-After", "")
+                error.retry_after = max(60, int(retry)) if re.fullmatch(r"\d{1,8}", retry) else 60
+                raise error
+            if response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+                raise SourceError("LRCLIB returned an invalid response.")
+            chunks, size = [], 0
+            for chunk in response.iter_content(16384):
+                size += len(chunk)
+                if size > MAX_RESPONSE or time.monotonic() > deadline:
+                    raise SourceError("LRCLIB returned too much data or took too long.")
+                chunks.append(chunk)
+            check_current()
+            data = json.loads(b"".join(chunks))
+            if not isinstance(data, (dict, list)):
+                raise SourceError("LRCLIB returned an invalid response.")
+            return data
+
+    params = {"track_name": track["title"], "artist_name": track["artist"]}
+    if album.strip():
+        params["album_name"] = album
+    # The public endpoint accepts durations from 1 to 3600 seconds.
+    if 1 <= track["length"] <= 3600:
+        params["duration"] = track["length"]
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
+            data = read(session, "get", params)
+            if data is not None and (not isinstance(data, dict)
+                                     or any(not isinstance(data.get(key), str)
+                                            for key in ("trackName", "artistName"))):
+                raise SourceError("LRCLIB returned an invalid response.")
+            if _lrclib_match(data, track, album):
+                result = _lrclib_lines(data, track["length"])
+                if result["status"] != "missing":
+                    return result
+            variants = [(track["title"], track["artist"]),
+                        (lyrics_name_key(track["title"]), lyrics_name_key(track["artist"]))]
+            seen, candidates = set(), []
+            for title, artist in variants:
+                query = (title.casefold(), artist.casefold())
+                if query in seen:
+                    continue
+                seen.add(query)
+                hits = read(session, "search", {"track_name": title, "artist_name": artist})
+                if hits is None:
+                    hits = []
+                if not isinstance(hits, list) or len(hits) > 100:
+                    raise SourceError("LRCLIB returned invalid search results.")
+                for hit in hits:
+                    if _lrclib_match(hit, track, album) and hit not in candidates:
+                        candidates.append(hit)
+            if track["length"] <= 0 and len(candidates) != 1:
+                return _finish([], 0, "lrclib")
+            candidates.sort(key=lambda hit: (abs(hit["duration"] - track["length"]),
+                            not bool(hit.get("syncedLyrics")),
+                            lyrics_name_key(hit.get("albumName")) != lyrics_name_key(album)))
+            for hit in candidates:
+                result = _lrclib_lines(hit, track["length"])
+                if result["status"] != "missing":
+                    return result
+    except LibraryError:
+        raise
+    except (requests.RequestException, ValueError):
+        raise SourceError("LRCLIB could not be read. Try again later.") from None
+    return _finish([], track["length"], "lrclib")
+
+
 class PlaybackLyrics:
     """Small account/session-bound RAM cache, independent of native/save locks."""
 
@@ -199,6 +330,9 @@ class PlaybackLyrics:
     def view(self, body):
         if body.get("enabled") is not True:
             raise LibraryError("Enable online Now playing lyrics before looking up Unison.")
+        fallback = body.get("fallback_lrclib", False)
+        if type(fallback) is not bool:
+            raise LibraryError("Choose whether to use the LRCLIB lyrics fallback.")
         studio = self.lyrics.studio
         with self.lock:
             with studio.lock:
@@ -211,7 +345,8 @@ class PlaybackLyrics:
                 if not track["title"].strip() or not track["artist"].strip() \
                         or len(track["title"]) > 200 or len(track["artist"]) > 200:
                     return _finish([], track["length"])
-                key = json.dumps(selection[4])
+                fallback = fallback and "lrclib" not in studio.disabled_sources()
+                key = json.dumps([selection[4], fallback])
                 cached = self.cache.get(key)
                 if cached and time.monotonic() < cached[0]:
                     return cached[1]
@@ -220,12 +355,20 @@ class PlaybackLyrics:
                 self.next_request = time.monotonic() + 1
             try:
                 result = fetch_unison(track, selection[4][-1])
+                if result["status"] == "missing" and fallback:
+                    def check_current():
+                        with studio.lock:
+                            if not self.lyrics._current(selection, body) \
+                                    or "lrclib" in studio.disabled_sources():
+                                raise ConflictError("The account, library or lyrics source changed.")
+                    result = fetch_lrclib_display(track, selection[4][-1], check_current)
             except SourceError as error:
                 self.next_request = time.monotonic() + getattr(error, "retry_after", 60)
                 raise
             with studio.lock:
-                if not self.lyrics._current(selection, body):
-                    raise ConflictError("The account or library changed while reading Unison lyrics.")
+                if not self.lyrics._current(selection, body) \
+                        or result.get("source") == "lrclib" and "lrclib" in studio.disabled_sources():
+                    raise ConflictError("The account, library or source changed while reading online lyrics.")
                 self.cache[key] = (time.monotonic() + 300, result)
                 while len(self.cache) > 12:
                     self.cache.popitem(last=False)
