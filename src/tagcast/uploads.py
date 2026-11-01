@@ -253,7 +253,9 @@ def scan(roots, extensions, *, stop=None, limit=MAX_FILES):
             continue
         if not root.is_dir():
             raise UploadError(f"{root} is not an available file or folder.")
-        for folder, dirnames, filenames in os.walk(root, followlinks=False):
+        def unreadable(error):
+            raise UploadError("A selected folder or subfolder could not be read. Check file access before preparing again.") from None
+        for folder, dirnames, filenames in os.walk(root, followlinks=False, onerror=unreadable):
             if stop is not None and stop.is_set():
                 raise Stopped()
             dirnames[:] = sorted((d for d in dirnames if not _hidden(d)), key=str.casefold)

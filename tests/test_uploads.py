@@ -266,6 +266,18 @@ class ScanAndPlanTests(unittest.TestCase):
         with self.assertRaises(UploadError):
             scan(["relative/folder"], AUDIO)
 
+    def test_unreadable_selected_folder_fails_instead_of_an_empty_review(self):
+        files = Files(self)
+        files.write("Album/One.flac", b"synthetic")
+        def denied(root, **kwargs):
+            error = PermissionError("Synthetic folder access denied")
+            if kwargs.get("onerror"):
+                kwargs["onerror"](error)
+            return iter(())
+        with patch.object(uploads.os, "walk", side_effect=denied):
+            with self.assertRaisesRegex(UploadError, "could not be read"):
+                scan([files.root], AUDIO)
+
     def test_plan_marks_identical_duplicate_and_unusable_files(self):
         files = Files(self)
         there = files.write("Kate Bush/Hounds of Love/01.flac", b"already there")
