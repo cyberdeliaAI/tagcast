@@ -28,6 +28,7 @@ function page({storage = {}, reducedMotion = false, narrow = false, capture = tr
   const track = (id) => ({id, kind: "audio", readyState: "live", stop() { this.readyState = "ended"; log.stopped.push(id); }});
   const stream = {tracks: [], listeners: [], getAudioTracks() { return this.tracks; },
     addEventListener(type, handler) { if (type === "addtrack") this.listeners.push(handler); },
+    removeEventListener(type, handler) { if (type === "addtrack") this.listeners = this.listeners.filter(h => h !== handler); },
     add(t) { this.tracks.push(t); for (const handler of this.listeners) handler({track: t}); }};
   const audio = {paused: true,
     addEventListener(type, handler) { listeners.set(type, [...(listeners.get(type) || []), handler]); },
@@ -49,6 +50,7 @@ function page({storage = {}, reducedMotion = false, narrow = false, capture = tr
       this.sources.push(node); return node;
     }
     resume() { return Promise.resolve(); }
+    close() { this.state = "closed"; return Promise.resolve(); }
   }
   const document = {hidden: false, documentElement: {dataset: {}},
     createElement(tag) {
@@ -157,4 +159,35 @@ test("the playing row receives bar levels while music plays and loses them once 
   assert.equal(p.log.frames.length, 0, "the loop stops once the bars have settled");
   assert.deepEqual(row.style.properties, {});
   assert.equal(p.run("Math.max(...visualizer.levels)") < 0.005, true);
+});
+
+test("Off releases the capture and audio context without pausing playback, and can reconnect", () => {
+  const p = page();
+  p.stream.tracks.push(p.track("first"));
+  p.audio.paused = false; p.audio.emit("play");
+  p.run('setVisualizerMode("off")');
+  assert.equal(p.log.contexts[0].state, "closed");
+  assert.equal(p.log.contexts[0].sources[0].disconnected, true);
+  assert.deepEqual(p.log.stopped, ["first"]);
+  assert.equal(p.stream.listeners.length, 0);
+  assert.equal(p.run("visualizer.context"), null);
+  assert.equal(p.run("visualizer.stream"), null);
+  assert.equal(p.run("visualizer.frame"), 0);
+  assert.equal(p.audio.paused, false, "the authoritative player is untouched");
+  p.stream.tracks.push(p.track("second"));
+  p.run('setVisualizerMode("title")');
+  assert.equal(p.log.contexts.length, 2);
+  assert.equal(p.log.contexts[1].sources[0].track.id, "second");
+  assert.equal(p.log.contexts[1].analyser.connections.length, 0);
+});
+
+test("failed capture setup closes its partially created context", () => {
+  const p = page();
+  p.audio.captureStream = () => { throw Error("Capture unavailable"); };
+  p.audio.paused = false; p.audio.emit("play");
+  assert.equal(p.log.contexts.length, 1);
+  assert.equal(p.log.contexts[0].state, "closed");
+  assert.equal(p.run("visualizer.context"), null);
+  assert.equal(p.run("visualizer.analyser"), null);
+  assert.equal(p.audio.paused, false);
 });
