@@ -688,6 +688,15 @@ their shared browsing/player state; a fast local response can otherwise race the
   off per launch and never record identifiers, URLs, credentials or audio.
   Production Electron retains its normal app/profile/home and stable default port; do not
   carry the isolated listening app's temporary port or write restrictions into releases.
+- The optional player spectrum lives in `visualizer.js` and `visualizer.css`. It only listens
+  through `captureStream()` on the same audio element and never connects the analyser to an output,
+  so playback, volume, `setSinkId` output selection and gapless MediaSource stay untouched. The
+  browser-local `tagcast-player-visualizer` choice is Off, Next to the title (default), Over the
+  cover or Along the top edge; without a stored choice, reduced motion starts with Off. Narrow
+  windows show the top edge next to the title. When on, four bars replace the speaker in the
+  playing row of album and playlist tracklists; Off keeps the speaker. Feature-detect capture,
+  create the audio graph only after playback starts with the spectrum on, and stop the animation
+  once paused bars settle or the page is hidden.
 - Playback goes through the local server, supports Range requests and does
   report no plays by default. Optional `record_plays` in Settings sends the documented
   `history` payload after more than ten seconds of actual listening, excluding pauses,
