@@ -80,3 +80,16 @@ class AuthTests(unittest.TestCase):
                          lambda: auth.revoke_token("test", "refresh")):
                 with self.assertRaises(auth.oauth.OAuthError):
                     call()
+
+    def test_only_explicit_client_errors_invalidate_refresh_credentials(self):
+        for status, payload, rejected in [(400, {'error': 'invalid_grant'}, True),
+                (401, {'error': 'invalid_client'}, True), (403, {'error': 'unauthorized_client'}, True),
+                (503, {'error': 'invalid_grant'}, False), (429, {}, False),
+                (400, {}, False), (401, 'Bad gateway', False)]:
+            with self.subTest(status=status, payload=payload):
+                reply = response(payload, False)
+                reply.status_code = status
+                with patch.object(auth, '_token_request', return_value=reply):
+                    with self.assertRaises(auth.oauth.OAuthError) as caught:
+                        auth.refresh_access_token('test', 'refresh')
+                self.assertEqual(isinstance(caught.exception, auth.RefreshRejected), rejected)

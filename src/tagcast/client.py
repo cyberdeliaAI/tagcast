@@ -152,6 +152,14 @@ class NotConnected(ApiError):
     pass
 
 
+class ConnectionUnavailable(ApiError):
+    """Temporary service/transport failure; keep the existing credentials."""
+
+
+class ConnectionSecurityError(ApiError):
+    """TLS validation failed; never work around certificate checks."""
+
+
 class UncertainWrite(ApiError):
     """A request may have been applied; never resend it without a fresh review."""
 
@@ -245,8 +253,12 @@ class StudioClient(ibroadcast.iBroadcast):
     def _refresh_or_fail(self, generation=None, *, expired_only=False):
         try:
             self._refresh(generation, expired_only=expired_only)
-        except (oauth.OAuthError, requests.RequestException, KeyError, ValueError):
+        except auth.RefreshRejected:
             raise NotConnected("Your iBroadcast session expired. Connect again.") from None
+        except requests.exceptions.SSLError:
+            raise ConnectionSecurityError("Could not verify iBroadcast's secure connection. Your sign-in is retained.") from None
+        except (oauth.OAuthError, requests.RequestException, KeyError, ValueError, TypeError):
+            raise ConnectionUnavailable("iBroadcast sign-in renewal is temporarily unavailable. Try again later; your sign-in is retained.") from None
 
     def _refresh(self, generation=None, *, expired_only=False):
         """Share an in-flight refresh; late failures must not rotate a newer token."""
@@ -562,7 +574,12 @@ class Studio:
             device = dict(self.device) if self.device else None
             client = self.client
         if client and self.account is None:
-            self.account = self._account_name(client)
+            account = self._account_name(client)
+            with self.lock:
+                if self.client is client:
+                    self.account = account
+        with self.lock:
+            client = self.client
         return {
             "configured": bool(self.client_id),
             "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
@@ -582,6 +599,8 @@ class Studio:
             data = client._jsonrequest("status")
         except NotConnected:
             self._disconnect()
+            return None
+        except (ConnectionUnavailable, ConnectionSecurityError):
             return None
         except ApiError:
             return ""
