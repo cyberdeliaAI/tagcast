@@ -60,6 +60,14 @@ class Fail(Exception):
     """A problem to report to the user without a traceback."""
 
 
+class TerminalTransferError(Fail):
+    """Stop this batch: credentials, TLS or a local prerequisite must be fixed."""
+
+
+class TransferStopped(Fail):
+    """Cancellation is not a failed file."""
+
+
 def text(value):
     return "" if value is None else str(value)
 
@@ -1086,6 +1094,10 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
                     continue
                 break
             except NETWORK_ERRORS as error:
+                # Tagcast wraps transport failures without errno. Actual filesystem
+                # errors must never become retries or a different download route.
+                if isinstance(error, OSError) and error.errno is not None:
+                    raise
                 note = f"network error ({error.__class__.__name__})"
                 continue
             digest = hashlib.sha256()
@@ -1100,6 +1112,10 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
                     continue
                 break
             except NETWORK_ERRORS as error:
+                # Tagcast wraps transport failures without errno. Actual filesystem
+                # errors must never become retries or a different download route.
+                if isinstance(error, OSError) and error.errno is not None:
+                    raise
                 note = f"connection dropped ({error.__class__.__name__})"
                 continue
             if length is None:
@@ -1138,6 +1154,8 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
         try:
             response = session.stream(path, track_id, lib.user_id, lib.expires, offset)
         except NETWORK_ERRORS as error:
+            if isinstance(error, OSError) and error.errno is not None:
+                raise
             note = f"network error ({error.__class__.__name__})"
             continue
         with response:
@@ -1207,6 +1225,8 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
                         if on_progress:
                             on_progress(offset + received, offset + expected if expected else 0, len(chunk))
             except NETWORK_ERRORS as error:
+                if isinstance(error, OSError) and error.errno is not None:
+                    raise
                 note = f"connection dropped ({error.__class__.__name__})"
                 continue
         if expected and received != expected:
@@ -1260,7 +1280,17 @@ class Transfer:
             return fetch_track(self.session, self.lib, self.out, rel, path, track_id, self.stop,
                                progress, self.quality, self.verify, self.adopt_existing,
                                self.locks, self.work, self.source)
+        except TransferStopped:
+            return "stopped", 0, ""
+        except TerminalTransferError as error:
+            self.stop.set()
+            return "fail", 0, str(error)
         except Fail as error:
+            return ("stopped", 0, "") if self.stop.is_set() else ("fail", 0, str(error))
+        except OSError as error:
+            if error.errno is not None:
+                self.stop.set()
+                return "fail", 0, f"Local file operation failed ({error.__class__.__name__}, errno {error.errno}). Check the download folder before restarting."
             return "fail", 0, str(error)
         except Exception as error:  # one bad file shouldn't stop the rest
             return "fail", 0, f"{error.__class__.__name__}: {error}"

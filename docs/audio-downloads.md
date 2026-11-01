@@ -129,3 +129,9 @@ certify every filesystem, account or embedded metadata field.
 No claims are made that every iBroadcast tag field or source format is rewritten
 correctly by the download service. No real-account music has been downloaded
 for this integration's automated or visual checks.
+
+An explicitly rejected session or TLS validation failure stops the download task
+without streaming fallback. Temporary network errors retain the bounded read
+retries. Local disk/access failures stop the task so they cannot trigger repeated
+requests or a different download source. Cancellation is reported as stopped,
+not as a failed file. Fix the cause before explicitly starting a new task.
