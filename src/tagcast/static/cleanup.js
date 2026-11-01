@@ -167,7 +167,7 @@ async function cleanupAction(action) {
     if (request === cleanupView.request) $("#cleanup-status").textContent = error.message;
     return;
   } finally {
-    if (request !== cleanupView.request || details !== state.details || !live()) return;
+    if (request !== cleanupView.request) return;
     cleanupView.busy = false;
     setActionStatus("#cleanup-status", undefined);
     renderCleanup();
