@@ -946,6 +946,8 @@ body.help-open{overflow:hidden}
 @media(max-width:760px) { .playlist-order-table td { padding: 10px 6px; } .playlist-order-table td:last-child { width: auto; } .playlist-order-table .text-action { font-size: 12px; } }
 
 .playlist-track-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+/* Multi-line album link buttons retain the playlist column's left alignment. */
+#collections-page .track-results .text-action[data-album]{text-align:left}
 .playlist-track-remove{display:grid;place-items:center;width:36px;min-width:36px;height:44px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted)}
 .playlist-track-remove svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .playlist-track-remove:hover:not(:disabled){background:var(--paper);color:#a33c32}
