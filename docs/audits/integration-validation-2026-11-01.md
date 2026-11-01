@@ -2,6 +2,10 @@
 
 Datum: 1 november 2026. Branch: `codex/stabilization-audit`.
 
+Dit rapport bewaart de afgeronde stabilisatiecontrole. Het geautoriseerde
+vervolg onderaan voegt daarna het afzonderlijke Apple Music-thema toe en beschrijft
+de controles op die combinatie. De eerdere metingen blijven historisch behouden.
+
 ## Advies
 
 **GO voor een geautoriseerde push en concept-PR; nog geen GO voor publicatie.**
@@ -239,3 +243,37 @@ dit rapport. Grote synthetische fixtures/PCM-opnamen en de gecontroleerde testap
 staan bovendien in de nieuw aangemaakte blijvende map
 `/Users/cyberdelia/Documents/Tagcast-validation/stabilization-2026-11-01/`.
 Geen benodigde evidence is uitsluitend afhankelijk van een disposable buildmap.
+
+## Geautoriseerd vervolg — Apple Music Classic en concept-PR
+
+Na goedkeuring voor integratie en push is de bestaande Apple Music-commit
+`ed68408` overgenomen als **`3c29ef4`**, zonder conflicten of wijzigingen aan het
+afzonderlijke thema-worktree. Dit is een expliciet gevraagde uitbreiding ná de
+hierboven afgeronde stabilisatiecontrole, geen extra audit- of redesignronde.
+
+- **Apple Music Classic** is de vijfde ingebouwde palette, met Light/Dark/Auto,
+  roodroze accenten en aparte sidebaricoontjes. De iconkleur is een optionele
+  thema-eigenschap; bestaande thema's en JSON-bestanden blijven werken zonder
+  migratie. De Mini Player volgt dezelfde palette.
+- Op de gecombineerde code opnieuw uitgevoerd: **806 Python-tests / 2.363
+  subtests** (Python 3.13.16), **607 frontendtests**, **40 Electron-tests**, Ruff,
+  44 JavaScript-syntaxchecks, versieconsistentie en CSS-generatiecontrole.
+- Een nieuw ad-hoc macOS arm64-pakket is gebouwd, uitgepakt en gestart. De echte
+  themaproef controleerde alle vijf palettes in Light/Dark, 420/760/761/768/1280/
+  1420 px, 200% zoom, keyboardfocus, import/export, herladen, Mini Player en het
+  behoud van hetzelfde audio-element en queue. Alle controles slagen.
+- Alle 58 verpakte statische bestanden zijn byte-identiek aan de gecombineerde
+  bron; de verpakte certifi 2026.10.23 en 118 trust roots blijven correct.
+- Nieuw lokaal testarchief SHA-256:
+  `e435ae500c626c018457a417f46bdcc6a6509eda615c9281028cf71c8de52631`.
+  Dit vervangt geen gepubliceerd of eerder bewaard pakket. Nog steeds versie
+  1.2.0, uitsluitend een ad-hoc verificatiebuild, geen nieuwe release.
+- De gemeten playbackbestanden (`gapless.js`, `gapless-media.js`, `player.js`,
+  `playback.js`) zijn ongewijzigd; hun volledige eerdere metingen zijn niet
+  onnodig herhaald. De PR start de bestaande volledige remote regressiecontroles.
+
+Compact aanvullend bewijs staat in
+[`evidence/apple-music-integration-2026-11-01.zip`](evidence/apple-music-integration-2026-11-01.zip).
+De gebruiker heeft push en een **concept-PR** toegestaan; samenvoegen, tags en
+releases blijven buiten deze toestemming. Platformresultaten worden pas als
+geslaagd aangemerkt zodra de nieuwe CI-runs dat daadwerkelijk bevestigen.
