@@ -162,6 +162,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: smoke-reports-*
+          path: reports
       - uses: actions/download-artifact@v4
         with:
           pattern: tagcast-*
@@ -172,7 +182,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          COMMIT: ${{ github.event.workflow_run.head_sha }}
+          COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           if [ -z "$TAG" ]; then
             # the release job in tests.yml publishes a "Publish Tagcast" commit as its own target
@@ -182,7 +192,8 @@ jobs:
             echo "No release for this commit, so there is nothing to add the downloads to."
             exit 0
           fi
-          gh release upload "$TAG" downloads/*
+          COMMIT=$(git rev-parse HEAD)
+          python tools/release_assets.py --tag "$TAG" --commit "$COMMIT"
 
   verified:
     name: Distribution verification
