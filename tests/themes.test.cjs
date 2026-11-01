@@ -80,3 +80,44 @@ test("theme import rejects malformed, oversized, unsupported or executable value
     {...valid.theme,dark:{ink:'#fff'}}, {...valid.theme,light:{'__proto__':'#ffffff',unknown:'#ffffff'}}, {...valid.theme,name:''}])assert.throws(()=>read({...valid,theme:value}),/name.*palette.*hex/);
   assert.throws(()=>api.exportTheme({...theme(),dark:{ink:'red'}}),/hex colours/);
 });
+
+test("optional sidebar icon colours restore per variant and clear on legacy or built-in themes",()=>{
+  const b=browser({'tagcast-theme':'auto','tagcast-palette':'warm'}), legacy=theme(), t=theme('custom-iconstest','Coloured icons');
+  t.light['nav-icon']='#C8102E';t.dark['nav-icon']='#FF6476';
+  b.api.save(t,true);assert.equal(b.properties['--palette-nav-icon'],'#c8102e');
+  assert.equal(b.storage['tagcast-theme'],'auto');assert.equal(b.storage['tagcast-palette'],'warm');
+  const restarted=browser(b.storage,true);assert.equal(restarted.properties['--palette-nav-icon'],'#ff6476');
+  const raw=restarted.api.exportTheme(restarted.api.active());
+  assert.equal(restarted.api.importTheme(raw,'custom-importedicons').dark['nav-icon'],'#ff6476');
+  restarted.api.save(legacy,true);assert.equal(restarted.properties['--palette-nav-icon'],undefined);
+  assert.equal(Object.hasOwn(restarted.api.active().dark,'nav-icon'),false,'Legacy themes retain state-dependent inherited colours');
+  restarted.api.activate(t.id);restarted.api.builtin('ocean');assert.equal(restarted.properties['--palette-nav-icon'],undefined);
+  const withoutDark=restarted.api.cleanTheme({...t,dark:{}});restarted.api.save(withoutDark,true);
+  assert.equal(restarted.properties['--palette-nav-icon'],undefined,'A missing variant never inherits the other variant icon colour');
+  assert.equal(restarted.api.cleanTheme({...t,light:{'nav-icon':'currentColor'}}),null,'Inheritance is omission, not executable CSS');
+  const {snapshot}=require('../electron/mini-contract.cjs');
+  assert.deepEqual(snapshot({document:'d',entry:'e',segment:'s',sequence:1,colours:{'nav-icon':'#C8102E'}}).colours,{'nav-icon':'#c8102e'});
+});
+
+test("existing portable theme collection round-trips without adding icon overrides",()=>{
+  const api=browser().api, directory=path.join(__dirname,'../docs/themes');
+  for(const file of fs.readdirSync(directory).filter(file=>file.endsWith('.json'))){
+    const raw=fs.readFileSync(path.join(directory,file),'utf8'), imported=api.importTheme(raw,'custom-legacyimport');
+    for(const mode of ['light','dark']){
+      assert.equal(Object.hasOwn(imported[mode],'nav-icon'),false,file);
+      assert.deepEqual(JSON.parse(api.exportTheme(imported)).theme[mode],JSON.parse(raw).theme[mode],file);
+    }
+  }
+});
+
+test("Apple Music Classic restores before paint and custom themes can inherit its variants",()=>{
+  const b=browser({'tagcast-palette':'apple','tagcast-theme':'auto'},true);
+  assert.equal(b.document.documentElement.dataset.palette,'apple');assert.equal(b.api.active(),null);
+  const t={id:'custom-applebase',name:'My Apple Music',base:'apple',light:{},dark:{}};
+  assert.equal(b.api.colours(t,'light')['nav-icon'],'#c8102e');assert.equal(b.api.colours(t,'dark')['nav-icon'],'#ff6476');
+  b.api.save(t,true);const restarted=browser(b.storage,true);
+  assert.equal(restarted.api.active().base,'apple');assert.equal(restarted.storage['tagcast-theme'],'auto');
+  restarted.api.builtin('apple');assert.equal(restarted.document.documentElement.dataset.palette,'apple');
+  const {snapshot}=require('../electron/mini-contract.cjs');
+  assert.equal(snapshot({document:'d',entry:'e',segment:'s',sequence:1,palette:'apple'}).palette,'apple');
+});

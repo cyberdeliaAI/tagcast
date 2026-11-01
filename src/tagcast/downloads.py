@@ -11,6 +11,9 @@ import threading
 import time
 from pathlib import Path
 
+import requests
+from urllib3.exceptions import SSLError as RawSSLError
+
 from . import download_engine as engine
 from .library import ConflictError, LibraryError, number, text
 
@@ -82,15 +85,19 @@ class DownloadResponse:
         with owner.response_lock:
             if owner.cancelled.is_set():
                 response.close()
-                raise engine.Fail("Download stopped.")
+                raise engine.TransferStopped("Download stopped.")
             owner.responses.add(self)
 
     def read(self, size=-1):
         if self.owner.cancelled.is_set() or not self.owner.valid():
-            raise engine.Fail("Download stopped: the connection changed.")
+            raise engine.TransferStopped("Download stopped: the connection changed.")
         try:
             return self.response.raw.read(size, decode_content=True)
+        except (requests.exceptions.SSLError, RawSSLError):
+            raise engine.TerminalTransferError("Could not verify iBroadcast's secure audio connection.") from None
         except Exception as error:
+            if not self.owner.valid():
+                raise engine.TransferStopped("Download stopped.") from None
             # Never expose requests/urllib3 exception text: URLs can contain tokens.
             raise OSError(f"Audio connection interrupted ({type(error).__name__}).") from None
 
@@ -126,20 +133,31 @@ class DownloadSession:
 
     def _open(self, send):
         if not self.valid():
-            raise engine.Fail("Download stopped: the connection changed.")
+            raise engine.TransferStopped("Download stopped: the connection changed.")
+        from .client import ConnectionSecurityError, NotConnected
         try:
             response = send()
+        except NotConnected:
+            raise engine.TerminalTransferError("iBroadcast rejected the session. Connect again before restarting downloads.") from None
+        except (ConnectionSecurityError, requests.exceptions.SSLError, RawSSLError):
+            raise engine.TerminalTransferError("Could not verify iBroadcast's secure audio connection. Check the connection before restarting downloads.") from None
         except Exception as error:
+            if not self.valid():
+                raise engine.TransferStopped("Download stopped.") from None
             raise OSError(f"Could not reach iBroadcast ({type(error).__name__}).") from None
         if not self.valid():
             response.close()
-            raise engine.Fail("Download stopped: the connection changed.")
+            raise engine.TransferStopped("Download stopped: the connection changed.")
         return DownloadResponse(response, self)
 
     def stream(self, path, track_id, user_id, expires, offset=0):
-        return self._open(lambda: self.client.open_stream(
+        response = self._open(lambda: self.client.open_stream(
             path, track_id, user_id, expires, f"bytes={offset}-" if offset else None,
             timeout=(10, 30)))
+        if response.status in (401, 403):
+            response.close()
+            raise engine.TerminalTransferError("iBroadcast rejected the session. Connect again before restarting downloads.")
+        return response
 
     def download(self, track_id, user_id):
         response = self._open(lambda: self.client.open_download(track_id, user_id))
@@ -147,6 +165,8 @@ class DownloadSession:
             return response
         code = response.status
         response.close()
+        if code in (401, 403):
+            raise engine.TerminalTransferError("iBroadcast rejected the session. Connect again before restarting downloads.")
         # Do not echo the provider body (it may contain request/account data).
         raise engine.ServiceError(f"iBroadcast download service returned HTTP {code}",
                                   retry=code == 429 or code >= 500)

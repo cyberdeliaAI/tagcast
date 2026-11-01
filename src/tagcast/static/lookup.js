@@ -103,7 +103,7 @@ function renderSource(source, candidates, error) {
 
 function suggestionCard(source, c, index) {
   const score = Math.round(c.score * 100);
-  const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="Use this cover"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.suggestion-art').remove()"><span>Use cover</span></button>` : "";
+  const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="Use this cover"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="suggestion"><span>Use cover</span></button>` : "";
   const year = c.year ? `<div class="suggestion-year"><button class="chip year" data-use-year="${c.year}" title="Use ${c.year} as the release year">${c.year}</button><span>${escapeHtml(c.note || "")}</span></div>` : "";
   const genres = c.genres.length ? `<div class="chips">${c.genres.map(g => `<button class="chip" data-use-genre="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}${c.genres.length > 1 ? `<button class="chip use-all" data-use-genres="${escapeHtml(JSON.stringify(c.genres))}" title="Use these genres, the first as the main genre">Use all</button>` : ""}</div>` : "";
   const title = c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>` : escapeHtml(c.title);

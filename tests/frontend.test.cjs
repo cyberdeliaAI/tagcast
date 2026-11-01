@@ -4991,7 +4991,7 @@ test("colour palettes persist independently of appearance without requests or pl
   p.run(`player.queue = [{id:"900",title:"Playing",artist:"Artist"}]; player.index=0;
     $("#audio").src="/api/stream/900?quality=128"; $("#audio").currentTime=27; $("#audio").paused=false;`);
   const requests = p.requests.length, history = p.history.length, queue = p.json("player.queue");
-  for (const palette of ["ocean", "warm", "ibroadcast", "forest"]) {
+  for (const palette of ["ocean", "warm", "ibroadcast", "apple", "forest"]) {
     await p.nodes.get("#theme-menu").emit("change", {target: {value: palette, dataset: {paletteChoice: ""}}});
     assert.equal(p.run('document.documentElement.dataset.palette'), palette === "forest" ? undefined : palette);
     assert.equal(storage["tagcast-palette"], palette);
@@ -5017,7 +5017,7 @@ test("appearance restores before scripts load and invalid or unavailable storage
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.ok(html.indexOf('<script src="themes.js"></script>') < html.indexOf('href="style.css"'), "Restore custom colours before styles paint");
   const source = readFileSync(path.join(staticDir, "themes.js"), "utf8");
-  for (const palette of ["ocean", "warm", "ibroadcast"]) {
+  for (const palette of ["ocean", "warm", "ibroadcast", "apple"]) {
     const document = {documentElement: {dataset: {}}};
     vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
     assert.deepEqual(document.documentElement.dataset, {theme:"light",palette});
@@ -10290,6 +10290,46 @@ test('theme import previews a new theme and export includes only valid draft col
  p.run('themeEditorColour("ink","invalid",false);exportCustomTheme()');assert.equal(p.downloads.length,1);
 });
 
+test('sidebar icon editing is optional, preview-only and resets to state-dependent text inheritance',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance")');
+ const before=p.run('JSON.stringify({settings:settingsView.dirty,queue:player.queue,src:audio.src})'),requests=p.requests.length;
+ assert.match(p.run('themeRoleControl("nav-icon")'),/follow sidebar text/);
+ assert.doesNotMatch(p.run('themeRoleControl("nav-icon")'),/undefined/);
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ const properties={},preview=p.nodes.get('#theme-preview');
+ preview.style={setProperty(key,value){properties[key]=value;},removeProperty(key){delete properties[key];}};
+ p.run('themeEditorColour("nav-icon","#C8102E",false)');
+ assert.equal(properties['--palette-nav-icon'],'#c8102e');assert.equal(p.run('TagcastThemes.active()'),null);
+ assert.match(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('themeEditorView.mode="dark";renderThemeEditor()');assert.equal(properties['--palette-nav-icon'],'initial');
+ p.run('themeEditorColour("nav-icon","#FF6476",true);themeEditorView.mode="light";renderThemeEditor()');
+ assert.equal(properties['--palette-nav-icon'],'#c8102e');
+ p.run('themeEditorColour("nav-icon","invalid",false)');assert.equal(p.run('themeEditorView.invalid["nav-icon"]'),'invalid');
+ p.run('themeEditorColour("nav-icon","",false)');
+ assert.equal(properties['--palette-nav-icon'],'initial','An inherited root override must not colour a draft that follows text');assert.equal(p.run('Object.hasOwn(themeEditorView.invalid,"nav-icon")'),false);
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ assert.doesNotMatch(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('exportCustomTheme()');const exported=JSON.parse(await p.downloads[0].blob.text());
+ assert.equal(Object.hasOwn(exported.theme.light,'nav-icon'),false);assert.equal(exported.theme.dark['nav-icon'],'#ff6476');
+ assert.equal(p.run('JSON.stringify({settings:settingsView.dirty,queue:player.queue,src:audio.src})'),before);
+ assert.equal(p.requests.length,requests,'Icon presentation never requests server data or changes playback');
+});
+
+test('Apple Music Classic is a fifth built-in palette and icon reset restores its base colour',async()=>{
+ const p=page({storage:{'tagcast-palette':'apple','tagcast-theme':'light'}});await settle();
+ assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
+ assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
+ p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
+ assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette's icon colour/);
+ p.run('themeEditorColour("nav-icon","#123456",false);themeEditorColour("nav-icon","",false)');
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ assert.equal(p.nodes.get('#theme-hex-nav-icon').value,'#c8102e');
+ assert.match(p.run('themeRoleControl("nav-icon")'),/value="#c8102e"/);
+ assert.match(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('themeEditorView.mode="dark";renderThemeEditor()');assert.match(p.run('themeRoleControl("nav-icon")'),/value="#ff6476"/);
+ assert.equal(p.run('TagcastThemes.active()'),null,'Editing the built-in base does not activate a custom theme');
+});
+
 test('invalid or late theme files retain the draft, saved themes and current page',async()=>{
  const p=page();await settle();p.run('showSettings("appearance");themeEditorColour("paper","#123456",false)');
  const draft=p.run('JSON.stringify(themeEditorView.draft)');
@@ -10564,4 +10604,143 @@ test('Upload status polling preserves expanded Details and keyboard focus across
   p.run('document.activeElement={closest:()=>({dataset:{uploadFile:"Album/old.flac"}})};musicUploadsView.data.items[1].note="Updated check";renderMusicUploads()');
   assert.match(list.innerHTML,/data-upload-file="Album\/old\.flac" open/);
   assert.equal(focused,true);
+});
+
+test("account streaming quality escapes external text while preserving known labels and markup", () => {
+  const p = page();
+  for (const value of ['<img src=x onerror="globalThis.injected=true">', '<svg onload="alert(1)">', '256 & "fast"']) {
+    const html = p.run(`accountCard({preferences:{bitrate:${JSON.stringify(value)}},linked:{}})`);
+    assert.doesNotMatch(html, /<img|<svg|<script/i);
+    assert.ok(html.includes(p.run(`escapeHtml(${JSON.stringify(value)})`) + ' kbps'));
+  }
+  for (const [value, expected] of [['orig','Original'],['auto','Automatic'],['256','256 kbps'],['','—']]) {
+    const html = p.run(`accountCard({preferences:{bitrate:${JSON.stringify(value)},combine_sets:true},linked:{}})`);
+    assert.ok(html.includes(`<dd>${expected}</dd>`));
+    assert.match(html, /<small class="warn">iBroadcast refuses album changes/);
+  }
+});
+
+test("Queue restore cannot seek a replacement album or reuse unrelated rows on a matching fingerprint", async () => {
+  const p = livePage(); await settle();
+  const rows = p.json('[...state.details.values()].flatMap(a => queueTracks(a))');
+  p.setFetch((url, options) => ({ok: true, json: async () => ({tracks: JSON.parse(options.body).tracks.map(id => rows.find(t => t.id === String(id)))})}));
+  p.run(`state.connection.playback_session="queue-session"; queueSync.active=true; queueSync.allowed=true;
+    queueSync.view={owner:queueSync.browser,own:true,state:{role:"player",tracks:[100,101],play_next:[],pause:true,
+      start_position:37,start_time:Date.now()/1000,volume:0.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('restoreQueue(queueSync.view)');
+  p.run('playTracks(state.details.get("3")); audio.currentTime=0');
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime, 0, 'Old paused restore must not seek another track');
+  await p.run('restoreQueue(queueSync.view)');
+  assert.equal(p.run('player.queue[player.index].id'), '100');
+  assert.equal(p.requests.filter(r => r.url === '/api/queue-tracks').length, 2);
+});
+
+test("Connecting Queue Sync retains the local queue until an explicit restore choice", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("3")); queueSync.enabled=true; state.connection.playback_session="choice-session"');
+  const local = p.json('player.queue.map(t=>t.id)');
+  p.setFetch((url, options) => ({ok:true,json:async()=>p.json(`({session:"choice-session",status:"connected",revision:4,own:true,owner:queueSync.browser,
+    state:{role:"player",tracks:[100,101],play_next:[],pause:true,start_position:10,start_time:0,volume:0.5,
+      data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}})`)}));
+  await p.run('connectQueue()'); await settle();
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),local);
+  assert.equal(p.requests.filter(r=>r.url==='/api/queue-tracks').length,0);
+  assert.equal(p.nodes.get('#audio').paused,true);
+  await p.click({'[data-device-local]': {}});
+  const sent = p.requests.filter(r => r.options?.body).map(r => JSON.parse(r.options.body)).find(b => b.action === 'state');
+  assert.deepEqual(sent.state.tracks, local.map(Number));
+  assert.equal(p.run('queueSync.choicePending'),false);
+});
+
+test("Gapless to Queue Sync handover retains a paused ordinary source and track position", async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1')); queueSync.active=true; queueSync.allowed=false;
+    queueSync.view={own:true,owner:queueSync.browser,state:{role:'player'}};
+    const handoverEngine={session:state.connection.playback_session,started:true,controllers:new Set(),
+      current:{entry:player.queue[player.index],start:200,end:240}};
+    gaplessTrial.active=handoverEngine; audio.currentTime=217;
+    audio.load=()=>{audio.currentTime=0;}; gaplessRetire(handoverEngine);`);
+  assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
+  assert.equal(p.nodes.get('#audio').paused,true);
+  assert.equal(p.run('gaplessTrial.active'),null);
+  assert.equal(p.run('queueSync.allowed'),false);
+  assert.equal(p.run('encodedLocalQueue().start_position'),17);
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime,17);
+  assert.equal(p.run('queueSync.handover'),null);
+});
+
+test("Cleanup actions release their busy state after an independent details replacement", async () => {
+  for (const [view, action] of [['cleanupView','cleanupAction'],['duplicateCleanupView','duplicateCleanupAction']]) {
+    const p=livePage(); await settle();
+    p.setFetch(()=>{p.run('state.details=new Map(state.details)'); return {ok:true,json:async()=>({id:'preview',state:'preview',groups:[],items:[],excluded:[]})};});
+    await p.run(`${action}('preview')`);
+    assert.equal(p.run(`${view}.busy`),false,view);
+  }
+});
+
+for (const next of [false,true]) test(`An exhausted queue starts appended music, including Play next=${next}`, async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1'),state.details.get('1').tracks.at(-1).id); step(1); audio.ended=false;
+    appendToQueue(state.details.get('3'),null,${next});`);
+  const first=p.run('String(state.details.get("3").tracks[0].id)');
+  assert.equal(p.run('player.queue[player.index].id'),first);
+  assert.match(p.nodes.get('#audio').src,new RegExp(`/api/stream/${first}`));
+  assert.equal(p.nodes.get('#audio').paused,false);
+  p.run('step(1)');
+  assert.equal(p.run('player.queue[player.index].id'),p.run('String(state.details.get("3").tracks[1].id)'));
+});
+
+test("System Next wraps a Repeat queue without dropping its base tracks", async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get("1"),state.details.get("1").tracks.at(-1).id); player.repeat="queue"; step(1)');
+  assert.equal(p.run('player.index'),0);
+  assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
+});
+
+test("A repeated compact read-back keeps current library summaries",async()=>{
+  const p=page(); await settle();
+  const albums=p.json('state.albums');
+  p.run(`state.history=[{status:'sent',source:'ibroadcast',selection:[],changes:[{kind:'track',id:'100',status:'sent'}]}]`);
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',results:[{kind:'track',id:'100',status:'saved'}]})}));
+  const done=p.run('followJob("already-delivered",state.history[0])'); p.flushTimers(2000); await done;
+  assert.deepEqual(p.json('state.albums'),albums);
+  assert.equal(p.run('state.history[0].status'),'saved');
+});
+
+test("A late read-back cannot replace a deliberately selected local library",async()=>{
+  const p=livePage();await settle();
+  p.run(`state.history=[{status:'sent',source:'ibroadcast',selection:[],changes:[]}]`);
+  const old=p.json('state.albums');
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',results:[],albums:old})}));
+  const done=p.run('followJob("old-library",state.history[0])');
+  p.run('useLocal([],"local")'); p.flushTimers(2000);await done;
+  assert.deepEqual(p.json('state.albums'),[]);
+});
+
+test("An editor response from a replaced library cannot open a stale draft",async()=>{
+  const p=livePage();await settle();
+  const album=p.json('state.details.get("1")');
+  p.run('state.details.delete("1")');
+  p.setFetch(()=>{p.run('state.details=new Map(); libraryLoadRequest+=1'); return {ok:true,json:async()=>({albums:[album]})};});
+  await p.run('openEditor(["1"])');
+  assert.equal(p.nodes.get('#editor').open||false,false);
+  assert.equal(p.run('editing'),null);
+});
+
+test("Artwork error fallbacks use CSP-compatible capture handlers",async()=>{
+  const p=page();await settle();
+  for (const action of ['remove','album','current','tile','suggestion']) {
+    let removed=0,parentRemoved=0,removedClass='';
+    const image={tagName:'IMG',dataset:{imageError:action},remove(){removed++;},
+      parentNode:{classList:{remove(value){removedClass=value;}}},closest(){return{remove(){parentRemoved++;}}}};
+    await p.emitDocument('error',{target:image});
+    if(action==='current') assert.match(image.outerHTML,/No image/);
+    else if(action==='tile'||action==='suggestion') assert.equal(parentRemoved,1);
+    else assert.equal(removed,1);
+    if(action==='album') assert.equal(removedClass,'has-art');
+  }
+  for(const file of ['app.js','artwork.js','artists.js','browse.js','lookup.js'])
+    assert.doesNotMatch(readFileSync(path.join(staticDir,file),'utf8'),/onerror=/);
 });

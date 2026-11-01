@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
@@ -129,6 +130,66 @@ class CIScopeTests(unittest.TestCase):
             for entry in entries[1:]:
                 # No checkout, installation, tests, native build or artifact upload on docs.
                 self.assertRegex(entry, r"(?m)^        if: (always\(\) && )?needs\.scope\.outputs\.full == 'true'")
+
+    def test_final_gates_reject_failed_missing_and_skipped_dependencies(self):
+        for filename, expected in (("tests.yml", ["scope", "tests", "start-scripts", "gapless-measured-media"]),
+                                   ("builds.yml", ["scope", "build"])):
+            source = (ROOT / ".github/workflows" / filename).read_text()
+            gate = source.split("\n  verified:\n", 1)[1]
+            self.assertIn("!cancelled()", gate)
+            script = textwrap.dedent(gate.split("        run: |\n", 1)[1])
+            good = {name: {"result": "success"} for name in expected}
+            good["scope"]["outputs"] = {"full": "true"}
+            variants = [good, {**good, "scope": {"result": "success", "outputs": {"full": "false"}}}]
+            for jobs in variants:
+                with patch.dict(os.environ, {"CI_NEEDS": json.dumps(jobs)}):
+                    exec(compile(script, filename, "exec"), {})
+            bad = [{}, {key: value for key, value in good.items() if key != expected[-1]},
+                   {**good, "scope": {"result": "success", "outputs": {"full": ""}}}]
+            for state in ("failure", "cancelled", "skipped"):
+                for name in expected:
+                    bad.append({**good, name: {**good[name], "result": state}})
+            for jobs in bad:
+                with self.subTest(workflow=filename, jobs=jobs), patch.dict(os.environ, {"CI_NEEDS": json.dumps(jobs)}):
+                    with self.assertRaises(SystemExit):
+                        exec(compile(script, filename, "exec"), {})
+            release = re.search(r"^  release:\n(.*?)(?=^  [a-z][a-z-]*:|\Z)", source.split("jobs:\n", 1)[1], re.M | re.S)[1]
+            self.assertIn("verified", release)
+
+    def test_distribution_gate_ignores_only_deliberately_ineligible_workflow_runs(self):
+        source = (ROOT / ".github/workflows/builds.yml").read_text()
+        gate = source.split("\n  verified:\n", 1)[1]
+        expression = re.search(r"if: \$\{\{ (.*?) \}\}", gate)[1]
+        # This guard uses only boolean operators and trusted context attributes.
+        expression = re.sub(r"!(?!=)", "not ", expression).replace("&&", "and").replace("||", "or")
+        script = textwrap.dedent(gate.split("        run: |\n", 1)[1])
+        for event in ("push", "pull_request", "release", "workflow_dispatch", "workflow_run"):
+            for result in ("success", "failure", "cancelled", "skipped"):
+                for cancelled in (False, True):
+                    with self.subTest(event=event, scope=result, cancelled=cancelled):
+                        run = eval(expression, {"__builtins__": {}}, {
+                            "cancelled": lambda: cancelled,
+                            "github": SimpleNamespace(event_name=event),
+                            "needs": SimpleNamespace(scope=SimpleNamespace(result=result)),
+                        })
+                        self.assertEqual(run, not cancelled and not (
+                            event == "workflow_run" and result == "skipped"))
+                        if run:
+                            jobs = {"scope": {"result": result, "outputs": {"full": "true"}},
+                                    "build": {"result": "success"}}
+                            with patch.dict(os.environ, {"CI_NEEDS": json.dumps(jobs)}):
+                                if result == "success":
+                                    exec(compile(script, "distribution-gate", "exec"), {})
+                                else:
+                                    with self.assertRaises(SystemExit):
+                                        exec(compile(script, "distribution-gate", "exec"), {})
+
+    def test_tagged_rebuild_requires_signing_and_cannot_clobber_assets(self):
+        source = (ROOT / ".github/workflows/builds.yml").read_text()
+        setting = next(line for line in source.splitlines() if "SIGN_MACOS: " in line)
+        self.assertIn("inputs.sign_macos || inputs.tag != ''", setting)
+        self.assertNotIn("--clobber", source)
+        self.assertIn("hashFiles('tools/electron_signed.cjs')", source)
 
 
 if __name__ == "__main__":

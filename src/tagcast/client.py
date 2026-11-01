@@ -152,6 +152,14 @@ class NotConnected(ApiError):
     pass
 
 
+class ConnectionUnavailable(ApiError):
+    """Temporary service/transport failure; keep the existing credentials."""
+
+
+class ConnectionSecurityError(ApiError):
+    """TLS validation failed; never work around certificate checks."""
+
+
 class UncertainWrite(ApiError):
     """A request may have been applied; never resend it without a fresh review."""
 
@@ -245,8 +253,12 @@ class StudioClient(ibroadcast.iBroadcast):
     def _refresh_or_fail(self, generation=None, *, expired_only=False):
         try:
             self._refresh(generation, expired_only=expired_only)
-        except (oauth.OAuthError, requests.RequestException, KeyError, ValueError):
+        except auth.RefreshRejected:
             raise NotConnected("Your iBroadcast session expired. Connect again.") from None
+        except requests.exceptions.SSLError:
+            raise ConnectionSecurityError("Could not verify iBroadcast's secure connection. Your sign-in is retained.") from None
+        except (oauth.OAuthError, requests.RequestException, KeyError, ValueError, TypeError):
+            raise ConnectionUnavailable("iBroadcast sign-in renewal is temporarily unavailable. Try again later; your sign-in is retained.") from None
 
     def _refresh(self, generation=None, *, expired_only=False):
         """Share an in-flight refresh; late failures must not rotate a newer token."""
@@ -348,8 +360,10 @@ class StudioClient(ibroadcast.iBroadcast):
             return response
         try:
             return self._with_fresh_token(send)
+        except requests.exceptions.SSLError:
+            raise ConnectionSecurityError("Could not verify iBroadcast's secure audio connection.") from None
         except requests.RequestException as error:
-            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+            raise ConnectionUnavailable(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
 
     def open_stream(self, path, file_id, user_id, expires, range_header=None, *, timeout=TIMEOUT):
         """Open the audio of one track. The caller closes the returned response."""
@@ -365,8 +379,10 @@ class StudioClient(ibroadcast.iBroadcast):
                                 stream=True, timeout=timeout)
         try:
             return self._with_fresh_token(send)
+        except requests.exceptions.SSLError:
+            raise ConnectionSecurityError("Could not verify iBroadcast's secure audio connection.") from None
         except requests.RequestException as error:
-            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+            raise ConnectionUnavailable(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
 
 
 class Studio:
@@ -536,6 +552,7 @@ class Studio:
         client.token_set = token_set
         with self.lock:
             self.client, self.library, self.account = client, None, None
+            self.jobs.clear()
             self.playback_session = secrets.token_hex(16)
             if save:
                 self._save_tokens(token_set, client)
@@ -546,6 +563,7 @@ class Studio:
         self.queue_sync.disconnect()
         with self.lock:
             self.client = self.library = self.account = self.device = None
+            self.jobs.clear()
             self.playback_session = ""
             self._device_gen += 1
             self._device_request_id = None
@@ -562,7 +580,12 @@ class Studio:
             device = dict(self.device) if self.device else None
             client = self.client
         if client and self.account is None:
-            self.account = self._account_name(client)
+            account = self._account_name(client)
+            with self.lock:
+                if self.client is client:
+                    self.account = account
+        with self.lock:
+            client = self.client
         return {
             "configured": bool(self.client_id),
             "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
@@ -582,6 +605,8 @@ class Studio:
             data = client._jsonrequest("status")
         except NotConnected:
             self._disconnect()
+            return None
+        except (ConnectionUnavailable, ConnectionSecurityError):
             return None
         except ApiError:
             return ""
@@ -1061,10 +1086,9 @@ class Studio:
         another one.
         """
         job_id = secrets.token_urlsafe(9)
+        marker = {"state": "checking"}
         with self.lock:
-            self.jobs[job_id] = {"state": "checking"}
-            for old in list(self.jobs)[:-20]:
-                del self.jobs[old]
+            self.jobs[job_id] = marker
 
         def run():
             try:
@@ -1081,7 +1105,11 @@ class Studio:
                 log.exception("Read-back failed")
                 result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
-                self.jobs[job_id] = result
+                if self.jobs.get(job_id) is marker:
+                    self.jobs[job_id] = result
+                    finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
+                    for old in finished[:-20]:
+                        del self.jobs[old]
 
         threading.Thread(target=run, daemon=True).start()
         return job_id
@@ -1090,7 +1118,12 @@ class Studio:
         with self.lock:
             if job_id not in self.jobs:
                 raise ApiError("This read-back is no longer available. Reload the library.")
-            return self.jobs[job_id]
+            result = self.jobs[job_id]
+            if "albums" in result or "editor_names" in result:
+                # Deliver the large payload once without mutating an in-flight response.
+                self.jobs[job_id] = {key: value for key, value in result.items()
+                                     if key not in {"albums", "editor_names"}}
+            return result
 
 
     # -- overview -----------------------------------------------------------------

@@ -51,7 +51,7 @@ async function checkThemes({window, miniPlayer}) {
   await run('document.querySelector("#theme-save").click()');assert.equal(await run('TagcastThemes.snapshot().themes.length'),2);
   await run('themeEditorLoad(TagcastThemes.snapshot().themes.find(t=>t.id===themeCheckId));renderThemeEditor();');
   // Palette changes must preserve the authoritative audio element and queue object.
-  for(const palette of ['forest','ocean','warm','ibroadcast'])for(const appearance of ['light','dark']) {
+  for(const palette of ['forest','ocean','warm','ibroadcast','apple'])for(const appearance of ['light','dark']) {
    await run(`setColourPalette('${palette}');document.documentElement.dataset.theme='${appearance}';showTheme();showSettings('appearance');themeEditorView.mode='${appearance}';renderThemeEditor();document.querySelector('#theme-editor-form').scrollIntoView({block:'start'});window.scrollBy(0,-20);`);
    assert.equal(await run('themeCheckAudio===audio&&themeCheckQueue===player.queue'),true);
    assert.equal(await run('document.documentElement.scrollWidth>innerWidth'),false);

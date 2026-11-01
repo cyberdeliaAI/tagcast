@@ -59,7 +59,7 @@ jobs:
             target: linux-x64
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || '' }}
-      SIGN_MACOS: ${{ startsWith(matrix.target, 'macos-') && (github.event_name == 'release' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.sign_macos)) && '1' || '' }}
+      SIGN_MACOS: ${{ startsWith(matrix.target, 'macos-') && (github.event_name == 'release' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && (inputs.sign_macos || inputs.tag != ''))) && '1' || '' }}
     steps:
       - name: Select verification for this target
         shell: python
@@ -153,7 +153,7 @@ jobs:
 
   release:
     name: Add the downloads to the release
-    needs: [scope, build]
+    needs: [scope, build, verified]
     if: >-
       needs.scope.outputs.full == 'true' &&
       (github.event_name == 'release' || github.event_name == 'workflow_run' ||
@@ -162,6 +162,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: smoke-reports-*
+          path: reports
       - uses: actions/download-artifact@v4
         with:
           pattern: tagcast-*
@@ -172,7 +182,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          COMMIT: ${{ github.event.workflow_run.head_sha }}
+          COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           if [ -z "$TAG" ]; then
             # the release job in tests.yml publishes a "Publish Tagcast" commit as its own target
@@ -182,4 +192,26 @@ jobs:
             echo "No release for this commit, so there is nothing to add the downloads to."
             exit 0
           fi
-          gh release upload "$TAG" downloads/* --clobber
+          COMMIT=$(git rev-parse HEAD)
+          python tools/release_assets.py --tag "$TAG" --commit "$COMMIT"
+
+  verified:
+    name: Distribution verification
+    # Tests completions for ordinary commits deliberately skip this release follow-up.
+    # Failed scope checks, and unexpected skips on PR/push/manual runs, still fail closed.
+    if: ${{ !cancelled() && (github.event_name != 'workflow_run' || needs.scope.result != 'skipped') }}
+    needs: [scope, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require complete successful validation
+        shell: python
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          import json, os
+          jobs = json.loads(os.environ["CI_NEEDS"])
+          expected = {'build', 'scope'}
+          if set(jobs) != expected or any(job.get("result") != "success" for job in jobs.values()):
+              raise SystemExit("Required validation failed or did not run.")
+          if jobs["scope"].get("outputs", {}).get("full") not in {"true", "false"}:
+              raise SystemExit("CI scope is missing or invalid.")

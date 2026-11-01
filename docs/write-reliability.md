@@ -39,3 +39,12 @@ intervening external changes, stale reviews, partial batches, 429/500/503, conne
 errors, timeouts, invalid responses, explicit authentication rejection, read retries,
 artwork and ratings. Existing cleanup, collection, artwork and refresh suites cover
 their scope, conflict and lifecycle rules. No real account is modified.
+
+### Temporary sign-in renewal failures
+
+OAuth timeouts, unavailable services, malformed renewal responses and TLS
+validation failures retain the current session and saved credentials. Retry the
+operation later; certificate validation is never bypassed. Only an explicit
+OAuth credential rejection (or a repeated authenticated API rejection) requires
+reconnection. A shared failed renewal still wakes all waiting requests without
+resending ambiguous writes or persisting replacement credentials.

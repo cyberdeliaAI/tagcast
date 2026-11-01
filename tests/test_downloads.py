@@ -236,6 +236,32 @@ class DownloadsTests(unittest.TestCase):
         self.assertNotIn("SECRET", str(caught.exception))
         self.assertNotIn("https://", str(caught.exception))
 
+    def test_rejected_session_stops_batch_without_retry_or_stream_fallback(self):
+        from tagcast.client import NotConnected
+        self.select()
+        review = self.prepare()
+        self.studio.client.open_download.side_effect = NotConnected("Connect again.")
+        result = self.start(review)
+        self.assertEqual(result["state"], "stopped")
+        self.assertEqual(result["fail"], 1)
+        self.assertEqual(self.studio.client.open_download.call_count, 1)
+        self.studio.client.open_stream.assert_not_called()
+        self.assertIn("Connect again", result["failures"][0]["note"])
+
+    def test_tls_failure_is_terminal_but_a_timeout_remains_retryable(self):
+        from tagcast.client import ConnectionSecurityError, ConnectionUnavailable
+        transport = DownloadSession(self.studio, self.downloads._context("session-one"))
+        self.addCleanup(transport.close)
+        for error in (ConnectionSecurityError("secure connection failed"), requests.exceptions.SSLError("SECRET")):
+            self.studio.client.open_stream.side_effect = error
+            with self.assertRaises(engine.TerminalTransferError) as caught:
+                transport.stream("/orig/private-one", 1, "test-user", "expires")
+            self.assertNotIn("SECRET", str(caught.exception))
+        self.studio.client.open_stream.side_effect = ConnectionUnavailable("private")
+        with self.assertRaises(OSError) as caught:
+            transport.stream("/orig/private-one", 1, "test-user", "expires")
+        self.assertIsNone(caught.exception.errno)
+
     def test_combined_native_membership_and_orphans_are_handled_conservatively(self):
         adapted = DownloadLibrary(self.studio.library, "test-user", True, threading.Event())
         self.assertTrue(adapted.active(3))
