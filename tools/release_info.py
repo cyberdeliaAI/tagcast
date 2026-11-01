@@ -84,7 +84,8 @@ def main():
         wait_for_native_builds(commit)
     command = ["gh", "release", "create", info["tag"], "--target", commit,
                "--title", f'Tagcast {info["display"]}', "--notes-file", info["notes"], "--draft"]
-    command += ["--prerelease", "--latest=false"] if info["prerelease"] else ["--latest"]
+    # Only release_assets marks a stable release Latest after asset verification.
+    command += ["--prerelease", "--latest=false"] if info["prerelease"] else ["--latest=false"]
     subprocess.run(command, check=True, cwd=ROOT)
 
 
