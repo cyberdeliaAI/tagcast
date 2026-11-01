@@ -43,7 +43,7 @@ function openArtwork(target, preselect) {
   art.submitted = false;
   const isAlbum = target.target === "album", isPlaylist = target.target === "playlist";
   $("#artwork-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${isPlaylist ? "PLAYLIST COVER" : isAlbum ? "ALBUM COVER" : "ARTIST IMAGE"}</div><h2>${escapeHtml(target.label)}</h2></div><div class="dialog-heading-actions">${isPlaylist ? '<button type="button" class="button small help-trigger" data-help-context="playlist-cover" aria-label="Help with playlist cover">?</button>' : ""}<button type="button" class="close" data-close="artwork" aria-label="Close">×</button></div></div>
-    <div class="art-compare"><figure><figcaption>Now</figcaption>${target.current ? `<img src="${escapeHtml(target.current)}" alt="Current image" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;art-empty&quot;>No image</div>'">` : '<div class="art-empty">No image</div>'}</figure><span class="art-arrow" aria-hidden="true">→</span><figure><figcaption>New</figcaption><div id="art-new"><div class="art-empty">Choose an image below</div></div><small id="art-size"></small></figure></div>
+    <div class="art-compare"><figure><figcaption>Now</figcaption>${target.current ? `<img src="${escapeHtml(target.current)}" alt="Current image" referrerpolicy="no-referrer" data-image-error="current">` : '<div class="art-empty">No image</div>'}</figure><span class="art-arrow" aria-hidden="true">→</span><figure><figcaption>New</figcaption><div id="art-new"><div class="art-empty">Choose an image below</div></div><small id="art-size"></small></figure></div>
     ${isPlaylist ? "" : `<h3 class="art-heading">Suggestions</h3>
     <div id="art-suggestions" class="art-grid"><p class="muted"><span class="spinner"></span>Searching…</p></div>
     <h3 class="art-heading">Already in iBroadcast</h3><div id="art-related" class="art-grid"><p class="muted"><span class="spinner"></span>Loading…</p></div>
@@ -65,7 +65,7 @@ function addOption(option) {
 
 function tile(index) {
   const o = art.options[index];
-  return `<button class="art-tile ${art.choice === index ? "chosen" : ""}" data-art-choice="${index}" title="${escapeHtml(o.title || o.source)}"><img src="${escapeHtml(o.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.art-tile').remove()"><span>${escapeHtml(o.source)}</span></button>`;
+  return `<button class="art-tile ${art.choice === index ? "chosen" : ""}" data-art-choice="${index}" title="${escapeHtml(o.title || o.source)}"><img src="${escapeHtml(o.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="tile"><span>${escapeHtml(o.source)}</span></button>`;
 }
 
 function loadSuggestions(target) {

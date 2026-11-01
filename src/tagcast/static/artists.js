@@ -250,7 +250,7 @@ function orderArtistGroups(groups, sort) {
 }
 
 function artistCard([name, group]) {
-  const image = group.image ? `<img src="${escapeHtml(group.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  const image = group.image ? `<img src="${escapeHtml(group.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
   return `<button class="artist-card" data-browse-artist="${escapeHtml(name)}" aria-label="Open albums by ${escapeHtml(name)}">
     <span class="artist-card-photo">${image}<span>${escapeHtml(initials(name))}</span></span>
     <strong>${escapeHtml(name)}${favouriteArtistGroup(group) ? ` <span class="artist-card-favourite" aria-label="Favourite artist">${heartIcon}</span>` : ""}</strong><span class="artist-card-count">${group.count.toLocaleString("en")} ${group.count === 1 ? "album" : "albums"}</span></button>`;
