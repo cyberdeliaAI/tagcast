@@ -152,6 +152,55 @@ test('hidden documents suspend display lookups and session reset releases online
   assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
 });
 
+test('LRCLIB fallback is explicitly requested, attributed and remains display-only',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>({...displayLyricsFixture,source:'lrclib'})}));
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})');
+  openDisplayLyrics(p);await settle();
+  const request=p.requests.find(r=>r.url==='/api/lyrics/display');
+  assert.equal(JSON.parse(request.options.body).fallback_lrclib,true);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/https:\/\/lrclib.net\//);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Temporary display/);
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/&lt;script&gt;/);
+  p.run('gaplessPosition=()=>4;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.active'),1);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})'),before);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  assert.match(p.run('playbackLyricsSettings()'),/Unison → LRCLIB/);
+});
+
+test('disabling LRCLIB clears displayed fallback text and aborts late source replies',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');let release,signal;
+  p.run('lookup.sources=[{name:"lrclib",enabled:true}]');
+  p.setFetch((url,options)=>{
+    if(url==='/api/lyrics/display'&&JSON.parse(options.body).fallback_lrclib)
+      return new Promise(resolve=>{release=resolve;signal=options.signal;});
+    return {ok:true,json:async()=>url==='/api/lyrics/display'?{status:'missing',source:'unison',lines:[]}:emptyNativeLyrics};
+  });
+  openDisplayLyrics(p);await settle();
+  p.run('applyLookupSources([{name:"lrclib",enabled:false}])');await settle();
+  assert.equal(signal.aborted,true);
+  release({ok:true,json:async()=>({...displayLyricsFixture,source:'lrclib'})});await settle();
+  const requests=p.requests.filter(r=>r.url==='/api/lyrics/display');
+  assert.equal(JSON.parse(requests.at(-1).options.body).fallback_lrclib,false);
+  assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/LRCLIB/);
+});
+
+test('LRCLIB plain lyrics stay untimed and instrumental results are clearly described',async()=>{
+  for(const instrumental of [false,true]) {
+    const {p}=await playbackLyricsPage('unison-first');
+    p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'
+      ? {status:instrumental?'instrumental':'ready',source:'lrclib',timed:false,
+        lines:instrumental?[]:[{start:null,end:null,text:'Synthetic plain line'}]}:emptyNativeLyrics}));
+    openDisplayLyrics(p);await settle();
+    assert.match(p.nodes.get('#visual-lyrics-message').textContent,instrumental?/instrumental/:/no timing/);
+    assert.equal(p.run('playbackLyricsView.active'),-1);
+    assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  }
+});
+
 function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();

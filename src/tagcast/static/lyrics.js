@@ -24,6 +24,9 @@ function invalidateLyricsSource() {
     entry.data = null; entry.loading = false; entry.pending = null; entry.error = "";
   }
   repaintLyrics();
+  if (typeof resetPlaybackLyrics === "function") {
+    resetPlaybackLyrics(); renderPlaybackLyrics();
+  }
 }
 
 // Badge/viewer reads must never create an entry or start a request.

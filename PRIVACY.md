@@ -1,6 +1,6 @@
 # Tagcast privacy policy
 
-Last updated: 31 October 2026.
+Last updated: 1 November 2026.
 
 This policy describes the Tagcast application distributed from
 [cyberdeliaAI/tagcast](https://github.com/cyberdeliaAI/tagcast), including its
@@ -72,6 +72,7 @@ iBroadcast and may process listening activity under their own policies.
 | Artwork suggestions and previews | Opening an artwork chooser can search enabled sources for the artist/album even when automatic editor lookup is off. Displaying returned thumbnails and images contacts the provider's image host or CDN. Using an image URL contacts the host you chose. | Disable the relevant sources and save to prevent new provider suggestion searches. Avoid remote image previews/URLs if you do not want those image requests. Uploading a chosen image to iBroadcast requires an explicit save. |
 | Artist biographies and album information | Both off by default. Once enabled, visiting an artist/album can send its name, or artist and album title, to TheAudioDB when a current local result is absent. Text is cached locally; revisiting after expiry can start another lookup. Bundled 1001 Albums background texts do not require an online lookup. | Separate **Settings → Discovery** switches; disable and save. These switches are independent of TheAudioDB's metadata-source switch. |
 | Lyrics lookup | Only choosing **Find lyrics** contacts LRCLIB, sending track title, artist and a known duration. Native lyrics reads use iBroadcast; previously cached text may be displayed without a new provider lookup. | Do not start Find lyrics, or disable LRCLIB under **Sources & keys** and save. Album Check lyrics reads native iBroadcast lyrics, not LRCLIB. |
+| Now playing online lyrics | Off by default (**iBroadcast only**). Selecting an online source preference under **Settings → Playback** allows Unison requests for the current song while the expanded lyrics view is open. If Unison returns no matching lyrics, LRCLIB is checked with title, track artist, album and known duration; a bounded search may use typography-only name variants. No account credentials or audio are sent. These display results stay only in bounded memory and never enter the editor or persistent lyrics caches. | Choose **iBroadcast only**, close the expanded lyrics view or hide the app to stop new lookups. The saved **Sources & keys → LRCLIB** switch also disables that fallback. Existing requests may already have reached the provider before cancellation. |
 | Public playlist import | Only fetching a supplied Deezer or experimental ListenBrainz playlist URL contacts that provider, using the public playlist identifier. Deezer short links may first contact the supported redirect service. Matching uses the loaded library locally. | Do not fetch a public URL. CSV matching and local LRC/TXT imports do not contact these public playlist services. |
 
 Enabled metadata/image sources are MusicBrainz, Cover Art Archive (through
@@ -108,6 +109,7 @@ processing. Consult its current policies before enabling a feature:
 - [fanart.tv privacy policy](https://fanart.tv/privacy-policy/).
 - [LRCLIB service and API information](https://lrclib.net/) — no separate public
   privacy-policy page was identified when this document was prepared.
+- [Unison service information](https://unison.boidu.dev/) — optional online Now playing lyrics.
 
 Opening Help, source attribution, community or other external links visits the
 chosen site, whose privacy/cookie policy applies. Installing through Homebrew,

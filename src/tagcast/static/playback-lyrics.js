@@ -19,11 +19,11 @@ function storedPlaybackLyricsMode() {
 
 function playbackLyricsSettings() {
   const options = [["native", "iBroadcast only · no online lookup"],
-    ["native-first", "iBroadcast first · Unison fallback"], ["unison-first", "Unison first · iBroadcast fallback"]];
+    ["native-first", "iBroadcast first · Unison → LRCLIB fallback"], ["unison-first", "Unison → LRCLIB first · iBroadcast fallback"]];
   return `<section class="player-display-settings" data-settings-category="playback"><h3>Now playing lyrics <span class="settings-mode">Immediate · this browser</span></h3>
     <label class="field"><span>Preferred lyrics source</span><select id="playback-lyrics-mode">${options.map(([key, label]) => `<option value="${key}" ${playbackLyricsView.mode === key ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-    <p class="muted">Open the large Now playing view and choose Lyrics. Selecting a Unison option enables automatic online lookup while that lyrics view is open: the current song’s title, track artist, album and duration are sent to Unison. No account details or audio are sent.</p>
-    <p class="muted">Timed lyrics highlight the current line. Ordinary text remains readable without synchronisation. Unison results stay temporarily in memory; they are never saved to iBroadcast, music files or the lyrics editor. Existing iBroadcast lyrics keep their usual cache and editing behaviour.</p>
+    <p class="muted">Open the large Now playing view and choose Lyrics. An online option checks Unison first, then LRCLIB only if no matching lyrics are found. The current song’s title, track artist, album and duration are sent while that view is open. No account details or audio are sent. The LRCLIB switch under Sources &amp; keys also applies here.</p>
+    <p class="muted">Timed lyrics highlight the current line. Ordinary text remains readable without synchronisation. Online results stay temporarily in memory; they are never saved to iBroadcast, music files or the lyrics editor. Existing iBroadcast lyrics keep their usual cache and editing behaviour.</p>
     <label class="checkline"><input type="checkbox" id="playback-lyrics-cover-background" ${playbackLyricsView.coverBackground ? "checked" : ""}> Use cover colours behind Now playing</label>
     <p class="muted">Adds a softened cover background to the large Now playing view. Off by default. Your theme stays unchanged elsewhere.</p></section>`;
 }
@@ -66,17 +66,22 @@ function playbackLyricsCurrent(selection, request, details) {
     && lyricsKey(lyricsSelection(player.queue[player.index])) === lyricsKey(selection);
 }
 
+function playbackLyricsPublicKey(selection) {
+  return lyricsKey([selection, lookup.sources.find(source => source.name === "lrclib")?.enabled !== false]);
+}
+
 async function readUnisonDisplay(selection, request, details) {
-  const key = lyricsKey(selection), cached = playbackLyricsView.cache.get(key);
+  const key = playbackLyricsPublicKey(selection), cached = playbackLyricsView.cache.get(key);
   if (cached && performance.now() < cached.until) return cached.data;
   const controller = new AbortController(); playbackLyricsView.controller = controller;
-  playbackLyricsView.timeout = setTimeout(() => controller.abort(), 15000);
+  playbackLyricsView.timeout = setTimeout(() => controller.abort(), 30000);
   try {
     const response = await fetch("/api/lyrics/display", {method: "POST", signal: controller.signal,
       headers: {"Content-Type": "application/json", "X-Tagcast": "1"},
-      body: JSON.stringify({...selection, enabled: true})});
+      body: JSON.stringify({...selection, enabled: true,
+        fallback_lrclib: lookup.sources.find(source => source.name === "lrclib")?.enabled !== false})});
     const data = await response.json();
-    if (!response.ok) throw Error(data.error || "Unison could not be checked.");
+    if (!response.ok) throw Error(data.error || "Online lyrics could not be checked.");
     if (!playbackLyricsCurrent(selection, request, details)) return null;
     if (!Array.isArray(data.lines) || data.lines.length > 2000) throw Error("Invalid lyrics response.");
     playbackLyricsView.cache.set(key, {data, until: performance.now() + 300000});
@@ -106,7 +111,7 @@ async function loadPlaybackLyrics(selection, entry, request, details) {
   const mode = playbackLyricsView.mode, errors = [];
   const order = mode === "unison-first" ? ["unison", "ibroadcast"]
     : mode === "native-first" ? ["ibroadcast", "unison"] : ["ibroadcast"];
-  let result = null;
+  let result = null, instrumental = false;
   for (const source of order) {
     if (!playbackLyricsCurrent(selection, request, details)) return;
     try {
@@ -114,9 +119,10 @@ async function loadPlaybackLyrics(selection, entry, request, details) {
         : await readNativeDisplay(selection, entry);
       if (!playbackLyricsCurrent(selection, request, details)) return;
       if (result?.status === "ready") break;
+      if (result?.source === "lrclib" && result.status === "instrumental") instrumental = true;
     } catch (error) {
       if (!playbackLyricsCurrent(selection, request, details)) return;
-      errors.push(source === "unison" ? "Unison could not be checked." : error.message);
+      errors.push(source === "unison" ? error.message || "Online lyrics could not be checked." : error.message);
     }
   }
   if (!playbackLyricsCurrent(selection, request, details)) return;
@@ -125,7 +131,8 @@ async function loadPlaybackLyrics(selection, entry, request, details) {
   $("#visual-lyrics-message").textContent = result?.status === "ready"
     ? [result.timed ? "Lyrics follow the current track." : "Text lyrics · no timing available.", ...errors].join(" ")
     : errors.length ? `${errors.join(" ")} You can check again.`
-      : mode === "native" ? "No lyrics stored in iBroadcast. Enable a Unison option in Settings → Playback for online lyrics."
+      : instrumental ? "LRCLIB marks this recording as instrumental."
+      : mode === "native" ? "No lyrics stored in iBroadcast. Enable an online option in Settings → Playback for Unison and LRCLIB lyrics."
         : "No matching lyrics found for this recording.";
   $("#visual-lyrics-retry").hidden = !errors.length;
   paintPlaybackLyrics();
@@ -158,8 +165,10 @@ function paintPlaybackLyrics() {
   const data = playbackLyricsView.data;
   $("#visual-lyrics-lines").innerHTML = data ? data.lines.map((line, i) =>
     `<p class="visual-lyric-line" data-lyric-line="${i}">${escapeHtml(line.text || (data.timed ? "♪" : "\u00a0"))}</p>`).join("") : "";
-  $("#visual-lyrics-source").innerHTML = data?.source === "unison"
-    ? '<a href="https://unison.boidu.dev/" target="_blank" rel="noopener noreferrer">Lyrics from Unison ↗</a> · Temporary display'
+  const publicSources = {unison: ["Unison", "https://unison.boidu.dev/"], lrclib: ["LRCLIB", "https://lrclib.net/"]};
+  const source = publicSources[data?.source];
+  $("#visual-lyrics-source").innerHTML = source
+    ? `<a href="${source[1]}" target="_blank" rel="noopener noreferrer">Lyrics from ${source[0]} ↗</a> · Temporary display`
     : data ? "Lyrics saved in iBroadcast" : "";
   syncPlaybackLyrics(true);
 }
@@ -200,7 +209,7 @@ $("#visual-lyrics-retry").addEventListener("click", () => {
   if (selection) {
     const entry = lyricsEntry(selection);
     if (entry.error) entry.error = "";
-    playbackLyricsView.cache.delete(lyricsKey(selection));
+    playbackLyricsView.cache.delete(playbackLyricsPublicKey(selection));
   }
   suspendPlaybackLyrics(); renderPlaybackLyrics();
 });

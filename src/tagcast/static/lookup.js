@@ -196,7 +196,7 @@ function renderSettingsContent() {
     <section class="source-settings" data-settings-category="sources"><h3>Online sources &amp; keys <span class="settings-mode">Save required</span></h3>
     <p class="muted">Choose sources for metadata, image suggestions and lyrics. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
     ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ' <span class="muted">· Needs a key</span>' : ""}</label>`).join("")}
-    <p class="muted">TheAudioDB artist biographies and album information use their separate switches under Discovery. LRCLIB is contacted only when you choose Find lyrics; track title, artist and duration are sent, and results are cached on this computer.</p>
+    <p class="muted">TheAudioDB artist biographies and album information use their separate switches under Discovery. Find lyrics sends track title, artist and duration to LRCLIB and caches text on this computer. The optional online Now playing mode also uses LRCLIB after a missing Unison result, with album name when available; those display results stay only in memory.</p>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
