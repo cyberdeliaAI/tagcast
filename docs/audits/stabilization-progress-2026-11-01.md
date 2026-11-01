@@ -1,5 +1,11 @@
 # Tagcast stabilization progress — 1 November 2026
 
+Follow-up: the [final integration validation](integration-validation-2026-11-01.md)
+records three additional targeted build/release corrections and the final Python
+3.11/3.13, frontend, Electron, media and extracted-package checks. Historical
+results below are preserved unchanged. Durable logs and measurements are indexed
+in [evidence/README.md](evidence/README.md), outside disposable build directories.
+
 ## Baseline and boundaries
 
 - Original audit: Claude 5.5, `technical-audit-2026-11-01.md`.
