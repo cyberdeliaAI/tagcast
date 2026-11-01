@@ -10688,3 +10688,19 @@ test("An editor response from a replaced library cannot open a stale draft",asyn
   assert.equal(p.nodes.get('#editor').open||false,false);
   assert.equal(p.run('editing'),null);
 });
+
+test("Artwork error fallbacks use CSP-compatible capture handlers",async()=>{
+  const p=page();await settle();
+  for (const action of ['remove','album','current','tile','suggestion']) {
+    let removed=0,parentRemoved=0,removedClass='';
+    const image={tagName:'IMG',dataset:{imageError:action},remove(){removed++;},
+      parentNode:{classList:{remove(value){removedClass=value;}}},closest(){return{remove(){parentRemoved++;}}}};
+    await p.emitDocument('error',{target:image});
+    if(action==='current') assert.match(image.outerHTML,/No image/);
+    else if(action==='tile'||action==='suggestion') assert.equal(parentRemoved,1);
+    else assert.equal(removed,1);
+    if(action==='album') assert.equal(removedClass,'has-art');
+  }
+  for(const file of ['app.js','artwork.js','artists.js','browse.js','lookup.js'])
+    assert.doesNotMatch(readFileSync(path.join(staticDir,file),'utf8'),/onerror=/);
+});
