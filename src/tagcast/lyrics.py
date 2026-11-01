@@ -22,6 +22,7 @@ from contextlib import closing
 import requests
 
 from .library import ConflictError, LibraryError, text
+from .playback_lyrics import PlaybackLyrics
 from .sources import USER_AGENT, SourceError, artist_name_key
 
 MAX_LYRICS = 50000
@@ -98,6 +99,7 @@ class Lyrics:
         self.reviews = OrderedDict()
         self.failures = {}
         self.last_lookup = 0
+        self.display = PlaybackLyrics(self)
 
     def _import_scope(self, body, library):
         """Bind each individually reviewed import write to one complete displayed album."""
