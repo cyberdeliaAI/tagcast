@@ -4991,7 +4991,7 @@ test("colour palettes persist independently of appearance without requests or pl
   p.run(`player.queue = [{id:"900",title:"Playing",artist:"Artist"}]; player.index=0;
     $("#audio").src="/api/stream/900?quality=128"; $("#audio").currentTime=27; $("#audio").paused=false;`);
   const requests = p.requests.length, history = p.history.length, queue = p.json("player.queue");
-  for (const palette of ["ocean", "warm", "ibroadcast", "forest"]) {
+  for (const palette of ["ocean", "warm", "ibroadcast", "apple", "forest"]) {
     await p.nodes.get("#theme-menu").emit("change", {target: {value: palette, dataset: {paletteChoice: ""}}});
     assert.equal(p.run('document.documentElement.dataset.palette'), palette === "forest" ? undefined : palette);
     assert.equal(storage["tagcast-palette"], palette);
@@ -5017,7 +5017,7 @@ test("appearance restores before scripts load and invalid or unavailable storage
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.ok(html.indexOf('<script src="themes.js"></script>') < html.indexOf('href="style.css"'), "Restore custom colours before styles paint");
   const source = readFileSync(path.join(staticDir, "themes.js"), "utf8");
-  for (const palette of ["ocean", "warm", "ibroadcast"]) {
+  for (const palette of ["ocean", "warm", "ibroadcast", "apple"]) {
     const document = {documentElement: {dataset: {}}};
     vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
     assert.deepEqual(document.documentElement.dataset, {theme:"light",palette});
@@ -10288,6 +10288,46 @@ test('theme import previews a new theme and export includes only valid draft col
  p.run('saveCustomTheme(false)');assert.equal(p.run('TagcastThemes.snapshot().themes.length'),1);assert.equal(p.run('TagcastThemes.active()'),null);
  assert.equal(p.requests.length,posts,'No server or playback request for sharing themes');
  p.run('themeEditorColour("ink","invalid",false);exportCustomTheme()');assert.equal(p.downloads.length,1);
+});
+
+test('sidebar icon editing is optional, preview-only and resets to state-dependent text inheritance',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance")');
+ const before=p.run('JSON.stringify({settings:settingsView.dirty,queue:player.queue,src:audio.src})'),requests=p.requests.length;
+ assert.match(p.run('themeRoleControl("nav-icon")'),/follow sidebar text/);
+ assert.doesNotMatch(p.run('themeRoleControl("nav-icon")'),/undefined/);
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ const properties={},preview=p.nodes.get('#theme-preview');
+ preview.style={setProperty(key,value){properties[key]=value;},removeProperty(key){delete properties[key];}};
+ p.run('themeEditorColour("nav-icon","#C8102E",false)');
+ assert.equal(properties['--palette-nav-icon'],'#c8102e');assert.equal(p.run('TagcastThemes.active()'),null);
+ assert.match(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('themeEditorView.mode="dark";renderThemeEditor()');assert.equal(properties['--palette-nav-icon'],'initial');
+ p.run('themeEditorColour("nav-icon","#FF6476",true);themeEditorView.mode="light";renderThemeEditor()');
+ assert.equal(properties['--palette-nav-icon'],'#c8102e');
+ p.run('themeEditorColour("nav-icon","invalid",false)');assert.equal(p.run('themeEditorView.invalid["nav-icon"]'),'invalid');
+ p.run('themeEditorColour("nav-icon","",false)');
+ assert.equal(properties['--palette-nav-icon'],'initial','An inherited root override must not colour a draft that follows text');assert.equal(p.run('Object.hasOwn(themeEditorView.invalid,"nav-icon")'),false);
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ assert.doesNotMatch(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('exportCustomTheme()');const exported=JSON.parse(await p.downloads[0].blob.text());
+ assert.equal(Object.hasOwn(exported.theme.light,'nav-icon'),false);assert.equal(exported.theme.dark['nav-icon'],'#ff6476');
+ assert.equal(p.run('JSON.stringify({settings:settingsView.dirty,queue:player.queue,src:audio.src})'),before);
+ assert.equal(p.requests.length,requests,'Icon presentation never requests server data or changes playback');
+});
+
+test('Apple Music Classic is a fifth built-in palette and icon reset restores its base colour',async()=>{
+ const p=page({storage:{'tagcast-palette':'apple','tagcast-theme':'light'}});await settle();
+ assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
+ assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
+ p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
+ assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette's icon colour/);
+ p.run('themeEditorColour("nav-icon","#123456",false);themeEditorColour("nav-icon","",false)');
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ assert.equal(p.nodes.get('#theme-hex-nav-icon').value,'#c8102e');
+ assert.match(p.run('themeRoleControl("nav-icon")'),/value="#c8102e"/);
+ assert.match(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('themeEditorView.mode="dark";renderThemeEditor()');assert.match(p.run('themeRoleControl("nav-icon")'),/value="#ff6476"/);
+ assert.equal(p.run('TagcastThemes.active()'),null,'Editing the built-in base does not activate a custom theme');
 });
 
 test('invalid or late theme files retain the draft, saved themes and current page',async()=>{

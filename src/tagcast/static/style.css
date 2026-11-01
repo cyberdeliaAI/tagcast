@@ -176,6 +176,7 @@ html[data-library-notice="hidden"] #library-notice{display:none}
 .player-track-line{font-size:10px}
 .sidebar-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:19px;flex-shrink:0}
 .sidebar-menu{display:flex;flex-direction:column;flex:1;min-height:0}
+.sidebar .workspace-nav .nav-icon{color:var(--palette-nav-icon,currentColor)}
 .sidebar-toggle{display:none;place-items:center;width:44px;height:44px;flex:0 0 44px;padding:0;border:1px solid var(--palette-shell-line,#526857);border-radius:7px;background:none;color:inherit}
 .sidebar-toggle:hover,.sidebar-toggle[aria-expanded="true"]{background:var(--palette-shell-active,#344b3d)}
 .workspace-nav{min-height:0;overflow-y:auto;flex-shrink:1;margin-bottom:10px}

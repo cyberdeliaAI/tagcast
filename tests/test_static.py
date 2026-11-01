@@ -47,7 +47,7 @@ class StaticScriptTests(unittest.TestCase):
             low, high = sorted((luminance(a), luminance(b)))
             return (high + .05) / (low + .05)
 
-        for palette in ("ocean", "warm", "ibroadcast"):
+        for palette in ("ocean", "warm", "ibroadcast", "apple"):
             selector = f':root[data-palette="{palette}"]'
             light = re.search(re.escape(selector) + r"\{([^}]+)\}", css).group(1)
             dark = re.search(re.escape(selector + '[data-theme="dark"]')
@@ -67,6 +67,9 @@ class StaticScriptTests(unittest.TestCase):
                                                ("shell-muted", "sidebar"),
                                                ("shell-ink", "shell-active")):
                     self.assertGreaterEqual(contrast(values[foreground], values[background]), 4.5)
+                if "nav-icon" in values:
+                    for background in ("sidebar", "shell-active"):
+                        self.assertGreaterEqual(contrast(values["nav-icon"], values[background]), 3)
                 self.assertGreaterEqual(contrast("#ffffff", values["primary"]), 4.5)
 
         # Forest uses fallbacks rather than the named palette overrides above.

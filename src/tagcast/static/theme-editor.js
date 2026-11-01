@@ -2,9 +2,9 @@
 
 // A local colour draft, independent of metadata forms and server preferences.
 const themeEditorView = {draft: null, baseline: null, mode: "dark", invalid: {}, notice: "", error: ""};
-const themeRoleLabels = {paper: "Page background", surface: "Cards and controls", ink: "Main text", muted: "Secondary text", link: "Links", primary: "Primary button", "primary-ink": "Primary button text", "primary-hover": "Primary button hover", focus: "Keyboard focus", soft: "Subtle surface", tint: "Selection and hover", line: "Borders", sidebar: "Sidebar and player", "shell-ink": "Sidebar text", "shell-muted": "Sidebar secondary text", "shell-active": "Active navigation", "shell-line": "Sidebar borders", accent: "Player accent", "brand-background": "Logo background", "brand-ink": "Logo ink", "brand-paper": "Logo paper", chart: "Charts"};
+const themeRoleLabels = {paper: "Page background", surface: "Cards and controls", ink: "Main text", muted: "Secondary text", link: "Links", primary: "Primary button", "primary-ink": "Primary button text", "primary-hover": "Primary button hover", focus: "Keyboard focus", soft: "Subtle surface", tint: "Selection and hover", line: "Borders", sidebar: "Sidebar and player", "shell-ink": "Sidebar text", "shell-muted": "Sidebar secondary text", "shell-active": "Active navigation", "shell-line": "Sidebar borders", "nav-icon": "Sidebar icons", accent: "Player accent", "brand-background": "Logo background", "brand-ink": "Logo ink", "brand-paper": "Logo paper", chart: "Charts"};
 const themeBasicRoles = ["paper", "surface", "ink", "muted", "link", "primary", "primary-ink"];
-const themePaletteLabel = value => ({forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[value] || "Forest");
+const themePaletteLabel = value => ({forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired", apple: "Apple Music Classic"}[value] || "Forest");
 function themeNewId() { return `custom-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`}`; }
 function themeEditorDirty() { return Boolean(themeEditorView.draft && (Object.keys(themeEditorView.invalid).length || JSON.stringify(themeEditorView.draft) !== themeEditorView.baseline)); }
 function themeEditorLoad(theme) {
@@ -22,11 +22,15 @@ function mountThemeEditor() {
   renderThemeEditor();
 }
 function themeRoleControl(role) {
-  const v = themeEditorView, colours = TagcastThemes.colours(v.draft, v.mode), value = v.invalid[role] ?? colours[role];
-  return `<div class="theme-colour"><label for="theme-hex-${role}">${themeRoleLabels[role]}</label><div><input type="color" value="${colours[role]}" data-theme-colour="${role}" aria-label="${themeRoleLabels[role]} colour picker"><input id="theme-hex-${role}" type="text" class="theme-hex" value="${escapeHtml(value)}" maxlength="7" spellcheck="false" autocomplete="off" data-theme-hex="${role}" aria-label="${themeRoleLabels[role]} hex colour" ${Object.hasOwn(v.invalid, role) ? 'aria-invalid="true"' : ""}><button type="button" class="text-action" data-theme-inherit="${role}" aria-label="Restore ${themeRoleLabels[role].toLowerCase()} from base palette" title="Restore base colour">↶</button></div></div>`;
+  const v = themeEditorView, colours = TagcastThemes.colours(v.draft, v.mode), value = v.invalid[role] ?? colours[role] ?? "";
+  const optional = role === "nav-icon", picker = colours[role] || colours["shell-muted"];
+  const baseIcon = TagcastThemes.colours({base: v.draft.base, light: {}, dark: {}}, v.mode)["nav-icon"];
+  const reset = optional && !baseIcon ? "Follow sidebar text" : `Restore ${themeRoleLabels[role].toLowerCase()} from base palette`;
+  const note = baseIcon ? "Optional override. Leave blank or reset to restore this palette's icon colour." : "Optional. Leave blank or reset to follow sidebar text, including hover and selection.";
+  return `<div class="theme-colour"><label for="theme-hex-${role}">${themeRoleLabels[role]}</label><div><input type="color" value="${picker}" data-theme-colour="${role}" aria-label="${themeRoleLabels[role]} colour picker"><input id="theme-hex-${role}" type="text" class="theme-hex" value="${escapeHtml(value)}" maxlength="7" spellcheck="false" autocomplete="off" data-theme-hex="${role}" aria-label="${themeRoleLabels[role]} hex colour" ${optional ? 'placeholder="Base colour" aria-describedby="theme-nav-icon-note"' : ""} ${Object.hasOwn(v.invalid, role) ? 'aria-invalid="true"' : ""}><button type="button" class="text-action" data-theme-inherit="${role}" aria-label="${reset}" title="${reset}">↶</button></div>${optional ? `<small id="theme-nav-icon-note">${note}</small>` : ""}</div>`;
 }
 function themePreviewMarkup() {
-  return `<div class="theme-preview" id="theme-preview" aria-label="Custom theme component preview"><div class="theme-sample-top"><strong>${document.querySelector(".brand-mark")?.outerHTML || ""}Tagcast<span>.</span></strong><small>Component preview</small></div><div class="theme-sample-layout"><div class="theme-sample-sidebar"><strong>Workspace</strong><span>Album artists</span><span class="theme-sample-active">Albums</span><span>Tracks</span><span>Playlists</span><small>Sample library</small></div><div class="theme-sample-content"><h3>Your albums<span>.</span></h3><label class="theme-sample-search">Search example<input type="search" placeholder="Search albums or artists" aria-label="Preview search field"></label><div class="theme-sample-actions"><button type="button" class="theme-sample-primary">Play album</button><button type="button">Queue</button><button type="button" disabled>Edit</button></div><div class="theme-sample-card"><div class="theme-sample-cover" aria-hidden="true">T</div><div><strong>After Hours</strong><p>The Tagcast Ensemble</p><small>2026 · 8 tracks · 39:14</small></div></div><table aria-label="Preview track table"><thead><tr><th>#</th><th>Title / Artist</th><th>Time</th></tr></thead><tbody><tr class="theme-sample-playing"><td>▶</td><td>Blue in the evening<small>The Tagcast Ensemble</small></td><td>4:27</td></tr><tr><td>2</td><td>A quieter place</td><td>5:06</td></tr></tbody></table><div class="theme-sample-dialog"><strong>Review your draft</strong><p>Check changes before saving.</p><div class="theme-sample-chart" role="img" aria-label="Preview chart colour"><span></span></div><span class="theme-sample-ok">Confirmed</span> <span class="theme-sample-warning">Needs review</span></div></div></div><div class="theme-sample-player"><button type="button" aria-label="Preview pause button">Ⅱ</button><span>2:22</span><span class="theme-sample-progress"></span><span>4:27</span></div><p class="theme-sample-caption">Example components only · no playback or library actions</p></div>`;
+  return `<div class="theme-preview" id="theme-preview" aria-label="Custom theme component preview"><div class="theme-sample-top"><strong>${document.querySelector(".brand-mark")?.outerHTML || ""}Tagcast<span>.</span></strong><small>Component preview</small></div><div class="theme-sample-layout"><div class="theme-sample-sidebar"><strong>Workspace</strong><span>${document.querySelector("#show-artists .nav-icon")?.outerHTML || ""}Album artists</span><span class="theme-sample-active">${document.querySelector("#all-albums .nav-icon")?.outerHTML || ""}Albums</span><span>${document.querySelector("#show-tracks .nav-icon")?.outerHTML || ""}Tracks</span><span>${document.querySelector("#show-playlists .nav-icon")?.outerHTML || ""}Playlists</span><small>Sample library</small></div><div class="theme-sample-content"><h3>Your albums<span>.</span></h3><label class="theme-sample-search">Search example<input type="search" placeholder="Search albums or artists" aria-label="Preview search field"></label><div class="theme-sample-actions"><button type="button" class="theme-sample-primary">Play album</button><button type="button">Queue</button><button type="button" disabled>Edit</button></div><div class="theme-sample-card"><div class="theme-sample-cover" aria-hidden="true">T</div><div><strong>After Hours</strong><p>The Tagcast Ensemble</p><small>2026 · 8 tracks · 39:14</small></div></div><table aria-label="Preview track table"><thead><tr><th>#</th><th>Title / Artist</th><th>Time</th></tr></thead><tbody><tr class="theme-sample-playing"><td>▶</td><td>Blue in the evening<small>The Tagcast Ensemble</small></td><td>4:27</td></tr><tr><td>2</td><td>A quieter place</td><td>5:06</td></tr></tbody></table><div class="theme-sample-dialog"><strong>Review your draft</strong><p>Check changes before saving.</p><div class="theme-sample-chart" role="img" aria-label="Preview chart colour"><span></span></div><span class="theme-sample-ok">Confirmed</span> <span class="theme-sample-warning">Needs review</span></div></div></div><div class="theme-sample-player"><button type="button" aria-label="Preview pause button">Ⅱ</button><span>2:22</span><span class="theme-sample-progress"></span><span>4:27</span></div><p class="theme-sample-caption">Example components only · no playback or library actions</p></div>`;
 }
 function renderThemeEditor() {
   const node = $("#theme-editor"); if (!node || !themeEditorView.draft) return;
@@ -46,8 +50,13 @@ function themeEditorPreview() {
   if (!themeEditorView.draft) return;
   const colours = TagcastThemes.colours(themeEditorView.draft, themeEditorView.mode), preview = $("#theme-preview");
   if (!preview) return;
-  for (const role of TagcastThemes.roles) preview.style?.setProperty?.(`--palette-${role}`, colours[role]);
+  for (const role of TagcastThemes.roles) {
+    if (colours[role]) preview.style?.setProperty?.(`--palette-${role}`, colours[role]);
+    // Block an active theme's optional icon override from leaking into another draft.
+    else preview.style?.setProperty?.(`--palette-${role}`, "initial");
+  }
   const checks = [["Main text", "ink", "paper", 4.5], ["Secondary text", "muted", "surface", 4.5], ["Links", "link", "paper", 4.5], ["Button text", "primary-ink", "primary", 4.5], ["Sidebar text", "shell-ink", "sidebar", 4.5], ["Sidebar secondary text", "shell-muted", "sidebar", 4.5], ["Active navigation", "shell-ink", "shell-active", 4.5], ["Keyboard focus", "focus", "surface", 3]];
+  if (colours["nav-icon"]) checks.push(["Sidebar icons", "nav-icon", "sidebar", 3], ["Selected sidebar icons", "nav-icon", "shell-active", 3]);
   $("#theme-contrast").innerHTML = '<h3>Contrast checks</h3>' + checks.map(([label, foreground, background, target]) => {
     const ratio = TagcastThemes.contrast(colours[foreground], colours[background]);
     return `<p><span>${label}</span><span>${ratio.toFixed(1)}:1 · ${ratio >= target ? "Pass" : "Low contrast"}</span></p>`;
@@ -56,10 +65,15 @@ function themeEditorPreview() {
 function themeEditorColour(role, value, picker) {
   if (!TagcastThemes.roles.includes(role)) return;
   const v = themeEditorView;
-  if (TagcastThemes.hex(value)) {
-    v.draft[v.mode][role] = value.toLowerCase(); delete v.invalid[role];
+  const inherit = role === "nav-icon" && value === "" && !picker;
+  if (TagcastThemes.hex(value) || inherit) {
+    if (inherit) delete v.draft[v.mode][role];
+    else v.draft[v.mode][role] = value.toLowerCase();
+    delete v.invalid[role];
     const other = document.querySelector(picker ? `[data-theme-hex="${role}"]` : `[data-theme-colour="${role}"]`);
-    if (other) { other.value = value; other.removeAttribute("aria-invalid"); }
+    const colours = TagcastThemes.colours(v.draft, v.mode);
+    if (other) { other.value = inherit ? colours[role] || colours["shell-muted"] : value; other.removeAttribute("aria-invalid"); }
+    if (inherit && document.getElementById(`theme-hex-${role}`)) document.getElementById(`theme-hex-${role}`).value = colours[role] || "";
     document.getElementById(`theme-hex-${role}`)?.removeAttribute("aria-invalid");
     v.error = ""; v.notice = "Unsaved preview changes."; themeEditorPreview();
   } else { v.invalid[role] = value; document.getElementById(`theme-hex-${role}`)?.setAttribute("aria-invalid", "true"); v.error = "Use a six-digit hex colour such as #246276. The preview keeps the last valid colour."; }
