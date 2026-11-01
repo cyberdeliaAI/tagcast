@@ -11,6 +11,7 @@ library exports or signing keys were used for these tests.
 |---|---|---|
 | [stabilization-2026-11-01.zip](stabilization-2026-11-01.zip) | 98 original-round records plus internal manifest: report, original 20-commit diff/list, focused/full test logs, measured JSON, real-page CSP/handover evidence and original package verification | `15d8d2d727a8f8c19f3450b9d884ad4309c9ce546e07607bea69df6c03a074a1` |
 | [integration-validation-2026-11-01.zip](integration-validation-2026-11-01.zip) | 97 final records plus internal manifest: Python 3.11/3.13, frontend, Electron, release/package regressions including failing-before logs, media cases, fixture manifest, package restart/CA evidence, advisory results and unchanged-worktree snapshots | `46a926a62c5c5e07e17f078481a0d9453e3b1cdddcbccfa82bccf8aa96b02f10` |
+| [apple-music-integration-2026-11-01.zip](apple-music-integration-2026-11-01.zip) | Seven additional records plus manifest: combined-branch Python/frontend/Electron tests, lint/syntax and a new actual macOS package/theme/layout/CA check after the user authorized the existing Apple Music theme | `84c43838eb3d64617f5a0c5bf5562b423bbc40ae5add1e5c9d318506af77e336` |
 
 [SHA256SUMS](SHA256SUMS) records the archive hashes. Each ZIP also contains
 `EVIDENCE-MANIFEST.json` with every member's size and SHA-256. Large generated audio,
@@ -23,6 +24,13 @@ The original application/build result is bound to
 change CI, release/payload checks and tests, not application code, themes or
 runtime dependencies. A later documentation-only evidence commit does not require
 another playback run.
+
+The later, explicitly authorized Apple Music integration is commit `3c29ef4`
+(cherry-picked from the unchanged theme worktree's `ed68408`). Its separate
+archive above records the new combined tests and package, without rewriting the
+earlier historical results. Playback engine files remain unchanged. The updated
+local package is preserved separately under `packages/apple-music/`; its checksum
+is recorded in `apple-package-check.json`, not substituted for the earlier package.
 
 Do not interpret every log as a successful check. `*-before.txt` intentionally
 records failing reproductions; the negative media cases require exit code 1.
