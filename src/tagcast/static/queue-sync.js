@@ -61,12 +61,12 @@ async function restoreQueue(view, resume = false) {
     const index = Math.min(data.play_index, q.tracks.length), insert = data.play_from === "play_next" ? index : Math.min(index + 1, q.tracks.length), ids = [...q.tracks.slice(0, insert), ...q.play_next, ...q.tracks.slice(insert)];
     const fingerprint = `${ids.join(",")}:${index}:${q.play_next.length}`;
     let rows = player.queue;
-    if (fingerprint !== queueSync.fingerprint) {
+    if (fingerprint !== queueSync.fingerprint || player.queue !== queueSync.restoredRows) {
       rows = await selectedQueueTracks(ids, () => request === queueSync.request && details === state.details && session === state.connection.playback_session);
       for (let i = insert; i < insert + q.play_next.length; i += 1) rows[i].upNext = true;
     }
     if (request !== queueSync.request || session !== state.connection.playback_session || !queueSync.active) return;
-    queueSync.fingerprint = fingerprint;
+    queueSync.fingerprint = fingerprint; queueSync.restoredRows = rows;
     const currentIndex = data.play_from === "play_next" ? insert : index;
     const changed = player.queue[player.index]?.id !== rows[currentIndex]?.id;
     player.queue = rows; player.index = rows.length ? currentIndex : -1; player.repeat = data.repeat_mode; player.shuffle = q.shuffle;
@@ -77,7 +77,7 @@ async function restoreQueue(view, resume = false) {
       queueSync.allowed = true; playCurrent(false); queueSync.allowed = wasAllowed || resume;
       audio.pause();
       audio.addEventListener("loadedmetadata", () => {
-        if (request === queueSync.request) { audio.currentTime = Math.min(desired, Number.isFinite(audio.duration) ? audio.duration : desired); if (resume && !q.pause) audio.play().catch(() => toast("Press Play to allow audio in this browser.")); }
+        if (request === queueSync.request && session === state.connection.playback_session && queueSync.active && player.queue[player.index] === rows[currentIndex]) { audio.currentTime = Math.min(desired, Number.isFinite(audio.duration) ? audio.duration : desired); if (resume && !q.pause) audio.play().catch(() => toast("Press Play to allow audio in this browser.")); }
       }, {once: true});
     } else if (rows[currentIndex]) {
       if (Math.abs((audio.currentTime || 0) - desired) > 3) audio.currentTime = desired;

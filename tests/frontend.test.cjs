@@ -10579,3 +10579,19 @@ test("account streaming quality escapes external text while preserving known lab
     assert.match(html, /<small class="warn">iBroadcast refuses album changes/);
   }
 });
+
+test("Queue restore cannot seek a replacement album or reuse unrelated rows on a matching fingerprint", async () => {
+  const p = livePage(); await settle();
+  const rows = p.json('[...state.details.values()].flatMap(a => queueTracks(a))');
+  p.setFetch((url, options) => ({ok: true, json: async () => ({tracks: JSON.parse(options.body).tracks.map(id => rows.find(t => t.id === String(id)))})}));
+  p.run(`state.connection.playback_session="queue-session"; queueSync.active=true; queueSync.allowed=true;
+    queueSync.view={owner:queueSync.browser,own:true,state:{role:"player",tracks:[100,101],play_next:[],pause:true,
+      start_position:37,start_time:Date.now()/1000,volume:0.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('restoreQueue(queueSync.view)');
+  p.run('playTracks(state.details.get("3")); audio.currentTime=0');
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime, 0, 'Old paused restore must not seek another track');
+  await p.run('restoreQueue(queueSync.view)');
+  assert.equal(p.run('player.queue[player.index].id'), '100');
+  assert.equal(p.requests.filter(r => r.url === '/api/queue-tracks').length, 2);
+});
