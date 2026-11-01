@@ -38,6 +38,14 @@ and Ubuntu 22.04. Linux needs a graphical desktop and compatible system librarie
 (glibc 2.35 or newer); the download is not a universal Linux executable. Audio
 outputs and codecs depend on Chromium and the operating system.
 
+Ubuntu 24.04's AppArmor/user-namespace policy can prevent Electron from starting
+before the backend appears. The current packaged startup check runs on Ubuntu
+22.04; successful Ubuntu Python/media CI does not verify the extracted package on
+24.04. Test the official extracted archive there before declaring support. Keep
+the bundled Chromium sandbox enabled: do not use `--no-sandbox` or globally
+disable AppArmor/user-namespace restrictions as a workaround. A distribution-
+specific sandbox integration should be reviewed separately on an actual host.
+
 ## CLI and Python/browser use
 
 The bundled `tagcast-cli` (`tagcast-cli.exe` on Windows) supports the same `--port`,
