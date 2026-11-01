@@ -1116,6 +1116,19 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
     if not path:
         return "fail", 0, "no stream path in the library, try refreshing the library"
     note = "failed"
+
+    def resume_error(total, headers):
+        previous = read_object(part_record)
+        known = previous.get("total")
+        if type(known) is not int or known <= 0:
+            return "cannot safely resume this older partial without its original size; partial preserved, choose another folder to restart"
+        if known != total:
+            return "remote file size changed; partial preserved, choose another folder to restart"
+        for key, header in (("etag", "ETag"), ("last_modified", "Last-Modified")):
+            if previous.get(key) and previous[key] != headers.get(header):
+                return "remote file identity changed or is unavailable; partial preserved, choose another folder to restart"
+        return ""
+
     for attempt in range(4):
         if stop.is_set():
             return "stopped", 0, ""
@@ -1132,6 +1145,9 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
             if code == 416 and offset:
                 total = re.fullmatch(r"bytes \*/(\d+)", response.headers.get("Content-Range") or "")
                 if total and int(total.group(1)) == offset:
+                    error = resume_error(offset, response.headers)
+                    if error:
+                        return "fail", 0, error
                     return finish(fallback)
                 return "fail", 0, "server range does not confirm the partial file is complete"
             if code in (401, 403):
@@ -1145,14 +1161,21 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
                 return "fail", 0, "iBroadcast returned a non-audio response"
             if code == 200:
                 offset = 0  # the server sent the whole file, start over
-            expected = number(response.headers.get("Content-Length"))
+            raw_expected = response.headers.get("Content-Length")
+            if raw_expected is not None and not re.fullmatch(r"\d+", str(raw_expected)):
+                return "fail", 0, "server returned an invalid Content-Length"
+            expected = number(raw_expected)
             if code == 206:
                 match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", response.headers.get("Content-Range") or "")
                 if not match:
                     return "fail", 0, "missing or invalid Content-Range on resumed download"
                 start, end, total = map(int, match.groups())
-                if start != offset or end < start or end >= total or (expected and expected != end - start + 1):
+                if start != offset or end < start or end >= total or (raw_expected is not None and expected != end - start + 1):
                     return "fail", 0, "server returned an unexpected byte range"
+                if offset:
+                    error = resume_error(total, response.headers)
+                    if error:
+                        return "fail", 0, error
                 expected = end - start + 1
             else:
                 total = expected
@@ -1161,8 +1184,15 @@ def _fetch_track(session, lib, out, rel, path, track_id, stop, on_progress, qual
                 if stop.is_set():
                     return "stopped", 0, ""
                 checksum = checksum_for(offset)
-                if not part.exists():
-                    write_private(part_record, json.dumps({"identity": identity}).encode())
+                # Persist the response's continuity information before any bytes arrive.
+                # A local SHA-256 alone cannot detect splicing two remote file versions.
+                partial = {"identity": identity, "total": total}
+                etag = response.headers.get("ETag")
+                if etag and not etag.startswith("W/"):
+                    partial["etag"] = etag
+                elif response.headers.get("Last-Modified"):
+                    partial["last_modified"] = response.headers["Last-Modified"]
+                write_private(part_record, json.dumps(partial).encode())
                 with open(part, "ab" if offset else "wb") as f:
                     while True:
                         if stop.is_set():
