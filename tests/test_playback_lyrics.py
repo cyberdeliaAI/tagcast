@@ -38,14 +38,38 @@ class TimedLyricsTests(unittest.TestCase):
                            "[00:01.00][00:05.00]<00:01.00>First <00:01.50>line\n"
                            "[00:03.00]\n[00:07.00]Last line", 10)
         self.assertTrue(result["timed"])
-        self.assertEqual([line["start"] for line in result["lines"]], [1.5, 3.5, 5.5, 7.5])
+        self.assertEqual([line["start"] for line in result["lines"]], [.5, 2.5, 4.5, 6.5])
         self.assertEqual(result["lines"][0]["text"], "First line")
         self.assertEqual(result["lines"][1]["text"], "")
-        self.assertEqual(result["lines"][0]["end"], 3.5)
+        self.assertEqual(result["lines"][0]["end"], 2.5)
         self.assertEqual(result["lines"][0]["words"], [
-            {"start": 1.5, "end": 2, "text": "First "},
-            {"start": 2, "end": 3.5, "text": "line"}])
-        self.assertEqual(result["lines"][2]["words"][0]["start"], 5.5)
+            {"start": .5, "end": 1, "text": "First "},
+            {"start": 1, "end": 2.5, "text": "line"}])
+        self.assertEqual(result["lines"][2]["words"][0]["start"], 4.5)
+        self.assertEqual(parse_lrc('[offset:-500]\n[00:01]Later', 10)['lines'][0]['start'], 1.5)
+        self.assertEqual(parse_lrc('[offset:2000]\n[00:01]<00:01>Early<00:03>', 10)['lines'][0],
+                         {'start': 0, 'end': 10, 'text': 'Early', 'words': [{'start': 0, 'end': 1, 'text': 'Early'}]})
+
+    def test_modern_unison_ttml_uses_containment_not_namespace_spelling(self):
+        for namespace in ('http://music.apple.com/lyric-ttml-internal',
+                          'https://composer.betterlyrics.org/ttml', 'urn:synthetic'):
+            value = ('<tt xmlns="http://www.w3.org/ns/ttml" xmlns:source="' + namespace + '">'
+                     '<body><div><p begin="0:00.641" end="0:02.956">'
+                     '<span begin="0:00.641" end="0:01.681">Synthetic</span> '
+                     '<span begin="0:01.681" end="0:02.956">words</span></p></div></body></tt>')
+            result = parse_ttml(value, 10)
+            self.assertEqual(result['lines'][0]['words'], [
+                {'text': 'Synthetic ', 'start': .641, 'end': 1.681},
+                {'text': 'words', 'start': 1.681, 'end': 2.956}])
+
+    def test_ttml_prefers_absolute_when_both_readings_fit_and_rejects_bad_lines(self):
+        value = '<tt><div><p begin="1s" end="10s"><span begin="2s" end="3s">Synthetic</span></p></div></tt>'
+        self.assertEqual(parse_ttml(value, 20)['lines'][0]['words'][0]['start'], 2)
+        for value in ('<tt><div begin="20s" end="21s"><p begin="2s" end="4s">Outside</p></div></tt>',
+                      '<tt><p begin="1s" end="30s">Past recording</p></tt>',
+                      '<tt><div begin="NaN"><p begin="1s">Unknown container</p></div></tt>'):
+            with self.assertRaises(SourceError):
+                parse_ttml(value, 25)
 
     def test_ttml_apple_absolute_song_times_and_plain_text(self):
         value = ('<tt xmlns="http://www.w3.org/ns/ttml" '
@@ -236,6 +260,7 @@ class LyricsIdentityTests(unittest.TestCase):
         self.assertTrue(self.match("Héllo!", "The Beyoncé", "Hello", "Beyonce feat. Other Artist"))
         self.assertFalse(self.match("Hello", "Ga", "Hello", "Lady Gaga"))
         self.assertFalse(self.match("Hello", "U2", "Hello", "U2 Tribute"))
+        self.assertFalse(self.match("Hello", "U2", "Hello", "U2 & " + 'x' * 1001))
 
     def test_recording_qualifiers_and_descriptive_parentheses_are_not_stripped(self):
         for qualifier in ("Live", "Acoustic", "Remix", "Demo", "Instrumental", "Live 2011 Remaster"):

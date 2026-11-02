@@ -130,20 +130,20 @@ def parse_lrc(value, duration, source="unison"):
                 raise SourceError(f"{label} returned invalid LRC timing.")
             if first_start is None:
                 first_start = start
-            line = {"start": max(0, start + offset), "end": None, "text": text}
+            line = {"start": max(0, start - offset), "end": None, "text": text}
             if markers and not content[:markers[0].start()].strip():
                 words = []
                 for i, marker in enumerate(markers):
                     word_start = lyric_time(marker[1])
                     word_text = content[marker.end():markers[i + 1].start() if i + 1 < len(markers) else len(content)]
                     if word_text:
-                        words.append({"start": word_start + offset + start - first_start
+                        words.append({"start": max(0, word_start - offset + start - first_start)
                                       if word_start is not None else None,
                                       "end": None, "text": word_text})
                 # A final empty marker supplies an explicit ending, not a word.
                 if words and markers[-1].end() == len(content):
                     last = lyric_time(markers[-1][1])
-                    words[-1]["end"] = last + offset + start - first_start if last is not None else None
+                    words[-1]["end"] = max(0, last - offset + start - first_start) if last is not None else None
                 if words:
                     words[0]["text"] = words[0]["text"].lstrip()
                     words[-1]["text"] = words[-1]["text"].rstrip()
@@ -169,25 +169,61 @@ def parse_ttml(value, duration):
         if depth > 40:
             raise SourceError("Unison TTML is nested too deeply.")
         pending.extend((child, depth + 1) for child in node)
-    # Apple lyric TTML uses absolute song times, including inside div/p elements.
-    apple = any("itunes.apple.com" in name for node in nodes for name in node.attrib)
-    lines = []
+    parents = {child: node for node in nodes for child in node}
 
-    def times(node, parent_start):
-        begin = lyric_time(node.get("begin"))
-        start = (begin if apple else parent_start + begin) if begin is not None else parent_start
-        end = lyric_time(node.get("end"))
-        if end is not None and not apple:
-            end += parent_start
-        length = lyric_time(node.get("dur"))
-        if end is None and length is not None:
-            end = start + length
-        return begin, start, end
+    def timing_reading(relative):
+        reading = {}
+        for node in nodes:
+            parent_start = reading[parents[node]][1] if node in parents else 0
+            begin = lyric_time(node.get("begin"))
+            start = (parent_start if relative else 0) + begin if begin is not None else parent_start
+            end = lyric_time(node.get("end"))
+            if end is not None and relative:
+                end += parent_start
+            length = lyric_time(node.get("dur"))
+            if end is None and length is not None:
+                end = start + length
+            reading[node] = (begin, start, end)
+        return reading
+
+    def fits(reading, include_spans):
+        for node in nodes:
+            kind = node.tag.rsplit("}", 1)[-1]
+            if kind != "p" and not (include_spans and kind == "span"):
+                continue
+            begin, start, end = reading[node]
+            if any(node.get(key) is not None and lyric_time(node.get(key)) is None
+                   for key in ("begin", "end", "dur")):
+                return False
+            if not 0 <= start <= MAX_TIME or end is not None and not start <= end <= MAX_TIME:
+                return False
+            if duration > 0 and (start > duration + 2 or end is not None and end > duration + 2):
+                return False
+            parent = parents.get(node)
+            while parent is not None:
+                if any(parent.get(key) is not None and lyric_time(parent.get(key)) is None
+                       for key in ("begin", "end", "dur")):
+                    return False
+                _, lower, upper = reading[parent]
+                if start < lower or upper is not None and (start > upper or end is not None and end > upper):
+                    return False
+                parent = parents.get(parent)
+        return True
+
+    # Validate both complete readings. Namespace names do not establish a clock.
+    readings = [timing_reading(False), timing_reading(True)]
+    selected = next((reading for reading in readings if fits(reading, True)), None)
+    if selected is None:
+        # Bad optional spans may still leave valid, readable line timing.
+        selected = next((reading for reading in readings if fits(reading, False)), None)
+    if selected is None:
+        raise SourceError("Unison TTML timing does not fit this recording.")
+    lines = []
 
     def segments(node, parent_start, depth=0):
         if depth > 40:
             raise SourceError("Unison TTML is nested too deeply.")
-        begin, start, end = times(node, parent_start)
+        begin, start, end = selected[node]
         if any(node.get(key) is not None and lyric_time(node.get(key)) is None
                for key in ("begin", "end", "dur")):
             return [{"start": None, "end": None, "text": "".join(node.itertext())}]
@@ -205,7 +241,7 @@ def parse_ttml(value, duration):
     def visit(node, parent_start=0, depth=0):
         if depth > 40:
             raise SourceError("Unison TTML is nested too deeply.")
-        begin, start, end = times(node, parent_start)
+        begin, start, end = selected[node]
         if node.tag.rsplit("}", 1)[-1] == "p":
             for child in node.iter():
                 if child.tag.rsplit("}", 1)[-1] == "br":
@@ -325,6 +361,8 @@ def fetch_unison(track, album, check_current=lambda: None, policy=None):
             session.trust_env = False
             session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
             data = reader.read(session, UNISON_URL, params)
+    except LibraryError:
+        raise
     except (requests.RequestException, ValueError):
         raise SourceError("Unison could not be read. Try again later.") from None
     if data is None:
@@ -403,6 +441,8 @@ def _lyrics_credits(value):
 def _lyrics_artists(left, right):
     """Whole credited names, or an entire consecutive credit run; no substrings."""
     left, right = _lyrics_credits(left), _lyrics_credits(right)
+    if len(left) > 100 or len(right) > 100:
+        return False
     if set(left) & set(right):
         return True
     for parts, other in ((left, right), (right, left)):
@@ -415,7 +455,7 @@ def _lyrics_artists(left, right):
 
 
 def _lyrics_identity(title, artist, track, album, returned_album):
-    if not isinstance(title, str) or not isinstance(artist, str):
+    if not isinstance(title, str) or not isinstance(artist, str) or len(title) > 1000 or len(artist) > 1000:
         return False
     if track["length"] > 0:
         key = _lyrics_letters(lyrics_title(title))
