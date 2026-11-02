@@ -1,8 +1,15 @@
 "use strict";
 
 // One explicitly connected browser owns the bridge. Other tabs cannot play its queue.
+// `error` is "" or a function that returns the message in the current interface language.
 const queueSync = {enabled: false, active: false, browser: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`,
   view: null, timer: null, publishing: false, applying: false, allowed: false, choicePending: false, request: 0, revision: -1, error: ""};
+// Display keys for the bridge's status, role and repeat codes; unknown codes are shown as sent.
+const QUEUE_SYNC_STATUS = {connected: "queueSync.status.connected", connecting: "queueSync.status.connecting", reconnecting: "queueSync.status.reconnecting", disconnected: "queueSync.status.disconnected"};
+const QUEUE_SYNC_ROLES = {player: "queueSync.role.player", controller: "queueSync.role.controller"};
+const QUEUE_SYNC_REPEAT = {none: "queueSync.repeat.none", queue: "queueSync.repeat.queue", track: "queueSync.repeat.track"};
+const queueSyncCode = (keys, code) => Object.hasOwn(keys, code) ? TagcastI18n.html(keys[code]) : escapeHtml(code);
+const queueSyncFailure = error => () => TagcastI18n.errorText(error);
 
 function applyQueueSettings(data) {
   lookup.queueSync = data.queue_sync === true; queueSync.enabled = lookup.queueSync;
@@ -44,7 +51,7 @@ async function publishQueueState() {
     const view = await api("/api/queue-sync", {...bridgeBody("state"), revision: queueSync.view.revision, state: encodedLocalQueue()});
     if (session !== state.connection.playback_session || !queueSync.active) return;
     queueSync.view = view; queueSync.revision = view.revision; queueSync.error = ""; return true;
-  } catch (error) { queueSync.error = error.message; }
+  } catch (error) { queueSync.error = queueSyncFailure(error); }
   finally { queueSync.publishing = false; }
 }
 
@@ -78,14 +85,14 @@ async function restoreQueue(view, resume = false) {
       queueSync.allowed = true; playCurrent(false); queueSync.allowed = wasAllowed || resume;
       audio.pause();
       audio.addEventListener("loadedmetadata", () => {
-        if (request === queueSync.request && session === state.connection.playback_session && queueSync.active && player.queue[player.index] === rows[currentIndex]) { audio.currentTime = Math.min(desired, Number.isFinite(audio.duration) ? audio.duration : desired); if (resume && !q.pause) audio.play().catch(() => toast("Press Play to allow audio in this browser.")); }
+        if (request === queueSync.request && session === state.connection.playback_session && queueSync.active && player.queue[player.index] === rows[currentIndex]) { audio.currentTime = Math.min(desired, Number.isFinite(audio.duration) ? audio.duration : desired); if (resume && !q.pause) audio.play().catch(() => toast(TagcastI18n.text("queueSync.toast.allowAudio"))); }
       }, {once: true});
     } else if (rows[currentIndex]) {
       if (Math.abs((audio.currentTime || 0) - desired) > 3) audio.currentTime = desired;
-      if (q.pause || !queueSync.allowed) audio.pause(); else if (audio.paused) audio.play().catch(() => toast("Press Play to allow audio in this browser."));
+      if (q.pause || !queueSync.allowed) audio.pause(); else if (audio.paused) audio.play().catch(() => toast(TagcastI18n.text("queueSync.toast.allowAudio")));
     } else audio.pause();
     markPlaying(); renderStreamQuality();
-  } catch (error) { queueSync.error = `Could not restore the queue: ${error.message}`; }
+  } catch (error) { queueSync.error = () => TagcastI18n.text("errors.queueSync.restoreFailed", {error: TagcastI18n.errorText(error)}); }
   finally { if (request === queueSync.request) queueSync.applying = false; }
 }
 
@@ -100,7 +107,7 @@ async function pollQueue() {
     if (view.authenticated === false) {
       queueSync.active = false; queueSync.allowed = false;
       state.connection.connected = false; state.connection.playback_session = "";
-      queueSync.error = "iBroadcast ended this session. Reconnect your account.";
+      queueSync.error = () => TagcastI18n.text("errors.queueSync.sessionEnded");
       useLocal(demoLibrary(), "demo"); updateChrome(); render(); renderDevices(); return;
     }
     if (queueSync.active && view.session !== session) { queueSync.active = false; queueSync.allowed = false; }
@@ -115,18 +122,22 @@ async function pollQueue() {
     document.body.classList.toggle("has-player", !controlling && Boolean(player.queue.length));
     if (typeof syncSystemPlayback === "function") syncSystemPlayback();
     renderDevices(false);
-  } catch (error) { queueSync.error = error.message; renderDevices(false); }
+  } catch (error) { queueSync.error = queueSyncFailure(error); renderDevices(false); }
   if (queueSync.active || $("#devices-dialog").open) queueSync.timer = setTimeout(pollQueue, 1000);
 }
 
 function renderDevices(force = true) {
   if (!$("#devices-dialog").open) return;
-  const signature = JSON.stringify([queueSync.view, queueSync.error]);
+  const problem = queueSync.error ? queueSync.error() : "";
+  const signature = JSON.stringify([queueSync.view, problem, TagcastI18n.language]);
   if (!force && (signature === queueSync.devicesSignature || document.activeElement?.closest?.("#remote-controls"))) return;
   queueSync.devicesSignature = signature;
   const v = queueSync.view, q = v?.state || {}, owner = !v?.owner || v.owner === queueSync.browser;
   const status = v?.status || "disconnected", connected = status === "connected";
-  $("#devices-content").innerHTML = `<p class="muted">Queue synchronisation is optional. Only one browser tab owns this connection. A remote controller never plays audio or records plays.</p><p role="status">${escapeHtml(status)}${q.role ? ` · ${escapeHtml(q.role)} · ${v.own ? "This app’s queue" : "Remote device"}` : ""}</p>${queueSync.error || v?.error ? `<p class="error-box">${escapeHtml(queueSync.error || v.error)}</p>` : ""}${!owner ? '<p>Another tab owns this connection. Disconnect it in that tab first.</p><button class="button small" data-device-force>Disconnect the other tab’s queue connection</button>' : `<div class="device-list"><button class="button" data-device-connect="">Connect this app’s queue</button>${(v?.devices || []).filter(d => d.joinable).map(d => `<button class="button" data-device-connect="${escapeHtml(d.id)}">Control ${escapeHtml(d.name || d.id)}</button>`).join("")}</div>${connected ? `<h3>${escapeHtml(q.name || "No current track")}</h3><p>${q.tracks?.length || 0} queued tracks · ${q.play_next?.length || 0} up next${q.shuffle ? ' · Shuffle is enabled on this device' : ''}</p><div class="album-detail-actions">${v.own && q.role === "player" ? '<button class="button" data-device-local>Use my current local queue</button><button class="button" data-device-resume>Restore and play here</button>' : '<button class="button" data-device-command="previous">⏮ Previous</button><button class="button primary" data-device-command="pause">Play / Pause</button><button class="button" data-device-command="next">Next ⏭</button>'}</div>${!v.own || q.role === "controller" ? `<form id="remote-controls"><label>Position (seconds) <input name="position" type="number" min="0" max="86400" value="${Math.floor(q.start_position || 0)}"></label><label>Volume <input name="volume" type="range" min="0" max="1" step="0.05" value="${q.volume ?? 0.8}"></label><label>Repeat <select name="repeat">${["none", "queue", "track"].map(r => `<option value="${r}" ${q.data?.repeat_mode === r ? "selected" : ""}>${r}</option>`).join("")}</select></label><button class="button small">Apply controls</button></form>` : ""}` : ""}<button class="button small" data-device-disconnect ${status === "disconnected" ? "disabled" : ""}>Disconnect queue</button>`}${v?.library_changed ? '<p class="muted">iBroadcast reports a library change. Use Reload library to refresh its contents.</p>' : ''}`;
+  // Device names, the track name and server errors are shown as reported.
+  const counts = [TagcastI18n.html("queueSync.devices.queued", {count: q.tracks?.length || 0}), TagcastI18n.html("queueSync.devices.upNext", {count: q.play_next?.length || 0}),
+    ...q.shuffle ? [TagcastI18n.html("queueSync.devices.shuffle")] : []].join(" · ");
+  $("#devices-content").innerHTML = `<p class="muted">${TagcastI18n.html("queueSync.devices.intro")}</p><p role="status">${queueSyncCode(QUEUE_SYNC_STATUS, status)}${q.role ? ` · ${queueSyncCode(QUEUE_SYNC_ROLES, q.role)} · ${TagcastI18n.html(v.own ? "queueSync.devices.ownQueue" : "queueSync.devices.remote")}` : ""}</p>${problem || v?.error ? `<p class="error-box">${escapeHtml(problem || v.error)}</p>` : ""}${!owner ? `<p>${TagcastI18n.html("queueSync.devices.otherTab")}</p><button class="button small" data-device-force>${TagcastI18n.html("queueSync.devices.forceDisconnect")}</button>` : `<div class="device-list"><button class="button" data-device-connect="">${TagcastI18n.html("queueSync.devices.connectOwn")}</button>${(v?.devices || []).filter(d => d.joinable).map(d => `<button class="button" data-device-connect="${escapeHtml(d.id)}">${TagcastI18n.html("queueSync.devices.control", {device: d.name || d.id})}</button>`).join("")}</div>${connected ? `<h3>${q.name ? escapeHtml(q.name) : TagcastI18n.html("queueSync.devices.noTrack")}</h3><p>${counts}</p><div class="album-detail-actions">${v.own && q.role === "player" ? `<button class="button" data-device-local>${TagcastI18n.html("queueSync.devices.useLocal")}</button><button class="button" data-device-resume>${TagcastI18n.html("queueSync.devices.restore")}</button>` : `<button class="button" data-device-command="previous">${TagcastI18n.html("queueSync.devices.previous")}</button><button class="button primary" data-device-command="pause">${TagcastI18n.html("queueSync.devices.playPause")}</button><button class="button" data-device-command="next">${TagcastI18n.html("queueSync.devices.next")}</button>`}</div>${!v.own || q.role === "controller" ? `<form id="remote-controls"><label>${TagcastI18n.html("queueSync.controls.position")} <input name="position" type="number" min="0" max="86400" value="${Math.floor(q.start_position || 0)}"></label><label>${TagcastI18n.html("queueSync.controls.volume")} <input name="volume" type="range" min="0" max="1" step="0.05" value="${q.volume ?? 0.8}"></label><label>${TagcastI18n.html("queueSync.controls.repeat")} <select name="repeat">${["none", "queue", "track"].map(r => `<option value="${r}" ${q.data?.repeat_mode === r ? "selected" : ""}>${queueSyncCode(QUEUE_SYNC_REPEAT, r)}</option>`).join("")}</select></label><button class="button small">${TagcastI18n.html("queueSync.controls.apply")}</button></form>` : ""}` : ""}<button class="button small" data-device-disconnect ${status === "disconnected" ? "disabled" : ""}>${TagcastI18n.html("queueSync.devices.disconnect")}</button>`}${v?.library_changed ? `<p class="muted">${TagcastI18n.html("queueSync.devices.libraryChanged")}</p>` : ""}`;
 }
 
 async function connectQueue(target = "") {
@@ -135,7 +146,7 @@ async function connectQueue(target = "") {
     queueSync.view = await api("/api/queue-sync", {...bridgeBody("connect"), target});
     queueSync.active = true; queueSync.allowed = false; queueSync.choicePending = !target; queueSync.request += 1; queueSync.revision = -1; queueSync.fingerprint = null;
     queueSync.error = ""; audio.pause(); playReporting.watch = null; pollQueue();
-  } catch (error) { queueSync.error = error.message; renderDevices(); }
+  } catch (error) { queueSync.error = queueSyncFailure(error); renderDevices(); }
 }
 
 async function remoteCommand(command, form = null) {
@@ -158,30 +169,42 @@ async function remoteCommand(command, form = null) {
   if (command === "previous") { d.play_from = "tracks"; d.play_index = Math.max(0, d.play_index - 1); q.current_song = q.tracks[d.play_index] || 0; q.start_position = 0; }
   if (form) { q.start_position = Number(form.elements.position.value); q.volume = Number(form.elements.volume.value); d.repeat_mode = form.elements.repeat.value; }
   try { queueSync.view = await api("/api/queue-sync", {...bridgeBody("state"), revision: v.revision, state: q}); queueSync.revision = queueSync.view.revision; queueSync.error = ""; }
-  catch (error) { queueSync.error = error.message; }
+  catch (error) { queueSync.error = queueSyncFailure(error); }
   renderDevices();
 }
 
 $("#devices-button").addEventListener("click", () => { $("#devices-dialog").showModal(); renderDevices(); pollQueue(); });
+// A language change redraws an open Devices dialog from the last view, without a request.
+// Remote control values being edited stay; focus returns to the same button.
+TagcastI18n.subscribe(() => {
+  const content = $("#devices-content"), active = document.activeElement;
+  if (!$("#devices-dialog").open || active?.closest?.("#remote-controls")) return;
+  const inside = active && content.contains?.(active) && typeof active.getAttributeNames === "function";
+  const data = inside ? active.getAttributeNames().filter(name => name.startsWith("data-device-")) : [];
+  renderDevices(false);
+  if (!data.length || (document.activeElement && document.activeElement !== document.body)) return;
+  const match = [...content.querySelectorAll("button")].find(node => data.every(name => node.getAttribute(name) === active.getAttribute(name)));
+  match?.focus({preventScroll: true});
+});
 for (const event of ["play", "pause", "seeked", "volumechange", "ended"]) audio.addEventListener(event, scheduleQueuePublish);
 document.addEventListener("click", async event => {
   const target = event.target, device = target.closest("[data-device-connect]");
   if (device) return connectQueue(device.dataset.deviceConnect);
   if (target.closest("[data-queue-reconnect]")) {
-    if (!lookup.queueSync) { toast("Save Enable queue synchronisation first, then reconnect."); return; }
+    if (!lookup.queueSync) { toast(TagcastI18n.text("queueSync.toast.enableFirst")); return; }
     if (state.connection.using_default_client !== false) {
       connectView("ready"); $("#connect").showModal(); return;
     }
     try { const result = await api("/api/auth/browser", {}); window.open(result.url, "_blank", "noopener"); }
-    catch (error) { toast(error.message); }
+    catch (error) { toast(TagcastI18n.errorText(error)); }
   }
   if (target.closest("[data-device-disconnect], [data-device-force]")) {
-    if (target.closest("[data-device-force]") && !confirm("Disconnect the other tab’s queue bridge? This does not stop a remote device’s audio.")) return;
+    if (target.closest("[data-device-force]") && !confirm(TagcastI18n.text("queueSync.confirm.force"))) return;
     try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.choicePending = false; queueSync.request += 1; queueSync.view = null; clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
-    catch (error) { toast(error.message); }
+    catch (error) { toast(TagcastI18n.errorText(error)); }
   }
   if (target.closest("[data-device-local]")) { queueSync.allowed = true; if (await publishQueueState()) queueSync.choicePending = false; else queueSync.allowed = false; renderDevices(); }
-  if (target.closest("[data-device-resume]")) { queueSync.choicePending = false; queueSync.allowed = true; await restoreQueue(queueSync.view, true); if (player.queue.length) await audio.play().catch(() => toast("Press Play in the player.")); $("#devices-dialog").close(); scheduleQueuePublish(); }
+  if (target.closest("[data-device-resume]")) { queueSync.choicePending = false; queueSync.allowed = true; await restoreQueue(queueSync.view, true); if (player.queue.length) await audio.play().catch(() => toast(TagcastI18n.text("queueSync.toast.pressPlay"))); $("#devices-dialog").close(); scheduleQueuePublish(); }
   const command = target.closest("[data-device-command]");
   if (command) remoteCommand(command.dataset.deviceCommand);
 });

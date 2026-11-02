@@ -6,7 +6,9 @@
 // reroutes audio, and the analyser is never connected to an audio output.
 
 const VISUALIZER_MODES = ["off", "title", "cover", "edge"];
-const VISUALIZER_LABELS = {off: "Off", title: "Next to the title", cover: "Over the cover", edge: "Along the top edge"};
+// Each style's label key, with its English text for pages without the interface text runtime.
+const VISUALIZER_LABELS = {off: ["visualizer.mode.off", "Off"], title: ["visualizer.mode.title", "Next to the title"],
+  cover: ["visualizer.mode.cover", "Over the cover"], edge: ["visualizer.mode.edge", "Along the top edge"]};
 const VISUALIZER_BANDS = 16;
 const visualizerNarrowQuery = typeof matchMedia === "function" ? matchMedia("(max-width: 760px)") : null;
 const visualizer = {mode: storedVisualizerMode(), context: null, analyser: null, source: null, track: null,
@@ -45,15 +47,20 @@ function setVisualizerMode(mode) {
   applyVisualizer();
 }
 
+// Escaped interface text. This file also runs on its own (the spectrum tests) without the
+// interface text runtime; the English given here, identical to en.json, is shown then.
+function visualizerHtml(key, english) { return typeof TagcastI18n === "undefined" ? english : TagcastI18n.html(key); }
+
+// Rendered inside Settings, which re-renders it after a language change.
 function visualizerSettings() {
   const supported = visualizerSupported();
   const options = VISUALIZER_MODES.map(mode =>
-    `<option value="${mode}" ${visualizer.mode === mode ? "selected" : ""}>${VISUALIZER_LABELS[mode]}</option>`).join("");
+    `<option value="${mode}" ${visualizer.mode === mode ? "selected" : ""}>${visualizerHtml(...VISUALIZER_LABELS[mode])}</option>`).join("");
   const note = supported
-    ? "Bars follow the music that is playing and also replace the speaker in the playing row of album and playlist tracklists. Along the top edge uses Next to the title in narrow windows. Playback, volume and audio output stay unchanged."
-    : "This browser cannot share the playing audio with the page, so the spectrum is unavailable. Playback is unaffected.";
-  return `<section class="player-visualizer-settings" data-settings-category="playback"><h3>Player spectrum <span class="settings-mode">Immediate · this browser</span></h3>
-    <label>Spectrum in the compact player <select id="player-visualizer-mode" ${supported ? "" : "disabled"}>${options}</select></label>
+    ? visualizerHtml("visualizer.settings.note", "Bars follow the music that is playing and also replace the speaker in the playing row of album and playlist tracklists. Along the top edge uses Next to the title in narrow windows. Playback, volume and audio output stay unchanged.")
+    : visualizerHtml("visualizer.settings.unsupported", "This browser cannot share the playing audio with the page, so the spectrum is unavailable. Playback is unaffected.");
+  return `<section class="player-visualizer-settings" data-settings-category="playback"><h3>${visualizerHtml("visualizer.settings.heading", "Player spectrum")} <span class="settings-mode">${visualizerHtml("settings.mode.immediate", "Immediate · this browser")}</span></h3>
+    <label>${visualizerHtml("visualizer.settings.label", "Spectrum in the compact player")} <select id="player-visualizer-mode" ${supported ? "" : "disabled"}>${options}</select></label>
     <p class="muted">${note}</p></section>`;
 }
 

@@ -12,6 +12,10 @@ globalThis.TagcastThemes = (() => {
   const hex = value => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
   const validId = value => typeof value === "string" && /^custom-[a-z0-9-]{8,64}$/.test(value);
   const empty = () => ({version: 1, active: null, themes: []});
+  // Errors keep their English message for logs and tests. In the page they also carry a code
+  // that the theme editor shows in the interface language. i18n.js loads after this file, so
+  // TagcastI18n is only used when one of these functions runs later (never while loading).
+  const failure = (english, coded) => typeof TagcastI18n === "undefined" ? Error(english) : coded();
   function cleanTheme(value) {
     if (!value || !validId(value.id) || typeof value.name !== "string" || !value.name.trim()
         || value.name.trim().length > 60 || !builtins.includes(value.base)) return null;
@@ -27,7 +31,7 @@ globalThis.TagcastThemes = (() => {
   const fileLimit = 16384;
   function exportTheme(value) {
     const theme = cleanTheme(value);
-    if (!theme) throw Error("Enter a name and valid six-digit hex colours before exporting.");
+    if (!theme) throw failure("Enter a name and valid six-digit hex colours before exporting.", () => TagcastI18n.failure("themes.export_invalid"));
     const {name, base, light, dark} = theme;
     return JSON.stringify({format: "tagcast-theme", version: 1, theme: {name, base, light, dark}}, null, 2) + "\n";
   }
@@ -36,15 +40,15 @@ globalThis.TagcastThemes = (() => {
     try {
       if (typeof raw !== "string" || raw.length > fileLimit) throw Error();
       value = JSON.parse(raw.replace(/^\uFEFF/, ""));
-    } catch { throw Error("Choose a valid Tagcast theme JSON file, up to 16 KB."); }
+    } catch { throw failure("Choose a valid Tagcast theme JSON file, up to 16 KB.", () => TagcastI18n.failure("themes.file_invalid")); }
     if (value?.format !== "tagcast-theme" || value.version !== 1
         || Object.keys(value).some(key => !["format", "version", "theme"].includes(key))
         || !value.theme || typeof value.theme !== "object" || Array.isArray(value.theme)
         || Object.keys(value.theme).some(key => !["name", "base", "light", "dark"].includes(key))) {
-      throw Error("This file is not a supported Tagcast theme (version 1).");
+      throw failure("This file is not a supported Tagcast theme (version 1).", () => TagcastI18n.failure("themes.file_unsupported"));
     }
     const theme = cleanTheme({...value.theme, id});
-    if (!theme) throw Error("The theme needs a name, a built-in base palette and valid six-digit hex colours.");
+    if (!theme) throw failure("The theme needs a name, a built-in base palette and valid six-digit hex colours.", () => TagcastI18n.failure("themes.theme_invalid"));
     return theme; // A new local identity; importing never overwrites or activates a saved theme.
   }
   function decode(raw) {
@@ -85,9 +89,9 @@ globalThis.TagcastThemes = (() => {
   }
   function save(value, activate = false) {
     const theme = cleanTheme(value);
-    if (!theme) throw Error("Enter a name and valid six-digit hex colours.");
+    if (!theme) throw failure("Enter a name and valid six-digit hex colours.", () => TagcastI18n.failure("themes.save_invalid"));
     const next = snapshot(), index = next.themes.findIndex(item => item.id === theme.id);
-    if (index < 0 && next.themes.length >= limit) throw Error(`Keep at most ${limit} custom themes. Delete an unused theme first.`);
+    if (index < 0 && next.themes.length >= limit) throw failure(`Keep at most ${limit} custom themes. Delete an unused theme first.`, () => TagcastI18n.failure("themes.limit", {limit}));
     if (index < 0) next.themes.push(theme); else next.themes[index] = theme;
     if (activate) next.active = theme.id;
     return commit(next);

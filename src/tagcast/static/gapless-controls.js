@@ -24,17 +24,18 @@ function gaplessRenderTransport() {
   const position = Math.max(0, Math.min(duration, preview ? draft.position : ready ? gaplessPosition() : 0));
   const waiting = g.ready === false || Boolean(g.seekIntent);
   transport.setAttribute("aria-busy", String(waiting));
-  $("#gapless-time").textContent = waiting ? "Preparing…" : `${gaplessClock(position)} / ${gaplessClock(duration)}`;
+  $("#gapless-time").textContent = waiting ? TagcastI18n.text("gaplessSettings.transport.preparing") : `${gaplessClock(position)} / ${gaplessClock(duration)}`;
   $("#gapless-time").title = waiting ? gaplessTrial.message : "";
   const slider = $("#gapless-position"); slider.max = String(duration); slider.value = String(position);
   slider.disabled = !ready || !Number.isFinite(duration) || duration <= 0;
-  slider.setAttribute("aria-label", `Seek in ${player.queue[player.index]?.title || "current track"}`);
-  slider.setAttribute("aria-valuetext", waiting ? `Preparing audio for ${gaplessClock(position)} of ${gaplessClock(duration)}` : `${gaplessClock(position)} of ${gaplessClock(duration)}`);
+  const title = player.queue[player.index]?.title, times = {position: gaplessClock(position), duration: gaplessClock(duration)};
+  slider.setAttribute("aria-label", title ? TagcastI18n.text("gaplessSettings.transport.seekIn", {title}) : TagcastI18n.text("gaplessSettings.transport.seekCurrent"));
+  slider.setAttribute("aria-valuetext", TagcastI18n.text(waiting ? "gaplessSettings.transport.preparingAt" : "gaplessSettings.transport.position", times));
   const button = $("#gapless-play"), paused = audio.paused;
   button.disabled = !ready; button.textContent = paused ? "▶" : "❚❚";
-  button.setAttribute("aria-label", paused ? "Play current track" : "Pause current track");
-  button.title = paused ? "Play" : "Pause";
-  const muted = audio.muted || audio.volume === 0, label = muted ? "Unmute" : "Mute";
+  button.setAttribute("aria-label", TagcastI18n.text(paused ? "gaplessSettings.transport.playTrack" : "gaplessSettings.transport.pauseTrack"));
+  button.title = TagcastI18n.text(paused ? "gaplessSettings.transport.play" : "gaplessSettings.transport.pause");
+  const muted = audio.muted || audio.volume === 0, label = TagcastI18n.text(muted ? "gaplessSettings.transport.unmute" : "gaplessSettings.transport.mute");
   $("#gapless-mute").setAttribute("aria-pressed", String(muted));
   $("#gapless-mute").setAttribute("aria-label", label); $("#gapless-mute").title = label;
   $("#gapless-speed").value = String(audio.playbackRate || 1);
@@ -81,4 +82,6 @@ $("#gapless-speed").addEventListener("change", event => {
   if (gaplessTrial.active && $("#audio-output-dialog").open && [.25, .5, .75, 1, 1.25, 1.5, 1.75, 2].includes(speed)) audio.playbackRate = speed;
 });
 for (const name of ["timeupdate", "play", "pause", "playing", "seeking", "seeked", "durationchange", "ratechange", "volumechange", "emptied", "ended"]) audio.addEventListener(name, gaplessRenderTransport);
+// Labels follow a language change; an inactive transport is hidden and has nothing to redraw.
+TagcastI18n.subscribe(() => { if (gaplessTrial.active) gaplessRenderTransport(); });
 gaplessRenderTransport();
