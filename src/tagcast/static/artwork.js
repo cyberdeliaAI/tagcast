@@ -38,19 +38,23 @@ function artistPageTarget(name, id = null) {
 
 function openArtwork(target, preselect) {
   if (!target) return;
-  if (!live()) { toast("Connect your iBroadcast account to change images."); return; }
+  if (!live()) { toast(TagcastI18n.text("artwork.connect")); return; }
   art.target = target; art.options = []; art.choice = null; art.saved = []; art.artworkId = 0;
   art.submitted = false;
   const isAlbum = target.target === "album", isPlaylist = target.target === "playlist";
-  $("#artwork-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${isPlaylist ? "PLAYLIST COVER" : isAlbum ? "ALBUM COVER" : "ARTIST IMAGE"}</div><h2>${escapeHtml(target.label)}</h2></div><div class="dialog-heading-actions">${isPlaylist ? '<button type="button" class="button small help-trigger" data-help-context="playlist-cover" aria-label="Help with playlist cover">?</button>' : ""}<button type="button" class="close" data-close="artwork" aria-label="Close">×</button></div></div>
-    <div class="art-compare"><figure><figcaption>Now</figcaption>${target.current ? `<img src="${escapeHtml(target.current)}" alt="Current image" referrerpolicy="no-referrer" data-image-error="current">` : '<div class="art-empty">No image</div>'}</figure><span class="art-arrow" aria-hidden="true">→</span><figure><figcaption>New</figcaption><div id="art-new"><div class="art-empty">Choose an image below</div></div><small id="art-size"></small></figure></div>
-    ${isPlaylist ? "" : `<h3 class="art-heading">Suggestions</h3>
-    <div id="art-suggestions" class="art-grid"><p class="muted"><span class="spinner"></span>Searching…</p></div>
-    <h3 class="art-heading">Already in iBroadcast</h3><div id="art-related" class="art-grid"><p class="muted"><span class="spinner"></span>Loading…</p></div>
-    `}<h3 class="art-heading">Your own image</h3>
-    <div class="art-own"><label class="art-drop" id="art-drop"><input type="file" id="art-file" accept="image/jpeg,image/png,image/webp,image/gif"> Drop an image here, paste it, or <u>choose a file</u></label>
-    <form id="art-url-form" class="connect-row"><input id="art-url" type="url" placeholder="https://… address of an image" aria-label="Image address"><button class="button">Use</button></form></div>
-    <div class="dialog-footer"><span class="muted" id="art-status">${isPlaylist ? "Changes only this playlist cover. Track and album artwork stays unchanged." : !isAlbum ? "Replaces this artist's image everywhere in iBroadcast." : target.discs ? `Replaces the cover of all ${target.tracks} tracks, on all ${target.discs.length} discs.` : `Replaces the cover of all ${target.tracks} tracks of this album.`}</span><button class="button" data-close="artwork">Cancel</button><button class="button primary" id="art-save" disabled>Save to iBroadcast</button></div>`;
+  const eyebrow = TagcastI18n.html(isPlaylist ? "artwork.eyebrow.playlist" : isAlbum ? "artwork.eyebrow.album" : "artwork.eyebrow.artist");
+  const scope = isPlaylist ? TagcastI18n.html("artwork.scope.playlist") : !isAlbum ? TagcastI18n.html("artwork.scope.artist")
+    : target.discs ? TagcastI18n.html("artwork.scope.discs", {tracks: target.tracks, discs: target.discs.length}) : TagcastI18n.html("artwork.scope.album", {count: target.tracks});
+  const choose = TagcastI18n.trusted(`<u>${TagcastI18n.html("artwork.own.chooseFile")}</u>`);
+  $("#artwork-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${escapeHtml(target.label)}</h2></div><div class="dialog-heading-actions">${isPlaylist ? `<button type="button" class="button small help-trigger" data-help-context="playlist-cover" aria-label="${TagcastI18n.html("artwork.help.playlist")}">?</button>` : ""}<button type="button" class="close" data-close="artwork" aria-label="${TagcastI18n.html("common.close")}">×</button></div></div>
+    <div class="art-compare"><figure><figcaption>${TagcastI18n.html("artwork.compare.now")}</figcaption>${target.current ? `<img src="${escapeHtml(target.current)}" alt="${TagcastI18n.html("artwork.compare.currentAlt")}" referrerpolicy="no-referrer" data-image-error="current">` : `<div class="art-empty">${TagcastI18n.html("artwork.noImage")}</div>`}</figure><span class="art-arrow" aria-hidden="true">→</span><figure><figcaption>${TagcastI18n.html("artwork.compare.new")}</figcaption><div id="art-new"><div class="art-empty">${TagcastI18n.html("artwork.compare.choose")}</div></div><small id="art-size"></small></figure></div>
+    ${isPlaylist ? "" : `<h3 class="art-heading">${TagcastI18n.html("artwork.suggestions.heading")}</h3>
+    <div id="art-suggestions" class="art-grid"><p class="muted"><span class="spinner"></span>${TagcastI18n.html("artwork.suggestions.searching")}</p></div>
+    <h3 class="art-heading">${TagcastI18n.html("artwork.related.heading")}</h3><div id="art-related" class="art-grid"><p class="muted"><span class="spinner"></span>${TagcastI18n.html("common.loading")}</p></div>
+    `}<h3 class="art-heading">${TagcastI18n.html("artwork.own.heading")}</h3>
+    <div class="art-own"><label class="art-drop" id="art-drop"><input type="file" id="art-file" accept="image/jpeg,image/png,image/webp,image/gif"> ${TagcastI18n.html("artwork.own.drop", {choose})}</label>
+    <form id="art-url-form" class="connect-row"><input id="art-url" type="url" placeholder="${TagcastI18n.html("artwork.own.urlPlaceholder")}" aria-label="${TagcastI18n.html("artwork.own.urlLabel")}"><button class="button">${TagcastI18n.html("artwork.own.use")}</button></form></div>
+    <div class="dialog-footer"><span class="muted" id="art-status">${scope}</span><button class="button" data-close="artwork">${TagcastI18n.html("common.cancel")}</button><button class="button primary" id="art-save" disabled>${TagcastI18n.html("artwork.save")}</button></div>`;
   $("#artwork").showModal();
   if (preselect) choose(addOption(preselect));
   if (!isPlaylist) { loadSuggestions(target); loadRelated(target); }
@@ -63,16 +67,20 @@ function addOption(option) {
   return art.options.length - 1;
 }
 
+// An option's source is stored with its History entry in English ("Your file"); its
+// sourceKey, when present, shows that source in the interface language.
+const artSource = o => o.sourceKey ? TagcastI18n.text(o.sourceKey) : o.source;
+
 function tile(index) {
   const o = art.options[index];
-  return `<button class="art-tile ${art.choice === index ? "chosen" : ""}" data-art-choice="${index}" title="${escapeHtml(o.title || o.source)}"><img src="${escapeHtml(o.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="tile"><span>${escapeHtml(o.source)}</span></button>`;
+  return `<button class="art-tile ${art.choice === index ? "chosen" : ""}" data-art-choice="${index}" title="${escapeHtml(o.title || artSource(o))}"><img src="${escapeHtml(o.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="tile"><span>${escapeHtml(artSource(o))}</span></button>`;
 }
 
 function loadSuggestions(target) {
   const box = $("#art-suggestions");
-  if (target.target === "playlist") { box.innerHTML = '<p class="muted">Choose your own file or image address below.</p>'; return; }
+  if (target.target === "playlist") { box.innerHTML = `<p class="muted">${TagcastI18n.html("artwork.suggestions.playlist")}</p>`; return; }
   const indexes = [];
-  const show = () => { box.innerHTML = indexes.length ? indexes.map(tile).join("") : '<p class="muted">No suggestions yet.</p>'; };
+  const show = () => { box.innerHTML = indexes.length ? indexes.map(tile).join("") : `<p class="muted">${TagcastI18n.html("artwork.suggestions.none")}</p>`; };
   if (target.target === "album" && coverChoices().length) {
     for (const option of coverChoices()) indexes.push(addOption(option));
     show(); return;
@@ -87,42 +95,42 @@ function loadSuggestions(target) {
     waiting -= 1;
     if (indexes.length || !waiting) show();
   }, "artwork").length;
-  if (!waiting) box.innerHTML = '<p class="muted">No online sources are available. Enable sources or add keys in Settings.</p>';
+  if (!waiting) box.innerHTML = `<p class="muted">${TagcastI18n.html("artwork.suggestions.noSources")}</p>`;
 }
 
 async function loadRelated(target) {
   const box = $("#art-related");
-  if (target.target === "playlist") { box.innerHTML = '<p class="muted">The current cover is shown above. Album and artist image searches are separate.</p>'; return; }
+  if (target.target === "playlist") { box.innerHTML = `<p class="muted">${TagcastI18n.html("artwork.related.playlist")}</p>`; return; }
   try {
     const data = await api(`/api/artwork/related?${new URLSearchParams(target.target === "album" ? {album_id: target.id} : {artist_id: target.id})}`);
     const indexes = data.artwork.map(a => addOption({artwork_id: a.artwork_id, url: a.image, thumb: a.thumb, source: "iBroadcast"}));
-    box.innerHTML = indexes.length ? indexes.map(tile).join("") : '<p class="muted">iBroadcast has no other images for this yet.</p>';
-  } catch (error) { box.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`; }
+    box.innerHTML = indexes.length ? indexes.map(tile).join("") : `<p class="muted">${TagcastI18n.html("artwork.related.none")}</p>`;
+  } catch (error) { box.innerHTML = `<p class="muted">${escapeHtml(TagcastI18n.errorText(error))}</p>`; }
 }
 
 function choose(index) {
   art.choice = index;
   const o = art.options[index];
   for (const el of document.querySelectorAll(".art-tile")) el.classList.toggle("chosen", Number(el.dataset.artChoice) === index);
-  $("#art-new").innerHTML = `<img src="${escapeHtml(o.data || o.url)}" alt="New image" referrerpolicy="no-referrer">`;
-  $("#art-size").textContent = "Loading…";
+  $("#art-new").innerHTML = `<img src="${escapeHtml(o.data || o.url)}" alt="${TagcastI18n.html("artwork.compare.newAlt")}" referrerpolicy="no-referrer">`;
+  $("#art-size").textContent = TagcastI18n.text("common.loading");
   const img = $("#art-new img");
   img.onload = () => {
     const w = img.naturalWidth, h = img.naturalHeight, notes = [];
-    if (Math.min(w, h) < 500) notes.push("small, may look blurry");
-    if (Math.abs(w - h) > Math.max(w, h) * 0.03) notes.push("not square, iBroadcast crops it");
-    $("#art-size").textContent = `${o.source} · ${w} × ${h}${notes.length ? ` · ${notes.join(", ")}` : ""}`;
+    if (Math.min(w, h) < 500) notes.push(TagcastI18n.text("artwork.size.small"));
+    if (Math.abs(w - h) > Math.max(w, h) * 0.03) notes.push(TagcastI18n.text("artwork.size.notSquare"));
+    $("#art-size").textContent = [artSource(o), `${w} × ${h}`, notes.join(", ")].filter(Boolean).join(" · ");
   };
-  img.onerror = () => { $("#art-size").textContent = "This image could not be loaded. Choose another one."; $("#art-save").disabled = true; };
+  img.onerror = () => { $("#art-size").textContent = TagcastI18n.text("artwork.size.failed"); $("#art-save").disabled = true; };
   $("#art-save").disabled = false;
 }
 
 function readFile(file) {
   if (!file) return;
-  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) { toast("Choose a JPEG, PNG, WebP or GIF image."); return; }
-  if (file.size > MAX_IMAGE) { toast("Images can be at most 15 MB."); return; }
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) { toast(TagcastI18n.text("artwork.file.type")); return; }
+  if (file.size > MAX_IMAGE) { toast(TagcastI18n.text("artwork.file.size")); return; }
   const reader = new FileReader();
-  reader.onload = () => choose(addOption({data: reader.result, name: file.name, thumb: reader.result, source: "Your file", title: file.name}));
+  reader.onload = () => choose(addOption({data: reader.result, name: file.name, thumb: reader.result, source: "Your file", sourceKey: "artwork.source.file", title: file.name}));
   reader.readAsDataURL(file);
 }
 
@@ -131,10 +139,10 @@ async function saveArtwork() {
   if (!t || !o) return;
   if (t.target === "playlist") return savePlaylistCover(t, o);
   const save = $("#art-save"), status = $("#art-status"), discs = t.discs || [t];
-  save.disabled = true; save.textContent = "Saving…";
+  save.disabled = true; save.textContent = TagcastI18n.text("review.saving");
   try {
     for (const d of discs.filter(d => !art.saved.includes(d.id))) {
-      setActionStatus("#art-status", discs.length > 1 ? `Saving disc ${art.saved.length + 1} of ${discs.length}…` : "Checking iBroadcast and saving…", true);
+      setActionStatus("#art-status", discs.length > 1 ? TagcastI18n.text("artwork.status.savingDisc", {disc: art.saved.length + 1, count: discs.length}) : TagcastI18n.text("review.status.checkingAndSaving"), true);
       // After the first disc, the others reuse the image that is now in iBroadcast.
       const source = art.artworkId ? {artwork_id: art.artworkId} : o.artwork_id ? {artwork_id: o.artwork_id} : o.data ? {data: o.data, name: o.name} : {url: o.url};
       const result = await api("/api/artwork", {target: d.target, id: d.id, label: d.label, before: d.before, source});
@@ -146,13 +154,14 @@ async function saveArtwork() {
       followJob(result.job, entry);
     }
     $("#artwork").close(); render();
-    toast(`${t.target === "album" ? "Cover" : "Artist image"} saved${discs.length > 1 ? ` on all ${discs.length} discs` : ""}. Checking the result with iBroadcast in the background…`);
+    // Only album covers are saved per disc; artist images have one target.
+    toast(TagcastI18n.text(t.target !== "album" ? "artwork.saved.image" : discs.length > 1 ? "artwork.saved.coverDiscs" : "artwork.saved.cover", {count: discs.length}));
   } catch (error) {
     if (art.saved.length) render();
-    save.disabled = false; save.textContent = art.saved.length ? "Save the other discs" : "Try again";
-    const part = art.saved.length ? `${art.saved.length} of ${discs.length} discs have the new cover. ` : "";
-    $("#art-status").innerHTML = `<span class="error-text">${escapeHtml(part + error.message)}</span>`;
-    if (error.status === 409) { save.textContent = "Reload library"; save.onclick = () => { $("#artwork").close(); $("#editor").close(); loadLive(); }; }
+    save.disabled = false; save.textContent = TagcastI18n.text(art.saved.length ? "artwork.saveOtherDiscs" : "common.tryAgain");
+    const part = art.saved.length ? TagcastI18n.text("artwork.error.partial", {saved: art.saved.length, count: discs.length}) : "";
+    $("#art-status").innerHTML = `<span class="error-text">${escapeHtml([part, TagcastI18n.errorText(error)].filter(Boolean).join(" "))}</span>`;
+    if (error.status === 409) { save.textContent = TagcastI18n.text("common.reloadLibrary"); save.onclick = () => { $("#artwork").close(); $("#editor").close(); loadLive(); }; }
   } finally { if ($("#art-status") === status) setActionStatus("#art-status", undefined); }
 }
 
@@ -192,8 +201,8 @@ function artworkUndoNote(entry) {
   const a = entry.artwork;
   if (!a) return "";
   const previous = a.previous || {};
-  if (a.target === "artist" && !(Number(previous.artwork_id) > 0)) return "No previous artist image was saved to restore.";
-  if (a.target === "album" && !Object.values(previous.tracks || {}).some(id => Number(id) > 0)) return "No previous cover was saved to restore.";
+  if (a.target === "artist" && !(Number(previous.artwork_id) > 0)) return TagcastI18n.text("artwork.undo.noPreviousImage");
+  if (a.target === "album" && !Object.values(previous.tracks || {}).some(id => Number(id) > 0)) return TagcastI18n.text("artwork.undo.noPreviousCover");
   return "";
 }
 
@@ -201,7 +210,7 @@ async function undoArtwork(entry) {
   const a = entry.artwork;
   if (saving) return;
   if (artworkUndoNote(entry)) return;
-  if (!confirm(`Put the previous ${a.target === "album" ? "cover" : "artist image"} of “${a.label}” back?`)) return;
+  if (!confirm(TagcastI18n.text(a.target === "album" ? "artwork.undo.confirmCover" : "artwork.undo.confirmImage", {label: a.label}))) return;
   const before = a.target === "album" ? {tracks: Object.fromEntries(Object.keys(a.previous.tracks).map(id => [id, a.artwork_id]))} : {artwork_id: a.artwork_id};
   saving = true; updateHistoryControls();
   try {
@@ -213,9 +222,12 @@ async function undoArtwork(entry) {
     pendingAlbums = null; // discard the earlier image save's deferred read-back
     showNewArt({target: a.target, id: a.id}, result);
     render(); showHistory();
-    toast(result.note ? `The previous cover is back. ${result.note}` : "The previous image is back. Checking the result with iBroadcast…");
+    toast(result.note ? `${TagcastI18n.text("artwork.undo.coverBack")} ${result.note}` : TagcastI18n.text("artwork.undo.imageBack"));
     followJob(result.job, undo);
-  } catch (error) { $("#history-status").textContent = error.message; toast(error.message); }
+  } catch (error) {
+    if (typeof historyView !== "undefined") historyView.status = "";
+    $("#history-status").textContent = TagcastI18n.errorText(error); toast(TagcastI18n.errorText(error));
+  }
   finally { saving = false; updateHistoryControls(); }
 }
 
@@ -235,8 +247,8 @@ document.addEventListener("submit", event => {
   if (event.target.id !== "art-url-form") return;
   event.preventDefault();
   const url = $("#art-url").value.trim();
-  if (!/^https?:\/\//i.test(url)) { toast("Enter an image address that starts with https://"); return; }
-  choose(addOption({url, thumb: url, source: "Your address", title: url}));
+  if (!/^https?:\/\//i.test(url)) { toast(TagcastI18n.text("artwork.url.invalid")); return; }
+  choose(addOption({url, thumb: url, source: "Your address", sourceKey: "artwork.source.address", title: url}));
 });
 document.addEventListener("paste", event => {
   if (!$("#artwork").open) return;
