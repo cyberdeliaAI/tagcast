@@ -1297,6 +1297,8 @@ async function api(path, body) {
   if (!response.ok) {
     const error = Error(data.error || `Tagcast returned HTTP ${response.status}.`);
     error.status = response.status; error.data = data;
+    // A stable code lets the interface translate known errors; the English message stays as is.
+    if (typeof data.code === "string") { error.code = data.code; error.params = data.params && typeof data.params === "object" ? data.params : {}; }
     throw error;
   }
   return data;

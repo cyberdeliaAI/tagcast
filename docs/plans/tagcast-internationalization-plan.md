@@ -1,7 +1,9 @@
 # Tagcast internationalization and localization plan
 
-Status: proposal only. No application code, tests, packages or settings were changed.
-Date: 2 November 2026.
+Status: proposal, written before any implementation (2 November 2026). Decisions taken since and
+the results of the proof of concept are in the addendum at the end and in
+[the proof of concept evaluation](tagcast-i18n-poc-evaluation.md). The body below is kept as
+written so it stays comparable with the inventory.
 
 This plan is grounded in a full static inventory of the repository. Every number marked
 **Measured** comes from a script run against the inspected commit. Numbers marked
@@ -1298,3 +1300,38 @@ Before starting:
 - `Intl` output examples (units, separators, plural categories, the date-only shift) were
   measured with Node 22.23.4 (ICU 78.3). Electron 44 ships its own full ICU, so exact
   strings can differ slightly. The categories and behaviour shown are stable CLDR data.
+
+---
+
+## Addendum: decisions and proof of concept (2 November 2026)
+
+Decisions by the maintainer:
+
+- Dutch is the first translation and pilot, followed by German, French and Spanish. Japanese
+  comes last and is only offered after a thorough language and layout review, ideally with a
+  committed reviewer.
+- The language choice is stored by the local Tagcast server, never at iBroadcast, and must not
+  overwrite other settings. Main window and Mini Player use the same language.
+- Python messages stay English for now. Machine-readable error codes are prepared now, so that
+  no handling depends on translated text.
+- A limited proof of concept comes first.
+
+Changes to this plan that came out of the proof of concept:
+
+- **Catalog format.** The catalogs use a strict subset of i18next JSON v4 (flat keys,
+  `{{name}}` and `{{name, number}}`, `_one`/`_other` plural suffixes) instead of the ICU subset
+  proposed in sections 3.4 and 4.2. It needs no message parser, translation platforms support
+  it, and the same files produce identical output in i18next (832 renders, 0 differences).
+- **API names.** The runtime is the `TagcastI18n` namespace with `text()` and `html()`, not
+  the global `msg()` and `msgHtml()` from section 3.4.
+- **Language endpoint.** The language is saved through `POST /api/settings/interface`, a
+  dedicated endpoint without the side effects of the general settings save.
+- **Mini Player contract.** The snapshot carries `language`, `direction`, `labels` and an
+  `idle` flag, as proposed in section 3.5.
+- **Generated English bundle.** It's named `static/i18n-en.js`, as proposed, and is built by
+  `tools/build_i18n.py`.
+- **Revised effort.** The estimate for the complete English base is 14-24 developer-days,
+  replacing the Phase 1 estimates. See section 7 of the evaluation.
+
+The string inventory, the extraction tools and the measurement scripts are kept in
+[`docs/plans/i18n/`](i18n/README.md).

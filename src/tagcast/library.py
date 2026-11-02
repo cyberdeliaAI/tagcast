@@ -19,6 +19,8 @@ from collections.abc import Mapping
 from datetime import date, time
 from threading import Lock
 
+from .errors import CodedError
+
 ARTWORK_SERVER = "https://artwork.ibroadcast.com"
 FORMATS = {"audio/flac": "FLAC", "audio/x-flac": "FLAC", "audio/mpeg": "MP3", "audio/mp3": "MP3",
            "audio/mpeg3": "MP3",
@@ -76,7 +78,7 @@ def upload_group(kind, track):
     return hashlib.sha256(path.encode("utf-8", errors="surrogatepass")).hexdigest(), path
 
 
-class LibraryError(ValueError):
+class LibraryError(CodedError, ValueError):
     pass
 
 

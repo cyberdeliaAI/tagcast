@@ -19,6 +19,7 @@ from .album_info import AlbumInformationRetryError
 from .artist_bios import BiographyRetryError
 from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio
+from .errors import error_payload
 from .library import ConflictError, LibraryError
 from .sources import SourceError
 
@@ -78,13 +79,13 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             self._json(200, action())
         except ConflictError as error:
-            self._json(409, {"error": str(error), "conflict": True})
+            self._json(409, error_payload(error, conflict=True))
         except NotConnected as error:
-            self._json(401, {"error": str(error), "connected": False})
+            self._json(401, error_payload(error, connected=False))
         except (BiographyRetryError, AlbumInformationRetryError) as error:
-            self._json(429, {"error": str(error), "retry_after": error.retry_after})
+            self._json(429, error_payload(error, retry_after=error.retry_after))
         except (ApiError, LibraryError, ArtworkError, SourceError) as error:
-            self._json(400, {"error": str(error)})
+            self._json(400, error_payload(error))
         except Exception:  # never leak a traceback to the page
             logging.exception("Request failed")
             self._json(500, {"error": "Something went wrong in Tagcast. See the terminal."})
@@ -99,8 +100,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _frontend_asset(self):
         path = urlparse(getattr(self, "path", "")).path
+        # Interface text belongs to the scripts that use it: never pair new code with old catalogs.
         return not path.startswith("/api/") and (
-            path == "/" or Path(path).suffix in (".html", ".js", ".css"))
+            path == "/" or Path(path).suffix in (".html", ".js", ".css")
+            or path.startswith("/i18n/") and path.endswith(".json"))
 
     def send_head(self):
         # Local source updates can retain the same release number or file timestamp.
@@ -267,6 +270,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/downloads/stop": self.studio.audio_downloads.cancel,
             "/api/downloads/folder": self.studio.audio_downloads.folder,
             "/api/settings": self.studio.save_settings,
+            "/api/settings/interface": self.studio.save_interface_language,
             "/api/lyrics": self.studio.lyrics.view,
             "/api/lyrics/display": self.studio.lyrics.display.view,
             "/api/lyrics/review": self.studio.lyrics.prepare,

@@ -31,6 +31,8 @@ from .cleanup import Cleanup
 from .collections import Collections
 from .downloads import AudioDownloads
 from .duplicate_cleanup import DuplicateCleanup
+from .errors import CodedError
+from .i18n import valid_interface_language
 from .library import (
     ConflictError,
     Library,
@@ -144,7 +146,7 @@ def account_view(data):
     }
 
 
-class ApiError(Exception):
+class ApiError(CodedError):
     pass
 
 
@@ -227,7 +229,7 @@ class StudioClient(ibroadcast.iBroadcast):
         data = self._post(url, args, retry=_retry, access_token=access_token)
         if data.get("authenticated") is False:
             if not (self._refresh_token and self._client_id):
-                raise NotConnected("Your iBroadcast session expired. Connect again.")
+                raise NotConnected("Your iBroadcast session expired. Connect again.", code="session.expired")
             self._refresh_or_fail(generation)
             access_token, _ = self._token_snapshot()
             data = self._post(url, args, retry=_retry, access_token=access_token)
@@ -254,7 +256,7 @@ class StudioClient(ibroadcast.iBroadcast):
         try:
             self._refresh(generation, expired_only=expired_only)
         except auth.RefreshRejected:
-            raise NotConnected("Your iBroadcast session expired. Connect again.") from None
+            raise NotConnected("Your iBroadcast session expired. Connect again.", code="session.expired") from None
         except requests.exceptions.SSLError:
             raise ConnectionSecurityError("Could not verify iBroadcast's secure connection. Your sign-in is retained.") from None
         except (oauth.OAuthError, requests.RequestException, KeyError, ValueError, TypeError):
@@ -719,7 +721,7 @@ class Studio:
     def _require_client(self):
         with self.lock:
             if not self.client:
-                raise NotConnected("Connect your iBroadcast account first.")
+                raise NotConnected("Connect your iBroadcast account first.", code="account.not_connected")
             return self.client
 
     def _fetch(self, client):
@@ -1163,7 +1165,21 @@ class Studio:
                 "album_information": self.config.get("album_information") is True,
                 "album_information_revision": self.album_info.revision,
                 "guide_matching_details": self.config.get("guide_matching_details"),
+                "interface_language": self.config.get("interface_language"),
                 "premium": self.premium}
+
+    def save_interface_language(self, body):
+        """Store only the interface language locally; never send it to iBroadcast.
+
+        No other preference, connection, queue sync or upload state changes here.
+        """
+        language = body.get("language") if isinstance(body, dict) else None
+        if not valid_interface_language(language):
+            raise ApiError("Choose a supported interface language.", code="settings.invalid_language")
+        with self.lock:
+            self.config["interface_language"] = language
+            self._write("config.json", self.config)
+        return {"interface_language": language}
 
     def check_updates(self, manual=False):
         with self.lock:
