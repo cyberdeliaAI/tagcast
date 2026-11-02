@@ -11307,6 +11307,25 @@ test("interface language: a missing catalog keeps English, the choice and every 
   assert.match(p.nodes.get("#toast").textContent, /^Added \d+ tracks to the queue\.$/);
 });
 
+test("interface language: catalog timeout finishes saving and a retry recovers without reload", async () => {
+  const p = languagePage(); await settle(); let release, attempts = 0;
+  p.setCatalogFetch(() => ++attempts === 1 ? new Promise(resolve => { release = resolve; })
+    : {ok: true, json: async () => JSON.parse(readFileSync(path.join(staticDir, "i18n/nl.json"), "utf8"))});
+  p.run('playTracks(state.details.get("1"))');
+  const playback = playbackState(p);
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle();
+  assert.equal(p.run("interfaceLanguage.saving"), true);
+  p.flushTimers(10000); await first; await settle();
+  assert.equal(p.run("TagcastI18n.language"), "en"); assert.equal(p.run("TagcastI18n.choice"), "nl");
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.deepEqual(p.saved, [{language: "nl"}], "catalog failure does not discard the saved preference");
+  release({ok: true, json: async () => ({})}); await settle();
+  await p.run('chooseInterfaceLanguage("nl")');
+  assert.equal(p.run("TagcastI18n.language"), "nl");
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.deepEqual(playbackState(p), playback);
+});
+
 test("interface language: coded errors are translated while their English message stays unchanged", async () => {
   const p = languagePage(); await settle();
   p.setFetch(url => {
