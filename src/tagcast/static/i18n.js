@@ -179,6 +179,26 @@ const TagcastI18n = (() => {
       .filter(([key, value]) => typeof value === "string" && !/[<>]/.test(value) && known(key))));
   }
 
+  async function loadCatalog(tag) {
+    const controller = new AbortController();
+    let timer;
+    try {
+      // Bound both headers and body parsing. The race also settles if an adapter ignores abort.
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(`/i18n/${encodeURIComponent(tag)}.json`, {cache: "no-store", signal: controller.signal});
+          const catalog = response.ok ? validCatalog(await response.json()) : null;
+          if (!catalog) throw Error(`The ${tag} interface text is unavailable.`);
+          return catalog;
+        })(),
+        new Promise((_, reject) => { timer = setTimeout(() => {
+          reject(Error(`The ${tag} interface text request timed out.`));
+          controller.abort();
+        }, 10000); })
+      ]);
+    } finally { clearTimeout(timer); }
+  }
+
   // Load and activate a choice. The newest call wins; failures keep English without
   // touching playback, drafts or other settings. `remember` writes this profile's cache.
   async function use(value, {remember = true} = {}) {
@@ -188,9 +208,8 @@ const TagcastI18n = (() => {
     const tag = resolve(wanted), ticket = ++request;
     if (!catalogs.has(tag)) {
       try {
-        const response = await fetch(`/i18n/${encodeURIComponent(tag)}.json`, {cache: "no-store"});
-        const catalog = response.ok ? validCatalog(await response.json()) : null;
-        if (!catalog) throw Error(`The ${tag} interface text is unavailable.`);
+        const catalog = await loadCatalog(tag);
+        if (ticket !== request) return active;
         catalogs.set(tag, catalog);
       } catch (error) {
         warn(error.message);

@@ -175,7 +175,7 @@ test("the generated English bundle is the same data as en.json and the manifest"
 });
 
 // A small browser stand-in: storage, a fetch for catalogs and a document root.
-function runtime({stored = {}, languages = [], bundle, served = name => catalogs[name], ready = "complete"} = {}) {
+function runtime({stored = {}, languages = [], bundle, served = name => catalogs[name], fetcher, ready = "complete"} = {}) {
   const requests = [], warnings = [], dcl = [];
   const rootNode = {lang: "en", dir: "", style: {values: {}, setProperty(k, v) { this.values[k] = v; }, removeProperty(k) { delete this.values[k]; }}};
   const document = {documentElement: rootNode, readyState: ready, querySelectorAll: () => [],
@@ -184,9 +184,11 @@ function runtime({stored = {}, languages = [], bundle, served = name => catalogs
   const context = vm.createContext({
     document, navigator: {languages}, console: {warn: message => warnings.push(message), error: message => warnings.push(String(message))},
     localStorage: {getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = String(v); }},
-    setTimeout: (fn, delay) => { timers.push({fn, delay}); return timers.length; }, clearTimeout() {},
-    fetch: async url => {
+    setTimeout: (fn, delay) => { timers.push({fn, delay, cancelled: false}); return timers.length; },
+    clearTimeout: id => { if (timers[id - 1]) timers[id - 1].cancelled = true; }, AbortController,
+    fetch: async (url, options) => {
       requests.push(url);
+      if (fetcher) return fetcher(url, options);
       const tag = url.match(/^\/i18n\/([A-Za-z-]+)\.json$/)?.[1];
       const data = tag && served(tag);
       return data === undefined ? {ok: false, json: async () => ({})} : {ok: true, json: async () => structuredClone(data)};
@@ -198,6 +200,64 @@ function runtime({stored = {}, languages = [], bundle, served = name => catalogs
   return {i18n: context.TagcastI18n, requests, warnings, stored, root: rootNode, dcl, timers};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test("a stalled catalog times out, preserves the choice and retries without caching a late reply", async () => {
+  let release, signal, calls = 0;
+  const r = runtime({fetcher: (url, options) => {
+    calls++;
+    if (calls === 1) { signal = options.signal; return new Promise(resolve => { release = resolve; }); }
+    return {ok: true, json: async () => catalogs.nl};
+  }});
+  const first = r.i18n.use("nl"); await settle();
+  r.timers.find(t => t.delay === 10000 && !t.cancelled).fn();
+  assert.equal(await first, "en"); assert.equal(signal.aborted, true);
+  assert.equal(r.stored["tagcast-language"], "nl"); assert.equal(r.i18n.choice, "nl");
+  assert.equal(await r.i18n.use("nl"), "nl");
+  release({ok: true, json: async () => ({...catalogs.nl, "player.queue.heading": "STALE"})}); await settle();
+  assert.equal(await r.i18n.use("nl"), "nl");
+  assert.equal(r.i18n.text("player.queue.heading"), catalogs.nl["player.queue.heading"]);
+  assert.equal(calls, 2); assert.ok(r.timers.every(t => t.cancelled));
+});
+
+test("the catalog deadline includes a stalled JSON body and settles startup fallback", async () => {
+  let release, signal;
+  const r = runtime({stored: {"tagcast-language": "nl"}, fetcher: (url, options) => {
+    signal = options.signal; return {ok: true, json: () => new Promise(resolve => { release = resolve; })};
+  }});
+  await settle();
+  r.timers.find(t => t.delay === 1200).fn();
+  assert.equal(r.root.style.values.visibility, undefined, "the existing safety reveal still works");
+  r.timers.find(t => t.delay === 10000).fn(); await settle();
+  assert.equal(r.i18n.language, "en"); assert.equal(r.root.lang, "en");
+  assert.equal(r.i18n.choice, "nl"); assert.equal(signal.aborted, true);
+  release(catalogs.nl); await settle();
+  assert.equal(r.i18n.language, "en", "late body completion cannot revive a timed-out request");
+  assert.ok(r.timers.every(t => t.cancelled));
+});
+
+test("an obsolete catalog reply cannot activate or seed a later retry", async () => {
+  let release, calls = 0;
+  const r = runtime({fetcher: () => ++calls === 1 ? new Promise(resolve => { release = resolve; })
+    : {ok: true, json: async () => catalogs.nl}});
+  const old = r.i18n.use("nl"); await r.i18n.use("en");
+  release({ok: true, json: async () => ({...catalogs.nl, "player.queue.heading": "STALE"})}); await old;
+  assert.equal(r.i18n.language, "en");
+  await r.i18n.use("nl"); assert.equal(calls, 2);
+  assert.equal(r.i18n.text("player.queue.heading"), catalogs.nl["player.queue.heading"]);
+});
+
+test("unavailable and malformed catalogs clear their deadline and allow a successful retry", async () => {
+  for (const failure of [() => ({ok: false}), () => { throw Error("offline"); },
+    () => ({ok: true, json: async () => { throw SyntaxError("invalid JSON"); }}),
+    () => ({ok: true, json: async () => []})]) {
+    let fail = true;
+    const r = runtime({fetcher: () => fail ? failure() : {ok: true, json: async () => catalogs.nl}});
+    assert.equal(await r.i18n.use("nl"), "en"); assert.equal(r.i18n.choice, "nl");
+    assert.ok(r.timers.every(t => t.cancelled));
+    fail = false; assert.equal(await r.i18n.use("nl"), "nl");
+    assert.ok(r.timers.every(t => t.cancelled));
+  }
+});
 
 test("English renders the existing wording, chooses plural forms and never requests a catalog", () => {
   const {i18n, requests} = runtime();
