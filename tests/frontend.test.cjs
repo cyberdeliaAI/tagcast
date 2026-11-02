@@ -8451,7 +8451,7 @@ test('Paused imports lists compact local checkpoints and requires an explicit re
   });
   await p.run('openPausedImports()');
   let html=p.nodes.get('#csv-import-content').innerHTML;
-  assert.match(html,/&lt;Saved CSV&gt;/); assert.match(html,/Refresh library & resume/);
+  assert.match(html,/&lt;Saved CSV&gt;/); assert.match(html,/Refresh library &amp; resume/);
   assert.equal(p.nodes.get('#csv-import-pause').hidden,true);
   await p.click({'[data-csv-remove-paused]':{dataset:{csvRemovePaused:'b'.repeat(32)}}});
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/Keep saved import/);

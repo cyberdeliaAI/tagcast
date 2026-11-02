@@ -1,6 +1,9 @@
 "use strict";
 
 // Drafts permute original positions, never track IDs: repeated copies stay separate.
+// The dialog is a draft, so a language change never re-renders it. Its status texts are kept
+// as functions (d.error, d.message), so the next repaint after a user action uses the current
+// language; static labels in index.html switch on their own.
 const playlistOrder = {draft: null, generation: 0, focus: null, drag: null};
 
 function resetPlaylistOrder(restoreFocus = false) {
@@ -51,21 +54,21 @@ function renderPlaylistOrder() {
   const sources = playlistOrderSources(d), positions = sources.slice(d.offset, d.offset + 100);
   const changes = d.order.filter((source, i) => source !== i).length;
   const moving = d.move === null ? null : d.rows.get(d.move);
-  const moveForm = moving ? `<form id="playlist-order-move" class="playlist-order-move"><label class="field"><span>Move ${escapeHtml(moving.title)} to position</span><input name="position" type="number" min="1" max="${d.order.length}" step="1" required value="${d.order.indexOf(d.move) + 1}" aria-label="New playlist position"></label><button class="button small primary" ${disabled ? "disabled" : ""}>Move</button><button type="button" class="button small" data-order-move-cancel>Cancel move</button></form>` : "";
-  $("#playlist-order-content").innerHTML = `<p>${d.order.length} saved positions · ${changes ? `${changes} positions changed` : "Original order"}</p>${d.query.trim() && d.matches ? `<p role="status">${sources.length} matching ${sources.length === 1 ? "position" : "positions"} · numbers refer to the complete playlist</p>` : ""}${moveForm}${d.loading ? '<p class="operation-status muted" data-working="true">Loading playlist positions…</p>' : d.error && !d.sent ? '<button type="button" class="button small" data-order-retry>Retry reading positions</button>' : `<div class="playlist-order-table"><table class="album-tracks"><thead><tr><th aria-label="Move track"></th><th>#</th><th>Title / Artist</th><th>Actions</th></tr></thead><tbody>${positions.map(source => {
+  const moveForm = moving ? `<form id="playlist-order-move" class="playlist-order-move"><label class="field"><span>${TagcastI18n.html("playlistOrder.move.label", {title: moving.title})}</span><input name="position" type="number" min="1" max="${d.order.length}" step="1" required value="${d.order.indexOf(d.move) + 1}" aria-label="${TagcastI18n.html("playlistOrder.move.input")}"></label><button class="button small primary" ${disabled ? "disabled" : ""}>${TagcastI18n.html("playlistOrder.move.submit")}</button><button type="button" class="button small" data-order-move-cancel>${TagcastI18n.html("playlistOrder.move.cancel")}</button></form>` : "";
+  $("#playlist-order-content").innerHTML = `<p>${TagcastI18n.html("playlistOrder.summary.saved", {count: d.order.length})} · ${changes ? TagcastI18n.html("playlistOrder.summary.changed", {count: changes}) : TagcastI18n.html("playlistOrder.summary.original")}</p>${d.query.trim() && d.matches ? `<p role="status">${TagcastI18n.html("playlistOrder.search.matching", {count: sources.length})}</p>` : ""}${moveForm}${d.loading ? `<p class="operation-status muted" data-working="true">${TagcastI18n.html("playlistOrder.loading")}</p>` : d.error && !d.sent ? `<button type="button" class="button small" data-order-retry>${TagcastI18n.html("playlistOrder.retry")}</button>` : `<div class="playlist-order-table"><table class="album-tracks"><thead><tr><th aria-label="${TagcastI18n.html("playlistOrder.table.move")}"></th><th>#</th><th>${TagcastI18n.html("playlists.detail.titleArtist")}</th><th>${TagcastI18n.html("playlistOrder.table.actions")}</th></tr></thead><tbody>${positions.map(source => {
     const track = d.rows.get(source);
     if (!track) return "";
     const position = d.order.indexOf(source);
-    return `<tr data-order-row="${source}"><td><button type="button" class="playlist-order-handle" draggable="${!disabled}" data-order-handle="${source}" aria-label="Move ${escapeHtml(track.title)}, position ${position + 1} of ${d.order.length}" aria-describedby="playlist-order-hint" title="Drag to move; use ↑ / ↓ with the keyboard" ${disabled ? "disabled" : ""}>⠿</button></td><td>${position + 1}</td><td><strong>${escapeHtml(track.title)}</strong><small>${track.available ? escapeHtml(track.artist) : `Track ID ${escapeHtml(track.id)} · Retained in playlist`}${source !== position ? ` · Was #${source + 1}` : ""}</small></td><td><button type="button" class="text-action" data-order-move="${source}" ${disabled ? "disabled" : ""}>Move to position…</button></td></tr>`;
-  }).join("") || '<tr><td colspan="4" class="muted">No playlist positions match this search.</td></tr>'}</tbody></table></div>`}<div class="pagination"><button type="button" class="button small" data-order-page="-100" ${disabled || !d.offset ? "disabled" : ""}>← Previous</button><span>${Math.floor(d.offset / 100) + 1} / ${Math.max(1, Math.ceil(sources.length / 100))}</span><button type="button" class="button small" data-order-page="100" ${disabled || d.offset + 100 >= sources.length ? "disabled" : ""}>Next →</button></div>`;
+    return `<tr data-order-row="${source}"><td><button type="button" class="playlist-order-handle" draggable="${!disabled}" data-order-handle="${source}" aria-label="${TagcastI18n.html("playlistOrder.handle.label", {title: track.title, position: position + 1, total: d.order.length})}" aria-describedby="playlist-order-hint" title="${TagcastI18n.html("playlistOrder.handle.title")}" ${disabled ? "disabled" : ""}>⠿</button></td><td>${position + 1}</td><td><strong>${escapeHtml(track.title)}</strong><small>${track.available ? escapeHtml(track.artist) : TagcastI18n.html("playlistOrder.row.retained", {id: track.id})}${source !== position ? ` · ${TagcastI18n.html("playlistOrder.row.was", {position: source + 1})}` : ""}</small></td><td><button type="button" class="text-action" data-order-move="${source}" ${disabled ? "disabled" : ""}>${TagcastI18n.html("playlistOrder.row.move")}</button></td></tr>`;
+  }).join("") || `<tr><td colspan="4" class="muted">${TagcastI18n.html("playlistOrder.empty")}</td></tr>`}</tbody></table></div>`}<div class="pagination"><button type="button" class="button small" data-order-page="-100" ${disabled || !d.offset ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${Math.floor(d.offset / 100) + 1} / ${Math.max(1, Math.ceil(sources.length / 100))}</span><button type="button" class="button small" data-order-page="100" ${disabled || d.offset + 100 >= sources.length ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button></div>`;
   const status = $("#playlist-order-status");
-  status.textContent = d.error || d.message;
+  status.textContent = d.error ? d.error() : d.message ? d.message() : "";
   status.classList.toggle("error-text", Boolean(d.error));
   status.classList.toggle("operation-status", d.busy); status.dataset.working = String(d.busy);
   $("#playlist-order-search").disabled = d.busy || d.sent; syncSearchClearButtons();
   $("#playlist-order-save").disabled = disabled || Boolean(d.error) || !playlistOrderChanged(d);
   for (const button of $("#playlist-order").querySelectorAll("[data-order-close]")) button.disabled = d.busy;
-  $("#playlist-order-cancel").textContent = d.sent ? "Close" : "Cancel";
+  $("#playlist-order-cancel").textContent = TagcastI18n.text(d.sent ? "common.close" : "common.cancel");
   if (!d.loading && d.focusSource !== undefined) {
     const handle = $("#playlist-order-content").querySelector(`[data-order-handle="${d.focusSource}"]`);
     handle?.focus({preventScroll: true}); handle?.scrollIntoView?.({block: "nearest", inline: "nearest"});
@@ -85,13 +88,13 @@ async function searchPlaylistOrder() {
     if (!Array.isArray(response.positions) || response.positions.length > d.order.length
         || new Set(response.positions).size !== response.positions.length
         || response.positions.some(p => !Number.isInteger(p) || p < 0 || p >= d.order.length)) {
-      throw Error("Playlist search changed. Close and reopen the order editor.");
+      throw playlistFailure("errors.playlists.order_search_changed");
     }
     d.matches = new Set(response.positions); d.loading = false;
     loadPlaylistOrderPage();
   } catch (error) {
     if (playlistOrderCurrent(d) && request === d.request) {
-      d.loading = false; d.error = error.message; d.rows.clear(); renderPlaylistOrder();
+      d.loading = false; d.error = () => TagcastI18n.errorText(error); d.rows.clear(); renderPlaylistOrder();
     }
   }
 }
@@ -115,10 +118,10 @@ async function loadPlaylistOrderPage() {
     if (!playlistOrderCurrent(d) || request !== d.request) return;
     if (!Array.isArray(response.rows) || response.rows.length !== positions.length
         || response.rows.some((t, i) => t.source_position !== positions[i]
-          || String(t.id) !== String(d.before[positions[i]]))) throw Error("Playlist positions changed. Close and reopen the order editor.");
+          || String(t.id) !== String(d.before[positions[i]]))) throw playlistFailure("errors.playlists.order_positions_changed");
     d.rows = new Map(response.rows.map(t => [t.source_position, t]));
   } catch (error) {
-    if (playlistOrderCurrent(d) && request === d.request) { d.error = error.message; d.rows.clear(); }
+    if (playlistOrderCurrent(d) && request === d.request) { d.error = () => TagcastI18n.errorText(error); d.rows.clear(); }
   } finally {
     if (playlistOrderCurrent(d) && request === d.request) { d.loading = false; renderPlaylistOrder(); }
   }
@@ -130,10 +133,10 @@ function movePlaylistOrder(source, destination) {
       || destination < 0 || destination >= d.order.length) return;
   const from = d.order.indexOf(source);
   if (from < 0 || from === destination) return;
-  const title = d.rows.get(source)?.title || "Track";
+  const title = d.rows.get(source)?.title || TagcastI18n.text("playlistOrder.move.trackFallback");
   d.order.splice(from, 1); d.order.splice(destination, 0, source);
   d.offset = Math.floor(playlistOrderSources(d).indexOf(source) / 100) * 100; d.move = null; d.focusSource = source;
-  d.message = `Moved ${title} to position ${destination + 1}. Changes are not saved yet.`;
+  d.message = () => TagcastI18n.text("playlistOrder.move.done", {title, position: destination + 1});
   playlistOrder.drag = null; loadPlaylistOrderPage();
 }
 
@@ -158,20 +161,20 @@ async function savePlaylistOrder() {
   const d = playlistOrder.draft;
   if (!playlistOrderCurrent(d) || d.loading || d.busy || d.sent || d.error || !playlistOrderChanged(d)) return;
   d.busy = true; d.sent = true; d.move = null; collectionsView.busy = true;
-  d.message = "Saving playlist order…"; renderPlaylistOrder();
+  d.message = () => TagcastI18n.text("playlistOrder.save.saving"); renderPlaylistOrder();
   try {
     const response = await api("/api/playlist", {action: "reorder", playlist: d.id, before_token: d.before_token,
       before_name: d.name, session: d.session, positions: d.order.slice(), approved: true});
     if (!playlistOrderCurrent(d)) return;
-    d.message = "Checking playlist order in iBroadcast…"; renderPlaylistOrder();
+    d.message = () => TagcastI18n.text("playlistOrder.save.checking"); renderPlaylistOrder();
     const job = await collectionJob(response, () => playlistOrderCurrent(d));
     if (job.results?.length !== 1 || String(job.results[0].id) !== String(d.id)
-        || job.results[0].status !== "saved") throw Error("Read-back did not confirm the new order.");
-    resetPlaylistOrder(true); toast("Playlist order saved and confirmed in iBroadcast.");
+        || job.results[0].status !== "saved") throw playlistFailure("errors.playlists.order_readback");
+    resetPlaylistOrder(true); toast(TagcastI18n.text("playlistOrder.save.done"));
     await refreshAfterPlaylistOrder(d);
   } catch (error) {
     if (playlistOrderCurrent(d)) {
-      d.error = `${error.message} Check the playlist before trying again. This request will not be sent again.`;
+      d.error = () => TagcastI18n.text("playlistOrder.save.failed", {error: TagcastI18n.errorText(error)});
     }
   } finally {
     d.busy = false; collectionsView.busy = false;
@@ -218,7 +221,8 @@ document.addEventListener("submit", event => {
   const d = playlistOrder.draft, position = Number(event.target.elements.position.value);
   if (!playlistOrderCurrent(d)) return;
   if (!Number.isInteger(position) || position < 1 || position > d.order.length) {
-    d.message = `Choose a position from 1 to ${d.order.length}.`; renderPlaylistOrder(); return;
+    const last = d.order.length;
+    d.message = () => TagcastI18n.text("playlistOrder.move.range", {last}); renderPlaylistOrder(); return;
   }
   movePlaylistOrder(d.move, position - 1);
 });
