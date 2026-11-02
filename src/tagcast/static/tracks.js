@@ -48,7 +48,7 @@ async function runTrackSearch() {
       if (error.status === 401) { state.connection.connected = false; updateChrome(); }
       trackSearch.results = []; trackSearch.total = 0;
       // A page newer than the running server: the server only learns /api/tracks after a restart.
-      trackSearch.error = error.status === 404 ? "Restart Tagcast to search tracks: the Tagcast that is running is older than this page." : error.message;
+      trackSearch.error = error.status === 404 ? viewFailure("errors.nav.tracks_outdated") : error;
     }
     trackSearch.loading = false;
   }
@@ -57,11 +57,17 @@ async function runTrackSearch() {
 
 function foundTrackRow(t, options = {}) {
   const id = escapeHtml(t.id), album = escapeHtml(t.album_id), canPlay = live();
-  const where = [shelfIds(t.album_id).length > 1 || t.disc > 1 ? `Disc ${t.disc || "?"}` : "", t.track ? `Track ${t.track}` : ""].filter(Boolean).join(" · ");
-  return `<tr data-row="${id}"><td class="track-number"><button class="album-track-play" data-track-play="${id}" data-track-album="${album}" aria-label="Play ${escapeHtml(t.title)}" ${canPlay ? "" : "disabled"}>▶</button></td>
+  const where = [shelfIds(t.album_id).length > 1 || t.disc > 1 ? TagcastI18n.html("common.disc", {disc: t.disc || "?"}) : "",
+    t.track ? TagcastI18n.html("tracks.row.track", {track: t.track}) : ""].filter(Boolean).join(" · ");
+  return `<tr data-row="${id}"><td class="track-number"><button class="album-track-play" data-track-play="${id}" data-track-album="${album}" aria-label="${TagcastI18n.html("tracks.row.play", {title: t.title})}" ${canPlay ? "" : "disabled"}>▶</button></td>
     <td><button class="track-open" data-track-open="${id}" data-track-album="${album}"><strong>${escapeHtml(t.title)}</strong></button><small>${performerLinks(t)}${t.composers?.length ? ` · ${escapeHtml(t.composers.join(", "))}` : ""}</small></td>
-    <td><button class="track-open" data-track-open="${id}" data-track-album="${album}">${escapeHtml(t.album)}</button>${where ? `<small>${where}</small>` : ""}${options.uploadDate ? `<small class="upload-track-date">Uploaded: ${escapeHtml(t.uploaded_at?.replace("T", " · ") || "Unknown")}</small>` : ""}</td>
+    <td><button class="track-open" data-track-open="${id}" data-track-album="${album}">${escapeHtml(t.album)}</button>${where ? `<small>${where}</small>` : ""}${options.uploadDate ? `<small class="upload-track-date">${t.uploaded_at ? TagcastI18n.html("tracks.row.uploaded", {date: t.uploaded_at.replace("T", " · ")}) : TagcastI18n.html("tracks.row.uploadedUnknown")}</small>` : ""}</td>
     <td class="track-year">${t.year || "–"}</td><td class="track-time">${trackDuration(t.length)}${trackFormatLabel(t)}</td><td class="track-heart">${queueButton(t.album_id, t)}${heartButton(t)}</td></tr>`;
+}
+
+// The result table shared by Tracks, Favourites and Recently played.
+function trackResultsTable(rows) {
+  return `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>${TagcastI18n.html("tracks.table.titleArtist")}</th><th>${TagcastI18n.html("tracks.table.album")}</th><th class="track-year">${TagcastI18n.html("tracks.table.year")}</th><th class="track-time">${TagcastI18n.html("tracks.table.time")}</th><th class="track-heart" aria-label="${TagcastI18n.html("tracks.table.favourite")}"></th></tr></thead><tbody>${rows.map(foundTrackRow).join("")}</tbody></table>`;
 }
 
 function updateTrackSearchScrollFocus() {
@@ -78,17 +84,17 @@ function renderTrackSearch() {
   const query = trackSearch.query, rows = trackSearch.results, size = trackSearch.pageSize, maxPage = Math.max(0, Math.ceil(rows.length / size) - 1);
   trackSearch.page = Math.max(0, Math.min(trackSearch.page, maxPage));
   $("#tracks-per-page").value = String(size);
-  const count = `${trackSearch.total.toLocaleString("en")} ${trackSearch.total === 1 ? "track" : "tracks"}`;
-  $("#tracks-results").textContent = query.length < 2 || trackSearch.error ? "" : trackSearch.loading ? "Searching…"
-    : trackSearch.total > rows.length ? `${count} · showing the first ${rows.length.toLocaleString("en")}. Add a word to narrow it down.` : count;
+  $("#tracks-results").textContent = query.length < 2 || trackSearch.error ? "" : trackSearch.loading ? TagcastI18n.text("tracks.search.searching")
+    : trackSearch.total > rows.length ? TagcastI18n.text("tracks.search.limited", {count: trackSearch.total, shown: rows.length})
+    : TagcastI18n.text("browse.count.tracks", {count: trackSearch.total});
   const page = rows.slice(trackSearch.page * size, (trackSearch.page + 1) * size);
-  $("#tracks-list").innerHTML = state.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading your library…</div>'
-    : query.length < 2 ? '<div class="empty">Type at least two letters to search your tracks by title, artist, album or composer.</div>'
-    : trackSearch.error ? `<p class="error-box" role="alert">${escapeHtml(trackSearch.error)}</p>`
-    : page.length ? `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>Title / Artist</th><th>Album</th><th class="track-year">Year</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>${page.map(foundTrackRow).join("")}</tbody></table>`
-    : trackSearch.loading ? '<div class="empty" role="status"><span class="spinner"></span>Searching your tracks…</div>'
-    : `<div class="empty">No tracks match “${escapeHtml(query)}”.</div>`;
-  $("#tracks-pagination").innerHTML = maxPage > 0 && !state.loading && query.length >= 2 ? `<button class="button small" data-track-page="-1" ${trackSearch.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${trackSearch.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-track-page="1" ${trackSearch.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+  $("#tracks-list").innerHTML = state.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("tracks.list.loadingLibrary")}</div>`
+    : query.length < 2 ? `<div class="empty">${TagcastI18n.html("tracks.list.prompt")}</div>`
+    : trackSearch.error ? `<p class="error-box" role="alert">${escapeHtml(TagcastI18n.errorText(trackSearch.error))}</p>`
+    : page.length ? trackResultsTable(page)
+    : trackSearch.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("tracks.list.searching")}</div>`
+    : `<div class="empty">${TagcastI18n.html("tracks.list.empty", {query})}</div>`;
+  $("#tracks-pagination").innerHTML = maxPage > 0 && !state.loading && query.length >= 2 ? `<button class="button small" data-track-page="-1" ${trackSearch.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: trackSearch.page + 1, pages: maxPage + 1})}</span><button class="button small" data-track-page="1" ${trackSearch.page === maxPage ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
   updateTrackSearchScrollFocus();
   markPlaying();
   if (typeof syncHistory === "function") syncHistory();
@@ -111,15 +117,15 @@ async function playFoundTrack(trackId, albumId) {
     await albumDetails(shelfIds(albumId));
     if (details !== state.details || epoch !== player.epoch || !live()) return;
     const album = playableAlbum(albumId);
-    if (!album?.tracks.some(t => String(t.id) === trackId)) throw Error("This track is no longer on that album. Search again.");
+    if (!album?.tracks.some(t => String(t.id) === trackId)) throw viewFailure("errors.album.track_moved");
     playTracks(album, trackId);
   } catch (error) {
-    toast(`Could not play this track: ${error.message}`);
+    toast(TagcastI18n.text("tracks.play.failed", {error: TagcastI18n.errorText(error)}));
   }
 }
 
 async function openFoundTrack(trackId, albumId) {
-  if (!state.albums.some(a => String(a.id) === albumId)) { toast("This album is no longer in your library. Search again."); return; }
+  if (!state.albums.some(a => String(a.id) === albumId)) { toast(TagcastI18n.text("tracks.open.albumGone")); return; }
   await openAlbum(albumId, trackId);
   $("#album-page").querySelector("tr.found")?.scrollIntoView?.({block: "center"});
 }
@@ -154,4 +160,13 @@ document.addEventListener("click", event => {
     renderTrackSearch();
     window.scrollTo?.({top: 0});
   }
+});
+
+// A language change repaints the visible results from memory. A search that is waiting for a
+// newer library is left to run on its own.
+TagcastI18n.subscribe(() => {
+  if (state.screen !== "tracks") return;
+  const stale = $("#tracks-search").value.trim().length >= 2 && !state.loading && !trackSearch.loading
+    && (trackSearch.waiting || trackSearch.details !== state.details);
+  if (!stale) keepFocusWhile($("#tracks-page"), renderTrackSearch);
 });
