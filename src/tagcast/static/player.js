@@ -7,12 +7,19 @@ const player = {queue: [], index: -1, album: null, epoch: 0, pending: Promise.re
 const audio = $("#audio");
 const playerTrackPosition = () => typeof gaplessPosition === "function" ? gaplessPosition() : Number(audio.currentTime) || 0;
 const playerTrackDuration = () => typeof gaplessDuration === "function" ? gaplessDuration() : audio.duration;
-const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null};
+const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null, status: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null};
 const nowPlayingRows = {revision: 0, entries: []};
 const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
 let visualPlayerMode = storedVisualPlayerMode();
+
+// A coded browser-side error (TagcastI18n.failure) named by its full catalog key, because the
+// catalog checker reads a bare code in the player, lyrics or gapless namespace as a text key.
+// The message stays English for logs and tests; errorText() shows the translation.
+function playbackFailure(key, params = {}) {
+  return TagcastI18n.failure(key.slice("errors.".length), params);
+}
 
 function storedVisualPlayerMode() {
   try { return localStorage.getItem("tagcast-player-view") === "window" ? "window" : "fullscreen"; }
@@ -21,10 +28,17 @@ function storedVisualPlayerMode() {
 
 function renderVisualPlayerButton() {
   const button = $("#player-fullscreen");
-  const label = visualPlayer.open ? "Close Now playing view"
-    : visualPlayerMode === "window" ? "Open Now playing in app window" : "Open fullscreen Now playing";
+  const label = TagcastI18n.text(visualPlayer.open ? "player.visual.close"
+    : visualPlayerMode === "window" ? "player.visual.openWindow" : "player.visual.openFullscreen");
   button.setAttribute("aria-label", label);
   button.setAttribute("title", label);
+}
+
+// The status line of the large view keeps how to render its text, so a language change
+// rewrites it without repeating whatever set it. Null clears the line.
+function setVisualPlayerStatus(render = null) {
+  visualPlayer.status = render;
+  $("#visual-player-status").textContent = render ? render() : "";
 }
 
 function setVisualPlayerMode(mode) {
@@ -112,10 +126,10 @@ function samplePlayback() {
     if (result.status === "disabled" && playbackWatchCurrent(watch)) {
       lookup.recordPlays = false; applyPlaybackSettings({record_plays: false});
     }
-    if (result.status === "unconfirmed") throw Error("The play could not be confirmed and will not be retried automatically.");
+    if (result.status === "unconfirmed") throw playbackFailure("errors.player.play_unconfirmed");
   }).catch(error => {
     if (!playbackWatchCurrent(watch)) return;
-    if (!playReporting.error) toast(`Playback recording: ${error.message}`);
+    if (!playReporting.error) toast(TagcastI18n.text("player.recording.failed", {error: TagcastI18n.errorText(error)}));
     playReporting.error = error.message;
   });
 }
@@ -147,7 +161,7 @@ function renderVisualPlayer() {
   $("#visual-player-artist").textContent = albumArtistsText(album);
   $("#visual-player-album").textContent = album.name;
   const performer = $("#visual-player-track-artist");
-  performer.textContent = `Track artist: ${track.artist}`;
+  renderVisualPlayerLabels();
   performer.hidden = !track.artist || albumHasArtist(album, track.artist);
   $("#visual-player-placeholder").textContent = initials(album.artist);
   const art = $("#visual-player-art");
@@ -160,6 +174,14 @@ function renderVisualPlayer() {
     if (artwork) art.src = largeArtworkUrl(artwork); else art.removeAttribute("src");
   }
   if (typeof renderPlaybackLyrics === "function") renderPlaybackLyrics();
+}
+
+// Interface text of the open large view only: artwork, lyrics and playback stay untouched.
+function renderVisualPlayerLabels() {
+  const track = player.queue[player.index];
+  if (!visualPlayer.open || !track) return;
+  $("#player-stage").setAttribute("aria-label", TagcastI18n.text("player.nowPlaying.heading"));
+  $("#visual-player-track-artist").textContent = TagcastI18n.text("player.visual.trackArtist", {artist: track.artist});
 }
 
 function hideVisualPlayer() {
@@ -186,7 +208,7 @@ function hideVisualPlayer() {
 async function closeVisualPlayer() {
   if (document.fullscreenElement === $("#player-stage")) {
     try { await document.exitFullscreen(); }
-    catch { $("#visual-player-status").textContent = "Use Escape to leave fullscreen."; return; }
+    catch { setVisualPlayerStatus(() => TagcastI18n.text("player.visual.escapeFullscreen")); return; }
   }
   hideVisualPlayer();
 }
@@ -201,10 +223,10 @@ function openVisualPlayer() {
   visualPlayer.inert = [$("main"), $(".sidebar"), $("#now-playing-panel")].map(node => [node, node.inert]);
   for (const [node] of visualPlayer.inert) node.inert = true;
   stage.setAttribute("role", "dialog"); stage.setAttribute("aria-modal", "true");
-  stage.setAttribute("aria-label", "Now playing");
+  stage.setAttribute("aria-label", TagcastI18n.text("player.nowPlaying.heading"));
   document.body.classList.add("visual-player-open");
   $("#visual-player").hidden = false;
-  $("#visual-player-status").textContent = "";
+  setVisualPlayerStatus(null);
   $("#player-fullscreen").setAttribute("aria-expanded", "true");
   renderVisualPlayerButton();
   renderVisualPlayer(); $("#visual-player-close").focus();
@@ -214,9 +236,9 @@ function openVisualPlayer() {
       Promise.resolve(stage.requestFullscreen()).then(() => {
         if (!visualPlayer.open && document.fullscreenElement === stage) closeVisualPlayer();
       }).catch(() => {
-        if (request === visualPlayer.request && visualPlayer.open) $("#visual-player-status").textContent = "Fullscreen view in this window. Press Escape to return.";
+        if (request === visualPlayer.request && visualPlayer.open) setVisualPlayerStatus(() => TagcastI18n.text("player.visual.windowFallback"));
       });
-    } catch { $("#visual-player-status").textContent = "Fullscreen view in this window. Press Escape to return."; }
+    } catch { setVisualPlayerStatus(() => TagcastI18n.text("player.visual.windowFallback")); }
   }
 }
 
@@ -248,7 +270,7 @@ document.addEventListener("keydown", event => {
 
 function performerLinks(track, additionalOnly = false) {
   const people = track.performers?.length ? track.performers : [{id: String(track.artist_id || track.artistId || ""), name: track.artist}];
-  return people.slice(additionalOnly ? 1 : 0).map((p, i) => `${i || additionalOnly ? '<span aria-hidden="true"> · </span>' : ""}${p.id ? `<button type="button" class="text-action performer-link" data-performer-id="${escapeHtml(p.id)}" title="Open albums with tracks by ${escapeHtml(p.name)}">${escapeHtml(p.name)}</button>` : escapeHtml(p.name)}`).join("");
+  return people.slice(additionalOnly ? 1 : 0).map((p, i) => `${i || additionalOnly ? '<span aria-hidden="true"> · </span>' : ""}${p.id ? `<button type="button" class="text-action performer-link" data-performer-id="${escapeHtml(p.id)}" title="${TagcastI18n.html("player.artist.openTracks", {artist: p.name})}">${escapeHtml(p.name)}</button>` : escapeHtml(p.name)}`).join("");
 }
 
 function queueTracks(album, tracks = album.tracks) {
@@ -280,10 +302,13 @@ function updateRandomControls() {
   albums.disabled = unavailable || !filteredAlbums().some(a => a.track_count > 0);
   browse.hidden = browseView.key === null || ["upload-folders", "uploaded"].includes(browseView.kind);
   browse.disabled = unavailable || !browseAlbums().some(a => a.track_count > 0);
-  for (const button of [albums, browse]) {
-    button.textContent = player.randomLoading ? "Loading album…" : "▶ Play random album";
-    button.setAttribute("aria-busy", String(player.randomLoading));
-  }
+  for (const button of [albums, browse]) button.setAttribute("aria-busy", String(player.randomLoading));
+  renderRandomLabels();
+}
+
+function renderRandomLabels() {
+  const label = TagcastI18n.text(player.randomLoading ? "player.random.loading" : "player.random.play");
+  for (const button of [$("#albums-random"), $("#browse-random")]) button.textContent = label;
 }
 
 function cancelRandomPlay() {
@@ -306,13 +331,13 @@ async function playRandomAlbum(albums) {
   try {
     const discs = await albumDetails(ids);
     if (request !== player.randomRequest || epoch !== player.epoch || details !== state.details || !live()) return;
-    if (discs.length !== ids.length || !state.albums.some(a => String(a.id) === String(selected.id))) throw Error("This album is no longer available. Reload the library.");
+    if (discs.length !== ids.length || !state.albums.some(a => String(a.id) === String(selected.id))) throw playbackFailure("errors.player.album_unavailable");
     const album = joinDiscs(discs);
-    if (!album.tracks.length) throw Error("This album has no playable tracks.");
+    if (!album.tracks.length) throw playbackFailure("errors.player.album_empty");
     playTracks(album, undefined, false, {random: true});
-    toast(`Playing ${album.name} · ${album.artist}`);
+    toast(TagcastI18n.text("player.random.playing", {album: album.name, artist: album.artist}));
   } catch (error) {
-    if (request === player.randomRequest && details === state.details) toast(`Could not play a random album: ${error.message}`);
+    if (request === player.randomRequest && details === state.details) toast(TagcastI18n.text("player.random.failed", {error: TagcastI18n.errorText(error)}));
   } finally {
     if (request === player.randomRequest) { player.randomLoading = false; updateRandomControls(); }
   }
@@ -330,11 +355,11 @@ function playableAlbum(id) {
 }
 
 function playCurrent(autoPlay = true) {
-  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control playback on the connected device."); return; }
+  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.devices.playback")); return; }
   const track = player.queue[player.index];
   if (!track) return;
   player.album = track.album;
-  if (visualPlayer.open) $("#visual-player-status").textContent = "";
+  if (visualPlayer.open) setVisualPlayerStatus(null);
   player.quality = lookup.streamQuality || "128";
   if (!state.connection.premium && player.quality !== "128") player.quality = "128";
   player.fallback = false;
@@ -358,20 +383,29 @@ function renderCurrentPlayerTrack() {
   const artist = $("#player-artist"), album = $("#player-album");
   artist.textContent = player.album.artist; artist.title = player.album.artist;
   $("#player-additional-album-artists").innerHTML = albumArtistEntries(player.album).slice(1).map(a => ` · <button type="button" data-artist="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join("");
-  artist.setAttribute("aria-label", `Open albums by ${player.album.artist}`);
   const performer = $("#player-track-artist");
   performer.textContent = track.artist; performer.title = track.artist;
-  performer.setAttribute("aria-label", `Open albums with tracks by ${track.artist}`);
-  $("#player-extra-artists").innerHTML = performerLinks(track, true);
   renderPlayerDisplay();
   album.textContent = player.album.name; album.title = player.album.name;
-  album.setAttribute("aria-label", `Open album ${player.album.name}`);
+  renderPlayerTrackLabels();
   const art = $("#player-art");
   art.hidden = !player.album.artwork; if (player.album.artwork) art.src = player.album.artwork.replace(/-300$/, "-150");
   $("#player-prev").disabled = player.index === 0;
   $("#player-next").disabled = player.index >= player.queue.length - 1;
   markPlaying();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
+}
+
+// Interface text around the current track's metadata. Names stay exactly as stored.
+function renderPlayerTrackLabels() {
+  const track = player.queue[player.index];
+  if (!track || !player.album) return;
+  $("#player-artist").setAttribute("aria-label", TagcastI18n.text("player.artist.openAlbums", {artist: player.album.artist}));
+  $("#player-track-artist").setAttribute("aria-label", TagcastI18n.text("player.artist.openTracks", {artist: track.artist}));
+  $("#player-album").setAttribute("aria-label", TagcastI18n.text("player.album.open", {album: player.album.name}));
+  const extra = $("#player-extra-artists"), focused = document.activeElement?.closest?.("#player-extra-artists [data-performer-id]")?.dataset.performerId;
+  extra.innerHTML = performerLinks(track, true);
+  if (focused !== undefined) [...extra.querySelectorAll("[data-performer-id]")].find(node => node.dataset.performerId === focused)?.focus({preventScroll: true});
 }
 
 function markPlaying() {
@@ -393,8 +427,17 @@ function markPlaying() {
 }
 
 // A language change re-renders the open panel the same way a play/pause update does:
-// no queue, index, audio or focus change.
-TagcastI18n.subscribe(() => renderNowPlaying());
+// no queue, index, audio or focus change. The other player labels are rewritten from
+// memory; nothing reloads artwork, prepares audio or publishes the queue.
+TagcastI18n.subscribe(() => {
+  renderVisualPlayerButton(); renderRepeatButton();
+  if (typeof browseView !== "undefined") renderRandomLabels();
+  if (player.queue[player.index]) { renderPlayerTrackLabels(); renderStreamQuality(); }
+  renderVisualPlayerLabels();
+  if (visualPlayer.open && visualPlayer.status) setVisualPlayerStatus(visualPlayer.status);
+  if (typeof repaintWithoutLyricsRequests === "function") repaintWithoutLyricsRequests(renderNowPlaying);
+  else renderNowPlaying();
+});
 
 function setNowPlaying(open) {
   $("#now-playing-panel").hidden = !open;
@@ -486,13 +529,13 @@ function addToQueue(albumId, trackId = null, next = false) {
 }
 
 function queueButton(albumId, track = null, compact = false, plainLabel = false) {
-  const label = track ? `Queue actions for ${track.title}` : "Queue actions for this album";
-  return `<button type="button" class="queue-add ${compact ? "queue-compact" : track ? "" : "button small"} queue-menu-trigger" data-queue-album="${escapeHtml(albumId)}" ${track ? `data-queue-track="${escapeHtml(track.id)}"` : ""} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-haspopup="menu" aria-expanded="false" aria-controls="queue-action-menu" ${!live() || state.loading ? "disabled" : ""}>${compact ? '<svg class="queue-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>' : `<span aria-hidden="true">${track ? "+" : plainLabel ? "Queue" : "+ Queue"}</span>`}<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="m3 4.5 3 3 3-3"/></svg></button>`;
+  const label = track ? TagcastI18n.html("player.queueMenu.trackLabel", {title: track.title}) : TagcastI18n.html("player.queueMenu.albumLabel");
+  return `<button type="button" class="queue-add ${compact ? "queue-compact" : track ? "" : "button small"} queue-menu-trigger" data-queue-album="${escapeHtml(albumId)}" ${track ? `data-queue-track="${escapeHtml(track.id)}"` : ""} aria-label="${label}" title="${label}" aria-haspopup="menu" aria-expanded="false" aria-controls="queue-action-menu" ${!live() || state.loading ? "disabled" : ""}>${compact ? '<svg class="queue-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>' : `<span aria-hidden="true">${track ? "+" : TagcastI18n.html(plainLabel ? "player.queueMenu.button" : "player.queueMenu.buttonAdd")}</span>`}<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="m3 4.5 3 3 3-3"/></svg></button>`;
 }
 
 function albumCardActions(album) {
-  const label = `Play album ${album.name}`;
-  return `<div class="album-card-actions"><button type="button" class="album-card-play" data-card-play="${escapeHtml(album.id)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" ${!live() || state.loading || !album.track_count ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>${queueButton(album.id, null, true)}</div>`;
+  const label = TagcastI18n.html("player.album.play", {album: album.name});
+  return `<div class="album-card-actions"><button type="button" class="album-card-play" data-card-play="${escapeHtml(album.id)}" aria-label="${label}" title="${label}" ${!live() || state.loading || !album.track_count ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>${queueButton(album.id, null, true)}</div>`;
 }
 
 async function playCardAlbum(id) {
@@ -503,12 +546,12 @@ async function playCardAlbum(id) {
   try {
     const discs = await albumDetails(ids);
     if (epoch !== player.epoch || details !== state.details || !live()) return;
-    if (discs.length !== ids.length || !state.albums.some(a => String(a.id) === String(id))) throw Error("This album is no longer available. Reload the library.");
+    if (discs.length !== ids.length || !state.albums.some(a => String(a.id) === String(id))) throw playbackFailure("errors.player.album_unavailable");
     const album = joinDiscs(discs);
-    if (!album.tracks.length) throw Error("This album has no playable tracks.");
+    if (!album.tracks.length) throw playbackFailure("errors.player.album_empty");
     playTracks(album);
   } catch (error) {
-    if (epoch === player.epoch && details === state.details) toast(`Could not play album: ${error.message}`);
+    if (epoch === player.epoch && details === state.details) toast(TagcastI18n.text("player.album.playFailed", {error: TagcastI18n.errorText(error)}));
   }
 }
 
@@ -630,11 +673,12 @@ audio.addEventListener("error", () => {
     player.fallback = true; player.quality = "128";
     audio.src = `/api/stream/${encodeURIComponent(player.queue[player.index].id)}?quality=128`;
     renderStreamQuality(); audio.play().catch(() => {});
-    toast("Original audio could not be played in this browser. Trying MP3 128 kbps."); return;
+    toast(TagcastI18n.text("player.error.originalFallback")); return;
   }
   playReporting.watch = null;
-  toast(`Could not play “${player.queue[player.index]?.title || "this track"}”. Check the connection to iBroadcast.`);
-  if (visualPlayer.open) $("#visual-player-status").textContent = "Could not play this track. Check the connection to iBroadcast.";
+  const title = player.queue[player.index]?.title;
+  toast(title ? TagcastI18n.text("player.error.track", {title}) : TagcastI18n.text("player.error.trackUnknown"));
+  if (visualPlayer.open) setVisualPlayerStatus(() => TagcastI18n.text("player.error.trackStatus"));
 });
 $("#player-prev").addEventListener("click", () => step(-1));
 $("#player-next").addEventListener("click", () => step(1));
@@ -705,20 +749,39 @@ document.addEventListener("click", event => {
 
 // File format comes from metadata; streaming quality describes this playback request.
 function renderStreamQuality() {
-  const track = player.queue[player.index];
-  $("#player-quality").textContent = track ? `${track.format ? `File: ${track.format} · ` : ""}Stream: ${player.quality === "orig" ? `Original${track.format ? ` ${track.format}` : ""}` : `MP3 ${player.quality} kbps`}${player.fallback ? " (fallback)" : ""}` : "";
-  if (track && typeof gaplessTrial !== "undefined" && gaplessTrial.active) {
-    $("#player-quality").textContent += " · Gapless";
-    if (gaplessTrial.active.ready === false || gaplessTrial.active.seekIntent) $("#player-quality").textContent += " · Preparing…";
-  }
+  $("#player-quality").textContent = streamQualityText(player.queue[player.index]);
   $("#visual-player-quality").textContent = $("#player-quality").textContent;
   renderPlayerDisplay();
 }
+
+function streamQualityText(track) {
+  if (!track) return "";
+  const stream = player.quality !== "orig" ? TagcastI18n.text("player.quality.mp3", {bitrate: player.quality})
+    : track.format ? TagcastI18n.text("player.quality.originalFormat", {format: track.format}) : TagcastI18n.text("player.quality.original");
+  const parts = track.format ? [TagcastI18n.text("player.quality.file", {format: track.format})] : [];
+  parts.push(TagcastI18n.text(player.fallback ? "player.quality.streamFallback" : "player.quality.stream", {stream}));
+  if (typeof gaplessTrial !== "undefined" && gaplessTrial.active) {
+    parts.push(TagcastI18n.text("player.quality.gapless"));
+    if (gaplessTrial.active.ready === false || gaplessTrial.active.seekIntent) parts.push(TagcastI18n.text("player.quality.preparing"));
+  }
+  return parts.join(" · ");
+}
+
+// Repeat modes are fixed codes (also set by queue sync); only their labels are translated.
+const REPEAT_LABELS = {none: ["", "player.repeat.none"], queue: ["player.repeat.queueButton", "player.repeat.queue"],
+  track: ["player.repeat.trackButton", "player.repeat.track"]};
+function renderRepeatButton() {
+  const button = $("#player-repeat"), labels = REPEAT_LABELS[player.repeat];
+  if (!labels) return;
+  button.textContent = labels[0] ? TagcastI18n.text(labels[0]) : "↻";
+  button.setAttribute("aria-label", TagcastI18n.text(labels[1]));
+  button.setAttribute("aria-pressed", String(player.repeat !== "none"));
+  button.title = TagcastI18n.text("player.repeat.title");
+}
+renderRepeatButton();
 $("#player-repeat").addEventListener("click", () => {
   player.repeat = {none: "queue", queue: "track", track: "none"}[player.repeat];
-  $("#player-repeat").textContent = player.repeat === "none" ? "↻" : player.repeat === "queue" ? "↻ Queue" : "↻ Track";
-  $("#player-repeat").setAttribute("aria-label", `Repeat: ${player.repeat}. Click to change`);
-  $("#player-repeat").setAttribute("aria-pressed", String(player.repeat !== "none"));
+  renderRepeatButton();
   if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof publishQueueState === "function") publishQueueState();
 });
@@ -726,6 +789,6 @@ $("#player-repeat").addEventListener("click", () => {
 audio.addEventListener("play", () => {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) {
     audio.pause(); playReporting.watch = null;
-    toast("This browser is a controller. Use Devices to resume playback here or control the remote player.");
+    toast(TagcastI18n.text("player.devices.controller"));
   }
 });

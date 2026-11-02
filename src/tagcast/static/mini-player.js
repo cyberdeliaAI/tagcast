@@ -59,7 +59,7 @@ function miniApplyCommand(command) {
       if (g?.ready === false) { g.autoPlay = true; break; }
       if (!audio.getAttribute("src") || audio.error) return false;
       if (audio.ended) { if (g) seekSystemPlayback(0); else audio.currentTime = 0; }
-      audio.play().catch(() => toast("Playback could not start. Open Tagcast to check the player.")); break;
+      audio.play().catch(() => toast(TagcastI18n.text("mini.owner.playFailed"))); break;
     case "previous": if (!current.previous) return false; step(-1); break;
     case "next": if (!current.next) return false; step(1); break;
     case "seek": if (!current.seekable || !Number.isFinite(command.position) || command.position < 0 || command.position > current.duration) return false; seekSystemPlayback(command.position); break;
