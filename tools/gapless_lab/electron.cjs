@@ -11,7 +11,7 @@ fs.mkdirSync(out,{recursive:true});let manifest;
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'tagcast-media-lab-'));app.setPath('userData',profile);app.enableSandbox();app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
 let active,server,window;const results=[],memory=[];
 const routes={'/':'harness.html','/environment.js':'environment.js','/run.js':'run.js','/capture.js':'capture.js'};
-const production={'/gapless-media.js':'gapless-media.js','/gapless.js':'gapless.js','/gapless-diagnostics.js':'gapless-diagnostics.js'};
+const production={'/i18n-en.js':'i18n-en.js','/i18n.js':'i18n.js','/gapless-media.js':'gapless-media.js','/gapless.js':'gapless.js','/gapless-diagnostics.js':'gapless-diagnostics.js'};
 const timers=new Set();
 function send(res,file,delay=0){const data=fs.readFileSync(file);res.writeHead(200,{'Content-Type':file.endsWith('.flac')?'audio/flac':file.endsWith('.html')?'text/html':'text/javascript','Content-Length':data.length,'Cache-Control':'no-store'});const t=setTimeout(()=>{timers.delete(t);if(!res.destroyed)res.end(data);},delay);timers.add(t);res.on('close',()=>{clearTimeout(t);timers.delete(t);});}
 server=http.createServer((req,res)=>{
@@ -35,7 +35,13 @@ async function run(config,referenceMode=false,normalization){
  const started=performance.now(),samples=(active.config.expectedTracks||active.config.tracks).reduce((n,s)=>n+s.samples,0),limit=(config.stress?90:config.seekProbe?20:samples/config.rate+18)*1000;active.config.timeoutMs=limit-2000;
  const timeout=setTimeout(()=>active.resolve({id:config.id,error:'Renderer harness deadline',events:[],operations:[],inputChannels:[]}),limit);
  const memoryTimer=setInterval(()=>memory.push({case:name,at:performance.now()-started,processes:app.getAppMetrics().map(p=>({type:p.type,workingSetKiB:p.memory.workingSetSize,privateKiB:p.memory.privateBytes}))}),500);
- await window.loadURL(`http://127.0.0.1:${server.address().port}/`);const result=await completed;clearTimeout(timeout);clearInterval(memoryTimer);fs.closeSync(active.fd);active.fd=undefined;
+ await window.loadURL(`http://127.0.0.1:${server.address().port}/`);
+ const initializationError=await window.webContents.executeJavaScript(`(()=>{try{
+  if(TagcastI18n.language!=='en'||typeof gaplessTrial.message!=='string'||playbackFailure('errors.gapless.http',{status:503}).code!=='gapless.http')throw Error('Invalid presentation dependencies');
+  return '';
+ }catch(error){return error.message;}})()`);
+ if(initializationError)active.resolve({error:'Media harness initialization: '+initializationError,events:[],operations:[],inputChannels:[]});
+ const result=await completed;clearTimeout(timeout);clearInterval(memoryTimer);fs.closeSync(active.fd);active.fd=undefined;
  const bytes=fs.readFileSync(file),floats=new Float32Array(bytes.buffer,bytes.byteOffset,bytes.byteLength/4),channels=[new Float32Array(floats.length/2),new Float32Array(floats.length/2)];
  for(let i=0;i<channels[0].length;i++){channels[0][i]=floats[i*2];channels[1][i]=floats[i*2+1];}
  result.id=name;result.sourceCase=config.id;
