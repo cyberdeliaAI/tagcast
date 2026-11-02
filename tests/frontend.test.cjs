@@ -11210,6 +11210,91 @@ test("interface language: other tabs follow through the storage event without a 
   assert.equal(p.run("TagcastI18n.language"), "nl");
 });
 
+test("interface language: a newer tab choice is persisted after an older in-flight save", async () => {
+  const p = languagePage(); await settle();
+  const pending = []; let persisted = "en";
+  p.setFetch((url, request) => {
+    assert.equal(url, "/api/settings/interface");
+    const language = JSON.parse(request.body).language;
+    return new Promise(resolve => pending.push({language, finish() {
+      persisted = language; resolve({ok: true, json: async () => ({interface_language: language})});
+    }}));
+  });
+  p.run('playTracks(state.details.get("1"))');
+  await p.run('openEditor([state.albums[0].id])');
+  p.run('globalThis.languageDraft = editing; globalThis.languageSession = state.connection; musicUploadsView.busy = true; audioDownloadsView.busy = true; signInFlow.opening = true');
+  const transfers = p.json('({uploads:musicUploadsView,downloads:audioDownloadsView,signIn:signInFlow})');
+  const playback = playbackState(p), form = p.nodes.get("#editor-content").innerHTML;
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  assert.equal(pending.length, 1);
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "en"}); await settle();
+  assert.equal(p.run("TagcastI18n.choice"), "en");
+  pending[0].finish(); await first; await settle();
+  assert.deepEqual(pending.map(row => row.language), ["nl", "en"]);
+  assert.equal(p.run("interfaceLanguage.saving"), true, "the newer save owns the busy status");
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saving");
+  pending[1].finish(); await p.run("interfaceLanguage.saved"); await settle();
+  assert.equal(persisted, "en"); assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saved");
+  assert.deepEqual(playbackState(p), playback);
+  assert.equal(p.run("editing === languageDraft && state.connection === languageSession"), true);
+  assert.equal(p.nodes.get("#editor-content").innerHTML, form);
+  assert.deepEqual(p.json('({uploads:musicUploadsView,downloads:audioDownloadsView,signIn:signInFlow})'), transfers);
+});
+
+test("interface language: obsolete errors do not hide a newer failure and retry recovers", async () => {
+  const p = languagePage(); await settle(); const pending = [];
+  p.setFetch((url, request) => new Promise((resolve, reject) => pending.push({language: JSON.parse(request.body).language, resolve, reject})));
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "en"});
+  pending[0].reject(Error("old save failed")); await first; await settle();
+  assert.equal(pending.length, 2);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saving");
+  pending[1].reject(Error("latest save failed")); await p.run("interfaceLanguage.saved.catch(() => {})"); await settle();
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saveFailed");
+  assert.equal(p.run("interfaceLanguage.status"), "latest save failed");
+  assert.equal(p.run("TagcastI18n.choice"), "en");
+  const retry = p.run('chooseInterfaceLanguage("en")'); await settle();
+  pending[2].resolve({ok: true, json: async () => ({interface_language: "en"})}); await retry;
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saved");
+  p.run('applyServerLanguage({interface_language:"nl"})'); await settle();
+  assert.equal(p.run("TagcastI18n.choice"), "nl", "fresh server settings are accepted after recovery");
+});
+
+test("interface language: delayed catalogs cannot enqueue an obsolete save after a newer choice", async () => {
+  const p = languagePage(); await settle(); let release;
+  p.setCatalogFetch(() => new Promise(resolve => { release = resolve; }));
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle();
+  const latest = p.run('chooseInterfaceLanguage("en")'); await settle();
+  release({ok: true, json: async () => JSON.parse(readFileSync(path.join(staticDir, "i18n/nl.json"), "utf8"))});
+  await Promise.all([first, latest]);
+  assert.deepEqual(p.saved, [{language: "en"}], "only the current choice may start a write");
+  assert.equal(p.run("TagcastI18n.language"), "en");
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+});
+
+test("interface language: reordered responses across tabs converge on the newer choice", async () => {
+  const a = languagePage(), b = languagePage(); await settle(); let persisted = "en";
+  const requests = [];
+  for (const page of [a, b]) page.setFetch((url, options) => new Promise(resolve => {
+    const language = JSON.parse(options.body).language;
+    requests.push({language, finish() { persisted = language; resolve({ok: true, json: async () => ({interface_language: language})}); }});
+  }));
+  const old = a.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  const latest = b.run('chooseInterfaceLanguage("en")'); await settle();
+  await a.emitWindow("storage", {key: "tagcast-language", newValue: "en"});
+  requests[1].finish(); await latest;
+  assert.equal(persisted, "en");
+  requests[0].finish(); await old; await settle();
+  assert.equal(a.run("TagcastI18n.choice"), "en", "an old response never rolls back the newer UI");
+  assert.equal(requests[2].language, "en"); requests[2].finish();
+  await a.run("interfaceLanguage.saved"); await settle();
+  assert.equal(persisted, "en");
+  for (const page of [a, b]) assert.equal(page.run("interfaceLanguage.saving"), false);
+});
+
 test("interface language: a missing catalog keeps English, the choice and every action working", async () => {
   const p = languagePage(); await settle();
   p.setCatalogFetch(() => ({ok: false, json: async () => ({})}));

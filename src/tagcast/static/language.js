@@ -37,16 +37,20 @@ function renderLanguageSettings() {
   if (focused) $("#interface-language")?.focus({preventScroll: true});
 }
 
-async function chooseInterfaceLanguage(value) {
+async function chooseInterfaceLanguage(value, {remember = true} = {}) {
   const version = ++interfaceLanguage.version;
   interfaceLanguage.saving = true; interfaceLanguage.statusKey = "settings.language.saving"; interfaceLanguage.status = "";
-  await TagcastI18n.use(value);
-  renderLanguageSettings();
-  // The select stays usable while saving; saves run one after another so the newest choice is
-  // also the one the server keeps.
+  const loaded = TagcastI18n.use(value, {remember});
+  // Capture and queue the choice before awaiting a catalog: load order must never reorder saves.
   const language = TagcastI18n.choice, previous = interfaceLanguage.saved;
-  const saving = interfaceLanguage.saved = previous.catch(() => {}).then(() => api("/api/settings/interface", {language}));
+  const saving = interfaceLanguage.saved = previous.catch(() => {}).then(async () => {
+    if (version !== interfaceLanguage.version) return;
+    await loaded;
+    if (version === interfaceLanguage.version) return api("/api/settings/interface", {language});
+  });
   try {
+    await loaded;
+    if (version === interfaceLanguage.version) renderLanguageSettings();
     await saving;
     if (version === interfaceLanguage.version) interfaceLanguage.statusKey = "settings.language.saved";
   } catch (error) {
@@ -89,7 +93,14 @@ document.addEventListener("change", event => {
 // the server's choice when they start or reload their settings.
 window.addEventListener("storage", event => {
   if (event.key === "tagcast-language" && event.newValue && event.newValue !== TagcastI18n.choice) {
-    interfaceLanguage.version += 1;
-    TagcastI18n.use(event.newValue, {remember: false});
+    if (interfaceLanguage.saving) {
+      // Our older write may still arrive after the other tab's save. Serialize its newer
+      // choice behind it; do not write storage again or let the older completion own the UI.
+      chooseInterfaceLanguage(event.newValue, {remember: false});
+    } else {
+      interfaceLanguage.version += 1;
+      interfaceLanguage.statusKey = ""; interfaceLanguage.status = "";
+      TagcastI18n.use(event.newValue, {remember: false}).then(renderLanguageSettings);
+    }
   }
 });
