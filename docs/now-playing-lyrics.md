@@ -83,8 +83,8 @@ guaranteed by a metadata match.
 The supplied `online.js` illustrates exact-get/search fallback and closest-duration
 selection. These ideas are implemented independently in Tagcast's existing Python
 backend; its Electron-only networking, cover searches and extra providers are not
-imported. Its partial-word matching is not used. Only the bounded, duration-guarded
-release-label normalization described above is used for display lookups.
+imported. Its partial-word matching is not used. The bounded, duration-guarded
+release-label normalization described above is also reused by explicit editor searches.
 
 The supplied `ttml.js` describes word timings, singer labels and background vocals.
 Tagcast reads word/segment timing from Unison TTML and enhanced LRC. LRCLIB's
@@ -139,3 +139,43 @@ and its [duration filter](https://github.com/better-lyrics/unison/blob/master/sr
 Next-track prefetch, animation-frame line following and changing the meaning of
 “iBroadcast first” are deliberately outside this fix. Existing preference values,
 ordinary and Gapless Playback, queue operations and native lyrics saves are unchanged.
+
+## Explicit Find lyrics in the metadata editor
+
+**Find lyrics on LRCLIB** now reuses the same bounded search-first, get-fallback
+provider reader, duration/identity checks and parsers. This does not use Unison,
+read or populate the temporary Now playing result cache, or start automatically.
+The existing LRCLIB source switch is required. Only metadata is sent; no account
+credentials, cookies, audio or native lyrics text is sent to LRCLIB.
+
+The editor keeps LRCLIB’s ordinary plain text first when available, independently
+of optional timing quality. Otherwise LRC, enhanced LRC and supported Lyricsfile
+lines are converted into ordinary text before the result reaches the editor or its
+public SQLite cache. Timing and LRC metadata markers from those timed formats
+are not copied. Empty lines between verses are preserved;
+the existing total 50,000-character limit includes the joined line breaks. A result
+must still be checked by the user: a metadata match is not proof that contributed
+lyrics describe the intended recording.
+
+The workflow remains **Find lyrics → Use these lyrics → Review lyrics → Save lyrics
+to iBroadcast**. Finding does not change the textarea draft, library or music files.
+Fresh native reads may refresh the separate native cache with iBroadcast text; public results
+never replace that cached native text. Saving retains the existing fresh
+userdata/membership checks,
+complete custom-field preservation, single-use review, one write without ambiguous
+retries and read-back confirmation. Native iBroadcast lyrics still take priority.
+Premium restrictions and the separate album sidecar-import workflow are unchanged.
+
+LRCLIB spacing/backoff is shared with display lookups to respect provider limits,
+but player-track changes do not cancel an explicitly requested editor lookup.
+Account, session, library or source changes are checked between provider steps and
+before caching. Native reads and saves retain their existing serialized workflow;
+this change does not refactor that locking or the audio engine.
+
+The editor's public cache remains separate: valid results expire after 30 days,
+missing results after one day, with the existing 1,000-row/10 MiB bound. Its key now
+includes the lookup version and full album identity. Old public results remain
+subject to normal expiry/size cleanup but are not reused by the new lookup, so an
+old miss or marker-bearing result cannot mask it. A new request still requires
+**Find lyrics**. Saved native lyrics, user preferences and review semantics are
+not migrated or reset. Display lookups continue to be memory-only.

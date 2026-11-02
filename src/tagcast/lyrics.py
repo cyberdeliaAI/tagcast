@@ -10,7 +10,6 @@ userdata and review tokens stay in memory. Public LRCLIB results stay separate.
 import hashlib
 import hmac
 import json
-import math
 import re
 import secrets
 import sqlite3
@@ -19,14 +18,11 @@ import time
 from collections import OrderedDict
 from contextlib import closing
 
-import requests
-
 from .library import ConflictError, LibraryError, text
-from .playback_lyrics import PlaybackLyrics
-from .sources import USER_AGENT, SourceError, artist_name_key
+from .playback_lyrics import PlaybackLyrics, fetch_lrclib_display
+from .sources import SourceError, artist_name_key
 
 MAX_LYRICS = 50000
-MAX_RESPONSE = 512000
 CACHE_TTL = 30 * 86400
 NATIVE_CACHE_ENTRIES = 5000
 NATIVE_CACHE_BYTES = 20 * 1024 * 1024
@@ -38,55 +34,17 @@ def lyric_text(value):
     return value.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def fetch_lrclib(track):
-    """One bounded, credential-free public request; retain full version identity."""
-    params = {"track_name": track["title"], "artist_name": track["artist"]}
-    if track["length"] > 0:
-        params["duration"] = track["length"]
+def fetch_lrclib(track, album="", check_current=lambda: None, policy=None):
+    """Reuse the bounded LRCLIB search; only plain text enters the editor cache."""
+    result = fetch_lrclib_display(track, album, check_current, policy, plain_text=True)
     try:
-        with requests.Session() as session:
-            session.trust_env = False
-            session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
-            with session.get("https://lrclib.net/api/get", params=params, timeout=(5, 15),
-                             stream=True, allow_redirects=False) as response:
-                if response.status_code == 404:
-                    return {"status": "missing", "text": "", "source": "lrclib"}
-                if response.status_code != 200:
-                    raise SourceError(f"LRCLIB returned HTTP {response.status_code}. Try again later.")
-                chunks, size, started = [], 0, time.monotonic()
-                for chunk in response.iter_content(16384):
-                    size += len(chunk)
-                    if size > MAX_RESPONSE or time.monotonic() - started > 20:
-                        raise SourceError("LRCLIB returned too much data or took too long.")
-                    chunks.append(chunk)
-                data = json.loads(b"".join(chunks))
-    except (requests.RequestException, ValueError):
-        raise SourceError("LRCLIB could not be read. Try again later.") from None
-    if not isinstance(data, dict):
-        raise SourceError("LRCLIB returned an invalid response.")
-    if not isinstance(data.get("trackName"), str) or not isinstance(data.get("artistName"), str):
-        raise SourceError("LRCLIB returned invalid track metadata.")
-    duration = data.get("duration")
-    matching = (artist_name_key(data.get("trackName")) == artist_name_key(track["title"])
-                and artist_name_key(data.get("artistName")) == artist_name_key(track["artist"]))
-    if track["length"] > 0:
-        matching = (matching and type(duration) in (int, float) and math.isfinite(duration)
-                    and abs(duration - track["length"]) <= 2)
-    if not matching:
-        return {"status": "missing", "text": "", "source": "lrclib"}
-    if data.get("instrumental") is True:
-        return {"status": "instrumental", "text": "", "source": "lrclib"}
-    lyrics = data.get("plainLyrics")
-    if not lyrics and isinstance(data.get("syncedLyrics"), str):
-        # Display text only; timestamps never drive playback in this first version.
-        lyrics = re.sub(r"\[\d+:\d+(?:[.:]\d+)?\]", "", data["syncedLyrics"])
-        lyrics = re.sub(r"(?m)^\[(?:ar|al|ti|by|offset|length):[^\n]*\]\s*", "", lyrics)
-    try:
-        lyrics = lyric_text(lyrics or "")
+        value = lyric_text("\n".join(line["text"] for line in result["lines"]).strip("\n"))
     except LibraryError:
         raise SourceError("LRCLIB returned invalid or oversized lyrics.") from None
-    return {"status": "ready" if lyrics.strip() else "missing", "text": lyrics,
-            "source": "lrclib"}
+    status = result["status"]
+    if status == "ready" and not value.strip():
+        status = "missing"
+    return {"status": status, "text": value, "source": "lrclib"}
 
 
 class Lyrics:
@@ -97,8 +55,6 @@ class Lyrics:
         self.context = None
         self.native = OrderedDict()
         self.reviews = OrderedDict()
-        self.failures = {}
-        self.last_lookup = 0
         self.display = PlaybackLyrics(self)
 
     def _import_scope(self, body, library):
@@ -226,6 +182,12 @@ class Lyrics:
         with closing(self._native_db()) as db, db:
             db.execute("DELETE FROM native_lyrics WHERE account=? AND track_id=?", self._native_key(selection)[:2])
 
+    def _public_key(self, selection):
+        track = selection[3]
+        return json.dumps(["lrclib-search-v2", artist_name_key(track["title"]),
+                           artist_name_key(track["artist"]), track["length"],
+                           artist_name_key(selection[4][-1])])
+
     def _result(self, selection, body, lyrics, rows=None):
         enabled = "lrclib" not in self.studio.disabled_sources()
         result = {"status": "ready" if lyrics.strip() else "missing", "text": lyrics,
@@ -235,8 +197,7 @@ class Lyrics:
             result["before_token"] = self._token(selection, body, rows)
         if lyrics.strip() or not enabled:
             return result
-        track = selection[3]
-        key = json.dumps([artist_name_key(track["title"]), artist_name_key(track["artist"]), track["length"]])
+        key = self._public_key(selection)
         cached = self._cached(key)
         return {**result, **(cached or {"status": "not_cached"}), "can_lookup": not cached}
 
@@ -349,28 +310,22 @@ class Lyrics:
                     or not text(selection[1].tracks[int(track["id"])].get("title")).strip() \
                     or not text(selection[1].artists.get(track["artist_id"], {}).get("name")).strip():
                 return {**result, "can_lookup": False}
-            key = json.dumps([artist_name_key(track["title"]), artist_name_key(track["artist"]), track["length"]])
+            key = self._public_key(selection)
             try:
                 cached = self._cached(key)
                 if lookup and not cached:
-                    if time.monotonic() < self.failures.get(key, 0):
-                        raise SourceError("LRCLIB lookup failed recently. Wait one minute before trying again.")
-                    if time.monotonic() - self.last_lookup < 1:
-                        raise SourceError("Please wait a moment between lyrics searches.")
-                    with self.studio.lock:
-                        if not self._current(selection, body) or "lrclib" in self.studio.disabled_sources():
-                            raise ConflictError("The account, library or source preference changed.")
-                    self.last_lookup = time.monotonic()
+                    def check_current():
+                        with self.studio.lock:
+                            if not self._current(selection, body) or "lrclib" in self.studio.disabled_sources():
+                                raise ConflictError("The account, library or source preference changed.")
+                    check_current()
                     try:
-                        cached = fetch_lrclib(track)
-                    except SourceError:
-                        self.failures[key] = time.monotonic() + 60
-                        while len(self.failures) > 100:
-                            self.failures.pop(next(iter(self.failures)))
+                        cached = fetch_lrclib(track, selection[4][-1], check_current, self.display)
+                    except SourceError as error:
+                        check_current()
+                        self.display.defer("lrclib", getattr(error, "retry_after", 2))
                         raise
-                    with self.studio.lock:
-                        if not self._current(selection, body) or "lrclib" in self.studio.disabled_sources():
-                            raise ConflictError("The account, library or source preference changed.")
+                    check_current()
                     self._cache(key, cached)
             except LibraryError:
                 raise

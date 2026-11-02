@@ -575,11 +575,18 @@ def _lyricsfile_lines(value, data, duration):
         return None
 
 
-def _lrclib_lines(data, duration):
+def _lrclib_lines(data, duration, plain_text=False):
     result = _finish([], duration, "lrclib")
     if data.get("instrumental") is True:
         return {**result, "status": "instrumental"}
     synced, plain = data.get("syncedLyrics"), data.get("plainLyrics")
+    # The editor preserves LRCLIB's ordinary text preference; bad optional timing
+    # must not discard a usable plain result or replace it with a different text.
+    if plain_text and isinstance(plain, str) and plain.strip():
+        if len(plain) > MAX_TEXT or "\x00" in plain:
+            raise SourceError("LRCLIB returned invalid or oversized lyrics.")
+        return _finish([{"start": None, "end": None, "text": line}
+                        for line in plain.splitlines()], duration, "lrclib")
     if any(value is not None and (not isinstance(value, str) or len(value) > MAX_TEXT
                                   or "\x00" in value) for value in (synced, plain)):
         raise SourceError("LRCLIB returned invalid or oversized lyrics.")
@@ -594,7 +601,7 @@ def _lrclib_lines(data, duration):
                     for line in (plain or "").splitlines()], duration, "lrclib")
 
 
-def fetch_lrclib_display(track, album, check_current, policy=None):
+def fetch_lrclib_display(track, album, check_current, policy=None, *, plain_text=False):
     """Search the database first; use exact get only without a usable candidate."""
     reader = _ProviderReader("lrclib", check_current, policy)
     params = {"track_name": track["title"], "artist_name": track["artist"]}
@@ -620,7 +627,7 @@ def fetch_lrclib_display(track, album, check_current, policy=None):
         for hit in candidates:
             check_current()
             try:
-                result = _lrclib_lines(hit, track["length"])
+                result = _lrclib_lines(hit, track["length"], plain_text=plain_text)
                 if result["status"] != "missing":
                     return result
             except SourceError:
