@@ -2076,8 +2076,8 @@ test('library loading has a global indeterminate indicator independent of the di
   assert.equal(p.nodes.get('#audio').paused,false);
   assert.equal(p.requests.filter(r=>r.url.startsWith('/api/library')).length,1);
   const html=readFileSync(path.join(staticDir,'index.html'),'utf8');
-  assert.match(html,/<progress aria-label="Library loading"><\/progress>/);
-  assert.match(html,/<strong>Loading your iBroadcast library…<\/strong>/);
+  assert.match(html,/<progress aria-label="Library loading"[^>]*><\/progress>/);
+  assert.match(html,/<strong[^>]*>Loading your iBroadcast library…<\/strong>/);
 });
 
 test('an older library reply cannot hide a newer load or replace its albums', async () => {
@@ -4574,7 +4574,7 @@ test("the library info banner can be hidden, remembered and restored without req
   assert.equal(reopened.run("libraryNotice.visible"), false);
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.match(html, /id="settings-button">Settings</);
-  assert.match(html, /<h1 id="settings-title" tabindex="-1">Settings<span>\.<\/span><\/h1>/);
+  assert.match(html, /<h1 id="settings-title" tabindex="-1"[^>]*>Settings<span>\.<\/span><\/h1>/);
 });
 
 test("compact player display choices act independently without changing playback, queue or full metadata views", async () => {
