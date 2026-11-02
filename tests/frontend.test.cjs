@@ -9,6 +9,307 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
+// Display-only Now playing lyrics exercise the actual page scripts below.
+async function playbackLyricsPage(mode = "native") {
+  const storage = {"tagcast-now-playing-lyrics": mode};
+  const p = page({storage}); await settle();
+  p.run('state.mode="live";state.connection.playback_session="lyrics-session";playTracks(state.details.get("1"));');
+  return {p, storage};
+}
+function openDisplayLyrics(p) {
+  p.run('visualPlayer.open=true;playbackLyricsView.open=true;renderVisualPlayer()');
+}
+const displayLyricsFixture = {status:"ready",source:"unison",timed:true,lines:[
+  {start:1,end:3,text:"<script>Synthetic first line</script>"},
+  {start:3,end:8,text:"Second test line"}]};
+const emptyNativeLyrics = {status:"not_cached",source:"ibroadcast",text:"",native_text:"",can_lookup:false};
+
+test('cover atmosphere is optional, profile-local and clears when artwork is unavailable or player closes',async()=>{
+  const {p,storage}=await playbackLyricsPage();
+  const art=p.nodes.get('#visual-player-art');
+  art.complete=true;art.naturalWidth=300;art.hidden=false;art.src='https://artwork.example/cover.jpg';
+  p.run('visualPlayer.open=true;renderLyricsCoverBackground()');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
+  await p.change({id:'playback-lyrics-cover-background',checked:true,matches:()=>false,closest:()=>null});
+  assert.equal(storage['tagcast-now-playing-cover-background'],'true');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),true);
+  assert.match(p.nodes.get('#visual-player').style['--lyrics-cover-image'],/cover.jpg/);
+  art.hidden=true;p.run('renderLyricsCoverBackground()');
+  assert.equal(p.nodes.get('#visual-player').style['--lyrics-cover-image'],undefined);
+  p.run('hideVisualPlayer()');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
+});
+
+test('display lyrics default to native and do not fetch while the large lyrics view is closed', async()=>{
+  const {p,storage}=await playbackLyricsPage();
+  p.setFetch(()=>({ok:true,json:async()=>({...emptyNativeLyrics,text:'Cached public LRCLIB text'})}));
+  p.run('visualPlayer.open=true;renderVisualPlayer()');await settle();
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics?')).length,0);
+  openDisplayLyrics(p);await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,0);
+  assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
+  assert.match(p.nodes.get('#visual-lyrics-message').textContent,/No lyrics stored in iBroadcast/);
+  assert.equal(storage['tagcast-now-playing-lyrics'],'native');
+});
+
+test('native-first display reuses native text and never calls Unison or writes',async()=>{
+  const {p}=await playbackLyricsPage('native-first');
+  p.setFetch(()=>({ok:true,json:async()=>({...emptyNativeLyrics,native_text:'Saved <verse>\n\nNext line'})}));
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})');
+  openDisplayLyrics(p);await settle();p.run('renderVisualPlayer()');await settle();
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/Saved &lt;verse&gt;/);
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-lines').innerHTML,/♪/,'Untimed verse breaks stay blank');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/lyrics?')).length,1);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})'),before);
+});
+
+test('native-first falls back to attributed Unison text without changing native data or drafts',async()=>{
+  const {p}=await playbackLyricsPage('native-first');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  openDisplayLyrics(p);await settle();
+  const calls=p.requests.filter(r=>r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics/display');
+  assert.equal(calls.length,2);assert.ok(calls[0].url.startsWith('/api/lyrics?'));
+  assert.equal(calls[1].options.headers['X-Tagcast'],'1');
+  assert.equal(JSON.parse(calls[1].options.body).enabled,true);
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/&lt;script&gt;/);
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-lines').innerHTML,/<script>/);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Lyrics from Unison/);
+  assert.equal(p.run('lyricsEntry(lyricsSelection(player.queue[player.index])).data.native_text'),'');
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  await p.nodes.get('#visual-player-lyrics-toggle').emit('click');
+  await p.nodes.get('#visual-player-lyrics-toggle').emit('click');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,1,'Reopening reuses the bounded RAM cache');
+});
+
+test('Unison-first falls back on missing text or network failure without overwriting saved native lyrics',async()=>{
+  for(const failed of [false,true]) {
+    const {p}=await playbackLyricsPage('unison-first');
+    p.setFetch(url=>({ok:!(failed&&url==='/api/lyrics/display'),json:async()=>url==='/api/lyrics/display'
+      ? {status:'missing',lines:[],error:'Unavailable'} : {...emptyNativeLyrics,native_text:'Native fallback'}}));
+    openDisplayLyrics(p);await settle();
+    const calls=p.requests.filter(r=>r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics/display');
+    assert.equal(calls[0].url,'/api/lyrics/display');assert.equal(calls.length,2);
+    assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/Native fallback/);
+    assert.equal(p.nodes.get('#visual-lyrics-retry').hidden,!failed);
+    assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,0);
+  }
+});
+
+test('changing source aborts an outstanding Unison lookup and ignores its late response',async()=>{
+  const {p,storage}=await playbackLyricsPage('unison-first');let release,signal;
+  p.setFetch((url,options)=>url==='/api/lyrics/display'?new Promise(resolve=>{release=resolve;signal=options.signal;})
+    :{ok:true,json:async()=>({...emptyNativeLyrics,native_text:'Native after change'})});
+  openDisplayLyrics(p);await settle();
+  p.run('setPlaybackLyricsMode("native")');await settle();assert.equal(signal.aborted,true);
+  release({ok:true,json:async()=>displayLyricsFixture});await settle();
+  assert.equal(storage['tagcast-now-playing-lyrics'],'native');
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/Native after change/);
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
+});
+
+test('temporary provider unavailability is retryable and never cached as missing lyrics',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');let recovered=false;
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'
+    ? recovered?displayLyricsFixture:{status:'unavailable',source:'unison',lines:[],message:'Temporarily unavailable'}
+    :emptyNativeLyrics}));
+  openDisplayLyrics(p);await settle();
+  assert.equal(p.run('playbackLyricsView.cache.size'),0);
+  assert.equal(p.nodes.get('#visual-lyrics-retry').hidden,false);
+  recovered=true;await p.nodes.get('#visual-lyrics-retry').emit('click');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,2);
+  assert.equal(p.run('playbackLyricsView.cache.size'),1);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Lyrics from Unison/);
+});
+
+test('three rapid track selections show the last lyrics without retrying obsolete requests',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');const pending=[];
+  p.run('player.queue.push({...player.queue[0],id:"synthetic-third",title:"Third test track"})');
+  p.setFetch((url,options)=>url==='/api/lyrics/display'?new Promise(resolve=>pending.push({resolve,signal:options.signal}))
+    :{ok:true,json:async()=>emptyNativeLyrics});
+  openDisplayLyrics(p);await settle();
+  p.run('player.index=1;renderVisualPlayer()');await settle();
+  p.run('player.index=2;renderVisualPlayer()');await settle();
+  assert.equal(pending.length,3);assert.ok(pending.slice(0,2).every(item=>item.signal.aborted));
+  pending[2].resolve({ok:true,json:async()=>displayLyricsFixture});await settle();
+  for(const item of pending.slice(0,2)) item.resolve({ok:true,json:async()=>({status:'unavailable',lines:[]})});
+  await settle();
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Lyrics from Unison/);
+  assert.equal(p.nodes.get('#visual-lyrics-retry').hidden,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,3);
+});
+
+test('track changes and closing the player discard pending display lyrics',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');const releases=[];
+  p.setFetch(()=>new Promise(resolve=>releases.push(resolve)));
+  openDisplayLyrics(p);await settle();
+  p.run('player.index=1;renderVisualPlayer()');await settle();
+  assert.equal(releases.length,2);
+  releases[0]({ok:true,json:async()=>displayLyricsFixture});await settle();
+  assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
+  p.run('hideVisualPlayer()');
+  releases[1]({ok:true,json:async()=>displayLyricsFixture});await settle();
+  assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
+  assert.equal(p.run('playbackLyricsView.cache.size'),0);
+});
+
+test('line following uses current-track gapless time, handles seeking and yields to keyboard scrolling',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>displayLyricsFixture}));
+  openDisplayLyrics(p);await settle();
+  p.run('gaplessPosition=()=>2;audio.currentTime=999;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.active'),0);
+  let stopped=false;
+  await p.nodes.get('#visual-lyrics-lines').emit('keydown',{key:'ArrowDown',stopPropagation(){stopped=true;}});
+  assert.equal(stopped,true);assert.equal(p.run('playbackLyricsView.following'),false);
+  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,false);
+  p.run('gaplessPosition=()=>4');await p.nodes.get('#audio').emit('seeked');await settle();
+  assert.equal(p.run('playbackLyricsView.active'),1);
+  await p.nodes.get('#visual-lyrics-follow').emit('click');
+  assert.equal(p.run('playbackLyricsView.following'),true);
+  p.run('gaplessPosition=()=>0;syncPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.active'),-1);
+  p.run('gaplessPosition=()=>9;syncPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.active'),-1);
+});
+
+test('hidden documents suspend display lookups and session reset releases online text',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>displayLyricsFixture}));
+  p.run('document.hidden=true');openDisplayLyrics(p);await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,0);
+  p.run('document.hidden=false');await p.emitDocument('visibilitychange');await settle();
+  assert.equal(p.run('playbackLyricsView.cache.size'),1);
+  p.run('resetTrackLyrics()');
+  assert.equal(p.run('playbackLyricsView.cache.size'),0);
+  assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
+});
+
+test('LRCLIB fallback is explicitly requested, attributed and remains display-only',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>({...displayLyricsFixture,source:'lrclib'})}));
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})');
+  openDisplayLyrics(p);await settle();
+  const request=p.requests.find(r=>r.url==='/api/lyrics/display');
+  assert.equal(JSON.parse(request.options.body).fallback_lrclib,true);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/https:\/\/lrclib.net\//);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Temporary display/);
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/&lt;script&gt;/);
+  p.run('gaplessPosition=()=>4;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.active'),1);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})'),before);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  assert.match(p.run('playbackLyricsSettings()'),/Unison → LRCLIB/);
+});
+
+test('disabling LRCLIB clears displayed fallback text and aborts late source replies',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');let release,signal;
+  p.run('lookup.sources=[{name:"lrclib",enabled:true}]');
+  p.setFetch((url,options)=>{
+    if(url==='/api/lyrics/display'&&JSON.parse(options.body).fallback_lrclib)
+      return new Promise(resolve=>{release=resolve;signal=options.signal;});
+    return {ok:true,json:async()=>url==='/api/lyrics/display'?{status:'missing',source:'unison',lines:[]}:emptyNativeLyrics};
+  });
+  openDisplayLyrics(p);await settle();
+  p.run('applyLookupSources([{name:"lrclib",enabled:false}])');await settle();
+  assert.equal(signal.aborted,true);
+  release({ok:true,json:async()=>({...displayLyricsFixture,source:'lrclib'})});await settle();
+  const requests=p.requests.filter(r=>r.url==='/api/lyrics/display');
+  assert.equal(JSON.parse(requests.at(-1).options.body).fallback_lrclib,false);
+  assert.equal(p.nodes.get('#visual-lyrics-lines').innerHTML,'');
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/LRCLIB/);
+});
+
+test('LRCLIB plain lyrics stay untimed and instrumental results are clearly described',async()=>{
+  for(const instrumental of [false,true]) {
+    const {p}=await playbackLyricsPage('unison-first');
+    p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'
+      ? {status:instrumental?'instrumental':'ready',source:'lrclib',timed:false,
+        lines:instrumental?[]:[{start:null,end:null,text:'Synthetic plain line'}]}:emptyNativeLyrics}));
+    openDisplayLyrics(p);await settle();
+    assert.match(p.nodes.get('#visual-lyrics-message').textContent,instrumental?/instrumental/:/no timing/);
+    assert.equal(p.run('playbackLyricsView.active'),-1);
+    assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  }
+});
+
+const wordLyricsFixture = {status:'ready',source:'lrclib',timed:true,lines:[
+  {start:1,end:5,text:'First <word>',words:[{start:1,end:2,text:'First '},{start:2,end:4,text:'<word>'}]},
+  {start:3,end:6,text:'Other singer',words:[{start:3,end:6,text:'Other singer'}]}]};
+
+test('word lyric markup escapes every segment and malformed words keep the complete line',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  const html=p.nodes.get('#visual-lyrics-lines').innerHTML;
+  assert.match(html,/data-lyric-word="1">&lt;word&gt;<\/span>/);
+  assert.doesNotMatch(html,/<word>/);assert.match(p.nodes.get('#visual-lyrics-message').textContent,/Word-timed/);
+  assert.equal(p.run('playbackLyricWords({start:0,end:1,text:"All text",words:[{start:0,end:1,text:"Wrong"}]}).length'),0);
+  assert.equal(p.run('playbackLyricWords({start:0,end:1,text:"All text",words:[{start:0,end:2,text:"All text"}]}).length'),0);
+  p.run('playbackLyricsView.data.timed=false;paintPlaybackLyrics()');
+  assert.doesNotMatch(p.nodes.get('#visual-lyrics-lines').innerHTML,/data-lyric-word/);
+  assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/First &lt;word&gt;/);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+});
+
+test('word progress uses supplied timestamps without dividing zero-length segments',()=>{
+  const p=page();
+  for(const [time,expected] of [[0,0],[1,0],[1.5,.25],[2,.5],[3,1],[4,1]])
+    assert.equal(p.run(`playbackWordProgress({start:1,end:3},${time})`),expected);
+  assert.equal(p.run('playbackWordProgress({start:1,end:1},1)'),1);
+});
+
+test('word progress seeks both directions using gapless track time and highlights overlapping singers',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  p.run(`playbackLyricsView.lineNodes=[0,1].map(()=>({offsetTop:100,setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];}}));
+    playbackLyricsView.wordNodes=[[0,1],[0]].map(a=>a.map(()=>({style:{setProperty(k,v){this[k]=v;}}})));
+    audio.currentTime=999;gaplessPosition=()=>3;syncPlaybackLyrics(true);`);
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][0].style["--lyric-progress"]'),'100%');
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][1].style["--lyric-progress"]'),'50%');
+  assert.equal(p.run('playbackLyricsView.lineNodes.every(n=>n["aria-current"]==="true")'),true);
+  p.run('gaplessPosition=()=>1.5;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][0].style["--lyric-progress"]'),'50%');
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][1].style["--lyric-progress"]'),'0%');
+  assert.equal(p.run('playbackLyricsView.lineNodes[1]["aria-current"]'),undefined);
+  p.run('gaplessPosition=()=>7;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.highlighted.size'),0);
+});
+
+test('word animation is single, visibility-bound, pause-aware and releases nodes on reset',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.run(`globalThis.lyricFrames=new Map();globalThis.lyricFrameId=0;
+    globalThis.requestAnimationFrame=cb=>{lyricFrames.set(++lyricFrameId,cb);return lyricFrameId;};
+    globalThis.cancelAnimationFrame=id=>lyricFrames.delete(id);`);
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  assert.equal(p.run('lyricFrames.size'),1,'Playback was already started by the test helper');
+  p.run('syncPlaybackLyrics();syncPlaybackLyrics()');assert.equal(p.run('lyricFrames.size'),1);
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})');
+  p.run('audio.paused=true');await p.nodes.get('#audio').emit('pause');await settle();
+  assert.equal(p.run('lyricFrames.size'),0);
+  p.run('audio.paused=false');await p.nodes.get('#audio').emit('play');await settle();
+  assert.equal(p.run('lyricFrames.size'),1);
+  p.run('document.hidden=true');await p.emitDocument('visibilitychange');await settle();
+  assert.equal(p.run('lyricFrames.size'),0);
+  p.run('document.hidden=false');await p.emitDocument('visibilitychange');await settle();
+  assert.equal(p.run('lyricFrames.size'),1);
+  await p.nodes.get('#visual-player-lyrics-toggle').emit('click');
+  assert.equal(p.run('lyricFrames.size'),0);
+  p.run('resetPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.lineNodes.length'),0);
+  assert.equal(p.run('playbackLyricsView.wordNodes.length'),0);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src})'),before);
+});
+
+test('reduced motion uses stepped word underlines without a continuous animation',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(()=>({ok:true,json:async()=>structuredClone(wordLyricsFixture)}));openDisplayLyrics(p);await settle();
+  p.run(`globalThis.matchMedia=()=>({matches:true});
+    globalThis.requestAnimationFrame=()=>{throw Error("Animation in reduced motion");};
+    playbackLyricsView.lineNodes=[{setAttribute(){},removeAttribute(){}}];
+    playbackLyricsView.wordNodes=[[{style:{setProperty(k,v){this[k]=v;}}}]];
+    gaplessPosition=()=>1.1;syncPlaybackLyrics();`);
+  assert.equal(p.run('playbackLyricsView.wordNodes[0][0].style["--lyric-progress"]'),'100%');
+  assert.equal(p.run('playbackLyricsView.frame'),0);
+});
+
 function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
@@ -41,7 +342,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     const events = new Map(), attributes = new Map();
     return {value: "", checked: false, disabled: false, readOnly: false, dataset: {}, options: [], children: [], innerHTML: "", textContent: "",
       appendChild(node) { this.children = this.children.filter(child => child !== node); this.children.push(node); return node; },
-      isConnected: true, style: {}, clientWidth: 1265, clientHeight: 710,
+      isConnected: true, style: {setProperty(name,value){this[name]=value;},removeProperty(name){delete this[name];}}, clientWidth: 1265, clientHeight: 710,
       getBoundingClientRect() { return {left: 1000, right: 1042, top: 300, bottom: 336, width: 220, height: 130}; },
       paused: true,
       classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
@@ -4991,7 +5292,7 @@ test("colour palettes persist independently of appearance without requests or pl
   p.run(`player.queue = [{id:"900",title:"Playing",artist:"Artist"}]; player.index=0;
     $("#audio").src="/api/stream/900?quality=128"; $("#audio").currentTime=27; $("#audio").paused=false;`);
   const requests = p.requests.length, history = p.history.length, queue = p.json("player.queue");
-  for (const palette of ["ocean", "warm", "ibroadcast", "forest"]) {
+  for (const palette of ["ocean", "warm", "ibroadcast", "apple", "forest"]) {
     await p.nodes.get("#theme-menu").emit("change", {target: {value: palette, dataset: {paletteChoice: ""}}});
     assert.equal(p.run('document.documentElement.dataset.palette'), palette === "forest" ? undefined : palette);
     assert.equal(storage["tagcast-palette"], palette);
@@ -5017,7 +5318,7 @@ test("appearance restores before scripts load and invalid or unavailable storage
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.ok(html.indexOf('<script src="themes.js"></script>') < html.indexOf('href="style.css"'), "Restore custom colours before styles paint");
   const source = readFileSync(path.join(staticDir, "themes.js"), "utf8");
-  for (const palette of ["ocean", "warm", "ibroadcast"]) {
+  for (const palette of ["ocean", "warm", "ibroadcast", "apple"]) {
     const document = {documentElement: {dataset: {}}};
     vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
     assert.deepEqual(document.documentElement.dataset, {theme:"light",palette});
@@ -8879,6 +9180,36 @@ test('LRCLIB lookup is explicit and a late reply cannot fill a replacement libra
   assert.equal(p.run('trackLyrics.entries.size'),0);
 });
 
+test('found LRCLIB text requires Use, Review and Save without filling ordinary metadata patches',async()=>{
+  const p=page();await settle();
+  p.run('state.mode="live";state.connection.playback_session="lyrics-session";state.connection.premium=true;editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()};const CSS={escape:value=>String(value)};$("#track-inline").scrollIntoView=()=>{};$("#editor").showModal();');
+  const plain='First line\n\nSecond line';
+  p.setFetch((url,options)=>({ok:true,json:async()=>{
+    if(url==='/api/lyrics/review')return {id:'plain-review',title:'Track',before:'',after:plain};
+    if(url==='/api/lyrics/save')return {status:'saved'};
+    return {status:options?.method==='POST'?'ready':'not_cached',source:options?.method==='POST'?'lrclib':'ibroadcast',
+      native_text:'',text:options?.method==='POST'?plain:'',can_save:true,can_lookup:options?.method!=='POST',before_token:'before'};
+  }}));
+  p.run('editTrack(String(editing.originals[0].tracks[0].id))');await settle();
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  await p.click({'[data-lyrics-action]':{dataset:{lyricsAction:'find',lyricsContext:'track'}}});await settle();
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("track")).data.text'),plain);
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("track")).draft'),null);
+  assert.match(p.nodes.get('#track-lyrics').innerHTML,/Use these lyrics/);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  await p.click({'[data-lyrics-action]':{dataset:{lyricsAction:'use',lyricsContext:'track'}}});
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("track")).draft'),plain);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  await p.run('reviewTrackLyrics(visibleLyricsSelection("track"),lyricsEntry(visibleLyricsSelection("track")))');
+  const review=p.requests.find(r=>r.url==='/api/lyrics/review');
+  assert.equal(JSON.parse(review.options.body).lyrics,plain);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,0);
+  await p.run('saveTrackLyrics()');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+  assert.deepEqual(p.json('editing.trackPatches'),{});
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,0);
+});
+
 test('track lyrics use a separate editable field and explicit review, without normal metadata patches', async () => {
   const p=page(); await settle();
   p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()}; const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{}; $("#editor").showModal();');
@@ -10290,6 +10621,46 @@ test('theme import previews a new theme and export includes only valid draft col
  p.run('themeEditorColour("ink","invalid",false);exportCustomTheme()');assert.equal(p.downloads.length,1);
 });
 
+test('sidebar icon editing is optional, preview-only and resets to state-dependent text inheritance',async()=>{
+ const p=page();await settle();p.run('showSettings("appearance")');
+ const before=p.run('JSON.stringify({settings:settingsView.dirty,queue:player.queue,src:audio.src})'),requests=p.requests.length;
+ assert.match(p.run('themeRoleControl("nav-icon")'),/follow sidebar text/);
+ assert.doesNotMatch(p.run('themeRoleControl("nav-icon")'),/undefined/);
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ const properties={},preview=p.nodes.get('#theme-preview');
+ preview.style={setProperty(key,value){properties[key]=value;},removeProperty(key){delete properties[key];}};
+ p.run('themeEditorColour("nav-icon","#C8102E",false)');
+ assert.equal(properties['--palette-nav-icon'],'#c8102e');assert.equal(p.run('TagcastThemes.active()'),null);
+ assert.match(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('themeEditorView.mode="dark";renderThemeEditor()');assert.equal(properties['--palette-nav-icon'],'initial');
+ p.run('themeEditorColour("nav-icon","#FF6476",true);themeEditorView.mode="light";renderThemeEditor()');
+ assert.equal(properties['--palette-nav-icon'],'#c8102e');
+ p.run('themeEditorColour("nav-icon","invalid",false)');assert.equal(p.run('themeEditorView.invalid["nav-icon"]'),'invalid');
+ p.run('themeEditorColour("nav-icon","",false)');
+ assert.equal(properties['--palette-nav-icon'],'initial','An inherited root override must not colour a draft that follows text');assert.equal(p.run('Object.hasOwn(themeEditorView.invalid,"nav-icon")'),false);
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ assert.doesNotMatch(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('exportCustomTheme()');const exported=JSON.parse(await p.downloads[0].blob.text());
+ assert.equal(Object.hasOwn(exported.theme.light,'nav-icon'),false);assert.equal(exported.theme.dark['nav-icon'],'#ff6476');
+ assert.equal(p.run('JSON.stringify({settings:settingsView.dirty,queue:player.queue,src:audio.src})'),before);
+ assert.equal(p.requests.length,requests,'Icon presentation never requests server data or changes playback');
+});
+
+test('Apple Music Classic is a fifth built-in palette and icon reset restores its base colour',async()=>{
+ const p=page({storage:{'tagcast-palette':'apple','tagcast-theme':'light'}});await settle();
+ assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
+ assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
+ p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
+ assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette's icon colour/);
+ p.run('themeEditorColour("nav-icon","#123456",false);themeEditorColour("nav-icon","",false)');
+ assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
+ assert.equal(p.nodes.get('#theme-hex-nav-icon').value,'#c8102e');
+ assert.match(p.run('themeRoleControl("nav-icon")'),/value="#c8102e"/);
+ assert.match(p.nodes.get('#theme-contrast').innerHTML,/Selected sidebar icons/);
+ p.run('themeEditorView.mode="dark";renderThemeEditor()');assert.match(p.run('themeRoleControl("nav-icon")'),/value="#ff6476"/);
+ assert.equal(p.run('TagcastThemes.active()'),null,'Editing the built-in base does not activate a custom theme');
+});
+
 test('invalid or late theme files retain the draft, saved themes and current page',async()=>{
  const p=page();await settle();p.run('showSettings("appearance");themeEditorColour("paper","#123456",false)');
  const draft=p.run('JSON.stringify(themeEditorView.draft)');
@@ -10564,4 +10935,143 @@ test('Upload status polling preserves expanded Details and keyboard focus across
   p.run('document.activeElement={closest:()=>({dataset:{uploadFile:"Album/old.flac"}})};musicUploadsView.data.items[1].note="Updated check";renderMusicUploads()');
   assert.match(list.innerHTML,/data-upload-file="Album\/old\.flac" open/);
   assert.equal(focused,true);
+});
+
+test("account streaming quality escapes external text while preserving known labels and markup", () => {
+  const p = page();
+  for (const value of ['<img src=x onerror="globalThis.injected=true">', '<svg onload="alert(1)">', '256 & "fast"']) {
+    const html = p.run(`accountCard({preferences:{bitrate:${JSON.stringify(value)}},linked:{}})`);
+    assert.doesNotMatch(html, /<img|<svg|<script/i);
+    assert.ok(html.includes(p.run(`escapeHtml(${JSON.stringify(value)})`) + ' kbps'));
+  }
+  for (const [value, expected] of [['orig','Original'],['auto','Automatic'],['256','256 kbps'],['','—']]) {
+    const html = p.run(`accountCard({preferences:{bitrate:${JSON.stringify(value)},combine_sets:true},linked:{}})`);
+    assert.ok(html.includes(`<dd>${expected}</dd>`));
+    assert.match(html, /<small class="warn">iBroadcast refuses album changes/);
+  }
+});
+
+test("Queue restore cannot seek a replacement album or reuse unrelated rows on a matching fingerprint", async () => {
+  const p = livePage(); await settle();
+  const rows = p.json('[...state.details.values()].flatMap(a => queueTracks(a))');
+  p.setFetch((url, options) => ({ok: true, json: async () => ({tracks: JSON.parse(options.body).tracks.map(id => rows.find(t => t.id === String(id)))})}));
+  p.run(`state.connection.playback_session="queue-session"; queueSync.active=true; queueSync.allowed=true;
+    queueSync.view={owner:queueSync.browser,own:true,state:{role:"player",tracks:[100,101],play_next:[],pause:true,
+      start_position:37,start_time:Date.now()/1000,volume:0.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('restoreQueue(queueSync.view)');
+  p.run('playTracks(state.details.get("3")); audio.currentTime=0');
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime, 0, 'Old paused restore must not seek another track');
+  await p.run('restoreQueue(queueSync.view)');
+  assert.equal(p.run('player.queue[player.index].id'), '100');
+  assert.equal(p.requests.filter(r => r.url === '/api/queue-tracks').length, 2);
+});
+
+test("Connecting Queue Sync retains the local queue until an explicit restore choice", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("3")); queueSync.enabled=true; state.connection.playback_session="choice-session"');
+  const local = p.json('player.queue.map(t=>t.id)');
+  p.setFetch((url, options) => ({ok:true,json:async()=>p.json(`({session:"choice-session",status:"connected",revision:4,own:true,owner:queueSync.browser,
+    state:{role:"player",tracks:[100,101],play_next:[],pause:true,start_position:10,start_time:0,volume:0.5,
+      data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}})`)}));
+  await p.run('connectQueue()'); await settle();
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),local);
+  assert.equal(p.requests.filter(r=>r.url==='/api/queue-tracks').length,0);
+  assert.equal(p.nodes.get('#audio').paused,true);
+  await p.click({'[data-device-local]': {}});
+  const sent = p.requests.filter(r => r.options?.body).map(r => JSON.parse(r.options.body)).find(b => b.action === 'state');
+  assert.deepEqual(sent.state.tracks, local.map(Number));
+  assert.equal(p.run('queueSync.choicePending'),false);
+});
+
+test("Gapless to Queue Sync handover retains a paused ordinary source and track position", async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1')); queueSync.active=true; queueSync.allowed=false;
+    queueSync.view={own:true,owner:queueSync.browser,state:{role:'player'}};
+    const handoverEngine={session:state.connection.playback_session,started:true,controllers:new Set(),
+      current:{entry:player.queue[player.index],start:200,end:240}};
+    gaplessTrial.active=handoverEngine; audio.currentTime=217;
+    audio.load=()=>{audio.currentTime=0;}; gaplessRetire(handoverEngine);`);
+  assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
+  assert.equal(p.nodes.get('#audio').paused,true);
+  assert.equal(p.run('gaplessTrial.active'),null);
+  assert.equal(p.run('queueSync.allowed'),false);
+  assert.equal(p.run('encodedLocalQueue().start_position'),17);
+  await p.nodes.get('#audio').emit('loadedmetadata');
+  assert.equal(p.nodes.get('#audio').currentTime,17);
+  assert.equal(p.run('queueSync.handover'),null);
+});
+
+test("Cleanup actions release their busy state after an independent details replacement", async () => {
+  for (const [view, action] of [['cleanupView','cleanupAction'],['duplicateCleanupView','duplicateCleanupAction']]) {
+    const p=livePage(); await settle();
+    p.setFetch(()=>{p.run('state.details=new Map(state.details)'); return {ok:true,json:async()=>({id:'preview',state:'preview',groups:[],items:[],excluded:[]})};});
+    await p.run(`${action}('preview')`);
+    assert.equal(p.run(`${view}.busy`),false,view);
+  }
+});
+
+for (const next of [false,true]) test(`An exhausted queue starts appended music, including Play next=${next}`, async () => {
+  const p=livePage(); await settle();
+  p.run(`playTracks(state.details.get('1'),state.details.get('1').tracks.at(-1).id); step(1); audio.ended=false;
+    appendToQueue(state.details.get('3'),null,${next});`);
+  const first=p.run('String(state.details.get("3").tracks[0].id)');
+  assert.equal(p.run('player.queue[player.index].id'),first);
+  assert.match(p.nodes.get('#audio').src,new RegExp(`/api/stream/${first}`));
+  assert.equal(p.nodes.get('#audio').paused,false);
+  p.run('step(1)');
+  assert.equal(p.run('player.queue[player.index].id'),p.run('String(state.details.get("3").tracks[1].id)'));
+});
+
+test("System Next wraps a Repeat queue without dropping its base tracks", async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get("1"),state.details.get("1").tracks.at(-1).id); player.repeat="queue"; step(1)');
+  assert.equal(p.run('player.index'),0);
+  assert.match(p.nodes.get('#audio').src,/\/api\/stream\/100/);
+});
+
+test("A repeated compact read-back keeps current library summaries",async()=>{
+  const p=page(); await settle();
+  const albums=p.json('state.albums');
+  p.run(`state.history=[{status:'sent',source:'ibroadcast',selection:[],changes:[{kind:'track',id:'100',status:'sent'}]}]`);
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',results:[{kind:'track',id:'100',status:'saved'}]})}));
+  const done=p.run('followJob("already-delivered",state.history[0])'); p.flushTimers(2000); await done;
+  assert.deepEqual(p.json('state.albums'),albums);
+  assert.equal(p.run('state.history[0].status'),'saved');
+});
+
+test("A late read-back cannot replace a deliberately selected local library",async()=>{
+  const p=livePage();await settle();
+  p.run(`state.history=[{status:'sent',source:'ibroadcast',selection:[],changes:[]}]`);
+  const old=p.json('state.albums');
+  p.setFetch(()=>({ok:true,json:async()=>({state:'done',results:[],albums:old})}));
+  const done=p.run('followJob("old-library",state.history[0])');
+  p.run('useLocal([],"local")'); p.flushTimers(2000);await done;
+  assert.deepEqual(p.json('state.albums'),[]);
+});
+
+test("An editor response from a replaced library cannot open a stale draft",async()=>{
+  const p=livePage();await settle();
+  const album=p.json('state.details.get("1")');
+  p.run('state.details.delete("1")');
+  p.setFetch(()=>{p.run('state.details=new Map(); libraryLoadRequest+=1'); return {ok:true,json:async()=>({albums:[album]})};});
+  await p.run('openEditor(["1"])');
+  assert.equal(p.nodes.get('#editor').open||false,false);
+  assert.equal(p.run('editing'),null);
+});
+
+test("Artwork error fallbacks use CSP-compatible capture handlers",async()=>{
+  const p=page();await settle();
+  for (const action of ['remove','album','current','tile','suggestion']) {
+    let removed=0,parentRemoved=0,removedClass='';
+    const image={tagName:'IMG',dataset:{imageError:action},remove(){removed++;},
+      parentNode:{classList:{remove(value){removedClass=value;}}},closest(){return{remove(){parentRemoved++;}}}};
+    await p.emitDocument('error',{target:image});
+    if(action==='current') assert.match(image.outerHTML,/No image/);
+    else if(action==='tile'||action==='suggestion') assert.equal(parentRemoved,1);
+    else assert.equal(removed,1);
+    if(action==='album') assert.equal(removedClass,'has-art');
+  }
+  for(const file of ['app.js','artwork.js','artists.js','browse.js','lookup.js'])
+    assert.doesNotMatch(readFileSync(path.join(staticDir,file),'utf8'),/onerror=/);
 });

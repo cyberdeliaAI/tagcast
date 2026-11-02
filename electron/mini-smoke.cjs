@@ -113,7 +113,7 @@ async function checkMini({window, miniPlayer, checkpoint = () => {}}) {
   checkpoint("presentation");
   const shots=process.env.TAGCAST_MINI_SCREENSHOTS;
   if(shots) {
-    for(const [width,theme,palette] of ['forest','ocean','warm','ibroadcast'].flatMap(palette=>['light','dark'].map(theme=>[theme==='light'?420:520,theme,palette]))) {
+    for(const [width,theme,palette] of ['forest','ocean','warm','ibroadcast','apple'].flatMap(palette=>['light','dark'].map(theme=>[theme==='light'?420:520,theme,palette]))) {
       mini.setSize(width,210);
       await owner.executeJavaScript(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.dataset.palette=${JSON.stringify(palette)};publishMiniPlayer()`);
       await waitFor(`playback.theme===${JSON.stringify(theme)}&&playback.palette===${JSON.stringify(palette)}`);

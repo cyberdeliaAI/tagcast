@@ -202,7 +202,7 @@ class TokenRefreshTests(unittest.TestCase):
                 previous = transport.token_set
                 with patch.object(client.auth, "refresh_access_token", side_effect=[error, tokens("new-access", "new-refresh")]) as refresh, \
                         patch.object(client.requests, "post", return_value=response({"result": True})) as post:
-                    with self.assertRaisesRegex(client.NotConnected, "Connect again"):
+                    with self.assertRaisesRegex(client.ConnectionUnavailable, "sign-in is retained"):
                         transport._jsonrequest("status")
                     post.assert_not_called()
                     self.assertIs(transport.token_set, previous)
@@ -246,7 +246,7 @@ class TokenRefreshTests(unittest.TestCase):
                     for thread, result in workers:
                         thread.join(5)
                         self.assertFalse(thread.is_alive())
-                        with self.assertRaises(client.NotConnected) as caught:
+                        with self.assertRaises(client.ConnectionUnavailable) as caught:
                             result.result(timeout=1)
                         self.assertNotIn("Private OAuth", str(caught.exception))
             finally:
@@ -390,3 +390,31 @@ class TokenRefreshTests(unittest.TestCase):
                 self.assertEqual(refresh.call_count, 2)
             self.assertEqual(studio._read("tokens.json")["token_set"], newest.to_dict())
             self.assertNotIn("access-1", Path(home, "tokens.json").read_text())
+
+    def test_temporary_refresh_failure_preserves_studio_session_and_saved_tokens(self):
+        failures = [requests.Timeout('private'), requests.ConnectionError('private'),
+                    requests.exceptions.SSLError('private'), ValueError('bad JSON'),
+                    client.oauth.OAuthError('HTTP 503')]
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as home:
+                studio = client.Studio(home)
+                studio._connect(tokens(expired=True))
+                original, session = studio.client, studio.playback_session
+                saved = Path(home, 'tokens.json').read_bytes()
+                with patch.object(client.auth, 'refresh_access_token', side_effect=failure):
+                    self.assertTrue(studio.status()['connected'])
+                self.assertIs(studio.client, original)
+                self.assertEqual(studio.playback_session, session)
+                self.assertEqual(Path(home, 'tokens.json').read_bytes(), saved)
+                with patch.object(client.auth, 'refresh_access_token', return_value=tokens('new', 'new-r')), \
+                        patch.object(client.requests, 'post', return_value=response({'user': {'username': 'Recovered'}})):
+                    self.assertEqual(studio.status()['account'], 'Recovered')
+
+    def test_explicit_invalid_grant_disconnects_and_reports_disconnected(self):
+        with tempfile.TemporaryDirectory() as home:
+            studio = client.Studio(home)
+            studio._connect(tokens(expired=True))
+            with patch.object(client.auth, '_token_request', return_value=response({'error': 'invalid_grant'}, 400)):
+                self.assertFalse(studio.status()['connected'])
+            self.assertIsNone(studio.client)
+            self.assertFalse(Path(home, 'tokens.json').exists())

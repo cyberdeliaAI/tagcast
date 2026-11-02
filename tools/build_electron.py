@@ -122,6 +122,10 @@ def archive_app(directory, info, team_id=None):
         check_app(executable(directory), info["version"])
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     archive.with_name(archive.name + ".sha256").write_text(f"{digest}  {archive.name}\n", encoding="ascii")
+    if team_id:
+        report = ROOT / "build/reports/macos-signing.json"
+        report.write_text(json.dumps({**json.loads(report.read_text()),
+                          "archive": archive.name, "sha256": digest}, indent=2) + "\n", encoding="utf-8")
     print(f"Verified {archive.name}: {digest}")
 
 

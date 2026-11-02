@@ -65,7 +65,8 @@ substitutes an unsigned archive. Checksums are written only after successful che
 passwords or account email.
 
 For future releases containing this recipe, the existing explicit release events
-select signed macOS builds automatically. All four platform builds must pass
+select signed macOS builds automatically, including manual runs with a nonempty tag.
+A test build cannot overwrite existing release assets. All four platform builds must pass
 before download attachment. Historical tags continue to use their own build
 recipe, and are not silently converted into signed releases. The workflow's
 existing nonempty **tag** input is a publication action; do not fill it when

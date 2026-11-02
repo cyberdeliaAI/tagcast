@@ -83,3 +83,28 @@ class ReleaseInfoTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     main()
                 github.assert_not_called()
+
+    def test_draft_creation_never_claims_latest_before_checked_assets_exist(self):
+        for version, display, branch in (("0.10.1", "0.10.1", "main"),
+                                         ("0.10.1b2", "0.10.1 beta 2", "codex/album-player-beta")):
+            with self.subTest(version=version):
+                root = self.fixture(version, display)
+                info = release_info(root)
+                notes = root / info["notes"]
+                notes.parent.mkdir(parents=True)
+                notes.write_text("Synthetic release notes")
+                with patch("release_info.ROOT", root), \
+                        patch("release_info.release_info", return_value=info), \
+                        patch.object(sys, "argv", ["release_info.py", "--publish"]), \
+                        patch.dict(os.environ, {"GITHUB_EVENT_NAME": "push",
+                                               "GITHUB_REF": f"refs/heads/{branch}",
+                                               "GITHUB_SHA": "tested-sha"}), \
+                        patch("release_info.subprocess.check_output", return_value=f"Publish Tagcast {display}"), \
+                        patch("release_info.wait_for_native_builds"), \
+                        patch("release_info.subprocess.run") as create:
+                    main()
+                command = create.call_args.args[0]
+                self.assertIn("--draft", command)
+                self.assertIn("--latest=false", command)
+                self.assertNotIn("--latest", command)
+                self.assertEqual("--prerelease" in command, info["prerelease"])

@@ -160,3 +160,82 @@
   --palette-chart:#69afe8;
 }
 }
+
+/* Classic red/pink Apple Music inspiration, adapted for readable Tagcast controls. */
+:root[data-palette="apple"]{
+  --palette-brand-background:#fa2d48;
+  --palette-brand-ink:#3b0711;
+  --palette-brand-paper:#ffffff;
+  --palette-sidebar:#f2f2f7;
+  --palette-accent:#c8102e;
+  --palette-shell-ink:#1d1d1f;
+  --palette-shell-muted:#646469;
+  --palette-shell-active:#e4e4e9;
+  --palette-shell-line:#c7c7cc;
+  --palette-ink:#1d1d1f;
+  --palette-muted:#646469;
+  --palette-paper:#ffffff;
+  --palette-line:#d2d2d7;
+  --palette-link:#c8102e;
+  --palette-surface:#f5f5f7;
+  --palette-soft:#fafafa;
+  --palette-tint:#f6e6ea;
+  --palette-focus:#c8102e;
+  --palette-primary:#d60017;
+  --palette-primary-hover:#b80018;
+  --palette-chart:#d60017;
+  --palette-primary-ink:#ffffff;
+  --palette-nav-icon:#c8102e;
+}
+:root[data-palette="apple"][data-theme="dark"]{
+  --palette-brand-background:#fa2d48;
+  --palette-brand-ink:#1f1f1f;
+  --palette-brand-paper:#ffffff;
+  --palette-sidebar:#252526;
+  --palette-accent:#fa586a;
+  --palette-shell-ink:#f5f5f7;
+  --palette-shell-muted:#b0b0b5;
+  --palette-shell-active:#3a3335;
+  --palette-shell-line:#48484a;
+  --palette-ink:#f5f5f7;
+  --palette-muted:#b0b0b5;
+  --palette-paper:#1f1f1f;
+  --palette-line:#48484a;
+  --palette-link:#ff6476;
+  --palette-surface:#2c2c2e;
+  --palette-soft:#242426;
+  --palette-tint:#3a292f;
+  --palette-focus:#ff6476;
+  --palette-primary:#d60017;
+  --palette-primary-hover:#bf0014;
+  --palette-chart:#fa586a;
+  --palette-primary-ink:#ffffff;
+  --palette-nav-icon:#ff6476;
+}
+@media(prefers-color-scheme:dark){
+:root[data-palette="apple"]:not([data-theme="light"]){
+  --palette-brand-background:#fa2d48;
+  --palette-brand-ink:#1f1f1f;
+  --palette-brand-paper:#ffffff;
+  --palette-sidebar:#252526;
+  --palette-accent:#fa586a;
+  --palette-shell-ink:#f5f5f7;
+  --palette-shell-muted:#b0b0b5;
+  --palette-shell-active:#3a3335;
+  --palette-shell-line:#48484a;
+  --palette-ink:#f5f5f7;
+  --palette-muted:#b0b0b5;
+  --palette-paper:#1f1f1f;
+  --palette-line:#48484a;
+  --palette-link:#ff6476;
+  --palette-surface:#2c2c2e;
+  --palette-soft:#242426;
+  --palette-tint:#3a292f;
+  --palette-focus:#ff6476;
+  --palette-primary:#d60017;
+  --palette-primary-hover:#bf0014;
+  --palette-chart:#fa586a;
+  --palette-primary-ink:#ffffff;
+  --palette-nav-icon:#ff6476;
+}
+}

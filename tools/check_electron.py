@@ -1,13 +1,40 @@
 """Check an actual Electron app and its bundled server with disposable settings."""
 
+import hashlib
 import json
 import os
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
+from importlib.metadata import version
 from pathlib import Path
 from urllib.request import urlopen
+
+import certifi
+
+
+def check_certificates(resources):
+    """Validate the extracted bundle, not the build machine's OS trust store."""
+    internal = resources / "backend/_internal"
+    versions = json.loads((internal / "licenses/versions.json").read_text(encoding="utf-8"))
+    installed = version("certifi")
+    if (versions.get("certifi") != installed
+            or tuple(map(int, installed.split("."))) < (2026, 10, 19)):
+        raise RuntimeError("Bundled certifi must match the patched build dependency.")
+    ca = internal / "certifi/cacert.pem"
+    contents = ca.read_bytes()
+    if contents != Path(certifi.where()).read_bytes():
+        raise RuntimeError("Bundled HTTPS certificates differ from the checked build dependency.")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(cafile=str(ca))
+    roots = {hashlib.sha256(root).hexdigest() for root in context.get_ca_certs(binary_form=True)}
+    # emSign ECC Root CA - G3, removed for GHSA-6q48-6c7w-9gw2.
+    if not roots or "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b" in roots:
+        raise RuntimeError("Bundled HTTPS trust roots are missing or unsafe.")
+    return {"certifi": installed, "ca_sha256": hashlib.sha256(contents).hexdigest(),
+            "root_count": len(roots), "compromised_root_present": False}
 
 
 def check_app(executable, version, restart=False):
@@ -27,6 +54,7 @@ def check_app(executable, version, restart=False):
             env.pop(key, None)
         resources = (executable.parent.parent / "Resources" if sys.platform == "darwin"
                      else executable.parent / "resources")
+        certificates = check_certificates(resources)
         cli = resources / "backend" / ("tagcast-cli.exe" if sys.platform == "win32" else "tagcast-cli")
         for arguments, expected in ((["--help"], "usage: tagcast"),
                                     (["--version"], f"Tagcast {version}")):
@@ -69,6 +97,7 @@ def check_app(executable, version, restart=False):
             phases.append(data)
             env["TAGCAST_ELECTRON_RESTART_EXPECTED"] = json.dumps(data["persistence"]["after"])
         data["restart_checks"] = phases[:-1]
+        data["certificates"] = certificates
         reports = Path(__file__).resolve().parent.parent / "build/reports"
         reports.mkdir(parents=True, exist_ok=True)
         (reports / "electron.json").write_text(json.dumps(data, indent=2) + "\n")

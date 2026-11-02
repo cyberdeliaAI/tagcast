@@ -162,7 +162,7 @@ function browseCard(g) {
   const people = ["track-artists", "composers"].includes(browseView.kind);
   const albums = g.albums == null ? "" : `${g.albums.toLocaleString("en")} ${g.albums === 1 ? "album" : "albums"}`;
   const tracks = `${g.tracks.toLocaleString("en")} ${g.tracks === 1 ? "track" : "tracks"}`;
-  const image = g.image ? `<img src="${escapeHtml(g.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  const image = g.image ? `<img src="${escapeHtml(g.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
   return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="Open albums for ${escapeHtml(g.label)}">
     ${people ? `<span class="artist-card-photo">${image}<span>${escapeHtml(initials(g.label))}</span></span>` : ""}
     <strong>${escapeHtml(g.label)}</strong>${g.archived ? '<small class="muted">Archived in iBroadcast</small>' : ""}<span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
