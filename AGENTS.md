@@ -85,6 +85,11 @@ The application consists of a Python server and a plain JavaScript frontend.
   searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` owns browser-local playback and the queue independently of the editor. `navigation.js` gives every page a hash address
   (`#/track-artists`, `#/composers`, `#/genres`, `#/years`, `#/decades` and their group keys, `#/artists`, `#/artist/<name>`, `#/albums`, `#/album/<id>`, `#/tracks`, `#/favourites`, `#/overview`) and
   browser history; it loads last.
+- `static/i18n.js` (synchronous, right after `themes.js`) provides the `TagcastI18n` namespace;
+  `static/i18n-en.js` is generated from `static/i18n/en.json` by `tools/build_i18n.py` and is always
+  loaded; other catalogs in `static/i18n/` load on demand. `language.js` owns Settings → Interface →
+  Language. `src/tagcast/i18n.py` lists the offered languages; `src/tagcast/errors.py` adds optional
+  machine-readable error codes beside the English message.
 - `tests/`: unittest tests that also run through pytest, fixtures and
   `mock_ibroadcast.py`.
 - `tools/build_dark_css.py`: generates `static/dark.css` from `static/style.css`.
@@ -1033,6 +1038,25 @@ their shared browsing/player state; a fast local response can otherwise race the
   Electron profiles/browser-local histories are separate; server credentials/settings
   and local account favourites retain their normal folder. Fuses disable RunAsNode,
   Node options/inspect injection and loading unpackaged application code.
+- Interface language (proof of concept: playback Sound dialog, Now playing queue, queue menu, Mini Player
+  and the language setting). New interface text goes through `TagcastI18n.text()` (plain text for
+  `textContent`, attributes, toasts) or `TagcastI18n.html()` (escapes the message and every value; only
+  `TagcastI18n.trusted()` fragments stay markup) with keys in `static/i18n/en.json`; static HTML uses
+  `data-i18n` / `data-i18n-attr` and keeps its English text. Catalogs are a strict i18next JSON v4 subset:
+  flat keys, `{{name}}` / `{{name, number}}`, `_one`/`_other` plural suffixes, no markup or nesting.
+  Never build sentences by concatenation or pluralize with `=== 1`; never use a global `t`.
+  Translation is presentation only: never translate, store or send a label as data. Metadata, device
+  names, tags, playlist names, lyrics, settings keys, codes, history, reports, export formats and file or
+  folder names (including download fallbacks such as "Unknown Artist") stay unchanged; server placeholders
+  such as "Various Artists" and "Untitled album" stay English in data. Never pass the interface language
+  to sorting, matching or comparisons. English is always the per-key fallback; a failed catalog keeps
+  English and the choice. The choice is stored only in local `config.json` (`interface_language`, via
+  `/api/settings/interface`, no other side effects) and cached as `tagcast-language`; the server value
+  wins at start unless the page chose later. Switching never reloads and never changes audio, output,
+  volume, the queue, drafts, history or iBroadcast; open dialogs keep their DOM. The passive Mini Player
+  receives `language`, `labels` and `idle` in its snapshot; metadata fields carry only metadata. Server
+  errors may add `code`/`params`; `TagcastI18n.errorText()` translates a known code and otherwise shows
+  the English message. Logic never depends on message text.
 - iBroadcast write and artwork modes partly follow undocumented endpoints.
   Verify assumptions before changing their payloads or behavior.
 
@@ -1051,6 +1075,13 @@ python3 tools/release_info.py
 for f in src/tagcast/static/*.js; do node --check "$f"; done
 node --test tests/frontend.test.cjs
 node --test electron/tests/*.test.cjs
+```
+
+After changes to `static/i18n/en.json` or `static/i18n/manifest.json`:
+
+```sh
+python3 tools/build_i18n.py
+python3 tools/build_i18n.py --check
 ```
 
 After changes to `style.css`:

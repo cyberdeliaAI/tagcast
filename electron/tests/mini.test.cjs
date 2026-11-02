@@ -25,3 +25,16 @@ test("Mini Player uses compact logical window bounds and preserves a larger save
  const short=bounds({width:420,height:180},area);assert.equal(short.height,210);
  const resized=bounds({x:10,y:20,width:680,height:340},area);assert.equal(resized.width,680);assert.equal(resized.height,340);
 });
+test("Mini Player labels are a fixed set of bounded plain strings with a validated language", () => {
+  const {labelNames} = require("../mini-contract.cjs");
+  const state = {document: "d", entry: "e", segment: "s", sequence: 1, idle: true, language: "nl", direction: "rtl",
+    labels: {play: "Afspelen", pause: "x".repeat(500), unknown: "drop", seekIn: "Spoelen in {{title}}\u0000\u001b", next: 7}};
+  const next = snapshot(state);
+  assert.equal(next.idle, true); assert.equal(next.language, "nl"); assert.equal(next.direction, "rtl");
+  assert.deepEqual(Object.keys(next.labels).sort(), ["pause", "play", "seekIn"]);
+  assert.equal(next.labels.pause.length, 160); assert.equal(next.labels.seekIn, "Spoelen in {{title}}");
+  assert.ok(labelNames.includes("documentTitle"));
+  for (const language of ["<script>", "nl\nx", 42, "", "x".repeat(40)]) assert.equal(snapshot({...state, language}).language, "en");
+  assert.equal(snapshot({...state, idle: "yes", direction: "up", labels: null}).idle, false);
+  assert.deepEqual(snapshot({...state, labels: null}).labels, {});
+});

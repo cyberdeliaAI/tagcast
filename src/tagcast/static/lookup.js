@@ -22,8 +22,10 @@ function applyLookupSources(sources) {
 
 async function loadSettings() {
   const revision = lookup.settingsRevision;
+  const languageVersion = typeof interfaceLanguageVersion === "function" ? interfaceLanguageVersion() : 0;
   try {
     const data = await api("/api/settings");
+    if (typeof applyServerLanguage === "function") applyServerLanguage(data, languageVersion);
     if (revision !== lookup.settingsRevision) return;
     applyLookupSources(data.sources); lookup.auto = data.auto_lookup; lookup.keysFromEnv = data.keys_from_env || [];
     lookup.recordPlays = data.record_plays === true;
@@ -146,7 +148,7 @@ function coverChoices() {
 function renderSettingsContent() {
   const keyed = lookup.sources.filter(s => s.key);
   const freeAccount = live() && state.connection.premium === false;
-  $("#settings-content").innerHTML = `<section class="interface-settings" data-settings-category="interface"><h3>Library information banner <span class="settings-mode">Immediate · this browser</span></h3>
+  $("#settings-content").innerHTML = `${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="interface-settings" data-settings-category="interface"><h3>Library information banner <span class="settings-mode">Immediate · this browser</span></h3>
     <p class="muted" data-notice-description>The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
     <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
     </section><section class="metadata-editing-settings" data-settings-category="interface"><h3>Metadata editing <span class="settings-mode">Immediate · this browser</span></h3>

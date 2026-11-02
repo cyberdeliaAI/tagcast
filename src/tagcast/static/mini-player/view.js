@@ -3,7 +3,21 @@
 const bridge = window.tagcastMini;
 const nodes = Object.fromEntries(["cover", "title", "artist", "album", "previous", "play", "next", "elapsed", "duration", "position", "status", "pin", "open"].map(id => [id, document.getElementById(id)]));
 const miniColourRoles = ["brand-background", "brand-ink", "brand-paper", "sidebar", "accent", "shell-ink", "shell-muted", "shell-active", "shell-line", "ink", "muted", "paper", "line", "link", "surface", "soft", "tint", "focus", "primary", "primary-hover", "chart", "primary-ink"];
-let playback = null, draft = null, busy = false, cover = "", failure = "";
+let playback = null, draft = null, busy = false, cover = "", failure = "", labels = {}, labelLanguage = "";
+// Labels arrive translated from the owner window; English stays the fallback for each name.
+function label(name, fallback) { return typeof labels[name] === "string" && labels[name] ? labels[name] : fallback; }
+function fill(template, values) { return template.replace(/\{\{(title|elapsed|duration)\}\}/g, (_, name) => values[name] ?? ""); }
+function applyLabels() {
+  const shell = document.querySelector?.(".mini-shell"), groups = document.querySelectorAll?.("[role=group]") || [];
+  if (labelLanguage) { document.documentElement.lang = labelLanguage; document.documentElement.dir = playback?.direction === "rtl" ? "rtl" : "ltr"; }
+  document.title = label("documentTitle", "Tagcast · Mini Player");
+  shell?.setAttribute("aria-label", label("shell", "Mini Player"));
+  const groupLabels = [label("windowControls", "Window controls"), label("transport", "Playback"), label("progress", "Track position")];
+  [...groups].forEach((group, index) => { if (groupLabels[index]) group.setAttribute("aria-label", groupLabels[index]); });
+  for (const [id, name, fallback] of [["previous", "previous", "Previous track"], ["next", "next", "Next track"], ["open", "openMain", "Open Tagcast"]]) {
+    nodes[id].setAttribute("aria-label", label(name, fallback)); nodes[id].title = label(name, fallback);
+  }
+}
 function clock(value) {
   const n = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
   return `${n >= 3600 ? `${Math.floor(n/3600)}:${String(Math.floor(n/60)%60).padStart(2,"0")}` : Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`;
@@ -17,20 +31,20 @@ function miniDisabled(node, unavailable) {
 }
 function render() {
   const s = playback, ready = Boolean(s?.controllable);
-  miniText(nodes.title, s?.title || "Tagcast Mini Player"); nodes.title.title = nodes.title.textContent;
-  miniText(nodes.artist, s?.artist || "Waiting for Tagcast…"); nodes.artist.title = nodes.artist.textContent;
+  miniText(nodes.title, s?.idle ? label("idleTitle", "Nothing playing") : s?.title || label("appTitle", "Tagcast Mini Player")); nodes.title.title = nodes.title.textContent;
+  miniText(nodes.artist, s?.idle ? label("idleArtist", "Choose an album in Tagcast") : s?.artist || label("waiting", "Waiting for Tagcast…")); nodes.artist.title = nodes.artist.textContent;
   miniText(nodes.album, s?.album || ""); nodes.album.hidden = !s?.album; nodes.album.title = nodes.album.textContent;
   miniDisabled(nodes.previous, !s?.previous); miniDisabled(nodes.next, !s?.next);
   miniDisabled(nodes.play, !ready); nodes.play.dataset.paused = String(s?.paused !== false);
-  const playLabel = s?.paused !== false ? "Play" : "Pause";
+  const playLabel = s?.paused !== false ? label("play", "Play") : label("pause", "Pause");
   nodes.play.setAttribute("aria-label", playLabel); nodes.play.title = playLabel;
   miniDisabled(nodes.position, !s?.seekable);
   const preview = draft?.identity === identity(s) ? draft.position : s?.position || 0;
   nodes.position.max = String(s?.duration || 0); nodes.position.value = String(preview);
-  nodes.position.setAttribute("aria-valuetext", `${clock(preview)} of ${clock(s?.duration)}`);
+  nodes.position.setAttribute("aria-valuetext", fill(label("position", "{{elapsed}} of {{duration}}"), {elapsed: clock(preview), duration: clock(s?.duration)}));
   miniText(nodes.elapsed, clock(preview)); miniText(nodes.duration, clock(s?.duration));
   nodes.position.style.setProperty("--mini-progress", `${s?.duration > 0 ? Math.max(0, Math.min(100, preview / s.duration * 100)) : 0}%`);
-  nodes.position.setAttribute("aria-label", `Seek in ${s?.title || "current track"}`);
+  nodes.position.setAttribute("aria-label", s?.title && !s.idle ? fill(label("seekIn", "Seek in {{title}}"), {title: s.title}) : label("seekCurrentTrack", "Seek in current track"));
   // Do not repeatedly announce an unchanged status on every progress snapshot.
   miniText(nodes.status, failure || s?.status || "");
   if (cover !== (s?.cover || "")) { cover = s?.cover || ""; nodes.cover.hidden = !cover; if (cover) nodes.cover.src = cover; else nodes.cover.removeAttribute("src"); }
@@ -38,8 +52,8 @@ function render() {
 async function send(action, value = playback, position) {
   if (!bridge || !value || busy) return;
   busy = true; failure = ""; render();
-  try { if (!await bridge.command({action, document: value.document, entry: value.entry, segment: value.segment, ...(action === "seek" ? {position} : {})})) failure = "Player changed · try again"; }
-  catch { failure = "Player unavailable · open Tagcast"; }
+  try { if (!await bridge.command({action, document: value.document, entry: value.entry, segment: value.segment, ...(action === "seek" ? {position} : {})})) failure = label("playerChanged", "Player changed · try again"); }
+  catch { failure = label("playerUnavailable", "Player unavailable · open Tagcast"); }
   finally { busy = false; render(); }
 }
 function startDraft() { if (playback?.seekable && !draft) draft = {identity: identity(playback), snapshot: playback, position: playback.position}; }
@@ -56,8 +70,12 @@ if (bridge) {
   bridge.onState(value => {
     if (identity(playback) !== identity(value.playback)) { draft = null; failure = ""; }
     playback = value.playback;
+    const language = typeof playback?.language === "string" ? playback.language : "";
+    if (playback?.labels && typeof playback.labels === "object") labels = playback.labels;
+    if (language && language !== labelLanguage) { labelLanguage = language; applyLabels(); }
     nodes.pin.disabled = !value.canPin; nodes.pin.setAttribute("aria-pressed", String(value.pinned));
-    nodes.pin.title = !value.canPin ? "Pinning is unavailable on this desktop" : value.pinned ? "Unpin Mini Player" : "Keep Mini Player on top";
+    nodes.pin.title = !value.canPin ? label("pinUnavailable", "Pinning is unavailable on this desktop")
+      : value.pinned ? label("unpin", "Unpin Mini Player") : label("pin", "Keep Mini Player on top");
     nodes.pin.setAttribute("aria-label", nodes.pin.title);
     if (playback) { document.documentElement.dataset.theme = playback.theme; document.documentElement.dataset.palette = playback.palette; }
     for (const role of miniColourRoles) {

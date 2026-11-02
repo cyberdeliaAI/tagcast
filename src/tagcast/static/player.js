@@ -259,7 +259,7 @@ function queueTracks(album, tracks = album.tracks) {
 
 function playTracks(album, startId, shuffle = false, options = {}) {
   if (!live() || !album.tracks.length) return;
-  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
+  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.queue.useDevices")); return; }
   cancelRandomPlay();
   player.epoch += 1;
   player.shuffle = shuffle;
@@ -392,6 +392,10 @@ function markPlaying() {
   if (typeof publishMiniPlayer === "function") publishMiniPlayer();
 }
 
+// A language change re-renders the open panel the same way a play/pause update does:
+// no queue, index, audio or focus change.
+TagcastI18n.subscribe(() => renderNowPlaying());
+
 function setNowPlaying(open) {
   $("#now-playing-panel").hidden = !open;
   document.body.classList.toggle("now-playing-open", open);
@@ -412,12 +416,12 @@ function renderNowPlaying() {
   const track = player.queue[player.index], album = track?.album;
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
     <h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
-    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">Add this track to playlist…</button></p><section id="now-playing-lyrics" class="track-lyrics" hidden></section>` : player.queue.length ? '<p class="empty">Choose a queued track to start playing.</p>' : '<p class="empty">Play a track or add an album to your queue.</p>';
+    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html("player.nowPlaying.addToPlaylist")}</button></p><section id="now-playing-lyrics" class="track-lyrics" hidden></section>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
   renderLyrics("player", lyricsSelection(track));
-  $("#now-playing-count").textContent = `${player.queue.length} ${player.queue.length === 1 ? "track" : "tracks"}`;
+  $("#now-playing-count").textContent = TagcastI18n.text("player.queue.count", {count: player.queue.length});
   $("#queue-clear").disabled = !player.queue.length;
   list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
-    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : "▶" : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${t.upNext ? "Up next · " : ""}${escapeHtml(t.artist)} · ${escapeHtml(t.album.name)}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="Remove ${escapeHtml(t.title)} from play queue, position ${index + 1}" title="Remove from play queue"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
+    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : "▶" : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="${TagcastI18n.html("player.queue.remove", {title: t.title, position: index + 1})}" title="${TagcastI18n.html("player.queue.removeTitle")}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
   if (focusedEntry) {
     const index = player.queue.indexOf(focusedEntry);
     if (index >= 0) list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`)?.focus({preventScroll: true});
@@ -441,13 +445,13 @@ function removeQueueEntry(index, revision) {
   const next = Math.min(index, player.queue.length - 1);
   (next >= 0 ? $("#now-playing-list").querySelector(`[data-queue-remove="${next}"]`)
     : $("#now-playing-close"))?.focus({preventScroll: true});
-  toast(`Removed “${removed.title}” from the play queue.`);
+  toast(TagcastI18n.text("player.queue.removed", {title: removed.title}));
 }
 
 function appendToQueue(album, trackId = null, next = false) {
-  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
+  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.queue.useDevices")); return; }
   const tracks = trackId === null ? album.tracks : album.tracks.filter(t => String(t.id) === String(trackId));
-  if (!tracks.length) throw Error("This track is no longer on that album. Reload the library.");
+  if (!tracks.length) throw TagcastI18n.failure("queue.track_missing");
   const empty = !player.queue.length, ended = audio.ended, idle = !player.queue[player.index];
   const following = Math.min(player.index + 1, player.queue.length), rows = queueTracks(album, tracks);
   if (next && !empty && !ended && !idle) {
@@ -457,7 +461,7 @@ function appendToQueue(album, trackId = null, next = false) {
   } else player.queue.push(...rows);
   if (empty || ended || idle) { player.index = empty ? 0 : following; playCurrent(); }
   else markPlaying();
-  toast(`${next ? "Playing next:" : "Added"} ${tracks.length === 1 ? "1 track" : `${tracks.length} tracks`} to the queue.`);
+  toast(TagcastI18n.text(next ? "player.queue.playingNext" : "player.queue.added", {count: tracks.length}));
 }
 
 function addToQueue(albumId, trackId = null, next = false) {
@@ -467,14 +471,14 @@ function addToQueue(albumId, trackId = null, next = false) {
   const task = player.pending.then(async () => {
     if (epoch !== player.epoch || details !== state.details || !live()) return;
     try {
-      if (!state.albums.some(a => String(a.id) === String(albumId))) throw Error("This album is no longer in your library.");
+      if (!state.albums.some(a => String(a.id) === String(albumId))) throw TagcastI18n.failure("queue.album_missing");
       await albumDetails(shelfIds(albumId));
       if (epoch !== player.epoch || details !== state.details || !live()) return;
       const album = playableAlbum(albumId);
-      if (!album) throw Error("The album could not be loaded.");
+      if (!album) throw TagcastI18n.failure("queue.album_unloaded");
       appendToQueue(album, trackId, next);
     } catch (error) {
-      if (epoch === player.epoch && details === state.details) toast(`Could not add to queue: ${error.message}`);
+      if (epoch === player.epoch && details === state.details) toast(TagcastI18n.text("player.queue.addFailed", {error: TagcastI18n.errorText(error)}));
     }
   });
   player.pending = task;
@@ -493,7 +497,7 @@ function albumCardActions(album) {
 
 async function playCardAlbum(id) {
   if (!live() || state.loading || !state.albums.some(a => String(a.id) === String(id))) return;
-  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
+  if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.queue.useDevices")); return; }
   cancelRandomPlay();
   const details = state.details, epoch = ++player.epoch, ids = shelfIds(id);
   try {
