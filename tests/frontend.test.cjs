@@ -11252,3 +11252,30 @@ test("interface language: the setting is an immediate preference outside the ser
   assert.match(html, /never translated/);
   assert.equal(p.run("settingsView.dirty"), false);
 });
+
+test("interface language: Tagcast Desktop receives the settled language and desktop texts, never pseudo-localization", async () => {
+  const p = languagePage(); await settle();
+  p.run("globalThis.desktopSent = []; window.tagcastDesktop = {setInterface: value => desktopSent.push(JSON.parse(JSON.stringify(value)))}; publishDesktopLanguage()");
+  let sent = p.json("desktopSent");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].language, "en");
+  assert.equal(sent[0].labels["menu.file"], "File");
+  assert.ok(Object.keys(sent[0].labels).every(name => !name.startsWith("desktop.")), "names are sent without the desktop. prefix");
+  await p.change({id: "interface-language", value: "nl", matches: () => false, closest: () => null}); await settle(); await settle();
+  sent = p.json("desktopSent");
+  assert.equal(sent.at(-1).language, "nl");
+  assert.equal(sent.at(-1).labels["close.title"], "Tagcast sluiten?");
+  assert.equal(sent.at(-1).labels["menu.openMiniPlayer"], "Minispeler openen");
+  const count = sent.length;
+  p.run("TagcastI18n.usePseudo()");
+  assert.equal(p.json("desktopSent").length, count, "pseudo-localization is never reported to the app");
+  p.run("window.tagcastDesktop = {setInterface() { throw new Error('closed'); }}; publishDesktopLanguage()");
+});
+
+test("interface language: a translated desktop file chooser error keeps its English message for logs", async () => {
+  const p = languagePage(); await settle();
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  const shown = p.run(`TagcastI18n.errorText(Object.assign(new Error("Choose at most 100 paths without line breaks."), {code: "desktop.picker_limit"}))`);
+  assert.equal(shown, "Kies maximaal 100 paden zonder regeleinden.");
+  assert.equal(p.run(`TagcastI18n.errorText(new Error("Server said no."))`), "Server said no.", "uncoded server text stays as sent");
+});

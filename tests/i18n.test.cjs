@@ -100,6 +100,12 @@ function keyReferences() {
   const html = read(path.join(staticDir, "index.html"));
   for (const m of html.matchAll(/data-i18n="([^"]+)"/g)) { refer(m[1], "index.html"); literals.add(m[1]); }
   for (const m of html.matchAll(/data-i18n-attr="([^"]+)"/g)) for (const pair of m[1].split(";")) { refer(pair.split("=")[1], "index.html"); literals.add(pair.split("=")[1]); }
+  // Tagcast Desktop: desktop.<name> texts are sent as a set (language.js) and read by name in
+  // electron/desktop-text.cjs; error codes returned to the page are translated with errorText().
+  for (const name of Object.keys(require(path.join(root, "electron/desktop-text.cjs")).ENGLISH)) literals.add(`desktop.${name}`);
+  for (const file of readdirSync(path.join(root, "electron")).filter(f => f.endsWith(".cjs"))) {
+    for (const m of read(path.join(root, "electron", file)).matchAll(/code: "([a-z0-9_.]+)"/g)) { refer(`errors.${m[1]}`, file); literals.add(`errors.${m[1]}`); }
+  }
   for (const file of readdirSync(path.join(root, "src/tagcast")).filter(f => f.endsWith(".py"))) {
     for (const m of read(path.join(root, "src/tagcast", file)).matchAll(/code="([a-z0-9_.]+)"/g)) { refer(`errors.${m[1]}`, file); literals.add(`errors.${m[1]}`); }
   }
@@ -118,6 +124,12 @@ test("every referenced key exists in English and every English key is used", () 
   for (const [key, where] of referenced) assert.ok(known.has(key), `Missing English text for ${key} (${where})`);
   for (const key of plausible) assert.ok(known.has(key), `"${key}" looks like an interface text key but en.json has no such key`);
   for (const key of known) assert.ok(key.startsWith("common.") || used(key), `Unused English key ${key}`);
+});
+
+test("desktop texts in en.json are exactly the built-in English texts of the desktop app", () => {
+  const {ENGLISH} = require(path.join(root, "electron/desktop-text.cjs"));
+  const fromCatalog = Object.fromEntries(Object.entries(english).filter(([key]) => key.startsWith("desktop.")).map(([key, value]) => [key.slice(8), value]));
+  assert.deepEqual(fromCatalog, {...ENGLISH});
 });
 
 test("Dutch translates every English key", () => {
