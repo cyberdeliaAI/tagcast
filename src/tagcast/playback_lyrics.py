@@ -235,49 +235,111 @@ def parse_ttml(value, duration):
     return _finish(lines, duration)
 
 
-def fetch_unison(track, album):
-    """One anonymous, bounded request. No cookies, account tokens or retries."""
+def _pause_lyrics(delay, check_current):
+    """Short cancellable sleeps; no cache/library lock is held."""
+    while delay > .00001:
+        check_current()
+        step = min(.05, delay)
+        time.sleep(step)
+        delay -= step
+    check_current()
+
+
+def _retry_after(value):
+    # Keep the server's actual delay, including values longer than our lookup budget.
+    # Such delays skip this provider; they never turn into long interactive sleeps.
+    return int(value) if isinstance(value, str) and re.fullmatch(r"\d{1,10}", value) else 2
+
+
+class _ProviderReader:
+    """Bounded anonymous JSON reads with one short, explicitly requested retry."""
+
+    def __init__(self, source, check_current, policy=None):
+        self.source, self.check_current, self.policy = source, check_current, policy
+        self.deadline, self.previous, self.retry_until = time.monotonic() + 12, 0, 0
+
+    def read(self, session, url, params):
+        label = "Unison" if self.source == "unison" else "LRCLIB"
+        for attempt in range(2):
+            self.check_current()
+            delay = max(0, self.previous + .25 - time.monotonic(), self.retry_until - time.monotonic())
+            if delay > 2 or time.monotonic() + delay >= self.deadline:
+                error = SourceError(f"{label} is temporarily unavailable.")
+                error.temporary, error.retry_after = True, delay
+                raise error
+            _pause_lyrics(delay, self.check_current)
+            if self.policy:
+                self.policy.before_request(self.source, self.check_current, self.deadline)
+            self.check_current()
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                raise SourceError(f"{label} took too long. Try again later.")
+            self.previous = time.monotonic()
+            session.cookies.clear()
+            with session.get(url, params=params,
+                             timeout=(min(4, remaining), min(5, remaining)), stream=True,
+                             allow_redirects=False) as response:
+                self.check_current()
+                if response.status_code == 404:
+                    return None
+                if response.status_code != 200:
+                    error = SourceError(f"{label} is temporarily unavailable.")
+                    error.temporary = response.status_code in (429, 500, 502, 503, 504)
+                    error.retry_after = _retry_after(response.headers.get("Retry-After", ""))
+                    if error.temporary:
+                        self.retry_until = time.monotonic() + error.retry_after
+                        if self.policy:
+                            self.policy.defer(self.source, error.retry_after)
+                    if response.status_code in (429, 503) and attempt == 0 \
+                            and error.retry_after <= 2 and time.monotonic() + error.retry_after < self.deadline:
+                        # Exit/close the response context before waiting and retrying.
+                        continue
+                    raise error
+                if response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+                    raise SourceError(f"{label} returned an invalid response.")
+                chunks, size = [], 0
+                for chunk in response.iter_content(16384):
+                    self.check_current()
+                    size += len(chunk)
+                    if size > MAX_RESPONSE or time.monotonic() > self.deadline:
+                        raise SourceError(f"{label} returned too much data or took too long.")
+                    chunks.append(chunk)
+                self.check_current()
+                data = json.loads(b"".join(chunks))
+                if not isinstance(data, (dict, list)):
+                    raise SourceError(f"{label} returned an invalid response.")
+                return data
+
+
+def fetch_unison(track, album, check_current=lambda: None, policy=None):
+    """Anonymous, bounded lookup. No cookies, account tokens or redirects."""
     params = {"song": track["title"], "artist": track["artist"], "album": album}
     duration = track["length"]
     if duration > 0:
         params["duration"] = int(duration + .5)
+    reader = _ProviderReader("unison", check_current, policy)
     try:
         with requests.Session() as session:
             session.trust_env = False
-            with session.get(UNISON_URL, params=params,
-                             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-                             timeout=(4, 8), stream=True, allow_redirects=False) as response:
-                if response.status_code == 404:
-                    return _finish([], duration)
-                if response.status_code != 200:
-                    error = SourceError("Unison is unavailable. Try again later.")
-                    retry = response.headers.get("Retry-After", "")
-                    error.retry_after = min(3600, max(60, int(retry))) if re.fullmatch(r"\d{1,6}", retry) else 60
-                    raise error
-                chunks, size, started = [], 0, time.monotonic()
-                for chunk in response.iter_content(16384):
-                    size += len(chunk)
-                    if size > MAX_RESPONSE or time.monotonic() - started > 12:
-                        raise SourceError("Unison returned too much data or took too long.")
-                    chunks.append(chunk)
-                data = json.loads(b"".join(chunks))
+            session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
+            data = reader.read(session, UNISON_URL, params)
     except (requests.RequestException, ValueError):
         raise SourceError("Unison could not be read. Try again later.") from None
+    if data is None:
+        return _finish([], duration)
     if not isinstance(data, dict) or data.get("success") is not True \
             or not isinstance(data.get("data"), dict):
         raise SourceError("Unison returned an invalid response.")
     data = data["data"]
     if any(not isinstance(data.get(key), str) for key in ("song", "artist", "lyrics")):
         raise SourceError("Unison returned invalid track details.")
-    # Never discard live/remix/version identity or accept partial word overlap.
     if artist_name_key(data["song"]) != artist_name_key(track["title"]) \
             or artist_name_key(data["artist"]) != artist_name_key(track["artist"]):
         return _finish([], duration)
     length = data.get("duration")
     # GET /lyrics applies the requested duration filter but omits it in its reply.
-    # If a server does include duration, reject invalid or mismatched values.
     if duration > 0 and "duration" in data and (type(length) not in (int, float) or not math.isfinite(length)
-                         or abs(length - duration) > 2):
+                                              or abs(length - duration) > 2):
         return _finish([], duration)
     value = data["lyrics"]
     if len(value) > MAX_RESPONSE or "\x00" in value:
@@ -424,73 +486,50 @@ def _lrclib_lines(data, duration):
                     for line in (plain or "").splitlines()], duration, "lrclib")
 
 
-def fetch_lrclib_display(track, album, check_current):
-    """Exact get, then at most two sequential searches; display-only and bounded."""
-    deadline, previous = time.monotonic() + 12, 0
-
-    def read(session, endpoint, params):
-        nonlocal previous
-        delay = max(0, previous + .25 - time.monotonic())
-        if delay:
-            time.sleep(delay)
-        check_current()  # Recheck account, session and source before every request.
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise SourceError("LRCLIB took too long. Try again later.")
-        previous = time.monotonic()
-        session.cookies.clear()
-        with session.get(LRCLIB_URL + endpoint, params=params,
-                         timeout=(min(4, remaining), min(5, remaining)), stream=True,
-                         allow_redirects=False) as response:
-            if response.status_code == 404:
-                return None
-            if response.status_code != 200:
-                error = SourceError("LRCLIB is unavailable. Try again later.")
-                retry = response.headers.get("Retry-After", "")
-                error.retry_after = max(60, int(retry)) if re.fullmatch(r"\d{1,8}", retry) else 60
-                raise error
-            if response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
-                raise SourceError("LRCLIB returned an invalid response.")
-            chunks, size = [], 0
-            for chunk in response.iter_content(16384):
-                size += len(chunk)
-                if size > MAX_RESPONSE or time.monotonic() > deadline:
-                    raise SourceError("LRCLIB returned too much data or took too long.")
-                chunks.append(chunk)
-            check_current()
-            data = json.loads(b"".join(chunks))
-            if not isinstance(data, (dict, list)):
-                raise SourceError("LRCLIB returned an invalid response.")
-            return data
-
+def fetch_lrclib_display(track, album, check_current, policy=None):
+    """Search the database first; use exact get only without a usable candidate."""
+    reader = _ProviderReader("lrclib", check_current, policy)
     params = {"track_name": track["title"], "artist_name": track["artist"]}
     if album.strip():
         params["album_name"] = album
-    # The public endpoint accepts durations from 1 to 3600 seconds.
     if 1 <= track["length"] <= 3600:
         params["duration"] = track["length"]
+    variants = [(track["title"], track["artist"]),
+                (lyrics_name_key(track["title"]), lyrics_name_key(track["artist"]))]
+    seen, candidates, errors = set(), [], []
+
+    def candidate_result():
+        if track["length"] <= 0 and len(candidates) != 1:
+            return None
+        candidates.sort(key=lambda hit: (abs(hit["duration"] - track["length"]),
+                        not bool(hit.get("syncedLyrics") or hit.get("hasWordSync")),
+                        lyrics_name_key(hit.get("albumName")) != lyrics_name_key(album)))
+        for hit in candidates:
+            check_current()
+            try:
+                result = _lrclib_lines(hit, track["length"])
+                if result["status"] != "missing":
+                    return result
+            except SourceError:
+                continue  # Invalid timing/text invalidates one candidate, not its siblings.
+        return None
+
     try:
         with requests.Session() as session:
             session.trust_env = False
             session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
-            data = read(session, "get", params)
-            if data is not None and (not isinstance(data, dict)
-                                     or any(not isinstance(data.get(key), str)
-                                            for key in ("trackName", "artistName"))):
-                raise SourceError("LRCLIB returned an invalid response.")
-            if _lrclib_match(data, track, album):
-                result = _lrclib_lines(data, track["length"])
-                if result["status"] != "missing":
-                    return result
-            variants = [(track["title"], track["artist"]),
-                        (lyrics_name_key(track["title"]), lyrics_name_key(track["artist"]))]
-            seen, candidates = set(), []
             for title, artist in variants:
                 query = (title.casefold(), artist.casefold())
                 if query in seen:
                     continue
                 seen.add(query)
-                hits = read(session, "search", {"track_name": title, "artist_name": artist})
+                try:
+                    hits = reader.read(session, LRCLIB_URL + "search", {"track_name": title, "artist_name": artist})
+                except SourceError as error:
+                    if not getattr(error, "temporary", False):
+                        raise
+                    errors.append(error)
+                    continue
                 if hits is None:
                     hits = []
                 if not isinstance(hits, list) or len(hits) > 100:
@@ -498,15 +537,30 @@ def fetch_lrclib_display(track, album, check_current):
                 for hit in hits:
                     if _lrclib_match(hit, track, album) and hit not in candidates:
                         candidates.append(hit)
-            if track["length"] <= 0 and len(candidates) != 1:
+            result = candidate_result()
+            if result:
+                return result
+            # Ambiguous unknown-duration database results must not be narrowed by /get.
+            if track["length"] <= 0 and len(candidates) > 1:
                 return _finish([], 0, "lrclib")
-            candidates.sort(key=lambda hit: (abs(hit["duration"] - track["length"]),
-                            not bool(hit.get("syncedLyrics")),
-                            lyrics_name_key(hit.get("albumName")) != lyrics_name_key(album)))
-            for hit in candidates:
-                result = _lrclib_lines(hit, track["length"])
-                if result["status"] != "missing":
+            try:
+                data = reader.read(session, LRCLIB_URL + "get", params)
+            except SourceError as error:
+                if not getattr(error, "temporary", False):
+                    raise
+                errors.append(error)
+                data = None
+            if data is not None and (not isinstance(data, dict)
+                                     or any(not isinstance(data.get(key), str)
+                                            for key in ("trackName", "artistName"))):
+                raise SourceError("LRCLIB returned an invalid response.")
+            if _lrclib_match(data, track, album):
+                candidates[:] = [data]
+                result = candidate_result()
+                if result:
                     return result
+            if errors:
+                raise errors[-1]
     except LibraryError:
         raise
     except (requests.RequestException, ValueError):
@@ -515,14 +569,35 @@ def fetch_lrclib_display(track, album, check_current):
 
 
 class PlaybackLyrics:
-    """Small account/session-bound RAM cache, independent of native/save locks."""
+    """Bounded RAM results, newest-selection wins; network work never holds a lock."""
 
     def __init__(self, lyrics):
         self.lyrics = lyrics
         self.lock = threading.Lock()
         self.cache = OrderedDict()
         self.context = None
-        self.next_request = 0
+        self.revision = 0
+        self.active = None
+        self.backoff = {"unison": 0, "lrclib": 0}
+        self.spacing = {"unison": 0, "lrclib": 0}
+
+    def defer(self, source, delay):
+        with self.lock:
+            self.backoff[source] = max(self.backoff[source], time.monotonic() + delay)
+
+    def before_request(self, source, check_current, deadline):
+        check_current()
+        with self.lock:
+            now = time.monotonic()
+            if now < self.backoff[source]:
+                error = SourceError(f"{source} is temporarily unavailable.")
+                error.temporary, error.retry_after = True, self.backoff[source] - now
+                raise error
+            when = max(now, self.spacing[source])
+            self.spacing[source] = when + .25
+        if when >= deadline:
+            raise SourceError("Online lyrics took too long. Try again later.")
+        _pause_lyrics(when - now, check_current)
 
     def view(self, body):
         if body.get("enabled") is not True:
@@ -535,38 +610,96 @@ class PlaybackLyrics:
             with studio.lock:
                 selection = self.lyrics._selection(body)
                 context = (id(selection[0]), id(selection[1]), selection[2], body["session"])
-                if context != self.context:
-                    self.cache.clear()
-                    self.context = context
-                track = selection[3]
-                if not track["title"].strip() or not track["artist"].strip() \
-                        or len(track["title"]) > 200 or len(track["artist"]) > 200:
-                    return _finish([], track["length"])
                 fallback = fallback and "lrclib" not in studio.disabled_sources()
-                key = json.dumps([selection[4], fallback])
-                cached = self.cache.get(key)
-                if cached and time.monotonic() < cached[0]:
-                    return cached[1]
-                if time.monotonic() < self.next_request:
-                    raise SourceError("Please wait a moment before another Unison search.")
-                self.next_request = time.monotonic() + 1
-            try:
-                result = fetch_unison(track, selection[4][-1])
-                if result["status"] == "missing" and fallback:
-                    def check_current():
-                        with studio.lock:
-                            if not self.lyrics._current(selection, body) \
-                                    or "lrclib" in studio.disabled_sources():
-                                raise ConflictError("The account, library or lyrics source changed.")
-                    result = fetch_lrclib_display(track, selection[4][-1], check_current)
-            except SourceError as error:
-                self.next_request = time.monotonic() + getattr(error, "retry_after", 60)
-                raise
+            if context != self.context:
+                self.cache.clear()
+                self.context = context
+                self.revision += 1
+            track = selection[3]
+            if not track["title"].strip() or not track["artist"].strip() \
+                    or len(track["title"]) > 200 or len(track["artist"]) > 200:
+                self.revision += 1
+                if self.active:
+                    self.active["event"].set()
+                    self.active = None
+                return _finish([], track["length"])
+            key = json.dumps([selection[4], fallback])
+            pending = self.active
+            owner = not pending or pending["key"] != key or pending["context"] != context
+            if owner:
+                self.revision += 1
+                if pending:
+                    pending["event"].set()  # Release waiters for a superseded selection.
+                pending = {"key": key, "context": context, "revision": self.revision,
+                           "event": threading.Event(), "result": None, "error": None}
+                self.active = pending
+            cached = self.cache.get(key)
+            if cached and time.monotonic() < cached[0]:
+                if owner:
+                    self.active = None
+                return cached[1]
+
+        def check_locked(source=None):
+            if self.context != context or self.revision != pending["revision"]:
+                raise ConflictError("The requested lyrics track changed.")
             with studio.lock:
                 if not self.lyrics._current(selection, body) \
-                        or result.get("source") == "lrclib" and "lrclib" in studio.disabled_sources():
-                    raise ConflictError("The account, library or source changed while reading online lyrics.")
-                self.cache[key] = (time.monotonic() + 300, result)
-                while len(self.cache) > 12:
-                    self.cache.popitem(last=False)
+                        or source == "lrclib" and "lrclib" in studio.disabled_sources():
+                    raise ConflictError("The account, library or lyrics source changed.")
+
+        def check_current(source=None):
+            with self.lock:
+                check_locked(source)
+
+        if not owner:
+            deadline = time.monotonic() + 30
+            while not pending["event"].wait(.05):
+                check_current()
+                if time.monotonic() >= deadline:
+                    raise SourceError("Online lyrics are still being checked. Try again later.")
+            check_current()
+            if pending["error"]:
+                raise pending["error"]
+            return pending["result"]
+
+        try:
+            result, unavailable = _finish([], track["length"]), []
+            for source in (["unison", "lrclib"] if fallback else ["unison"]):
+                check_current(source)
+                with self.lock:
+                    blocked = time.monotonic() < self.backoff[source]
+                if blocked:
+                    unavailable.append(source)
+                    continue
+                try:
+                    def current(source=source):
+                        check_current(source)
+                    result = (fetch_unison(track, selection[4][-1], current, self) if source == "unison"
+                              else fetch_lrclib_display(track, selection[4][-1], current, self))
+                    check_current(source)
+                    if result["status"] in ("ready", "instrumental"):
+                        break
+                except SourceError as error:
+                    check_current(source)
+                    self.defer(source, getattr(error, "retry_after", 2))
+                    unavailable.append(source)
+            check_current(result.get("source"))
+            if result["status"] == "missing" and unavailable:
+                result = {**result, "status": "unavailable", "message":
+                          "Online lyrics are temporarily unavailable. You can check again."}
+            with self.lock:
+                check_locked(result.get("source"))
+                if result["status"] != "unavailable":
+                    self.cache[key] = (time.monotonic() + 300, result)
+                    while len(self.cache) > 12:
+                        self.cache.popitem(last=False)
+                pending["result"] = result
             return result
+        except Exception as error:
+            pending["error"] = error
+            raise
+        finally:
+            with self.lock:
+                if self.active is pending:
+                    self.active = None
+                pending["event"].set()

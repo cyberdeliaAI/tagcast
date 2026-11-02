@@ -88,6 +88,7 @@ async function readUnisonDisplay(selection, request, details) {
     if (!response.ok) throw Error(data.error || "Online lyrics could not be checked.");
     if (!playbackLyricsCurrent(selection, request, details)) return null;
     if (!Array.isArray(data.lines) || data.lines.length > 2000) throw Error("Invalid lyrics response.");
+    if (data.status === "unavailable") throw Error(data.message || "Online lyrics are temporarily unavailable. You can check again.");
     playbackLyricsView.cache.set(key, {data, until: performance.now() + 300000});
     while (playbackLyricsView.cache.size > 12) playbackLyricsView.cache.delete(playbackLyricsView.cache.keys().next().value);
     return data;

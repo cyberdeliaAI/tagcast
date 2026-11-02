@@ -108,6 +108,37 @@ test('changing source aborts an outstanding Unison lookup and ignores its late r
   assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
 });
 
+test('temporary provider unavailability is retryable and never cached as missing lyrics',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');let recovered=false;
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'
+    ? recovered?displayLyricsFixture:{status:'unavailable',source:'unison',lines:[],message:'Temporarily unavailable'}
+    :emptyNativeLyrics}));
+  openDisplayLyrics(p);await settle();
+  assert.equal(p.run('playbackLyricsView.cache.size'),0);
+  assert.equal(p.nodes.get('#visual-lyrics-retry').hidden,false);
+  recovered=true;await p.nodes.get('#visual-lyrics-retry').emit('click');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,2);
+  assert.equal(p.run('playbackLyricsView.cache.size'),1);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Lyrics from Unison/);
+});
+
+test('three rapid track selections show the last lyrics without retrying obsolete requests',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');const pending=[];
+  p.run('player.queue.push({...player.queue[0],id:"synthetic-third",title:"Third test track"})');
+  p.setFetch((url,options)=>url==='/api/lyrics/display'?new Promise(resolve=>pending.push({resolve,signal:options.signal}))
+    :{ok:true,json:async()=>emptyNativeLyrics});
+  openDisplayLyrics(p);await settle();
+  p.run('player.index=1;renderVisualPlayer()');await settle();
+  p.run('player.index=2;renderVisualPlayer()');await settle();
+  assert.equal(pending.length,3);assert.ok(pending.slice(0,2).every(item=>item.signal.aborted));
+  pending[2].resolve({ok:true,json:async()=>displayLyricsFixture});await settle();
+  for(const item of pending.slice(0,2)) item.resolve({ok:true,json:async()=>({status:'unavailable',lines:[]})});
+  await settle();
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Lyrics from Unison/);
+  assert.equal(p.nodes.get('#visual-lyrics-retry').hidden,true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,3);
+});
+
 test('track changes and closing the player discard pending display lyrics',async()=>{
   const {p}=await playbackLyricsPage('unison-first');const releases=[];
   p.setFetch(()=>new Promise(resolve=>releases.push(resolve)));
