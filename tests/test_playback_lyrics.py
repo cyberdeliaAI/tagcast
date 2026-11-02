@@ -2,7 +2,9 @@
 
 import copy
 import json
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 import requests
@@ -214,9 +216,9 @@ class UnisonRequestTests(unittest.TestCase):
                      'syncType': 'linesync', 'userVote': None, 'videoId': '', 'voteCount': 1}}
 
     def fetch(self, data=None, status=200, headers=None, chunks=None):
-        response = Mock(status_code=status, headers=headers or {})
+        response = Mock(status_code=status, headers=headers or {'Content-Type': 'application/json'})
         response.iter_content.return_value = chunks if chunks is not None else [json.dumps(data or self.data).encode()]
-        session = Mock()
+        session = Mock(headers={})
         session.get.return_value.__enter__ = Mock(return_value=response)
         session.get.return_value.__exit__ = Mock(return_value=False)
         with patch('tagcast.playback_lyrics.requests.Session') as create:
@@ -227,7 +229,7 @@ class UnisonRequestTests(unittest.TestCase):
         self.assertFalse(kwargs['allow_redirects'])
         self.assertEqual(kwargs['params'], {'song': 'Test Song (Live)', 'artist': 'U2',
                                            'album': 'Test album', 'duration': 200})
-        self.assertEqual(set(kwargs['headers']), {'User-Agent', 'Accept'})
+        self.assertEqual(set(session.headers), {'User-Agent', 'Accept'})
         session.get.assert_called_once()
         return result
 
@@ -298,133 +300,141 @@ class LRCLIBDisplayTests(unittest.TestCase):
             context.__exit__ = Mock(return_value=False)
             contexts.append(context)
         self.session.get.side_effect = contexts
+        self.clock = 100.
+        def sleep(delay):
+            self.clock += delay
         with patch('tagcast.playback_lyrics.requests.Session') as create, \
-                patch('tagcast.playback_lyrics.time.monotonic', return_value=100), \
-                patch('tagcast.playback_lyrics.time.sleep') as sleep:
+                patch('tagcast.playback_lyrics.time.monotonic', side_effect=lambda: self.clock), \
+                patch('tagcast.playback_lyrics.time.sleep', side_effect=sleep):
             create.return_value.__enter__.return_value = self.session
-            result = fetch_lrclib_display(track or self.track, album, current or self.current)
-            self.sleep = sleep
-        return result
+            return fetch_lrclib_display(track or self.track, album, current or self.current)
 
-    def test_exact_request_contains_album_duration_but_no_account_or_redirects(self):
-        result = self.fetch([(200, self.record)])
+    def test_database_search_precedes_get_and_uses_no_account_cookies_or_redirects(self):
+        result = self.fetch([(200, [self.record])])
         self.assertEqual(result['source'], 'lrclib')
         self.assertTrue(result['timed'])
-        self.assertEqual(result['lines'][0]['text'], 'Synthetic timed line')
         self.session.get.assert_called_once()
         args, kwargs = self.session.get.call_args
-        self.assertEqual(args, ('https://lrclib.net/api/get',))
-        self.assertEqual(kwargs['params'], {'track_name': 'Test Song (Live)', 'artist_name': 'U2',
-                                           'album_name': 'Test album', 'duration': 200})
+        self.assertEqual(args, ('https://lrclib.net/api/search',))
+        self.assertEqual(kwargs['params'], {'track_name': 'Test Song (Live)', 'artist_name': 'U2'})
         self.assertFalse(kwargs['allow_redirects'])
         self.assertTrue(kwargs['stream'])
         self.assertFalse(self.session.trust_env)
         self.assertEqual(set(self.session.headers), {'User-Agent', 'Accept'})
-        self.assertEqual(self.current.call_count, 2)
+        self.session.cookies.clear.assert_called_once()
+        self.assertGreaterEqual(self.current.call_count, 2)
 
-    def test_exact_request_reads_word_timing_without_extra_network_or_legacy_text(self):
-        document = {"version": "1.0", "metadata": {"title": self.track["title"], "artist": "U2"},
-                    "lines": [{"text": "Synthetic timing", "start_ms": 1000, "end_ms": 4000,
-                               "words": [{"text": "Synthetic ", "start_ms": 1000, "end_ms": 2000},
-                                         {"text": "timing", "start_ms": 2000, "end_ms": 4000}]}]}
-        result = self.fetch([(200, {**self.record, "hasWordSync": True,
-                                   "lyricsfile": yaml.safe_dump(document),
-                                   "plainLyrics": None, "syncedLyrics": None})])
-        self.assertEqual([word["start"] for word in result["lines"][0]["words"]], [1, 2])
+    def test_exact_get_is_used_only_without_a_usable_database_result(self):
+        result = self.fetch([(200, []), (200, self.record)])
+        self.assertEqual(result['status'], 'ready')
+        urls = [c.args[0] for c in self.session.get.call_args_list]
+        self.assertEqual(urls, ['https://lrclib.net/api/search', 'https://lrclib.net/api/get'])
+        self.assertEqual(self.session.get.call_args.kwargs['params'], {
+            'track_name': 'Test Song (Live)', 'artist_name': 'U2', 'album_name': 'Test album', 'duration': 200})
+        self.assertAlmostEqual(self.clock, 100.25)
+
+    def test_word_timing_without_legacy_text_or_extra_requests(self):
+        document = {'version': '1.0', 'metadata': {'title': self.track['title'], 'artist': 'U2'},
+                    'lines': [{'text': 'Synthetic timing', 'start_ms': 1000, 'end_ms': 4000,
+                               'words': [{'text': 'Synthetic ', 'start_ms': 1000, 'end_ms': 2000},
+                                         {'text': 'timing', 'start_ms': 2000, 'end_ms': 4000}]}]}
+        result = self.fetch([(200, [{**self.record, 'hasWordSync': True,
+                                   'lyricsfile': yaml.safe_dump(document),
+                                   'plainLyrics': None, 'syncedLyrics': None}])])
+        self.assertEqual([w['start'] for w in result['lines'][0]['words']], [1, 2])
         self.session.get.assert_called_once()
 
-    def test_search_chooses_nearest_duration_only_with_full_title_and_artist(self):
+    def test_search_ranks_by_duration_then_synced_then_album_and_skips_bad_candidates(self):
         hits = [{**self.record, 'id': 2, 'duration': 199},
                 {**self.record, 'id': 3, 'duration': 200.25, 'syncedLyrics': '[00:01]Closest line'},
                 {**self.record, 'id': 4, 'duration': 200, 'trackName': 'Test Song'},
                 {**self.record, 'id': 5, 'duration': 200, 'artistName': 'U2 Tribute'},
-                {**self.record, 'id': 6, 'duration': 206}]
-        result = self.fetch([(404, {}), (200, hits)])
-        self.assertEqual(result['lines'][0]['text'], 'Closest line')
-        args, kwargs = self.session.get.call_args_list[1]
-        self.assertEqual(args, ('https://lrclib.net/api/search',))
-        self.assertEqual(kwargs['params'], {'track_name': 'Test Song (Live)', 'artist_name': 'U2'})
-        self.sleep.assert_called_once_with(.25)
+                {**self.record, 'id': 6, 'duration': 206},
+                {**self.record, 'id': 7, 'duration': 200, 'syncedLyrics': '[04:00]Past ending'}]
+        self.assertEqual(self.fetch([(200, hits)])['lines'][0]['text'], 'Closest line')
+        hits = [{**self.record, 'id': 2, 'syncedLyrics': None},
+                {**self.record, 'id': 3, 'albumName': 'Other'}, self.record]
+        self.assertEqual(self.fetch([(200, hits)])['lines'][0]['text'], 'Synthetic timed line')
 
-    def test_typography_variants_are_bounded_and_keep_version_text(self):
+    def test_typography_searches_keep_live_identity_and_pick_the_closest_hit(self):
         track = {'title': 'Test Song – Live', 'artist': 'O’Flynn', 'length': 200}
         record = {**self.record, 'trackName': 'Test Song - Live', 'artistName': "O'Flynn"}
-        result = self.fetch([(404, {}), (200, [{**record, 'duration': 201}]),
+        result = self.fetch([(200, [{**record, 'duration': 201}]),
                              (200, [{**record, 'id': 2, 'duration': 200,
                                      'syncedLyrics': '[00:01]Exact duration'}])], track)
         self.assertEqual(result['lines'][0]['text'], 'Exact duration')
-        self.assertEqual(self.session.get.call_count, 3)
-        query = self.session.get.call_args.kwargs['params']
-        self.assertEqual(query, {'track_name': 'test song - live', 'artist_name': "o'flynn"})
-        self.assertIn('live', query['track_name'])
+        self.assertEqual(self.session.get.call_count, 2)
+        self.assertEqual(self.session.get.call_args.kwargs['params'],
+                         {'track_name': 'test song - live', 'artist_name': "o'flynn"})
 
-    def test_empty_or_wrong_exact_hit_can_search_but_empty_search_is_missing(self):
-        for change in ({'trackName': 'Different song'}, {'syncedLyrics': '', 'plainLyrics': ''}):
-            result = self.fetch([(200, {**self.record, **change}), (200, [self.record])])
-            self.assertEqual(result['status'], 'ready')
-        result = self.fetch([(404, {}), (200, [])])
-        self.assertEqual(result, {'status': 'missing', 'source': 'lrclib', 'timed': False, 'lines': []})
-
-    def test_plain_text_and_instrumental_remain_distinct(self):
-        result = self.fetch([(200, {**self.record, 'syncedLyrics': None})])
+    def test_plain_instrumental_missing_and_empty_candidate_stay_distinct(self):
+        result = self.fetch([(200, [{**self.record, 'syncedLyrics': None}])])
         self.assertFalse(result['timed'])
         self.assertEqual(result['lines'][0]['text'], 'Synthetic plain line')
-        result = self.fetch([(200, {**self.record, 'instrumental': True,
-                                    'plainLyrics': None, 'syncedLyrics': None})])
+        result = self.fetch([(200, [{**self.record, 'instrumental': True}])])
         self.assertEqual(result['status'], 'instrumental')
         self.assertEqual(result['lines'], [])
-        self.session.get.assert_called_once()
+        for hits in ([], [{**self.record, 'plainLyrics': '', 'syncedLyrics': ''}]):
+            self.assertEqual(self.fetch([(200, hits), (404, {})])['status'], 'missing')
 
-    def test_missing_invalid_or_far_duration_never_wins_a_search(self):
+    def test_invalid_or_far_duration_does_not_win_and_unknown_duration_remains_ambiguous(self):
         for duration in (None, True, float('nan'), float('inf'), '200', -1, 203):
             with self.subTest(duration=duration):
-                result = self.fetch([(404, {}), (200, [{**self.record, 'duration': duration}])])
-                self.assertEqual(result['status'], 'missing')
-
-    def test_unknown_duration_requires_unique_album_identity(self):
+                self.assertEqual(self.fetch([(200, [{**self.record, 'duration': duration}]),
+                                             (404, {})])['status'], 'missing')
         track = {**self.track, 'length': 0}
-        result = self.fetch([(404, {}), (200, [self.record, {**self.record, 'id': 2}])], track)
-        self.assertEqual(result['status'], 'missing')
-        result = self.fetch([(200, self.record)], track)
-        self.assertEqual(result['status'], 'ready')
-        self.assertNotIn('duration', self.session.get.call_args.kwargs['params'])
-        result = self.fetch([(404, {}), (200, [self.record])], track, album='Different album')
-        self.assertEqual(result['status'], 'missing')
+        self.assertEqual(self.fetch([(200, [self.record, {**self.record, 'id': 2}])], track)['status'], 'missing')
+        self.session.get.assert_called_once()
+        self.assertEqual(self.fetch([(200, [self.record])], track)['status'], 'ready')
+        self.assertEqual(self.fetch([(200, [self.record]), (404, {})], track, album='Other')['status'], 'missing')
 
-    def test_invalid_json_oversize_and_redirects_stop_without_search_retries(self):
-        for status in (302, 307, 308, 429, 503):
-            with self.subTest(status=status), self.assertRaises(SourceError):
-                self.fetch([(status, {})])
-            self.session.get.assert_called_once()
-        for status, data, headers, chunks in [
+    def test_short_server_delay_retries_once_and_does_not_turn_into_one_minute(self):
+        for status in (429, 503):
+            result = self.fetch([(status, {}, {'Retry-After': '1'}, None), (200, [self.record])])
+            self.assertEqual(result['status'], 'ready')
+            self.assertAlmostEqual(self.clock, 101)
+            self.assertEqual(self.session.get.call_count, 2)
+            self.assertEqual({c.args[0] for c in self.session.get.call_args_list}, {'https://lrclib.net/api/search'})
+        # Two overloaded searches still allow a different step, after its requested delay.
+        result = self.fetch([(503, {}, {'Retry-After': '1'}, None),
+                             (503, {}, {'Retry-After': '1'}, None), (200, self.record)])
+        self.assertEqual(result['status'], 'ready')
+        self.assertAlmostEqual(self.clock, 102)
+        # A healthy search never calls the slow /get endpoint, even when it is overloaded.
+        self.fetch([(200, [self.record]), (503, {}, {'Retry-After': '1'}, None)])
+        self.session.get.assert_called_once()
+
+    def test_long_retry_after_skips_the_provider_without_shortening_the_server_delay(self):
+        with self.assertRaises(SourceError) as raised:
+            self.fetch([(429, {}, {'Retry-After': '7200'}, None)])
+        self.assertEqual(raised.exception.retry_after, 7200)
+        self.session.get.assert_called_once()
+        self.assertEqual(self.clock, 100)
+
+    def test_invalid_json_limits_and_redirects_are_not_retried_or_followed(self):
+        for reply in [(302, {}), (307, {}), (308, {}),
             (200, {}, {'Content-Type': 'text/html'}, None),
             (200, None, {'Content-Type': 'application/json'}, [b'{broken']),
             (200, None, {'Content-Type': 'application/json'}, [b'null']),
             (200, None, {'Content-Type': 'application/json'}, [b'x' * 512001]),
-            (200, [], {'Content-Type': 'application/json'}, None),
-            (200, {}, {'Content-Type': 'application/json'}, None),
-            (200, {**self.record, 'plainLyrics': 'x' * 50001}, {'Content-Type': 'application/json'}, None),
-            (200, {**self.record, 'syncedLyrics': '[00:99]Bad timing'}, {'Content-Type': 'application/json'}, None),
-        ]:
-            with self.subTest(headers=headers, chunks=bool(chunks)), self.assertRaises(SourceError):
-                self.fetch([(status, data, headers, chunks)])
+            (200, {}), (200, [self.record] * 101)]:
+            with self.subTest(reply=str(reply)[:50]), self.assertRaises(SourceError):
+                self.fetch([reply])
+            self.session.get.assert_called_once()
 
-    def test_retry_after_is_not_shortened_and_stale_selection_blocks_next_request(self):
-        with self.assertRaises(SourceError) as raised:
-            self.fetch([(429, {}, {'Retry-After': '7200'}, None)])
-        self.assertEqual(raised.exception.retry_after, 7200)
-        current = Mock(side_effect=[None, ConflictError('Replaced session')])
+    def test_new_selection_interrupts_sleep_and_prevents_any_next_request(self):
+        current = Mock(side_effect=[None, ConflictError('Replaced selection')])
         with self.assertRaises(ConflictError):
-            self.fetch([(404, {}), (200, [self.record])], current=current)
-        self.session.get.assert_called_once()
+            self.fetch([(200, []), (200, self.record)], current=current)
+        self.assertLessEqual(self.session.get.call_count, 1)
 
-    def test_timeouts_are_errors_and_duration_outside_api_range_is_not_sent(self):
+    def test_timeout_and_outside_get_duration_range(self):
         with patch('tagcast.playback_lyrics.requests.Session') as create:
             create.return_value.__enter__.return_value.get.side_effect = requests.Timeout()
             with self.assertRaises(SourceError):
                 fetch_lrclib_display(self.track, 'Test album', self.current)
-        self.fetch([(404, {}), (200, [])], {**self.track, 'length': 4000})
-        self.assertNotIn('duration', self.session.get.call_args_list[0].kwargs['params'])
+        self.fetch([(200, []), (404, {})], {**self.track, 'length': 4000})
+        self.assertNotIn('duration', self.session.get.call_args.kwargs['params'])
 
 
 class PlaybackLyricsIntegrationTests(unittest.TestCase):
@@ -447,7 +457,6 @@ class PlaybackLyricsIntegrationTests(unittest.TestCase):
     def test_results_and_missing_responses_are_ram_only_and_never_call_ibroadcast(self):
         for result in (self.result, parse_lrc('', 200)):
             self.service.cache.clear()
-            self.service.next_request = 0
             with patch('tagcast.playback_lyrics.fetch_unison', return_value=result) as fetch:
                 self.assertEqual(self.service.view(self.body), result)
                 self.assertEqual(self.service.view(self.body), result)
@@ -471,16 +480,14 @@ class PlaybackLyricsIntegrationTests(unittest.TestCase):
         with patch('tagcast.playback_lyrics.time.monotonic', return_value=100), \
                 patch('tagcast.playback_lyrics.fetch_unison', side_effect=error) as fetch:
             for _ in range(2):
-                with self.assertRaises(SourceError):
-                    self.service.view(self.body)
+                self.assertEqual(self.service.view(self.body)['status'], 'unavailable')
             fetch.assert_called_once()
-        self.assertEqual(self.service.next_request, 280)
+        self.assertEqual(self.service.backoff["unison"], 280)
 
     def test_library_replacement_does_not_reuse_previous_cache(self):
         with patch('tagcast.playback_lyrics.fetch_unison', return_value=self.result) as fetch:
             self.service.view(self.body)
             self.fixture.studio.library = copy.copy(self.fixture.studio.library)
-            self.service.next_request = 0
             self.service.view(self.body)
             self.assertEqual(fetch.call_count, 2)
 
@@ -490,7 +497,6 @@ class PlaybackLyricsIntegrationTests(unittest.TestCase):
         for consent, disabled, status in ((False, False, 'missing'), (True, True, 'missing'),
                                            (True, False, 'ready')):
             self.service.cache.clear()
-            self.service.next_request = 0
             self.fixture.disabled[:] = ['lrclib'] if disabled else []
             with patch('tagcast.playback_lyrics.fetch_unison', return_value=missing), \
                     patch('tagcast.playback_lyrics.fetch_lrclib_display', return_value=public) as fetch:
@@ -501,16 +507,76 @@ class PlaybackLyricsIntegrationTests(unittest.TestCase):
         self.assertEqual(list(self.fixture.studio.home.iterdir()), [])
         self.assertFalse(self.fixture.service.reviews)
 
-    def test_unison_result_and_service_error_never_trigger_lrclib(self):
-        with patch('tagcast.playback_lyrics.fetch_lrclib_display') as fetch:
+    def test_unison_hit_keeps_priority_but_errors_and_backoff_allow_lrclib(self):
+        public = {**self.result, 'source': 'lrclib'}
+        with patch('tagcast.playback_lyrics.fetch_lrclib_display', return_value=public) as fallback:
             with patch('tagcast.playback_lyrics.fetch_unison', return_value=self.result):
                 self.service.view({**self.body, 'fallback_lrclib': True})
+            fallback.assert_not_called()
             self.service.cache.clear()
-            self.service.next_request = 0
-            with patch('tagcast.playback_lyrics.fetch_unison', side_effect=SourceError('Offline')):
-                with self.assertRaises(SourceError):
-                    self.service.view({**self.body, 'fallback_lrclib': True})
-            fetch.assert_not_called()
+            with patch('tagcast.playback_lyrics.fetch_unison', side_effect=SourceError('Offline')) as unison:
+                self.assertEqual(self.service.view({**self.body, 'fallback_lrclib': True}), public)
+                self.service.cache.clear()
+                self.assertEqual(self.service.view({**self.body, 'fallback_lrclib': True}), public)
+                unison.assert_called_once()
+            self.assertEqual(fallback.call_count, 2)
+
+    def test_unavailable_is_not_cached_and_other_provider_backoff_does_not_block_unison(self):
+        self.service.backoff['lrclib'] = float('inf')
+        with patch('tagcast.playback_lyrics.fetch_unison', return_value=self.result):
+            self.assertEqual(self.service.view({**self.body, 'fallback_lrclib': True}), self.result)
+        self.service.cache.clear()
+        with patch('tagcast.playback_lyrics.fetch_unison', side_effect=SourceError('Offline')):
+            self.assertEqual(self.service.view({**self.body, 'fallback_lrclib': True})['status'], 'unavailable')
+        self.assertFalse(self.service.cache)
+        self.assertIsNone(self.service.active)
+
+    def test_three_quick_track_selections_do_not_queue_behind_old_network_work(self):
+        entered, release = threading.Event(), threading.Event()
+        bodies = []
+        for key in sorted(self.fixture.studio.library.tracks.rows)[:3]:
+            track = self.fixture.studio.library.track_view(key)
+            bodies.append({**self.body, 'track_id': str(key), 'title': track['title'], 'artist': track['artist']})
+        failures = []
+        def fetch(track, album, current, policy):
+            if track['title'] == bodies[0]['title']:
+                entered.set()
+                self.assertTrue(release.wait(3))
+                current()  # Must be cancelled before another provider request.
+            return self.result
+        def first():
+            try:
+                self.service.view(bodies[0])
+            except ConflictError:
+                failures.append('superseded')
+        with patch('tagcast.playback_lyrics.fetch_unison', side_effect=fetch), ThreadPoolExecutor(2) as pool:
+            previous = pool.submit(first)
+            self.assertTrue(entered.wait(1))
+            try:
+                for body in bodies[1:]:
+                    self.assertEqual(pool.submit(self.service.view, body).result(timeout=1), self.result)
+            finally:
+                release.set()
+            previous.result(timeout=1)
+        self.assertEqual(failures, ['superseded'])
+        self.assertEqual(len(self.service.cache), 2)
+        self.assertIsNone(self.service.active)
+
+    def test_same_track_inflight_requests_share_one_fetch(self):
+        entered, release = threading.Event(), threading.Event()
+        def fetch(*args):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            return self.result
+        with patch('tagcast.playback_lyrics.fetch_unison', side_effect=fetch) as mock, ThreadPoolExecutor(2) as pool:
+            first = pool.submit(self.service.view, self.body)
+            self.assertTrue(entered.wait(1))
+            second = pool.submit(self.service.view, self.body)
+            release.set()
+            self.assertEqual(first.result(timeout=1), self.result)
+            self.assertEqual(second.result(timeout=1), self.result)
+            mock.assert_called_once()
+        self.assertIsNone(self.service.active)
 
     def test_disabled_lrclib_cannot_reuse_a_previous_online_result(self):
         body = {**self.body, 'fallback_lrclib': True}
@@ -521,7 +587,6 @@ class PlaybackLyricsIntegrationTests(unittest.TestCase):
             self.assertEqual(self.service.view(body)['source'], 'lrclib')
             self.assertEqual(unison.call_count, 1)
             self.fixture.disabled.append('lrclib')
-            self.service.next_request = 0
             self.assertEqual(self.service.view(body)['status'], 'missing')
             fetch.assert_called_once()
 
