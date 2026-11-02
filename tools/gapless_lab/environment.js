@@ -6,5 +6,7 @@ const player={queue:[],index:0,quality:'orig',repeat:'none',shuffle:false};
 const lookup={streamQuality:'orig'},queueSync={active:false},visualPlayer={open:false},playReporting={watch:null};
 const trace=[],fallbacks=[],inputChannels=[];
 const live=()=>true,escapeHtml=s=>String(s),renderStreamQuality=()=>{},beginPlaybackWatch=()=>{},samplePlayback=()=>{},toast=s=>trace.push({name:'toast',message:s});
+// Presentation adapter supplied by player.js in the full app; use the real catalog/error API.
+const playbackFailure=(key,params={})=>TagcastI18n.failure(key.slice('errors.'.length),params);
 const renderCurrentPlayerTrack=()=>trace.push({name:'track',index:player.index,at:performance.now(),time:audio.currentTime});
 function playCurrent(auto){fallbacks.push({at:performance.now(),index:player.index,reason:gaplessTrial.message,offset:gaplessTrial.offset});audio.pause();}
