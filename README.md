@@ -35,9 +35,9 @@ transitions safely use ordinary playback. See the
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
-![Tagcast 1.2.0 showing CMAT's EURO-COUNTRY album, track credits, lyrics, Now playing and the compact player](docs/screenshots/2026-10-31-readme/album-now-playing.png)
+![Tagcast 1.3.0 showing Billy Joel's Storm Front album in the Apple Music Classic Dark palette, with album actions, tracks and the compact player](docs/screenshots/2026-11-02-readme/album-storm-front.png)
 
-*Tagcast 1.2.0 — album details, lyrics and Now playing, captured on 31 October 2026.*
+*Tagcast 1.3.0 — album details and playback in the Apple Music Classic Dark palette, captured on 2 November 2026.*
 
 ![Tagcast 1.3.0 showing Big Iron by Marty Robbins with synchronised LRCLIB lyrics, a highlighted active line and a cover-coloured background](docs/screenshots/2026-11-02-readme/now-playing-big-iron.png)
 
