@@ -79,36 +79,61 @@ test("translations use only English keys, the same placeholders and every plural
   }
 });
 
-// Keys in code are literal strings in TagcastI18n calls, data-i18n attributes, Mini Player
-// label names and coded errors; nothing may reference a key English does not have.
-function usedKeys() {
-  const used = new Set();
-  const scripts = [...readdirSync(staticDir).filter(f => f.endsWith(".js") && f !== "i18n-en.js").map(f => path.join(staticDir, f)),
-    path.join(staticDir, "mini-player/view.js")];
-  for (const file of scripts) {
-    const source = read(file);
-    for (const m of source.matchAll(/TagcastI18n\.(?:text|html|englishText)\(\s*"([^"]+)"/g)) used.add(m[1]);
-    for (const m of source.matchAll(/TagcastI18n\.(?:text|html)\(\s*[^"(),]+\?\s*"([^"]+)"\s*:\s*"([^"]+)"/g)) { used.add(m[1]); used.add(m[2]); }
-    for (const m of source.matchAll(/"((?:playback|player|settings|mini)\.[A-Za-z0-9_.]+)"/g)) used.add(m[1]);
-    for (const m of source.matchAll(/TagcastI18n\.failure\(\s*"([^"]+)"/g)) used.add(`errors.${m[1]}`);
+// Keys are always literal strings in code. A key is "referenced" when it is passed directly to
+// TagcastI18n or written in data-i18n; it is "used" when it appears as a literal anywhere, or
+// when a template like `mini.${name}` builds it from a literal suffix in the same file.
+const scriptFiles = () => [...readdirSync(staticDir).filter(f => f.endsWith(".js") && f !== "i18n-en.js").map(f => path.join(staticDir, f)),
+  path.join(staticDir, "mini-player/view.js")];
+const KEY_LITERAL = /["'`]([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+)["'`]/g;
+function keyReferences() {
+  const referenced = new Map(), literals = new Set(), dynamic = [];
+  const refer = (key, where) => { if (!referenced.has(key)) referenced.set(key, where); };
+  for (const file of scriptFiles()) {
+    const source = read(file), name = path.basename(file);
+    for (const m of source.matchAll(/TagcastI18n\.(?:text|html|englishText|hasKey)\(\s*"([^"]+)"/g)) refer(m[1], name);
+    for (const m of source.matchAll(/TagcastI18n\.(?:text|html|englishText)\(\s*[^"(),]+\?\s*"([^"]+)"\s*:\s*"([^"]+)"/g)) { refer(m[1], name); refer(m[2], name); }
+    for (const m of source.matchAll(/TagcastI18n\.failure\(\s*"([^"]+)"/g)) { refer(`errors.${m[1]}`, name); literals.add(`errors.${m[1]}`); }
+    // Codes passed to failure() are not keys themselves (their text is errors.<code>).
+    for (const m of source.replace(/TagcastI18n\.failure\(\s*"[^"]+"/g, "").matchAll(KEY_LITERAL)) literals.add(m[1]);
+    for (const m of source.matchAll(/`([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)*\.)\$\{/g)) dynamic.push({prefix: m[1], source});
   }
   const html = read(path.join(staticDir, "index.html"));
-  for (const m of html.matchAll(/data-i18n="([^"]+)"/g)) used.add(m[1]);
-  for (const m of html.matchAll(/data-i18n-attr="([^"]+)"/g)) for (const pair of m[1].split(";")) used.add(pair.split("=")[1]);
-  for (const m of read(path.join(staticDir, "mini-player.js")).matchAll(/const MINI_LABELS = \[([^\]]+)\]/g)) {
-    for (const name of m[1].matchAll(/"([A-Za-z]+)"/g)) used.add(`mini.${name[1]}`);
-  }
-  for (const m of read(path.join(staticDir, "mini-player.js")).matchAll(/"(remote|error|preparing|buffering|gapless)"/g)) used.add(`mini.status.${m[1]}`);
+  for (const m of html.matchAll(/data-i18n="([^"]+)"/g)) { refer(m[1], "index.html"); literals.add(m[1]); }
+  for (const m of html.matchAll(/data-i18n-attr="([^"]+)"/g)) for (const pair of m[1].split(";")) { refer(pair.split("=")[1], "index.html"); literals.add(pair.split("=")[1]); }
   for (const file of readdirSync(path.join(root, "src/tagcast")).filter(f => f.endsWith(".py"))) {
-    for (const m of read(path.join(root, "src/tagcast", file)).matchAll(/code="([a-z0-9_.]+)"/g)) used.add(`errors.${m[1]}`);
+    for (const m of read(path.join(root, "src/tagcast", file)).matchAll(/code="([a-z0-9_.]+)"/g)) { refer(`errors.${m[1]}`, file); literals.add(`errors.${m[1]}`); }
   }
-  return used;
+  const used = key => literals.has(key) || dynamic.some(({prefix, source}) => key.startsWith(prefix)
+    && new RegExp(`["'\`]${key.slice(prefix.length).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'\`]`).test(source));
+  // Any literal that looks like a key in a namespace English uses must be a real key, so a
+  // typo in a key table (["show-tags", "nav.sidebar.tagz"]) fails here, not at runtime.
+  const namespaces = new Set(Object.keys(english).map(key => key.split(".")[0]));
+  const plausible = [...literals].filter(key => namespaces.has(key.split(".")[0])
+    && !/\.(?:c?js|json|css|html|png|svg|py|md|csv|txt|m3u8?)$/.test(key));
+  return {referenced, used, plausible};
 }
 
 test("every referenced key exists in English and every English key is used", () => {
-  const used = usedKeys(), known = new Set(Object.keys(english).map(base));
-  for (const key of used) assert.ok(known.has(key), `Missing English text for ${key}`);
-  for (const key of known) assert.ok(used.has(key), `Unused English key ${key}`);
+  const {referenced, used, plausible} = keyReferences(), known = new Set(Object.keys(english).map(base));
+  for (const [key, where] of referenced) assert.ok(known.has(key), `Missing English text for ${key} (${where})`);
+  for (const key of plausible) assert.ok(known.has(key), `"${key}" looks like an interface text key but en.json has no such key`);
+  for (const key of known) assert.ok(key.startsWith("common.") || used(key), `Unused English key ${key}`);
+});
+
+test("Dutch translates every English key", () => {
+  const dutch = new Set(Object.keys(catalogs.nl).map(base));
+  const missing = [...new Set(Object.keys(english).map(base))].filter(key => !dutch.has(key));
+  assert.deepEqual(missing, [], "Missing Dutch translations");
+});
+
+test("translated text inside HTML templates is always escaped", () => {
+  for (const file of scriptFiles()) {
+    read(file).split("\n").forEach((line, index) => {
+      if (/`[^`]*<[a-z]/i.test(line) && line.includes("${TagcastI18n.text(")) {
+        assert.fail(`${path.basename(file)}:${index + 1} uses TagcastI18n.text() inside an HTML template; use TagcastI18n.html()`);
+      }
+    });
+  }
 });
 
 test("static English markup matches en.json, so first paint and fallback are identical", () => {
@@ -173,6 +198,8 @@ test("English renders the existing wording, chooses plural forms and never reque
   assert.equal(i18n.text("playback.output.buttonTitleValue", {volume: "65%", output: "System default"}), "Volume: 65% · Output: System default");
   assert.equal(i18n.text("player.queue.rowDetailsUpNext", {artist: "A", album: "B"}), "Up next · A · B");
   assert.equal(i18n.text("player.queue.heading", {count: 2}), "Play queue", "a count on an ordinary message is just a value");
+  assert.equal(i18n.text("player.queue.count", {count: undefined}), "{{count}} tracks".replace("{{count}}", ""), "a missing count shows the general form, never the key");
+  assert.equal(i18n.text("player.queue.count"), " tracks");
   assert.deepEqual(requests, []);
 });
 
@@ -293,6 +320,23 @@ test("error codes translate known errors and otherwise keep the original English
   const failure = i18n.failure("queue.track_missing");
   assert.equal(failure.message, "This track is no longer on that album. Reload the library.", "the error message stays English for logs and tests");
   assert.equal(i18n.errorText(failure), "Dit nummer staat niet meer op dat album. Laad de bibliotheek opnieuw.");
+});
+
+test("numbers, dates and pseudo-localization follow the active language", async () => {
+  const {i18n} = runtime();
+  const when = "2026-11-02T18:21:00Z", options = {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"};
+  assert.equal(i18n.number(1234567), (1234567).toLocaleString("en"), "English keeps today's fixed format");
+  assert.equal(i18n.number(1234.56, {maximumFractionDigits: 1, useGrouping: false}), "1234.6");
+  assert.equal(i18n.dateTime(when, options), "2 Nov 2026, 18:21");
+  assert.equal(i18n.dateTime(when, {timeZone: "UTC"}), new Date(when).toLocaleString("en-GB", {timeZone: "UTC"}));
+  await i18n.use("nl");
+  assert.equal(i18n.number(1234567), "1.234.567");
+  assert.equal(i18n.dateTime("2026-11-02T18:21:00Z", {dateStyle: "medium", timeZone: "UTC"}), "2 nov 2026");
+  i18n.usePseudo();
+  const marked = i18n.text("player.queue.remove", {title: "Song", position: 2});
+  assert.match(marked, /^⟦.*Song.*2.*~+⟧$/);
+  assert.equal(i18n.language, "en-XA");
+  assert.equal(i18n.choice, "nl", "pseudo-localization is never stored");
 });
 
 test("Python error codes have English text identical to the server message", () => {

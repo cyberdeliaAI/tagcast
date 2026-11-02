@@ -11,7 +11,7 @@ const TagcastI18n = (() => {
   const manifest = english.manifest;
   const offered = new Map(manifest.languages.map(language => [language.tag, language]));
   const STORAGE_KEY = "tagcast-language";
-  const CODE = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/;
+  const CODE = /^[a-z][A-Za-z0-9_]*(?:\.[a-z][A-Za-z0-9_]*)*$/;
   const PLACEHOLDER = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*(?:,\s*(number)\s*)?\}\}/g;
   const ATTRIBUTES = new Set(["aria-label", "title", "placeholder", "alt", "aria-description", "aria-valuetext"]);
   const catalogs = new Map([["en", english.messages]]);
@@ -49,9 +49,39 @@ const TagcastI18n = (() => {
     if (!plurals.has(tag)) plurals.set(tag, new Intl.PluralRules(tag));
     return plurals.get(tag);
   }
-  function numberFormat(tag) {
-    if (!numbers.has(tag)) numbers.set(tag, new Intl.NumberFormat(language(tag).format || tag));
-    return numbers.get(tag);
+  // English keeps the fixed format Tagcast always used (en-GB: 1,234 and 2 Nov 2026). Other
+  // languages use the first browser language of the same family (nl-BE for Dutch on a Belgian
+  // system), else the format the manifest names.
+  function formatLocale(tag) {
+    const base = tag.split("-")[0];
+    if (base === "en") return language("en").format || "en-GB";
+    const preferred = Array.isArray(globalThis.navigator?.languages) ? globalThis.navigator.languages : [];
+    const local = preferred.find(item => String(item).toLowerCase().split("-")[0] === base);
+    try { if (local && Intl.NumberFormat.supportedLocalesOf(local).length) return local; } catch { /* invalid tag */ }
+    return language(tag).format || tag;
+  }
+  function numberFormat(tag, options) {
+    const id = `${tag}|${options ? JSON.stringify(options) : ""}`;
+    if (!numbers.has(id)) numbers.set(id, new Intl.NumberFormat(formatLocale(tag), options));
+    return numbers.get(id);
+  }
+  const DATE_TIME = Object.freeze({year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"});
+  const PARTS = new Set(["weekday", "era", "year", "month", "day", "dayPeriod", "hour", "minute", "second", "fractionalSecondDigits", "dateStyle", "timeStyle"]);
+  function dateFormat(tag, options) {
+    const id = `date|${tag}|${options ? JSON.stringify(options) : ""}`;
+    if (!numbers.has(id)) numbers.set(id, new Intl.DateTimeFormat(formatLocale(tag), options));
+    return numbers.get(id);
+  }
+
+  // Development only: every message becomes visibly marked and about 30% longer, so text that
+  // never went through TagcastI18n and layouts that cannot grow stand out. Never stored.
+  const ACCENTS = {a: "à", b: "ƀ", c: "ç", d: "ð", e: "é", f: "ƒ", g: "ĝ", h: "ĥ", i: "î", j: "ĵ", k: "ķ", l: "ĺ", m: "ɱ",
+    n: "ñ", o: "ö", p: "þ", r: "ŕ", s: "š", t: "ţ", u: "û", w: "ŵ", y: "ý", z: "ž", A: "Å", C: "Ç", E: "É", I: "Î",
+    N: "Ñ", O: "Ö", S: "Š", U: "Û"};
+  function pseudo(value) {
+    const parts = value.split(/(\{\{[^}]*\}\})/);
+    const body = parts.map(part => part.startsWith("{{") ? part : part.replace(/[A-Za-z]/g, c => ACCENTS[c] || c)).join("");
+    return `⟦${body}${"~".repeat(Math.ceil(value.length * 0.3))}⟧`;
   }
   function find(tag, key, count) {
     const messages = catalogs.get(tag);
@@ -60,7 +90,9 @@ const TagcastI18n = (() => {
       const form = messages[`${key}_${pluralRules(tag).select(count)}`] ?? messages[`${key}_other`];
       if (typeof form === "string") return form;
     }
-    return typeof messages[key] === "string" ? messages[key] : undefined;
+    if (typeof messages[key] === "string") return messages[key];
+    // A plural message used without a usable count still shows its general form.
+    return typeof messages[`${key}_other`] === "string" ? messages[`${key}_other`] : undefined;
   }
   function lookup(key, params, englishOnly) {
     const count = typeof params?.count === "number" && Number.isFinite(params.count) ? params.count : undefined;
@@ -177,7 +209,16 @@ const TagcastI18n = (() => {
     languages: () => manifest.languages.map(item => ({...item})),
     resolve, text, html, englishText, hasKey, translate, use,
     trusted(fragment) { const value = Object.freeze({html: String(fragment)}); trusted.add(value); return value; },
-    number: value => numberFormat(active).format(value),
+    // Locale-aware numbers and dates for the active language. English keeps today's formats.
+    number: (value, options) => numberFormat(active, options).format(value),
+    // Date and time by default, like Date.prototype.toLocaleString(value, options).
+    dateTime: (value, options) => dateFormat(active, options && Object.keys(options).some(key => PARTS.has(key)) ? options : {...DATE_TIME, ...options})
+      .format(value instanceof Date ? value : new Date(value)),
+    usePseudo() {
+      catalogs.set("en-XA", Object.freeze(Object.fromEntries(Object.entries(english.messages).map(([key, value]) => [key, pseudo(value)]))));
+      request += 1;
+      apply("en-XA");
+    },
     // Server and browser errors may carry a stable code. Translate a known code and
     // otherwise show the original English message unchanged.
     errorText(error) {
