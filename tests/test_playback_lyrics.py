@@ -14,9 +14,11 @@ import yaml
 from tagcast.library import ConflictError, LibraryError
 from tagcast.playback_lyrics import (
     _lrclib_lines,
+    _lrclib_match,
     fetch_lrclib_display,
     fetch_unison,
     lyric_time,
+    lyrics_title,
     parse_lrc,
     parse_ttml,
 )
@@ -205,6 +207,46 @@ class WordLyricsTests(unittest.TestCase):
             self.assertNotIn("words", parse_lrc(value, 10)["lines"][0])
 
 
+class LyricsIdentityTests(unittest.TestCase):
+    def match(self, title, artist, returned_title, returned_artist, duration=200, returned_duration=200):
+        return _lrclib_match({"trackName": returned_title, "artistName": returned_artist,
+                              "albumName": "Album", "duration": returned_duration},
+                             {"title": title, "artist": artist, "length": duration}, "Album")
+
+    def test_release_labels_typography_accents_and_complete_credits_with_duration_guard(self):
+        cases = [("Don’t Stop Me Now - Remastered 2011", "Queen", "Don't Stop Me Now"),
+                 ("Here Comes The Sun - Remastered 2009", "The Beatles", "Here Comes The Sun"),
+                 ("Hotel California - 2013 Remaster", "Eagles", "Hotel California"),
+                 ("Uptown Funk (feat. Bruno Mars)", "Mark Ronson", "Uptown Funk"),
+                 ("I'm Just A Singer (In A Rock And Roll Band)", "The Moody Blues",
+                  "I'm Just A Singer (In A Rock And Roll Band)"),
+                 ("Synthetic (2011 Remastered Version)", "Beyoncé", "Synthetic"),
+                 ("Synthetic (20th Anniversary Deluxe Edition)", "Beyoncé", "Synthetic"),
+                 ("Synthetic [Mono Version]", "Beyoncé", "Synthetic")]
+        for title, artist, returned in cases:
+            with self.subTest(title=title):
+                self.assertTrue(self.match(title, artist, returned, artist))
+                self.assertFalse(self.match(title, artist, returned, artist, returned_duration=202.01))
+                if title != returned:
+                    self.assertFalse(self.match(title, artist, returned, artist, duration=0))
+        self.assertTrue(self.match("Don't Stop Me Now - Remastered 2011", "Queen",
+                                   "Don’t Stop Me Now (Remastered 2011)", "Queen"))
+        for artist in ("Prince; The Revolution", "Prince The Revolution", "Prince and The Revolution"):
+            self.assertTrue(self.match("Purple Rain", "Prince & The Revolution", "Purple Rain", artist))
+        self.assertTrue(self.match("Héllo!", "The Beyoncé", "Hello", "Beyonce feat. Other Artist"))
+        self.assertFalse(self.match("Hello", "Ga", "Hello", "Lady Gaga"))
+        self.assertFalse(self.match("Hello", "U2", "Hello", "U2 Tribute"))
+
+    def test_recording_qualifiers_and_descriptive_parentheses_are_not_stripped(self):
+        for qualifier in ("Live", "Acoustic", "Remix", "Demo", "Instrumental", "Live 2011 Remaster"):
+            for title in (f"Song ({qualifier})", f"Song - {qualifier}"):
+                self.assertFalse(self.match(title, "Artist", "Song", "Artist"))
+                self.assertTrue(self.match(title, "Artist", title, "Artist"))
+        self.assertEqual(lyrics_title("Singer (In A Rock And Roll Band)"), "Singer (In A Rock And Roll Band)")
+        self.assertFalse(self.match("Singer (In A Rock And Roll Band)", "Artist", "Singer", "Artist"))
+        self.assertFalse(self.match("Song", "Prince & The Revolution", "Song", "Prince", duration=0))
+
+
 class UnisonRequestTests(unittest.TestCase):
     def setUp(self):
         self.track = {'title': 'Test Song (Live)', 'artist': 'U2', 'length': 200}
@@ -250,6 +292,18 @@ class UnisonRequestTests(unittest.TestCase):
     def test_real_response_shape_without_duration_accepts_the_server_duration_filter(self):
         self.assertNotIn('duration', self.data['data'])
         self.assertEqual(self.fetch()['status'], 'ready')
+
+    def test_cleaned_unison_query_still_validates_identity_and_unknown_duration_album(self):
+        self.track.update(title='Test Song (Remastered 2011)')
+        response = {**self.data['data'], 'song': 'Test Song'}
+        with patch('tagcast.playback_lyrics._ProviderReader.read', return_value={'success': True, 'data': response}) as read:
+            self.assertEqual(fetch_unison(self.track, 'Test album')['status'], 'ready')
+            self.assertEqual(read.call_args.args[2]['song'], 'Test Song')
+            self.track.update(length=0)
+            self.assertEqual(fetch_unison(self.track, 'Test album')['status'], 'missing')
+            self.track.update(title='Test Song')
+            self.assertEqual(fetch_unison(self.track, 'Other album')['status'], 'missing')
+            self.assertEqual(fetch_unison(self.track, 'Test album')['status'], 'ready')
 
     def test_404_is_missing_but_failures_redirects_and_oversize_are_errors(self):
         self.assertEqual(self.fetch(status=404)['status'], 'missing')
@@ -366,6 +420,16 @@ class LRCLIBDisplayTests(unittest.TestCase):
         self.assertEqual(self.session.get.call_count, 2)
         self.assertEqual(self.session.get.call_args.kwargs['params'],
                          {'track_name': 'test song - live', 'artist_name': "o'flynn"})
+
+    def test_one_bare_title_primary_artist_search_finds_version_label_variants(self):
+        track = {'title': 'Synthetic Song - Remastered 2011', 'artist': 'Prince & The Revolution', 'length': 200}
+        record = {**self.record, 'trackName': 'Synthetic Song', 'artistName': 'Prince The Revolution'}
+        result = self.fetch([(200, []), (200, [record])], track)
+        self.assertEqual(result['status'], 'ready')
+        self.assertEqual([call.kwargs['params'] for call in self.session.get.call_args_list], [
+            {'track_name': track['title'], 'artist_name': track['artist']},
+            {'track_name': 'Synthetic Song', 'artist_name': 'Prince'}])
+        self.assertEqual(self.session.get.call_count, 2)
 
     def test_plain_instrumental_missing_and_empty_candidate_stay_distinct(self):
         result = self.fetch([(200, [{**self.record, 'syncedLyrics': None}])])

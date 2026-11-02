@@ -9,6 +9,7 @@ import math
 import re
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 
@@ -316,6 +317,7 @@ def fetch_unison(track, album, check_current=lambda: None, policy=None):
     params = {"song": track["title"], "artist": track["artist"], "album": album}
     duration = track["length"]
     if duration > 0:
+        params["song"] = lyrics_title(track["title"]) or track["title"]
         params["duration"] = int(duration + .5)
     reader = _ProviderReader("unison", check_current, policy)
     try:
@@ -333,8 +335,7 @@ def fetch_unison(track, album, check_current=lambda: None, policy=None):
     data = data["data"]
     if any(not isinstance(data.get(key), str) for key in ("song", "artist", "lyrics")):
         raise SourceError("Unison returned invalid track details.")
-    if artist_name_key(data["song"]) != artist_name_key(track["title"]) \
-            or artist_name_key(data["artist"]) != artist_name_key(track["artist"]):
+    if not _lyrics_identity(data["song"], data["artist"], track, album, data.get("album")):
         return _finish([], duration)
     length = data.get("duration")
     # GET /lyrics applies the requested duration filter but omits it in its reply.
@@ -362,12 +363,74 @@ def lyrics_name_key(value):
     }))
 
 
+def lyrics_title(value):
+    """Remove recognized release labels only; recording qualifiers remain identity."""
+    def release_label(label):
+        key = lyrics_name_key(label).strip()
+        if re.search(r"\b(?:live|acoustic|remix|demo|instrumental)\b", key):
+            return False
+        if re.match(r"^(?:feat\.?|ft\.?|featuring)\s+\S", key):
+            return True
+        words = re.findall(r"\w+", key)
+        allowed = {"remaster", "remastered", "version", "edition", "single", "album",
+                   "mono", "stereo", "radio", "edit", "deluxe", "expanded", "anniversary",
+                   "bonus", "track", "explicit", "clean"}
+        return bool(words) and all(word in allowed or re.fullmatch(r"\d{4}|\d{1,3}(?:st|nd|rd|th)", word)
+                                   for word in words)
+
+    value = re.sub(r"\(([^()]*)\)|\[([^\[\]]*)\]",
+                   lambda match: " " if release_label(match[1] or match[2] or "") else match[0], value)
+    while True:
+        parts = re.split(r"\s+[-–—]\s+", value)
+        if len(parts) < 2 or not release_label(parts[-1]):
+            break
+        value = " - ".join(parts[:-1])
+    return " ".join(value.split())
+
+
+def _lyrics_letters(value):
+    value = unicodedata.normalize("NFD", value.casefold())
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = unicodedata.normalize("NFC", value)
+    return " ".join("".join(char for char in value if char.isalnum() or char.isspace()).split())
+
+
+def _lyrics_credits(value):
+    parts = re.split(r"\s*[,;&/×]\s*|\s+(?:and|x|feat\.?|ft\.?|featuring|with)\s+", value, flags=re.I)
+    return [re.sub(r"^the\s+", "", key) for part in parts if (key := _lyrics_letters(part))]
+
+
+def _lyrics_artists(left, right):
+    """Whole credited names, or an entire consecutive credit run; no substrings."""
+    left, right = _lyrics_credits(left), _lyrics_credits(right)
+    if set(left) & set(right):
+        return True
+    for parts, other in ((left, right), (right, left)):
+        for start in range(len(parts)):
+            for end in range(start + 2, len(parts) + 1):
+                run = " ".join(parts[start:end])
+                if any(run == re.sub(r"\bthe\s+", "", name) for name in other):
+                    return True
+    return False
+
+
+def _lyrics_identity(title, artist, track, album, returned_album):
+    if not isinstance(title, str) or not isinstance(artist, str):
+        return False
+    if track["length"] > 0:
+        key = _lyrics_letters(lyrics_title(title))
+        return bool(key) and key == _lyrics_letters(lyrics_title(track["title"])) \
+            and _lyrics_artists(artist, track["artist"])
+    return lyrics_name_key(title) == lyrics_name_key(track["title"]) \
+        and lyrics_name_key(artist) == lyrics_name_key(track["artist"]) \
+        and bool(album.strip()) and lyrics_name_key(returned_album) == lyrics_name_key(album)
+
+
 def _lrclib_match(data, track, album):
     if not isinstance(data, dict) or any(not isinstance(data.get(key), str)
                                          for key in ("trackName", "artistName")):
         return False
-    if any(lyrics_name_key(data[key]) != lyrics_name_key(track[name])
-           for key, name in (("trackName", "title"), ("artistName", "artist"))):
+    if not _lyrics_identity(data["trackName"], data["artistName"], track, album, data.get("albumName")):
         return False
     length = data.get("duration")
     if type(length) not in (int, float) or not math.isfinite(length) or not 0 < length <= MAX_TIME:
@@ -420,9 +483,14 @@ def _lyricsfile_lines(value, data, duration):
         if not isinstance(document, dict) or document.get("version") != "1.0":
             return None
         meta = document.get("metadata")
-        if not isinstance(meta, dict) or any(not isinstance(meta.get(key), str)
-                or lyrics_name_key(meta[key]) != lyrics_name_key(data.get(record))
-                for key, record in (("title", "trackName"), ("artist", "artistName"))):
+        if not isinstance(meta, dict) or any(not isinstance(meta.get(key), str) for key in ("title", "artist")):
+            return None
+        if duration > 0:
+            if not _lyrics_identity(meta["title"], meta["artist"], {
+                    "title": data["trackName"], "artist": data["artistName"], "length": duration}, "", ""):
+                return None
+        elif any(lyrics_name_key(meta[key]) != lyrics_name_key(data.get(record))
+                 for key, record in (("title", "trackName"), ("artist", "artistName"))):
             return None
         # The draft explicitly leaves offset semantics unresolved. Never guess.
         if type(meta.get("offset_ms", 0)) is not int or meta.get("offset_ms", 0) != 0:
@@ -496,6 +564,11 @@ def fetch_lrclib_display(track, album, check_current, policy=None):
         params["duration"] = track["length"]
     variants = [(track["title"], track["artist"]),
                 (lyrics_name_key(track["title"]), lyrics_name_key(track["artist"]))]
+    if track["length"] > 0:
+        # One bounded extra query; local identity/duration checks still decide the hit.
+        primary = re.split(r"\s*[,;&/×]\s*|\s+(?:and|x|feat\.?|ft\.?|featuring|with)\s+",
+                           track["artist"], maxsplit=1, flags=re.I)[0].strip()
+        variants.append((lyrics_title(track["title"]) or track["title"], primary))
     seen, candidates, errors = set(), [], []
 
     def candidate_result():
