@@ -1,11 +1,15 @@
 "use strict";
 
 // This comparison only prepares the existing single-album metadata review.
+// It lives in the cleanup dialog: a language change never re-renders it (search text and year
+// choices would be lost); its next render uses the new language.
 const yearReviewView = {data: null, details: null, request: 0, busy: false, query: "", category: "differences", offset: 0, returnTo: null};
-const yearReviewLabels = {differences: "All differences", different: "One different track year", mixed: "Mixed track years",
-  "missing-tracks": "Missing track years", "missing-album": "Missing album year", unknown: "All years missing", invalid: "Invalid years"};
+// Category ids are sent to the server; the keys only label them.
+const yearReviewLabels = {differences: "yearReview.category.differences", different: "yearReview.category.different", mixed: "yearReview.category.mixed",
+  "missing-tracks": "yearReview.category.missingTracks", "missing-album": "yearReview.category.missingAlbum", unknown: "yearReview.category.unknown", invalid: "yearReview.category.invalid"};
 const yearReviewKnown = year => Number.isInteger(year) && year >= 1800 && year <= 2050;
-const yearReviewShown = year => year === 0 ? "Unknown" : String(year);
+const yearReviewShown = year => year === 0 ? TagcastI18n.text("yearReview.year.unknown") : String(year);
+const yearReviewLabel = category => Object.hasOwn(yearReviewLabels, category) ? TagcastI18n.html(yearReviewLabels[category]) : "";
 
 function resetYearReview() {
   yearReviewView.request += 1; yearReviewView.data = null; yearReviewView.details = null; yearReviewView.busy = false;
@@ -13,23 +17,30 @@ function resetYearReview() {
   yearReviewView.returnTo = null;
 }
 
+function yearReviewSummary(stats) {
+  return [`<strong>${TagcastI18n.html("cleanup.count.albums", {count: Number(stats.albums) || 0})}</strong>`,
+    TagcastI18n.html("yearReview.summary.discs", {count: Number(stats.discs) || 0}),
+    TagcastI18n.html("yearReview.summary.differentTracks", {count: Number(stats.different_tracks) || 0}),
+    TagcastI18n.html("yearReview.summary.missingTrackYears", {count: Number(stats.missing_track_years) || 0})].join(" · ");
+}
+
 function renderYearReview() {
   if (yearReviewView.details !== state.details) yearReviewView.data = null;
   const data = yearReviewView.data, busy = yearReviewView.busy, stats = data?.stats;
   const scroll = $("#cleanup").scrollTop;
   const focus = document.activeElement?.id;
-  $("#cleanup-content").innerHTML = `<p class="muted">Compare album release years with the years stored on their tracks. A difference can be intentional, for example on compilations or reissues. Tagcast never chooses the correct year for you.</p>
-    <div class="cleanup-controls">${cleanupCategoryControl(busy)}<button type="button" class="button" id="year-review-analyse" ${busy ? "disabled" : ""}>${data ? "Analyse again" : "Analyse years"}</button></div>
-    <p class="muted">Analysis uses your loaded library only. It does not fetch audio, look up dates or save changes. Your other cleanup draft and report stay separate.</p>
-    ${stats ? `<p class="year-review-summary"><strong>${fmt(stats.albums)} albums</strong> · ${fmt(stats.discs)} native disc records · ${fmt(stats.different_tracks)} tracks with a different known year · ${fmt(stats.missing_track_years)} ${stats.missing_track_years === 1 ? "track" : "tracks"} without a year (known album year)</p>
-    <div class="year-review-filters"><div class="field clearable-field"><label for="year-review-search">Search albums, artists or years</label>${clearableSearchInput("year-review-search", "", yearReviewView.query, busy)}</div><label class="field">Show<select id="year-review-category" ${busy ? "disabled" : ""}>${Object.entries(yearReviewLabels).map(([key, label]) => `<option value="${key}" ${key === yearReviewView.category ? "selected" : ""}>${label}</option>`).join("")}</select></label><button type="button" class="button small" id="year-review-find" ${busy ? "disabled" : ""}>Search</button></div>
-    <p class="muted">${fmt(data.total)} matching ${data.total === 1 ? "album" : "albums"}. Complete disc sets stay together. Missing years are separate from conflicting known years; All differences omits albums where every year is missing.</p>
-    ${data.combine_sets ? '<p class="warn-box">Combine Multi-Disc Album Sets is on in iBroadcast. Track-year changes remain available; album-year changes are blocked.</p>' : ""}
-    <div class="cleanup-albums">${data.rows.map(row => yearReviewRow(row, data.combine_sets, busy)).join("") || '<p class="empty">No albums in this category. Choose another category or change the search.</p>'}</div>
-    ${data.total > data.limit ? `<div class="pagination"><button type="button" class="button small" data-year-review-page="-25" ${busy || data.offset <= 0 ? "disabled" : ""}>← Previous</button><span>${Math.floor(data.offset / data.limit) + 1} / ${Math.ceil(data.total / data.limit)}</span><button type="button" class="button small" data-year-review-page="25" ${busy || data.offset + data.limit >= data.total ? "disabled" : ""}>Next →</button></div>` : ""}
-    <p class="muted">Choose one action for one album at a time. The normal before/after review shows every affected record; nothing is saved until you confirm there. After a confirmed save, this overview updates with your search and filter preserved.</p>`
-    : yearReviewView.returnTo?.saving ? '<p class="empty">Checking the saved years. This overview will update when iBroadcast confirms the result.</p>'
-      : '<p class="empty">Choose Analyse years to find differences and missing years. Opening this category does not scan or change the library.</p>'}`;
+  $("#cleanup-content").innerHTML = `<p class="muted">${TagcastI18n.html("yearReview.intro")}</p>
+    <div class="cleanup-controls">${cleanupCategoryControl(busy)}<button type="button" class="button" id="year-review-analyse" ${busy ? "disabled" : ""}>${TagcastI18n.html(data ? "yearReview.action.analyseAgain" : "yearReview.action.analyse")}</button></div>
+    <p class="muted">${TagcastI18n.html("yearReview.scope")}</p>
+    ${stats ? `<p class="year-review-summary">${yearReviewSummary(stats)}</p>
+    <div class="year-review-filters"><div class="field clearable-field"><label for="year-review-search">${TagcastI18n.html("yearReview.search.label")}</label>${clearableSearchInput("year-review-search", "", yearReviewView.query, busy)}</div><label class="field">${TagcastI18n.html("yearReview.filter.label")}<select id="year-review-category" ${busy ? "disabled" : ""}>${Object.entries(yearReviewLabels).map(([key, label]) => `<option value="${key}" ${key === yearReviewView.category ? "selected" : ""}>${TagcastI18n.html(label)}</option>`).join("")}</select></label><button type="button" class="button small" id="year-review-find" ${busy ? "disabled" : ""}>${TagcastI18n.html("yearReview.search.button")}</button></div>
+    <p class="muted">${TagcastI18n.html("yearReview.results.matching", {count: Number(data.total) || 0})} ${TagcastI18n.html("yearReview.results.note")}</p>
+    ${data.combine_sets ? `<p class="warn-box">${TagcastI18n.html("yearReview.combineSets")}</p>` : ""}
+    <div class="cleanup-albums">${data.rows.map(row => yearReviewRow(row, data.combine_sets, busy)).join("") || `<p class="empty">${TagcastI18n.html("yearReview.empty")}</p>`}</div>
+    ${data.total > data.limit ? `<div class="pagination"><button type="button" class="button small" data-year-review-page="-25" ${busy || data.offset <= 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${Math.floor(data.offset / data.limit) + 1} / ${Math.ceil(data.total / data.limit)}</span><button type="button" class="button small" data-year-review-page="25" ${busy || data.offset + data.limit >= data.total ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button></div>` : ""}
+    <p class="muted">${TagcastI18n.html("yearReview.howTo")}</p>`
+    : yearReviewView.returnTo?.saving ? `<p class="empty">${TagcastI18n.html("yearReview.checkingSaved")}</p>`
+      : `<p class="empty">${TagcastI18n.html("yearReview.start")}</p>`}`;
   $("#cleanup").scrollTop = scroll;
   if (["year-review-search", "year-review-category", "year-review-find", "year-review-analyse"].includes(focus)) document.getElementById(focus)?.focus({preventScroll: true});
 }
@@ -38,18 +49,20 @@ function yearReviewRow(row, combined, busy) {
   const valid = row.track_years.filter(item => yearReviewKnown(item.year));
   const blocked = busy || !row.bounded || row.category === "invalid";
   const selected = valid.length === 1 ? valid[0].year : "";
-  return `<section class="cleanup-album year-review-album"><h3>${escapeHtml(row.album)}</h3><p class="muted">${escapeHtml(row.artist)} · ${fmt(row.tracks)} tracks · ${row.discs > 1 ? `${row.discs} discs` : `Disc ${row.disc || "?"}`} · ${escapeHtml(yearReviewLabels[row.category])}</p>
-    <dl class="year-review-values"><div><dt>Album year</dt><dd>${escapeHtml(yearReviewShown(row.album_year))}</dd></div><div><dt>Track years</dt><dd>${row.track_years.map(item => `${escapeHtml(yearReviewShown(item.year))} <span class="muted">(${fmt(item.count)} ${item.count === 1 ? "track" : "tracks"})</span>`).join(" · ")}</dd></div></dl>
-    ${!row.bounded ? '<p class="muted">This selection exceeds 20 discs / 500 tracks. Open the album to edit a smaller selection manually.</p>' : row.category === "invalid" ? '<p class="muted">Invalid stored years need individual inspection in the album editor.</p>' : ""}
-    <div class="year-review-directions"><div><button type="button" class="button small" data-year-review-album="${escapeHtml(row.id)}" data-year-direction="album-to-tracks" ${blocked || !yearReviewKnown(row.album_year) ? "disabled" : ""}>Album year → track years…</button><small class="muted">Apply ${yearReviewKnown(row.album_year) ? row.album_year : "a known album year"} to all tracks; leave the album unchanged.</small></div>
-    <div><label class="field">Choose a track year<select data-year-review-choice="${escapeHtml(row.id)}" ${blocked || combined || !valid.length ? "disabled" : ""}><option value="" ${selected === "" ? "selected" : ""}>Choose a track year…</option>${valid.map(item => `<option value="${item.year}" ${selected === item.year ? "selected" : ""}>${item.year} (${item.count} ${item.count === 1 ? "track" : "tracks"})</option>`).join("")}</select></label><button type="button" class="button small" data-year-review-album="${escapeHtml(row.id)}" data-year-direction="tracks-to-album" ${blocked || combined || !selected || selected === row.album_year ? "disabled" : ""}>Track year → album year…</button><small class="muted">Change the album year only; track years stay unchanged.</small><button type="button" class="button small" data-year-review-album="${escapeHtml(row.id)}" data-year-direction="tracks-to-album-and-tracks" ${blocked || combined || !selected ? "disabled" : ""}>Track year → album + all tracks…</button><small class="muted">Apply the selected year to the album and all tracks. Tracks already at that year stay unchanged. Mixed years require your choice.</small></div></div></section>`;
+  const details = [escapeHtml(row.artist), TagcastI18n.html("cleanup.count.tracks", {count: Number(row.tracks) || 0}),
+    row.discs > 1 ? TagcastI18n.html("yearReview.row.discs", {count: row.discs}) : TagcastI18n.html("common.disc", {disc: row.disc || "?"}), yearReviewLabel(row.category)];
+  return `<section class="cleanup-album year-review-album"><h3>${escapeHtml(row.album)}</h3><p class="muted">${details.join(" · ")}</p>
+    <dl class="year-review-values"><div><dt>${TagcastI18n.html("yearReview.row.albumYear")}</dt><dd>${escapeHtml(yearReviewShown(row.album_year))}</dd></div><div><dt>${TagcastI18n.html("yearReview.row.trackYears")}</dt><dd>${row.track_years.map(item => `${escapeHtml(yearReviewShown(item.year))} <span class="muted">(${TagcastI18n.html("yearReview.row.trackCount", {count: Number(item.count) || 0})})</span>`).join(" · ")}</dd></div></dl>
+    ${!row.bounded ? `<p class="muted">${TagcastI18n.html("yearReview.row.tooLarge")}</p>` : row.category === "invalid" ? `<p class="muted">${TagcastI18n.html("yearReview.row.invalid")}</p>` : ""}
+    <div class="year-review-directions"><div><button type="button" class="button small" data-year-review-album="${escapeHtml(row.id)}" data-year-direction="album-to-tracks" ${blocked || !yearReviewKnown(row.album_year) ? "disabled" : ""}>${TagcastI18n.html("yearReview.action.albumToTracks")}</button><small class="muted">${yearReviewKnown(row.album_year) ? TagcastI18n.html("yearReview.action.albumToTracksNote", {year: row.album_year}) : TagcastI18n.html("yearReview.action.albumToTracksNoteUnknown")}</small></div>
+    <div><label class="field">${TagcastI18n.html("yearReview.choice.label")}<select data-year-review-choice="${escapeHtml(row.id)}" ${blocked || combined || !valid.length ? "disabled" : ""}><option value="" ${selected === "" ? "selected" : ""}>${TagcastI18n.html("yearReview.choice.placeholder")}</option>${valid.map(item => `<option value="${item.year}" ${selected === item.year ? "selected" : ""}>${item.year} (${TagcastI18n.html("common.count.tracks", {count: item.count})})</option>`).join("")}</select></label><button type="button" class="button small" data-year-review-album="${escapeHtml(row.id)}" data-year-direction="tracks-to-album" ${blocked || combined || !selected || selected === row.album_year ? "disabled" : ""}>${TagcastI18n.html("yearReview.action.tracksToAlbum")}</button><small class="muted">${TagcastI18n.html("yearReview.action.tracksToAlbumNote")}</small><button type="button" class="button small" data-year-review-album="${escapeHtml(row.id)}" data-year-direction="tracks-to-album-and-tracks" ${blocked || combined || !selected ? "disabled" : ""}>${TagcastI18n.html("yearReview.action.tracksToAll")}</button><small class="muted">${TagcastI18n.html("yearReview.action.tracksToAllNote")}</small></div></div></section>`;
 }
 
 async function fetchYearReview(analyse = false, preserveView = false) {
   if (yearReviewView.busy || !live() || cleanupView.category !== "years") return;
   const request = ++yearReviewView.request, details = state.details, focus = document.activeElement?.id;
   yearReviewView.busy = true; renderYearReview();
-  setActionStatus("#cleanup-status", analyse ? "Comparing the loaded album and track years…" : "Reading year comparisons…", true);
+  setActionStatus("#cleanup-status", TagcastI18n.text(analyse ? "yearReview.progress.analyse" : "yearReview.progress.read"), true);
   try {
     const query = new URLSearchParams({id: yearReviewView.data?.id || "", q: yearReviewView.query,
       category: yearReviewView.category, offset: yearReviewView.offset});
@@ -66,7 +79,7 @@ async function fetchYearReview(analyse = false, preserveView = false) {
   } catch (error) {
     if (request !== yearReviewView.request || details !== state.details) return;
     if (error.status === 409) yearReviewView.data = null;
-    setActionStatus("#cleanup-status", error.message);
+    setActionStatus("#cleanup-status", TagcastI18n.errorText(error));
   } finally {
     if (request === yearReviewView.request && details === state.details) {
       yearReviewView.busy = false;
@@ -92,10 +105,10 @@ async function chooseYearReview(id, direction) {
   const row = yearReviewView.data.rows.find(item => item.id === id);
   if (!row) return;
   const year = direction === "album-to-tracks" ? row.album_year : Number(document.querySelector(`[data-year-review-choice="${id}"]`)?.value);
-  if (!yearReviewKnown(year)) { setActionStatus("#cleanup-status", "Choose a known year first."); return; }
+  if (!yearReviewKnown(year)) { setActionStatus("#cleanup-status", TagcastI18n.text("yearReview.chooseKnown")); return; }
   const request = ++yearReviewView.request, details = state.details, report = yearReviewView.data;
   yearReviewView.busy = true; renderYearReview();
-  setActionStatus("#cleanup-status", "Preparing the existing album review. Nothing is saved…", true);
+  setActionStatus("#cleanup-status", TagcastI18n.text("yearReview.progress.prepare"), true);
   try {
     const choice = await api("/api/year-review/choice", {id: yearReviewView.data.id, album: id, direction, year});
     if (request !== yearReviewView.request || details !== state.details || !live() || !$("#cleanup").open) return;
@@ -103,7 +116,7 @@ async function chooseYearReview(id, direction) {
     await openEditor(row.ids);
     if (details !== state.details || report !== yearReviewView.data || !live() || (typeof nav !== "undefined" && scope !== nav.scope)) return;
     if (!editing || !sameValue(editing.originals.map(yearReviewIdentity), choice.albums.map(yearReviewIdentity))) {
-      toast("The album changed since analysis. Analyse again or inspect this album manually."); return;
+      toast(TagcastI18n.text("yearReview.changed")); return;
     }
     const yearInput = $("#metadata-form").elements.year;
     yearInput.value = String(choice.year);
@@ -117,8 +130,8 @@ async function chooseYearReview(id, direction) {
     setActionStatus("#cleanup-status", "");
   } catch (error) {
     if (details === state.details && live()) {
-      if ($("#cleanup").open) setActionStatus("#cleanup-status", error.message);
-      else toast(error.message);
+      if ($("#cleanup").open) setActionStatus("#cleanup-status", TagcastI18n.errorText(error));
+      else toast(TagcastI18n.errorText(error));
       if (error.status === 409) yearReviewView.data = null;
     }
   } finally {
@@ -155,7 +168,7 @@ function acceptedYearReviewSave(context) {
   if (!currentYearReviewReturn(context)) return;
   yearReviewView.request += 1; yearReviewView.data = null; yearReviewView.details = state.details;
   yearReviewView.busy = true; renderYearReview();
-  setActionStatus("#cleanup-status", "Checking saved years with iBroadcast…", true);
+  setActionStatus("#cleanup-status", TagcastI18n.text("yearReview.progress.checkSaved"), true);
 }
 
 async function finishedYearReviewSave(context, job, entry) {
@@ -164,7 +177,7 @@ async function finishedYearReviewSave(context, job, entry) {
   if (!currentYearReviewReturn(context)) {
     yearReviewView.returnTo = null;
     if ($("#cleanup").open && cleanupView.category === "years") {
-      renderYearReview(); setActionStatus("#cleanup-status", "The view or session changed. Analyse years again for current results.");
+      renderYearReview(); setActionStatus("#cleanup-status", TagcastI18n.text("yearReview.viewChanged"));
     }
     return;
   }
@@ -173,7 +186,7 @@ async function finishedYearReviewSave(context, job, entry) {
     restoreYearReviewPosition(context);
   } else {
     renderYearReview();
-    setActionStatus("#cleanup-status", "The save was not fully confirmed here. Check the result or History, then analyse again. Nothing is retried automatically.");
+    setActionStatus("#cleanup-status", TagcastI18n.text("yearReview.notConfirmed"));
   }
   if (context === yearReviewView.returnTo) yearReviewView.returnTo = null;
 }
