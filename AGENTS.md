@@ -206,8 +206,21 @@ their shared browsing/player state; a fast local response can otherwise race the
 - Track lyrics have a separate textarea/review/save, independent of ordinary metadata
   patches. Now playing and the visited track read native userdata lazily; never scan
   lyrics automatically or read audio. Native lyrics take priority. LRCLIB is explicit, follows its source
-  switch and validates full title/artist and known duration without dropping version
-  text. Public results enter the bounded 30-day SQLite cache. Native lyrics text and
+  switch and reuses the bounded LRCLIB search/matching/parser from Now playing,
+  never Unison. Known duration permits recognized release labels and whole artist
+  credits with the two-second guard; preserve live/acoustic/remix/demo/instrumental.
+  Unknown duration requires full names, album identity and a unique candidate.
+  Prefer available ordinary LRCLIB text; otherwise convert parsed LRC/enhanced
+  LRC/Lyricsfile lines to plain text, preserving verse
+  breaks and the 50,000-character limit; no word/line timestamps enter the editor
+  cache or reviewed save. Share only LRCLIB provider spacing/backoff, not Now playing
+  cancellation or RAM results. Explicit editor work survives a player-track change
+  but rejects replaced accounts/libraries/sessions or a disabled source between
+  provider steps. Keep existing native-read/save serialization and all write guards.
+  Public cache keys include a lookup-version and full album identity, so old misses
+  or legacy marker-bearing public results cannot hide the improved explicit lookup;
+  never migrate/delete native lyrics for this. Public results enter the bounded
+  30-day SQLite cache (missing results expire after one day). Native lyrics text and
   empty results persist separately in native-lyrics.sqlite3 (5,000 rows / 20 MiB text,
   no timed expiry), keyed by account, native track ID and exact track/album identity.
   Other native/custom userdata and review tokens stay in memory. Premium saves bind one track/account/session and the full

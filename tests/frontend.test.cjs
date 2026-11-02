@@ -9180,6 +9180,36 @@ test('LRCLIB lookup is explicit and a late reply cannot fill a replacement libra
   assert.equal(p.run('trackLyrics.entries.size'),0);
 });
 
+test('found LRCLIB text requires Use, Review and Save without filling ordinary metadata patches',async()=>{
+  const p=page();await settle();
+  p.run('state.mode="live";state.connection.playback_session="lyrics-session";state.connection.premium=true;editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()};const CSS={escape:value=>String(value)};$("#track-inline").scrollIntoView=()=>{};$("#editor").showModal();');
+  const plain='First line\n\nSecond line';
+  p.setFetch((url,options)=>({ok:true,json:async()=>{
+    if(url==='/api/lyrics/review')return {id:'plain-review',title:'Track',before:'',after:plain};
+    if(url==='/api/lyrics/save')return {status:'saved'};
+    return {status:options?.method==='POST'?'ready':'not_cached',source:options?.method==='POST'?'lrclib':'ibroadcast',
+      native_text:'',text:options?.method==='POST'?plain:'',can_save:true,can_lookup:options?.method!=='POST',before_token:'before'};
+  }}));
+  p.run('editTrack(String(editing.originals[0].tracks[0].id))');await settle();
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+  await p.click({'[data-lyrics-action]':{dataset:{lyricsAction:'find',lyricsContext:'track'}}});await settle();
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("track")).data.text'),plain);
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("track")).draft'),null);
+  assert.match(p.nodes.get('#track-lyrics').innerHTML,/Use these lyrics/);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  await p.click({'[data-lyrics-action]':{dataset:{lyricsAction:'use',lyricsContext:'track'}}});
+  assert.equal(p.run('lyricsEntry(visibleLyricsSelection("track")).draft'),plain);
+  assert.equal(p.requests.filter(r=>/\/lyrics\/(review|save)/.test(r.url)).length,0);
+  await p.run('reviewTrackLyrics(visibleLyricsSelection("track"),lyricsEntry(visibleLyricsSelection("track")))');
+  const review=p.requests.find(r=>r.url==='/api/lyrics/review');
+  assert.equal(JSON.parse(review.options.body).lyrics,plain);
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,0);
+  await p.run('saveTrackLyrics()');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/save').length,1);
+  assert.deepEqual(p.json('editing.trackPatches'),{});
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,0);
+});
+
 test('track lyrics use a separate editable field and explicit review, without normal metadata patches', async () => {
   const p=page(); await settle();
   p.run('state.mode="live"; state.connection.playback_session="lyrics-session"; editing={originals:[state.details.get("1")],trackPatches:{},dirty:new Set()}; const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{}; $("#editor").showModal();');

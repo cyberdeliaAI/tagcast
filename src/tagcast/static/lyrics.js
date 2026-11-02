@@ -232,7 +232,7 @@ function renderLyrics(context, selection = visibleLyricsSelection(context)) {
     : "iBroadcast";
   const note = data?.status === "instrumental" ? "LRCLIB marks this recording as instrumental."
     : data?.status === "missing" ? "No matching lyrics found."
-      : data?.status === "not_cached" ? "No lyrics stored in iBroadcast. Find lyrics sends this track’s title, artist and duration to LRCLIB." : "";
+      : data?.status === "not_cached" ? "No lyrics stored in iBroadcast. Find lyrics sends this track’s title, artist, album and known duration to LRCLIB." : "";
   const find = data?.can_lookup ? action("find", "Find lyrics on LRCLIB", entry.loading) : "";
   const refresh = data ? action("retry", "Check iBroadcast again", entry.loading) : "";
   const text = data?.text ? `<details data-lyrics-expanded="${context}" ${entry.open ? "open" : ""}><summary>${data.source === "lrclib" ? "LRCLIB" : "iBroadcast"}</summary><div class="lyrics-text">${escapeHtml(data.text)}</div>${data.source === "lrclib" ? `<p class="muted lyrics-source">${source}</p>` : ""}</details>` : "";
