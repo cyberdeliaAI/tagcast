@@ -240,7 +240,7 @@ def fetch_unison(track, album):
     params = {"song": track["title"], "artist": track["artist"], "album": album}
     duration = track["length"]
     if duration > 0:
-        params["duration"] = duration
+        params["duration"] = int(duration + .5)
     try:
         with requests.Session() as session:
             session.trust_env = False
@@ -274,7 +274,9 @@ def fetch_unison(track, album):
             or artist_name_key(data["artist"]) != artist_name_key(track["artist"]):
         return _finish([], duration)
     length = data.get("duration")
-    if duration > 0 and (type(length) not in (int, float) or not math.isfinite(length)
+    # GET /lyrics applies the requested duration filter but omits it in its reply.
+    # If a server does include duration, reject invalid or mismatched values.
+    if duration > 0 and "duration" in data and (type(length) not in (int, float) or not math.isfinite(length)
                          or abs(length - duration) > 2):
         return _finish([], duration)
     value = data["lyrics"]
