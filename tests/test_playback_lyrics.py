@@ -206,8 +206,12 @@ class WordLyricsTests(unittest.TestCase):
 class UnisonRequestTests(unittest.TestCase):
     def setUp(self):
         self.track = {'title': 'Test Song (Live)', 'artist': 'U2', 'length': 200}
+        # GET /lyrics omits duration (unlike /lyrics/search). Synthetic text only.
         self.data = {'success': True, 'data': {'song': 'Test Song (Live)', 'artist': 'U2',
-                     'duration': 200, 'format': 'lrc', 'lyrics': '[00:01.00]Synthetic test line'}}
+                     'album': 'Test album', 'confidence': 'high', 'effectiveScore': 1,
+                     'format': 'lrc', 'hidden': False, 'id': 1, 'language': 'en',
+                     'lyrics': '[00:01.00]Synthetic test line', 'score': 1, 'submitter': None,
+                     'syncType': 'linesync', 'userVote': None, 'videoId': '', 'voteCount': 1}}
 
     def fetch(self, data=None, status=200, headers=None, chunks=None):
         response = Mock(status_code=status, headers=headers or {})
@@ -235,11 +239,15 @@ class UnisonRequestTests(unittest.TestCase):
             self.assertEqual(result['status'], 'ready')
             self.assertEqual(result['source'], 'unison')
 
-    def test_partial_title_short_artist_and_wrong_or_missing_duration_never_match(self):
+    def test_partial_title_short_artist_and_present_invalid_duration_never_match(self):
         for change in ({'song': 'Test Song'}, {'artist': 'Different artist'}, {'duration': 204},
                        {'duration': None}, {'duration': True}, {'duration': float('nan')}):
             result = self.fetch({'success': True, 'data': {**self.data['data'], **change}})
             self.assertEqual(result['status'], 'missing')
+
+    def test_real_response_shape_without_duration_accepts_the_server_duration_filter(self):
+        self.assertNotIn('duration', self.data['data'])
+        self.assertEqual(self.fetch()['status'], 'ready')
 
     def test_404_is_missing_but_failures_redirects_and_oversize_are_errors(self):
         self.assertEqual(self.fetch(status=404)['status'], 'missing')
