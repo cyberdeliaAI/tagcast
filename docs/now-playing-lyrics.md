@@ -15,36 +15,60 @@ lookups while the expanded lyrics view is open. Title, track artist, album and
 known duration are sent; account credentials and audio are not sent. Unison and
 LRCLIB results remain in bounded memory and never enter the metadata editor,
 iBroadcast or the persistent lyrics databases. Close the lyrics view, hide the
-app or select iBroadcast only to stop new lookups. Already-started provider
-requests may still finish; late responses cannot replace the current selection.
+app or select iBroadcast only to stop new lookups. Already-started network reads may finish before cancellation is noticed;
+obsolete lookups stop before their next request and cannot replace or cache the
+current selection. Concurrent requests for the same track share one lookup.
 
 ## LRCLIB fallback
 
-LRCLIB is checked only after Unison returns no matching lyrics, not after a
-network error, rate limit or malformed Unison response. A usable Unison result,
-including ordinary line-timed or untimed text, keeps priority.
+LRCLIB is checked after Unison has no usable result, including a temporary service
+failure or rate limit, when the user has allowed the fallback. A usable Unison
+result, including ordinary line-timed or untimed text, keeps priority.
 
-1. `/api/get` receives the full title, artist, album and duration where supported.
-2. If that result is missing, mismatched or empty, bounded `/api/search` requests
-   use the original title/artist and, only when different, one typography variant.
-3. Matching candidates are ranked by duration difference. The full title and
-   artist must match, and a known duration must differ by at most two seconds.
-   Typographic quotation marks/dashes and spacing can match; Live, Remix, Edit,
-   collaborators, accents and other recording identity are retained. There is
-   no free-text search or guessing the primary artist from a combined credit.
+1. Bounded `/api/search` requests use the original title/artist and, only when
+   different, a typography variant. With a known duration, one extra query may
+   use the title without recognized release labels and the first credited artist.
+2. Matched candidates are ranked by closest duration, then synced before plain
+   text, then album identity. A malformed candidate is skipped independently.
+3. `/api/get` is used only when search has no usable candidate. It receives the
+   full title, artist, album and duration where supported.
 4. Supported word-timed Lyricsfile data, enhanced LRC or ordinary synced LRC drives
-   the per-track highlighting. Plain text remains
-   readable without timing; a confirmed instrumental result is identified.
+   the per-track highlighting. Plain text remains readable without timing; a
+   confirmed instrumental result is identified.
 
-With no known duration, require a full album match; ambiguous search results are
-left unmatched. Unsupported/empty results do not change playback. The existing
-**Sources & keys → LRCLIB** switch also disables this fallback, including reuse
-of previously displayed LRCLIB text. Source/account/session changes reject late
-results before caching or display.
+With a known duration, title identity ignores punctuation, diacritics and recognized
+release labels such as `(Remastered 2011)`, `- 2013 Remaster`, `(Mono Version)` and
+`(feat. Guest)`. Live, acoustic, remix, demo and instrumental qualifiers remain
+part of the title. Descriptive parentheses are retained. Artist comparisons use
+whole credited names, including common separator variants and a leading “The”;
+partial-name substrings are never matches. LRCLIB duration must be within two
+seconds. There is no wider ten-second plain-text tolerance or free-text search.
+
+Unison receives the cleaned title and rounded duration. Its `/lyrics` reply omits
+`duration`; Tagcast relies on Unison's server-side duration filter in that case.
+A present invalid or mismatched duration is rejected. This is a provider contract,
+not independent proof that the recording is identical.
+
+With no known duration, full title/artist and album identity are required, and
+ambiguous LRCLIB search results remain unmatched. Unsupported or empty results do
+not change playback. **Sources & keys → LRCLIB** also disables this fallback,
+including reuse of previously displayed LRCLIB text. Source/account/session
+changes reject late results before caching or display.
 
 The public API uses fixed HTTPS endpoints, no redirects or credentials, sequential
-requests, response/text/result limits and a short per-lookup time budget. Rate
-limits honour `Retry-After`; errors stop the search rather than widen it or retry.
+requests per lookup, response/text/result limits and a twelve-second budget per
+provider. Cache/library locks are never held during network reads or waits. A
+newer track request supersedes the older one; short provider spacing uses
+cancellable waits instead of a “Please wait” error.
+
+For HTTP 429/503, a requested `Retry-After` of at most two seconds permits one retry
+of that step within the budget. Longer delays skip that provider. Backoff is
+separate for Unison and LRCLIB and honours the full server delay (it is not raised
+to a minute or shortened to a local cap). Other temporary errors do not retry the
+same request. If no provider is usable, the view offers a retry instead of caching
+an outage as “no lyrics”. A missing result may be cached for five minutes, at most
+twelve entries; all online text is memory-only.
+
 Network timeouts are not a hard operating-system DNS deadline. The browser has
 its own cancellation deadline and never waits for provider results to play audio.
 
@@ -59,7 +83,8 @@ guaranteed by a metadata match.
 The supplied `online.js` illustrates exact-get/search fallback and closest-duration
 selection. These ideas are implemented independently in Tagcast's existing Python
 backend; its Electron-only networking, cover searches and extra providers are not
-imported. Its partial-word matching and version removal are not used.
+imported. Its partial-word matching is not used. Only the bounded, duration-guarded
+release-label normalization described above is used for display lookups.
 
 The supplied `ttml.js` describes word timings, singer labels and background vocals.
 Tagcast reads word/segment timing from Unison TTML and enhanced LRC. LRCLIB's
@@ -79,7 +104,12 @@ Both providers use one internal display format: `{start, end, text}` in seconds,
 with optional `words: [{start, end, text}]` on a line. Word text must reconstruct
 the complete line, timings must be ordered and fit its boundaries, and explicit
 overlaps are preserved. Missing ends may be inferred for display only. Invalid
-word segments leave the complete readable line in place.
+word segments leave the complete readable line in place. TTML evaluates absolute
+and parent-relative timing for the complete document against line/container and
+recording boundaries; absolute is preferred if both readings fit. Namespace names
+do not determine timing. Ambiguous timing cannot be independently verified from
+metadata. Positive LRC `[offset:]` values shift both lines and words earlier;
+negative offsets shift them later, clamped at zero.
 
 Lyricsfile uses PyYAML's safe loader with document, nesting, node and text limits.
 Aliases, anchors, duplicate keys and non-basic YAML tags are rejected. The version
@@ -96,3 +126,16 @@ close, hide, pause and reset cancel them. Reduced motion uses stepped underlines
 with ordinary player updates. There is no second audio element, new audio graph
 or provider polling. Audio, queue, native lyrics caches, editor and reviewed plain
 text saves are unchanged.
+
+## Verification and scope of this reliability fix
+
+Synthetic tests cover the real Unison response shape, provider errors and short
+retries, per-provider backoff, superseded/coalesced requests, conservative identity,
+absolute and relative TTML, offsets and malformed candidate isolation. They do not
+prove that every contributed text or timing matches a real recording. The API
+response shape and filtering were checked against the [Unison source](https://github.com/better-lyrics/unison/blob/master/src/routes/lyrics.transformers.ts)
+and its [duration filter](https://github.com/better-lyrics/unison/blob/master/src/db/lyrics.ts).
+
+Next-track prefetch, animation-frame line following and changing the meaning of
+“iBroadcast first” are deliberately outside this fix. Existing preference values,
+ordinary and Gapless Playback, queue operations and native lyrics saves are unchanged.
