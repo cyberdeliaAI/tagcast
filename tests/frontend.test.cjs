@@ -11248,7 +11248,7 @@ test("interface language: the setting is an immediate preference outside the ser
   assert.match(html, /<select id="interface-language" >/, "never disabled: focus stays while the choice is saved");
   assert.doesNotMatch(html, /<select id="interface-language"[^>]*name=/);
   assert.match(html, /<option value="auto" selected>Automatic \(English\)<\/option>/);
-  assert.match(html, /<option value="nl" lang="nl" >Nederlands \(preview\)<\/option>/);
+  assert.match(html, /<option value="nl" lang="nl" >Nederlands<\/option>/);
   assert.match(html, /never translated/);
   assert.equal(p.run("settingsView.dirty"), false);
 });
@@ -11270,6 +11270,37 @@ test("interface language: Tagcast Desktop receives the settled language and desk
   p.run("TagcastI18n.usePseudo()");
   assert.equal(p.json("desktopSent").length, count, "pseudo-localization is never reported to the app");
   p.run("window.tagcastDesktop = {setInterface() { throw new Error('closed'); }}; publishDesktopLanguage()");
+});
+
+test("interface language: library, album, browse and settings screens switch in place, without requests or lost state", async () => {
+  const p = languagePage(); await settle();
+  const nl = JSON.parse(readFileSync(path.join(staticDir, "i18n/nl.json"), "utf8"));
+  p.run(`showRoute({screen: "albums"}); state.selected = new Set([state.albums[0].id]); render()`); await settle();
+  const before = {selected: p.json("[...state.selected]"), page: p.run("state.page"), history: p.run('localStorage.getItem("tagcast-history")'), view: p.run("state.view")};
+  const total = p.run("state.albums.reduce((sum, album) => sum + (album.track_count || 0), 0)");
+  const requests = p.requests.length;
+  await p.run('TagcastI18n.use("nl")'); await settle(); await settle();
+  assert.deepEqual(p.requests.slice(requests).map(r => r.url), ["/i18n/nl.json"], "only the catalog is fetched");
+  assert.deepEqual({selected: p.json("[...state.selected]"), page: p.run("state.page"), history: p.run('localStorage.getItem("tagcast-history")'), view: p.run("state.view")}, before);
+  assert.match(p.nodes.get("#page-title").textContent, new RegExp(`^${nl["library.page.title"]}\\.?$`));
+  assert.equal(p.nodes.get("#selection-count").textContent.split(" · ")[0], nl["library.selection.count_one"].replace("{{count}}", "1"));
+  assert.match(p.nodes.get("#total-tracks").textContent, total === 1 ? /nummer$/ : /nummers$/);
+  // An open album page switches back and forth from memory as well.
+  await p.run('TagcastI18n.use("en")'); await settle();
+  p.run(`showRoute({screen: "album", album: state.albums[0].id})`); await settle(); await settle();
+  const album = p.requests.length, englishAlbum = p.nodes.get("#album-page").innerHTML;
+  assert.match(englishAlbum, /tracks?</);
+  await p.run('TagcastI18n.use("nl")'); await settle(); await settle();
+  assert.deepEqual(p.requests.slice(album).map(r => r.url), [], "the catalog is already loaded and the album is not fetched again");
+  assert.match(p.nodes.get("#album-page").innerHTML, /nummers?</);
+  p.run('showSettings("interface")');
+  const settings = p.nodes.get("#settings-content").innerHTML;
+  assert.match(settings, /<option value="nl" lang="nl" selected>Nederlands<\/option>/);
+  assert.match(settings, new RegExp(nl["settings.language.heading"]));
+  // Back to English restores the exact English wording.
+  await p.run('TagcastI18n.use("en")'); await settle();
+  p.run(`showRoute({screen: "albums"})`); await settle();
+  assert.match(p.nodes.get("#page-title").textContent, /^Your albums\.?$/);
 });
 
 test("interface language: a translated desktop file chooser error keeps its English message for logs", async () => {

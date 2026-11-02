@@ -123,7 +123,7 @@ test("every referenced key exists in English and every English key is used", () 
   const {referenced, used, plausible} = keyReferences(), known = new Set(Object.keys(english).map(base));
   for (const [key, where] of referenced) assert.ok(known.has(key), `Missing English text for ${key} (${where})`);
   for (const key of plausible) assert.ok(known.has(key), `"${key}" looks like an interface text key but en.json has no such key`);
-  for (const key of known) assert.ok(key.startsWith("common.") || used(key), `Unused English key ${key}`);
+  for (const key of known) assert.ok(used(key), `Unused English key ${key}`);
 });
 
 test("desktop texts in en.json are exactly the built-in English texts of the desktop app", () => {
@@ -273,16 +273,17 @@ test("the newest language choice wins when catalog requests overlap", async () =
 });
 
 test("automatic selection only picks complete translations and manual choices always win", () => {
-  const {i18n} = runtime({languages: ["nl-BE", "en-US"]});
-  assert.equal(i18n.resolve("auto"), "en", "Dutch is a preview and is never chosen automatically");
+  const preview = {manifest: {source: "en", languages: [{tag: "en", name: "English", dir: "ltr", format: "en-GB", status: "complete"},
+    {tag: "nl", name: "Nederlands", dir: "ltr", format: "nl-NL", status: "preview"}]}, messages: english};
+  const {i18n} = runtime({languages: ["nl-BE", "en-US"], bundle: preview});
+  assert.equal(i18n.resolve("auto"), "en", "a preview language is never chosen automatically");
   assert.equal(i18n.resolve(""), "en");
   assert.equal(i18n.resolve("nl"), "nl");
   assert.equal(i18n.resolve("xx"), "en");
-  const bundle = {manifest: {source: "en", languages: [{tag: "en", name: "English", dir: "ltr", format: "en-GB", status: "complete"},
-    {tag: "nl", name: "Nederlands", dir: "ltr", format: "nl-NL", status: "complete"}]}, messages: english};
-  const complete = runtime({languages: ["nl-BE", "en-US"], bundle});
-  assert.equal(complete.i18n.resolve("auto"), "nl");
-  assert.equal(complete.i18n.resolve("en"), "en");
+  const shipped = runtime({languages: ["nl-BE", "en-US"]});
+  assert.equal(shipped.i18n.resolve("auto"), "nl", "the shipped Dutch translation is complete");
+  assert.equal(shipped.i18n.resolve("en"), "en");
+  assert.equal(runtime({languages: ["de-DE", "fr-FR"]}).i18n.resolve("auto"), "en");
 });
 
 test("the stored choice is restored before painting with one catalog request", async () => {

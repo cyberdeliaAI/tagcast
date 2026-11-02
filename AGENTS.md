@@ -85,7 +85,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` owns browser-local playback and the queue independently of the editor. `navigation.js` gives every page a hash address
   (`#/track-artists`, `#/composers`, `#/genres`, `#/years`, `#/decades` and their group keys, `#/artists`, `#/artist/<name>`, `#/albums`, `#/album/<id>`, `#/tracks`, `#/favourites`, `#/overview`) and
   browser history; it loads last.
-- `static/i18n.js` (synchronous, right after `themes.js`) provides the `TagcastI18n` namespace;
+- `static/i18n.js` (synchronous, right after `themes.js`; `themes.js` must not call it while loading) provides the `TagcastI18n` namespace;
   `static/i18n-en.js` is generated from `static/i18n/en.json` by `tools/build_i18n.py` and is always
   loaded; other catalogs in `static/i18n/` load on demand. `language.js` owns Settings → Interface →
   Language. `src/tagcast/i18n.py` lists the offered languages; `src/tagcast/errors.py` adds optional
@@ -1038,11 +1038,22 @@ their shared browsing/player state; a fast local response can otherwise race the
   Electron profiles/browser-local histories are separate; server credentials/settings
   and local account favourites retain their normal folder. Fuses disable RunAsNode,
   Node options/inspect injection and loading unpackaged application code.
-- Interface language (proof of concept: playback Sound dialog, Now playing queue, queue menu, Mini Player
-  and the language setting). New interface text goes through `TagcastI18n.text()` (plain text for
-  `textContent`, attributes, toasts) or `TagcastI18n.html()` (escapes the message and every value; only
-  `TagcastI18n.trusted()` fragments stay markup) with keys in `static/i18n/en.json`; static HTML uses
-  `data-i18n` / `data-i18n-attr` and keeps its English text. Catalogs are a strict i18next JSON v4 subset:
+- Interface language: every interface text of the web interface, the Mini Player and the desktop
+  shell is translatable; English and Dutch ship. Interface text goes through `TagcastI18n.text()` (plain
+  text for `textContent`, attributes, toasts, `confirm()`) or `TagcastI18n.html()` inside every HTML
+  template (escapes the message and every value; only `TagcastI18n.trusted()` fragments built from
+  fixed markup and escaped text stay markup) with keys in `static/i18n/en.json` (namespaced per feature,
+  for example `album.*`, `playlistImport.*`, `page.*` for static markup, `common.*` for shared texts);
+  static HTML uses `data-i18n` / `data-i18n-attr` and keeps its English text, but never on an element
+  whose text or attribute a script also writes. Numbers use `{{x, number}}` or `TagcastI18n.number()`
+  and dates `TagcastI18n.dateTime()` (English keeps en-GB formats). English output must stay exactly as
+  it was: an English `_one` form may deliberately repeat the old plural wording. Each feature script
+  re-renders its visible, read-only views from memory in a `TagcastI18n.subscribe()` listener (no
+  requests, no state, focus or timer changes); forms and dialogs with drafts (editor, review, imports,
+  cleanup, merge, theme editor, unsaved Settings form) are never rebuilt for a language change. Codes
+  for `TagcastI18n.failure()` live under `errors.<code>`. Desktop menus, window titles and native dialogs
+  use `desktop.*` texts that `language.js` sends to the main process (`electron/desktop-text.cjs`,
+  `userData/interface.json`); English menus keep Electron's role labels. Catalogs are a strict i18next JSON v4 subset:
   flat keys, `{{name}}` / `{{name, number}}`, `_one`/`_other` plural suffixes, no markup or nesting.
   Never build sentences by concatenation or pluralize with `=== 1`; never use a global `t`.
   Translation is presentation only: never translate, store or send a label as data. Metadata, device
@@ -1083,6 +1094,12 @@ After changes to `static/i18n/en.json` or `static/i18n/manifest.json`:
 python3 tools/build_i18n.py
 python3 tools/build_i18n.py --check
 ```
+
+`tests/i18n.test.cjs` fails on missing or unused keys, missing Dutch texts, key-like literals that are
+not keys and `TagcastI18n.text()` inside HTML templates. For a real-browser check,
+`docs/plans/i18n/tools/text-scan.cjs` opens the screens in Chromium (with `mock_ibroadcast.py`) in
+English, Dutch or pseudo-localization (`TagcastI18n.usePseudo()`), and `text-compare.py` compares
+English output between builds or lists untranslated Dutch text.
 
 After changes to `style.css`:
 
