@@ -237,6 +237,30 @@ their shared browsing/player state; a fast local response can otherwise race the
   userdata, preserves the typed draft and blocks review if lyrics changed; review/save
   still use fresh complete snapshots. Invalidate saved text before sending any lyrics
   write, restore only confirmed read-back, and retain no stale cache after uncertainty.
+- Online Now playing lyrics (`playback_lyrics.py`, `static/playback-lyrics.js`) are a
+  separate opt-in, display-only path: native-only by default, native-first or
+  Unison-first with consented LRCLIB fallback. Fetch only while the lyrics view is
+  open/visible. Only title, artist, album and duration go to fixed HTTPS endpoints;
+  no cookies, credentials, audio or redirects. Results remain bounded RAM only
+  (12 entries / five minutes), never editor/native/public SQLite caches or saves.
+  Unison `/lyrics` omits duration; send rounded duration and rely on its server
+  filter when absent, validating a supplied duration. LRCLIB searches before get;
+  max three distinct queries, duration within two seconds, then synced/album ranking.
+  Known duration permits recognized release-label/typography/diacritic normalization
+  and whole credited-artist matching, never partial names. Preserve live/acoustic/
+  remix/demo/instrumental identity; unknown duration requires full names and album,
+  with ambiguous LRCLIB results rejected. No ten-second widening or free-text search.
+  Unison errors may fall back only to enabled/consented LRCLIB; healthy Unison keeps
+  priority. Keep separate provider backoff, literal Retry-After, one short 429/503
+  retry (at most two seconds) within a twelve-second provider budget. Do not hold
+  cache/library locks across network/waits. Coalesce same-track reads; newest track
+  selection invalidates old work before another request/cache publication. Outages
+  remain retryable, not cached as missing. Cancellation cannot interrupt OS DNS.
+  TTML chooses one absolute/relative document reading by containment, absolute if
+  both fit; invalid optional words retain readable lines. Positive LRC offsets
+  subtract from both line/word times. Retain bounded safe Lyricsfile 1.0 parsing,
+  word reconstruction checks, source attribution and the authoritative track-relative
+  player clock. No prefetch or playback architecture changes from this fix.
 - Album lyrics sidecar import is an explicitly reviewed album-local extension to
   individual lyrics saves. Keep tracks on the left, selected LRC/TXT files on the
   right, and match only unique track-number/full-title combinations (optional disc
