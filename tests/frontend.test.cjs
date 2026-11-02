@@ -10657,7 +10657,7 @@ test('Apple Music Classic is a fifth built-in palette and icon reset restores it
  assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
  assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
  p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
- assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette's icon colour/);
+ assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette(?:'|&#39;)s icon colour/);
  p.run('themeEditorColour("nav-icon","#123456",false);themeEditorColour("nav-icon","",false)');
  assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
  assert.equal(p.nodes.get('#theme-hex-nav-icon').value,'#c8102e');
@@ -11245,7 +11245,7 @@ test("interface language: the setting is an immediate preference outside the ser
   const p = livePage(); await settle();
   p.run('showSettings("interface")');
   const html = p.nodes.get("#settings-content").innerHTML;
-  assert.match(html, /<select id="interface-language" >/);
+  assert.match(html, /<select id="interface-language" >/, "never disabled: focus stays while the choice is saved");
   assert.doesNotMatch(html, /<select id="interface-language"[^>]*name=/);
   assert.match(html, /<option value="auto" selected>Automatic \(English\)<\/option>/);
   assert.match(html, /<option value="nl" lang="nl" >Nederlands \(preview\)<\/option>/);

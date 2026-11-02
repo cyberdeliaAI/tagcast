@@ -17,7 +17,7 @@ function applyLookupSources(sources) {
   for (const channel of Object.keys(lookup.tokens)) lookup.tokens[channel] += 1;
   lookup.results = new Map();
   const box = $("#lookup-results");
-  if (box) box.innerHTML = '<p class="muted">Source settings changed. Press Search to refresh suggestions.</p>';
+  if (box) box.innerHTML = `<p class="muted">${TagcastI18n.html("lookup.results.sourcesChanged")}</p>`;
 }
 
 async function loadSettings() {
@@ -50,21 +50,23 @@ function websiteLinks(artist, album) {
 }
 
 function lookupPanel(album) {
-  return `<aside class="sources lookup"><div class="eyebrow">ONLINE SOURCES</div><h3>Suggestions</h3>
-    <form id="lookup-form" class="lookup-form">${clearableSearchInput("lookup-artist-search", 'name="artist" aria-label="Artist to search for" placeholder="Artist"', album.artist)}${clearableSearchInput("lookup-album-search", 'name="album" aria-label="Album to search for" placeholder="Album"', album.name)}<button class="button small">Search</button></form>
-    <p class="muted lookup-hint">Click a year or genre to put it in the form; Shift-click a genre to add it to the others. Nothing is saved until you review.</p>
+  const artist = `name="artist" aria-label="${TagcastI18n.html("lookup.panel.artistLabel")}" placeholder="${TagcastI18n.html("lookup.panel.artistPlaceholder")}"`;
+  const title = `name="album" aria-label="${TagcastI18n.html("lookup.panel.albumLabel")}" placeholder="${TagcastI18n.html("lookup.panel.albumPlaceholder")}"`;
+  return `<aside class="sources lookup"><div class="eyebrow">${TagcastI18n.html("lookup.panel.eyebrow")}</div><h3>${TagcastI18n.html("lookup.panel.heading")}</h3>
+    <form id="lookup-form" class="lookup-form">${clearableSearchInput("lookup-artist-search", artist, album.artist)}${clearableSearchInput("lookup-album-search", title, album.name)}<button class="button small">${TagcastI18n.html("lookup.panel.search")}</button></form>
+    <p class="muted lookup-hint">${TagcastI18n.html("lookup.panel.hint")}</p>
     <div id="lookup-results"></div>
-    <p class="lookup-links">Websites: ${websiteLinks(album.artist, album.name)}</p>
-    <p class="lookup-links"><button class="text-action" data-open-settings>Settings ⚙</button></p></aside>`;
+    <p class="lookup-links">${TagcastI18n.html("lookup.panel.websites", {links: TagcastI18n.trusted(websiteLinks(album.artist, album.name))})}</p>
+    <p class="lookup-links"><button class="text-action" data-open-settings>${TagcastI18n.html("lookup.panel.settings")}</button></p></aside>`;
 }
 
 function startLookups(album) {
   lookup.album = album; lookup.results = new Map(); lookup.tokens.album = (lookup.tokens.album || 0) + 1;
   const box = $("#lookup-results");
   if (!box) return;
-  if (!lookup.sources.length) { box.innerHTML = '<p class="muted">Online sources need the Tagcast server. Start it with <code>tagcast</code>.</p>'; return; }
+  if (!lookup.sources.length) { box.innerHTML = `<p class="muted">${TagcastI18n.html("lookup.results.needsServer", {command: TagcastI18n.trusted("<code>tagcast</code>")})}</p>`; return; }
   if (lookup.auto) runLookups(album.artist, album.name);
-  else box.innerHTML = '<p class="muted">Press Search to look this album up.</p>';
+  else box.innerHTML = `<p class="muted">${TagcastI18n.html("lookup.results.pressSearch")}</p>`;
 }
 
 // Ask every enabled source; onResult(source, candidates|null, error) fires as each one answers.
@@ -75,7 +77,7 @@ function fetchSuggestions(kind, params, onResult, channel = "album") {
   for (const source of sources) {
     api(`/api/lookup/${kind}?${new URLSearchParams({source: source.name, ...params})}`)
       .then(data => { if (token === lookup.tokens[channel]) onResult(source, data.candidates, ""); })
-      .catch(error => { if (token === lookup.tokens[channel]) onResult(source, null, error.message); });
+      .catch(error => { if (token === lookup.tokens[channel]) onResult(source, null, TagcastI18n.errorText(error)); });
   }
   return sources;
 }
@@ -89,8 +91,8 @@ function runLookups(artist, album) {
     renderSource(source, candidates, error);
   });
   box.innerHTML = sources.map(s => `<section class="lookup-source" data-source="${s.name}"><h4>${escapeHtml(s.label)}<span class="lookup-state"><span class="spinner"></span></span></h4><div class="lookup-items"></div></section>`).join("")
-    + (missing.length ? `<p class="muted lookup-missing">${missing.map(s => escapeHtml(s.label)).join(", ")} ${missing.length === 1 ? "needs" : "need"} a key. <button class="text-action" data-open-settings>Add keys</button></p>` : "")
-    + (!sources.length && !missing.length ? '<p class="muted">Online sources are switched off. <button class="text-action" data-open-settings>Choose sources in Settings</button></p>' : "");
+    + (missing.length ? `<p class="muted lookup-missing">${TagcastI18n.html("lookup.results.needsKey", {count: missing.length, sources: missing.map(s => s.label).join(", ")})} <button class="text-action" data-open-settings>${TagcastI18n.html("lookup.results.addKeys")}</button></p>` : "")
+    + (!sources.length && !missing.length ? `<p class="muted">${TagcastI18n.html("lookup.results.off")} <button class="text-action" data-open-settings>${TagcastI18n.html("lookup.results.chooseSources")}</button></p>` : "");
 }
 
 function renderSource(source, candidates, error) {
@@ -98,25 +100,25 @@ function renderSource(source, candidates, error) {
   if (!section) return;
   const state = section.querySelector(".lookup-state");
   if (error) { state.textContent = error; state.classList.add("error"); return; }
-  state.textContent = candidates.length ? "" : "No match";
+  state.textContent = candidates.length ? "" : TagcastI18n.text("lookup.results.noMatch");
   section.classList.toggle("empty", !candidates.length);
   section.querySelector(".lookup-items").innerHTML = candidates.slice(0, 3).map((c, i) => suggestionCard(source.name, c, i)).join("");
 }
 
 function suggestionCard(source, c, index) {
   const score = Math.round(c.score * 100);
-  const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="Use this cover"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="suggestion"><span>Use cover</span></button>` : "";
-  const year = c.year ? `<div class="suggestion-year"><button class="chip year" data-use-year="${c.year}" title="Use ${c.year} as the release year">${c.year}</button><span>${escapeHtml(c.note || "")}</span></div>` : "";
-  const genres = c.genres.length ? `<div class="chips">${c.genres.map(g => `<button class="chip" data-use-genre="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}${c.genres.length > 1 ? `<button class="chip use-all" data-use-genres="${escapeHtml(JSON.stringify(c.genres))}" title="Use these genres, the first as the main genre">Use all</button>` : ""}</div>` : "";
+  const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="${TagcastI18n.html("lookup.suggestion.useCoverTitle")}"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="suggestion"><span>${TagcastI18n.html("lookup.suggestion.useCover")}</span></button>` : "";
+  const year = c.year ? `<div class="suggestion-year"><button class="chip year" data-use-year="${c.year}" title="${TagcastI18n.html("lookup.suggestion.useYear", {year: c.year})}">${c.year}</button><span>${escapeHtml(c.note || "")}</span></div>` : "";
+  const genres = c.genres.length ? `<div class="chips">${c.genres.map(g => `<button class="chip" data-use-genre="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}${c.genres.length > 1 ? `<button class="chip use-all" data-use-genres="${escapeHtml(JSON.stringify(c.genres))}" title="${TagcastI18n.html("lookup.suggestion.useAllTitle")}">${TagcastI18n.html("lookup.suggestion.useAll")}</button>` : ""}</div>` : "";
   const title = c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>` : escapeHtml(c.title);
-  return `<article class="suggestion">${art}<div class="suggestion-body"><div class="suggestion-title">${title}<span class="score ${score < 75 ? "low" : ""}" title="How well the title and artist match">${score}%</span></div><div class="suggestion-artist">${escapeHtml(c.artist)}</div>${year}${genres}</div></article>`;
+  return `<article class="suggestion">${art}<div class="suggestion-body"><div class="suggestion-title">${title}<span class="score ${score < 75 ? "low" : ""}" title="${TagcastI18n.html("lookup.suggestion.score")}">${score}%</span></div><div class="suggestion-artist">${escapeHtml(c.artist)}</div>${year}${genres}</div></article>`;
 }
 
 function setFormField(name, value) {
   const input = $("#metadata-form")?.elements.namedItem(name);
   if (!input || !editing) return;
   if (name === "year") {
-    try { readYear(value); } catch (error) { toast(error.message); return; }
+    try { readYear(value); } catch (error) { toast(TagcastI18n.errorText(error)); return; }
   }
   const previous = input.value;
   if (input.disabled) { const box = document.querySelector(`[data-enable="${name}"]`); if (box) box.checked = true; input.disabled = false; }
@@ -145,73 +147,80 @@ function coverChoices() {
 
 // ---- settings ------------------------------------------------------------------
 
-function renderSettingsContent() {
+// The whole Settings content, built from the loaded settings and browser preferences.
+function settingsContentMarkup() {
   const keyed = lookup.sources.filter(s => s.key);
   const freeAccount = live() && state.connection.premium === false;
-  $("#settings-content").innerHTML = `${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="interface-settings" data-settings-category="interface"><h3>Library information banner <span class="settings-mode">Immediate · this browser</span></h3>
-    <p class="muted" data-notice-description>The library information banner is ${libraryNotice.visible ? "visible" : "hidden"}. This choice is remembered in this browser.</p>
-    <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>Show library information banner</button>
-    </section><section class="metadata-editing-settings" data-settings-category="interface"><h3>Metadata editing <span class="settings-mode">Immediate · this browser</span></h3>
-    <label class="checkline"><input type="checkbox" id="apply-track-year-default" ${metadataEditingDefaults.applyYearToTracks ? "checked" : ""}> Apply the album release year to tracks by default</label>
-    <p class="muted">Preselects the option in new album drafts. You can untick it for each draft; individual track edits still take priority and all changes need review. Remembered in this browser or app profile.</p>
-    <p class="muted">For selected albums, applies when you enable Release year. Mixed disc years start unchecked. Applying a blank year or 0 also clears track years.</p>
-    </section><section class="player-display-settings" data-settings-category="playback"><h3>Player display <span class="settings-mode">Immediate · this browser</span></h3>
-    <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> Show file format and stream quality in the compact player</label>
-    <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> Show track artists in the compact player</label>
-    <p class="muted">These browser preferences apply immediately. Album pages and expanded Now playing keep their information.</p>
-    <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
-    <p class="muted">Fullscreen fills the screen; In app window stays inside Tagcast. Applied the next time you open Now playing.</p></section>`
+  const immediate = `<span class="settings-mode">${TagcastI18n.html("settings.mode.immediate")}</span>`;
+  const saveRequired = `<span class="settings-mode">${TagcastI18n.html("settings.mode.saveRequired")}</span>`;
+  return `${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="interface-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.notice.heading")} ${immediate}</h3>
+    <p class="muted" data-notice-description>${TagcastI18n.html(libraryNotice.visible ? "settings.notice.visible" : "settings.notice.hidden")}</p>
+    <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>${TagcastI18n.html("settings.notice.show")}</button>
+    </section><section class="metadata-editing-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.editing.heading")} ${immediate}</h3>
+    <label class="checkline"><input type="checkbox" id="apply-track-year-default" ${metadataEditingDefaults.applyYearToTracks ? "checked" : ""}> ${TagcastI18n.html("settings.editing.trackYear")}</label>
+    <p class="muted">${TagcastI18n.html("settings.editing.trackYearNote")}</p>
+    <p class="muted">${TagcastI18n.html("settings.editing.trackYearScope")}</p>
+    </section><section class="player-display-settings" data-settings-category="playback"><h3>${TagcastI18n.html("settings.display.heading")} ${immediate}</h3>
+    <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> ${TagcastI18n.html("settings.display.quality")}</label>
+    <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> ${TagcastI18n.html("settings.display.trackArtists")}</label>
+    <p class="muted">${TagcastI18n.html("settings.display.note")}</p>
+    <label>${TagcastI18n.html("settings.display.view")} <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>${TagcastI18n.html("settings.display.fullscreen")}</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>${TagcastI18n.html("settings.display.window")}</option></select></label>
+    <p class="muted">${TagcastI18n.html("settings.display.viewNote")}</p></section>`
     + (typeof playbackLyricsSettings === "function" ? playbackLyricsSettings() : "")
     + (typeof visualizerSettings === "function" ? visualizerSettings() : "")
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
     + themeEditorPanel()
     + sidebarSettingsPanel()
     + metadataExportPanel()
-    + `<section class="history-settings" data-settings-category="data"><h3>Change history</h3>
-    <p class="muted">Download the change history saved in this browser as a JSON file for your records.</p>
-    <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>Export changes ↓</button></section>`
-    + `<section class="history-settings" data-settings-category="about"><h3>Community</h3>
-    <p class="muted">Visit the website or discuss Tagcast with other listeners.</p>
-    <a class="button small" href="https://tagcast.app/" target="_blank" rel="noopener noreferrer">Tagcast website ↗</a>
-    <a class="button small" href="https://www.reddit.com/r/Tagcast/" target="_blank" rel="noopener noreferrer">Join r/Tagcast on Reddit ↗</a></section>`
-    + (!lookup.sources.length ? '<p class="muted settings-server-note">Playback and source settings need the Tagcast server. Browser preferences remain available.</p>' : `
-    <form id="settings-form"><section class="playback-settings" data-settings-category="playback"><h3>Streaming &amp; listening history <span class="settings-mode">Save required</span></h3>
-    ${freeAccount ? '<p>Streaming quality · MP3 128 kbps</p><p class="muted">Playback quality for this account. File format (FLAC/MP3) is separate from streaming quality.</p>' : `<label>Streaming quality <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? "Original file (Premium)" : `MP3 ${q} kbps${q === "128" ? "" : " (Premium)"}`}</option>`).join("")}</select></label>
-    <p class="muted">Applies to the next track. File format (FLAC/MP3) is separate from streaming quality. Free accounts use 128 kbps. All other choices, including 96 kbps and Original, require Premium. Unsupported Original audio falls back to MP3 128 kbps.</p>`}
-    <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}> Record played tracks in iBroadcast</label>
-    <p class="muted">Off by default. When enabled, Tagcast sends a track ID and timestamp after more than ten seconds of actual playback. Pausing and seeking do not count. Earlier plays and skips are not sent.</p>
-    <p class="muted">Enabling also shows Recently played, using iBroadcast’s recent tracks playlist. Plays are separate from Change history. An uncertain request is not retried automatically.${playReporting.error ? ` <span class="error-text">${escapeHtml(playReporting.error)}</span>` : ""}</p></section>
-    <section class="playback-settings" data-settings-category="playback"><h3>Devices &amp; queue synchronisation <span class="settings-mode">Save required</span></h3>
-    <label class="checkline"><input type="checkbox" name="queue_sync" ${lookup.queueSync ? "checked" : ""}> Enable queue synchronisation and remote control</label>
-    <p class="muted">Off by default. Uses iBroadcast’s queue server. After enabling, reconnect iBroadcast once to approve queue read/write permissions, then open Devices. Only the player records plays; remote controllers do not play audio.</p>
-    <button type="button" class="button small" data-queue-reconnect>Reconnect iBroadcast</button></section>
-    <section class="playback-settings" data-settings-category="discovery"><h3>1001 Albums <span class="settings-mode">Save required</span></h3>
-    <label class="checkline"><input type="checkbox" name="album_guide" ${albumGuide.enabled ? "checked" : ""}> Enable 1001 Albums</label>
-    <p class="muted">Off by default. This controls the discovery page and sidebar shortcut; bundled background texts on album pages stay available when it is off. Save to show 1001 Albums in the sidebar, then start an analysis when you choose. Compares the supplied 1955–2007 selection with your loaded album metadata locally. Results are saved on this computer; your iBroadcast library is unchanged.</p>
-    <button type="button" class="button small" data-guide-open ${albumGuide.enabled ? "" : "disabled"}>Open 1001 Albums</button></section>
-    <section class="artist-biography-settings" data-settings-category="discovery"><h3>Artist biographies</h3>
-    <label class="checkline"><input type="checkbox" name="artist_biographies" ${artistProfile.enabled ? "checked" : ""}> Show artist biographies from TheAudioDB</label>
-    <p class="muted">Off by default. When you visit an album artist, Tagcast sends that artist’s name to TheAudioDB if no current local biography is available. English text is stored separately on this computer for up to 30 days before checking again. No library scan, iBroadcast changes or Last.fm account are needed. Biographies may be unavailable or refer to another artist with the same name; check the source link.</p></section>
-    <section class="album-information-settings" data-settings-category="discovery"><h3>Album information</h3>
-    <label class="checkline"><input type="checkbox" name="album_information" ${albumInformation.enabled ? "checked" : ""}> Show album information from TheAudioDB</label>
-    <p class="muted">Off by default. When you visit an album, Tagcast sends its album artist and full title to TheAudioDB if no current local text is available. English text is saved on this computer and checked again after 30 days, when revisited. Only one exact artist/title match is used; information is not available for every album or edition. Available 1001 Albums texts take priority even when the discovery page is disabled or has never been analysed; those albums do not look up or show TheAudioDB text.</p></section>
-    <section class="source-settings" data-settings-category="sources"><h3>Online sources &amp; keys <span class="settings-mode">Save required</span></h3>
-    <p class="muted">Choose sources for metadata, image suggestions and lyrics. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
-    ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ' <span class="muted">· Needs a key</span>' : ""}</label>`).join("")}
-    <p class="muted">TheAudioDB artist biographies and album information use their separate switches under Discovery. Find lyrics sends track title, artist, album and known duration to LRCLIB and caches text on this computer. The optional online Now playing mode also uses LRCLIB after a missing Unison result, with album name when available; those display results stay only in memory.</p>
-    <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
+    + `<section class="history-settings" data-settings-category="data"><h3>${TagcastI18n.html("settings.history.heading")}</h3>
+    <p class="muted">${TagcastI18n.html("settings.history.note")}</p>
+    <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>${TagcastI18n.html("settings.history.export")}</button></section>`
+    + `<section class="history-settings" data-settings-category="about"><h3>${TagcastI18n.html("settings.community.heading")}</h3>
+    <p class="muted">${TagcastI18n.html("settings.community.note")}</p>
+    <a class="button small" href="https://tagcast.app/" target="_blank" rel="noopener noreferrer">${TagcastI18n.html("settings.community.website")}</a>
+    <a class="button small" href="https://www.reddit.com/r/Tagcast/" target="_blank" rel="noopener noreferrer">${TagcastI18n.html("settings.community.reddit")}</a></section>`
+    + (!lookup.sources.length ? `<p class="muted settings-server-note">${TagcastI18n.html("settings.serverNote")}</p>` : `
+    <form id="settings-form"><section class="playback-settings" data-settings-category="playback"><h3>${TagcastI18n.html("settings.streaming.heading")} ${saveRequired}</h3>
+    ${freeAccount ? `<p>${TagcastI18n.html("settings.streaming.freeQuality")}</p><p class="muted">${TagcastI18n.html("settings.streaming.freeNote")}</p>` : `<label>${TagcastI18n.html("settings.streaming.quality")} <select name="stream_quality">${["96", "128", "192", "256", "320", "orig"].map(q => `<option value="${q}" ${q === lookup.streamQuality ? "selected" : ""}>${q === "orig" ? TagcastI18n.html("settings.streaming.original") : TagcastI18n.html(q === "128" ? "settings.streaming.mp3" : "settings.streaming.mp3Premium", {quality: q})}</option>`).join("")}</select></label>
+    <p class="muted">${TagcastI18n.html("settings.streaming.note")}</p>`}
+    <label class="checkline"><input type="checkbox" name="record_plays" ${lookup.recordPlays ? "checked" : ""}> ${TagcastI18n.html("settings.streaming.recordPlays")}</label>
+    <p class="muted">${TagcastI18n.html("settings.streaming.recordNote")}</p>
+    <p class="muted">${TagcastI18n.html("settings.streaming.recentNote")}${playReporting.error ? ` <span class="error-text">${escapeHtml(playReporting.error)}</span>` : ""}</p></section>
+    <section class="playback-settings" data-settings-category="playback"><h3>${TagcastI18n.html("settings.devices.heading")} ${saveRequired}</h3>
+    <label class="checkline"><input type="checkbox" name="queue_sync" ${lookup.queueSync ? "checked" : ""}> ${TagcastI18n.html("settings.devices.enable")}</label>
+    <p class="muted">${TagcastI18n.html("settings.devices.note")}</p>
+    <button type="button" class="button small" data-queue-reconnect>${TagcastI18n.html("settings.devices.reconnect")}</button></section>
+    <section class="playback-settings" data-settings-category="discovery"><h3>1001 Albums ${saveRequired}</h3>
+    <label class="checkline"><input type="checkbox" name="album_guide" ${albumGuide.enabled ? "checked" : ""}> ${TagcastI18n.html("settings.guide.enable")}</label>
+    <p class="muted">${TagcastI18n.html("settings.guide.note")}</p>
+    <button type="button" class="button small" data-guide-open ${albumGuide.enabled ? "" : "disabled"}>${TagcastI18n.html("settings.guide.open")}</button></section>
+    <section class="artist-biography-settings" data-settings-category="discovery"><h3>${TagcastI18n.html("settings.biographies.heading")}</h3>
+    <label class="checkline"><input type="checkbox" name="artist_biographies" ${artistProfile.enabled ? "checked" : ""}> ${TagcastI18n.html("settings.biographies.enable")}</label>
+    <p class="muted">${TagcastI18n.html("settings.biographies.note")}</p></section>
+    <section class="album-information-settings" data-settings-category="discovery"><h3>${TagcastI18n.html("settings.albumInfo.heading")}</h3>
+    <label class="checkline"><input type="checkbox" name="album_information" ${albumInformation.enabled ? "checked" : ""}> ${TagcastI18n.html("settings.albumInfo.enable")}</label>
+    <p class="muted">${TagcastI18n.html("settings.albumInfo.note")}</p></section>
+    <section class="source-settings" data-settings-category="sources"><h3>${TagcastI18n.html("settings.sources.heading")} ${saveRequired}</h3>
+    <p class="muted">${TagcastI18n.html("settings.sources.note")}</p>
+    ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ` <span class="muted">· ${TagcastI18n.html("settings.sources.needsKey")}</span>` : ""}</label>`).join("")}
+    <p class="muted">${TagcastI18n.html("settings.sources.otherNote")}</p>
+    <p class="muted">${TagcastI18n.html("settings.sources.keyless", {sources: lookup.sources.filter(s => !s.key).map(s => s.label).join(", ")})}</p>
     ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);
       const available = s.available ?? s.enabled;
-      return `<div class="setting-row"><div><strong>${escapeHtml(s.label)}</strong> <span class="status ${available ? "saved" : "not_sent"}">${available ? "Key ready" : "Needs a key"}</span><small>${escapeHtml(s.key_help)}</small></div>${env ? '<span class="muted">Set by an environment variable</span>' : `<input type="password" name="${s.key}" autocomplete="off" spellcheck="false" placeholder="${available ? "Saved · type to replace" : "Paste your key"}" aria-label="${escapeHtml(s.label)} key">${available ? `<button type="button" class="text-action" data-clear-key="${s.key}">Remove</button>` : ""}`}</div>`;
+      return `<div class="setting-row"><div><strong>${escapeHtml(s.label)}</strong> <span class="status ${available ? "saved" : "not_sent"}">${TagcastI18n.html(available ? "settings.sources.keyReady" : "settings.sources.needsKey")}</span><small>${escapeHtml(s.key_help)}</small></div>${env ? `<span class="muted">${TagcastI18n.html("settings.sources.fromEnvironment")}</span>` : `<input type="password" name="${s.key}" autocomplete="off" spellcheck="false" placeholder="${TagcastI18n.html(available ? "settings.sources.keySaved" : "settings.sources.keyPaste")}" aria-label="${TagcastI18n.html("settings.sources.keyLabel", {source: s.label})}">${available ? `<button type="button" class="text-action" data-clear-key="${s.key}">${TagcastI18n.html("common.remove")}</button>` : ""}`}</div>`;
     }).join("")}
-    <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> Look up an album in selected sources as soon as you open it</label>
-    <p class="muted">Looking up sends the artist and album name to each selected source with an available key, if required. Tagcast waits between requests so it stays within each source's limits.</p>
+    <label class="checkline"><input type="checkbox" name="auto_lookup" ${lookup.auto ? "checked" : ""}> ${TagcastI18n.html("settings.sources.autoLookup")}</label>
+    <p class="muted">${TagcastI18n.html("settings.sources.autoLookupNote")}</p>
     </section>
     ${typeof musicUploadsSettingsPanel === "function" ? musicUploadsSettingsPanel() : ""}
     ${updateSettingsPanel()}
-    <div class="settings-save-bar" id="settings-save-bar"><p id="settings-save-hint">Server preferences apply after Save. Immediate preferences are already applied.</p><div><button type="button" class="button" data-settings-discard>Discard changes</button><button class="button primary" id="settings-save">Save changes</button></div></div></form>`);
-  settingsView.rendered = true;
+    <div class="settings-save-bar" id="settings-save-bar"><p id="settings-save-hint">${TagcastI18n.html("settings.save.hint")}</p><div><button type="button" class="button" data-settings-discard>${TagcastI18n.html("settings.save.discard")}</button><button class="button primary" id="settings-save">${TagcastI18n.html("settings.save.button")}</button></div></div></form>`);
+}
+
+function renderSettingsContent() {
+  $("#settings-content").innerHTML = settingsContentMarkup();
+  settingsView.rendered = true; settingsView.stale = false;
   settingsView.baseline = settingsFormSnapshot();
   updateSettingsPage();
   resumeMetadataExport();
@@ -250,9 +259,9 @@ async function saveSettings(form, clear) {
     applyUpdateSettings(data); renderUpdateNotice();
     if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
     renderSettingsContent();
-    $("#settings-feedback").textContent = clear ? "Key removed. Settings saved." : "Settings saved.";
-    toast("Settings saved.");
-  } catch (error) { $("#settings-feedback").textContent = error.message; toast(error.message); }
+    setSettingsFeedback(() => TagcastI18n.text(clear ? "settings.save.keyRemoved" : "settings.save.saved"));
+    toast(TagcastI18n.text("settings.save.saved"));
+  } catch (error) { setSettingsFeedback(() => TagcastI18n.errorText(error)); toast(TagcastI18n.errorText(error)); }
   finally { for (const [input, disabled] of locked) input.disabled = disabled; settingsView.saving = false; updateSettingsSaveState();
     if (state.screen === "settings" && settingsFocus?.closest?.("#settings-form") && (document.activeElement === settingsFocus || document.activeElement === document.body)) {
       const focus = $("#settings-save-bar").hidden ? $("#settings-category-title") : $("#settings-save");
@@ -262,7 +271,7 @@ async function saveSettings(form, clear) {
 }
 
 document.addEventListener("click", event => {
-  if (event.target.closest("[data-show-notice]")) { setLibraryNotice(true); event.target.disabled = true; const description = document.querySelector("[data-notice-description]"); if (description) description.textContent = "The library information banner is visible. This choice is remembered in this browser."; return; }
+  if (event.target.closest("[data-show-notice]")) { setLibraryNotice(true); event.target.disabled = true; const description = document.querySelector("[data-notice-description]"); if (description) description.textContent = TagcastI18n.text("settings.notice.visible"); return; }
   const year = event.target.closest("[data-use-year]");
   if (year) { setFormField("year", year.dataset.useYear); return; }
   const genre = event.target.closest("[data-use-genre]"), all = event.target.closest("[data-use-genres]");
