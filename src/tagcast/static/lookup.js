@@ -103,7 +103,7 @@ function renderSource(source, candidates, error) {
 
 function suggestionCard(source, c, index) {
   const score = Math.round(c.score * 100);
-  const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="Use this cover"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.suggestion-art').remove()"><span>Use cover</span></button>` : "";
+  const art = c.thumb && c.cover ? `<button class="suggestion-art" data-use-cover="${source}:${index}" title="Use this cover"><img src="${escapeHtml(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="suggestion"><span>Use cover</span></button>` : "";
   const year = c.year ? `<div class="suggestion-year"><button class="chip year" data-use-year="${c.year}" title="Use ${c.year} as the release year">${c.year}</button><span>${escapeHtml(c.note || "")}</span></div>` : "";
   const genres = c.genres.length ? `<div class="chips">${c.genres.map(g => `<button class="chip" data-use-genre="${escapeHtml(g)}">${escapeHtml(g)}</button>`).join("")}${c.genres.length > 1 ? `<button class="chip use-all" data-use-genres="${escapeHtml(JSON.stringify(c.genres))}" title="Use these genres, the first as the main genre">Use all</button>` : ""}</div>` : "";
   const title = c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>` : escapeHtml(c.title);
@@ -159,6 +159,7 @@ function renderSettingsContent() {
     <p class="muted">These browser preferences apply immediately. Album pages and expanded Now playing keep their information.</p>
     <label>Now playing view <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>Fullscreen</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>In app window</option></select></label>
     <p class="muted">Fullscreen fills the screen; In app window stays inside Tagcast. Applied the next time you open Now playing.</p></section>`
+    + (typeof playbackLyricsSettings === "function" ? playbackLyricsSettings() : "")
     + (typeof visualizerSettings === "function" ? visualizerSettings() : "")
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
     + themeEditorPanel()
@@ -195,7 +196,7 @@ function renderSettingsContent() {
     <section class="source-settings" data-settings-category="sources"><h3>Online sources &amp; keys <span class="settings-mode">Save required</span></h3>
     <p class="muted">Choose sources for metadata, image suggestions and lyrics. All are selected by default. Unchecking a source keeps its saved key. Changes apply after Save.</p>
     ${lookup.sources.map(s => `<label class="checkline"><input type="checkbox" data-source-toggle="${escapeHtml(s.name)}" ${s.selected !== false ? "checked" : ""}> ${escapeHtml(s.label)}${!(s.available ?? s.enabled) ? ' <span class="muted">· Needs a key</span>' : ""}</label>`).join("")}
-    <p class="muted">TheAudioDB artist biographies and album information use their separate switches under Discovery. LRCLIB is contacted only when you choose Find lyrics; track title, artist and duration are sent, and results are cached on this computer.</p>
+    <p class="muted">TheAudioDB artist biographies and album information use their separate switches under Discovery. Find lyrics sends track title, artist, album and known duration to LRCLIB and caches text on this computer. The optional online Now playing mode also uses LRCLIB after a missing Unison result, with album name when available; those display results stay only in memory.</p>
     <p class="muted">These sources work without a key: ${lookup.sources.filter(s => !s.key).map(s => escapeHtml(s.label)).join(", ")}. Add a key to use the others. Keys are stored on this computer only, in the Tagcast settings folder.</p>
     ${keyed.map(s => {
       const env = lookup.keysFromEnv.includes(s.key);

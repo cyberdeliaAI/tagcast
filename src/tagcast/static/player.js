@@ -159,14 +159,17 @@ function renderVisualPlayer() {
     art.hidden = !artwork;
     if (artwork) art.src = largeArtworkUrl(artwork); else art.removeAttribute("src");
   }
+  if (typeof renderPlaybackLyrics === "function") renderPlaybackLyrics();
 }
 
 function hideVisualPlayer() {
   if (typeof closeCoverLightbox === "function") closeCoverLightbox();
   if (!visualPlayer.open) return;
   visualPlayer.open = false; visualPlayer.native = false; visualPlayer.request += 1;
+  if (typeof suspendPlaybackLyrics === "function") suspendPlaybackLyrics();
   visualPlayer.artwork = null;
   $("#visual-player-art").removeAttribute("src");
+  if (typeof renderLyricsCoverBackground === "function") renderLyricsCoverBackground();
   $("#visual-player").hidden = true;
   document.body.classList.remove("visual-player-open");
   $("#player-stage").removeAttribute("role");
@@ -237,7 +240,7 @@ document.addEventListener("keydown", event => {
   if (event.defaultPrevented || !visualPlayer.open || document.querySelector("dialog[open]")) return;
   if (event.key === "Escape") { closeVisualPlayer(); return; }
   if (event.key !== "Tab") return;
-  const controls = [...$("#player-stage").querySelectorAll('button:not([disabled]), input:not([disabled]), audio')].filter(node => node.getClientRects().length);
+  const controls = [...$("#player-stage").querySelectorAll('button:not([disabled]), input:not([disabled]), audio, a[href], [tabindex="0"]')].filter(node => node.getClientRects().length);
   const first = controls[0], last = controls.at(-1);
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -445,14 +448,14 @@ function appendToQueue(album, trackId = null, next = false) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast("Use Devices to control the connected queue."); return; }
   const tracks = trackId === null ? album.tracks : album.tracks.filter(t => String(t.id) === String(trackId));
   if (!tracks.length) throw Error("This track is no longer on that album. Reload the library.");
-  const empty = !player.queue.length, ended = audio.ended;
+  const empty = !player.queue.length, ended = audio.ended, idle = !player.queue[player.index];
   const following = Math.min(player.index + 1, player.queue.length), rows = queueTracks(album, tracks);
-  if (next && !empty && !ended) {
+  if (next && !empty && !ended && !idle) {
     let insert = following;
     while (player.queue[insert]?.upNext) insert += 1;
     player.queue.splice(insert, 0, ...rows.map(t => ({...t, upNext: true})));
   } else player.queue.push(...rows);
-  if (empty || ended || !player.queue[player.index]) { player.index = empty ? 0 : following; playCurrent(); }
+  if (empty || ended || idle) { player.index = empty ? 0 : following; playCurrent(); }
   else markPlaying();
   toast(`${next ? "Playing next:" : "Added"} ${tracks.length === 1 ? "1 track" : `${tracks.length} tracks`} to the queue.`);
 }
@@ -577,6 +580,9 @@ function step(delta) {
   const next = player.index + delta;
   if (next < 0) return;
   if (next >= player.queue.length) {
+    if (delta > 0 && player.repeat === "queue" && player.queue.some(t => !t.upNext)) {
+      player.queue = player.queue.filter(t => !t.upNext); player.index = 0; playCurrent(); return;
+    }
     player.index = player.queue.length;
     if (typeof gaplessCancel === "function") gaplessCancel();
     audio.pause(); audio.removeAttribute("src"); audio.load();

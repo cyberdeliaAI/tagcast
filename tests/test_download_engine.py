@@ -220,6 +220,65 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(self.part.read_bytes(), before)
         self.assertFalse(self.final.exists())
 
+    def test_changed_resume_total_preserves_partial_without_accepting_spliced_audio(self):
+        for body, content_range in ((b"different", "bytes 4-12/13"), (b"x", "bytes 4-4/5")):
+            with self.subTest(content_range=content_range):
+                self.interrupt()
+                before = self.part.read_bytes()
+                reply = self.response(body, 206, **{"Content-Range": content_range})
+                result = self.fetch(reply)
+                self.assertEqual(result[0], "fail")
+                self.assertIn("changed", result[2])
+                self.assertEqual(self.part.read_bytes(), before)
+                self.assertFalse(self.final.exists())
+
+    def test_resume_rejects_a_changed_or_missing_recorded_validator(self):
+        self.interrupt()
+        saved = json.loads(self.part_record.read_text())
+        saved["etag"] = '"original"'
+        self.part_record.write_bytes(json.dumps(saved).encode())
+        for headers in ({"ETag": '"replacement"'}, {}):
+            with self.subTest(headers=headers):
+                reply = self.response(b"-audio", 206, **{"Content-Range": "bytes 4-9/10", **headers})
+                result = self.fetch(reply)
+                self.assertEqual(result[0], "fail")
+                self.assertIn("changed", result[2])
+                self.assertEqual(self.part.read_bytes(), b"test")
+                self.assertFalse(self.final.exists())
+
+    def test_first_response_records_size_and_available_validator_before_writing(self):
+        def stop(*args):
+            saved = json.loads(self.part_record.read_text())
+            self.assertEqual(saved["total"], 10)
+            self.assertEqual(saved["etag"], '"first"')
+            self.stop.set()
+        with patch.object(app, "CHUNK", 4):
+            self.assertEqual(self.fetch(self.response(ETag='"first"'), stop)[0], "stopped")
+
+    def test_resume_does_not_finish_on_416_when_previous_total_differs(self):
+        self.interrupt()
+        result = self.fetch(Response(status=416, **{"Content-Range": "bytes */4"}))
+        self.assertEqual(result[0], "fail")
+        self.assertEqual(self.part.read_bytes(), b"test")
+        self.assertFalse(self.final.exists())
+
+    def test_resume_rejects_a_zero_content_length_for_a_nonempty_range(self):
+        self.interrupt()
+        result = self.fetch(self.response(b"-audio", 206, **{
+            "Content-Range": "bytes 4-9/10", "Content-Length": "0"}))
+        self.assertEqual(result[0], "fail")
+        self.assertEqual(self.part.read_bytes(), b"test")
+        self.assertFalse(self.final.exists())
+
+    def test_truncated_resume_is_not_promoted_to_a_completed_file(self):
+        self.interrupt()
+        self.session.stream.side_effect = [self.response(b"-au", 206, **{
+            "Content-Range": "bytes 4-9/10", "Content-Length": "6"}), OSError(), OSError(), OSError()]
+        with patch.object(self.stop, "wait", return_value=False):
+            self.assertEqual(self.fetch()[0], "fail")
+        self.assertEqual(self.part.read_bytes(), b"test-au")
+        self.assertFalse(self.final.exists())
+
     def test_missing_range_does_not_append(self):
         self.interrupt()
         self.assertEqual(self.fetch(self.response(b"bad", 206))[0], "fail")
@@ -607,6 +666,20 @@ class DownloadServiceTests(unittest.TestCase):
         options.setdefault("locks", self.locks)
         return app.fetch_track(self.session, self.lib, self.out, Path("song.flac"), "/orig/one", 1,
                                self.stop, progress, "orig", source=source, **options)
+
+    def test_disk_error_never_retries_or_falls_back_to_stream(self):
+        import errno
+        self.stop.wait = Mock(return_value=False)
+        for code in (errno.ENOSPC, errno.EACCES, errno.EIO, errno.ENAMETOOLONG):
+            with self.subTest(errno=code), patch.object(app, "copy_zip_entry", side_effect=OSError(code, "Local write failed")):
+                self.session.download.reset_mock()
+                self.session.download.side_effect = lambda *args: Response(service_zip())
+                self.session.stream.reset_mock()
+                with self.assertRaises(OSError) as caught:
+                    self.fetch()
+                self.assertEqual(caught.exception.errno, code)
+                self.assertEqual(self.session.download.call_count, 1)
+                self.session.stream.assert_not_called()
 
     def serve(self, *bodies):
         """Answer each request with the next archive; the last one repeats."""
@@ -1214,16 +1287,39 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(data["files"]["song.flac"], baseline)
         self.assertEqual(data["files"]["other.flac"], baseline)
 
-    def test_legacy_partial_resumes_into_the_same_manifest(self):
+    def test_legacy_partial_with_size_resumes_into_the_same_manifest(self):
         self.part.write_bytes(b"test")
         identity = {"version": 1, "user_id": "test-account", "track_id": 1,
                     "quality": "orig", "source": "/orig/one"}
         legacy = self.out / "song.flac.part.ibfetch.json"
-        legacy.write_text(json.dumps({"identity": identity}))
+        legacy.write_text(json.dumps({"identity": identity, "total": 10}))
         reply = self.response(b"-audio", 206, **{"Content-Range": "bytes 4-9/10"})
         self.assertEqual(self.fetch(reply), ("ok", 10, ""))
         self.assertFalse(legacy.exists())
         self.assertEqual(sorted(p.name for p in self.out.iterdir()), [".ibfetch.json", "song.flac"])
+
+    def test_legacy_partial_without_original_size_is_preserved(self):
+        self.part.write_bytes(b"test")
+        identity = {"version": 1, "user_id": "test-account", "track_id": 1,
+                    "quality": "orig", "source": "/orig/one"}
+        self.part_record.write_bytes(json.dumps({"identity": identity}).encode())
+        reply = self.response(b"-audio", 206, **{"Content-Range": "bytes 4-9/10"})
+        result = self.fetch(reply)
+        self.assertEqual(result[0], "fail")
+        self.assertIn("original size", result[2])
+        self.assertEqual(self.part.read_bytes(), b"test")
+        self.assertFalse(self.final.exists())
+
+    def test_resumption_checks_last_modified_when_no_strong_etag_exists(self):
+        DownloadTests.interrupt(self)
+        saved = json.loads(self.part_record.read_text())
+        saved["last_modified"] = "Sun, 01 Nov 2026 10:00:00 GMT"
+        self.part_record.write_bytes(json.dumps(saved).encode())
+        reply = self.response(b"-audio", 206, **{"Content-Range": "bytes 4-9/10",
+            "Last-Modified": "Sun, 01 Nov 2026 11:00:00 GMT"})
+        self.assertEqual(self.fetch(reply)[0], "fail")
+        self.assertEqual(self.part.read_bytes(), b"test")
+        self.assertFalse(self.final.exists())
 
     def test_legacy_completion_receipt_still_recovers_a_renamed_file(self):
         self.final.write_bytes(b"test-audio")

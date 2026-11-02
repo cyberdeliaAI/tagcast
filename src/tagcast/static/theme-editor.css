@@ -11,3 +11,6 @@
 #theme-custom-list:empty{display:none}#theme-custom-list fieldset{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}.theme-menu [data-open-theme-editor]{margin:10px 8px 2px}
 
 .theme-sample-top>strong{display:flex;align-items:center;gap:6px}.theme-sample-top .brand-mark{width:28px;height:28px;flex:0 0 28px}.theme-sample-chart{height:4px;background:var(--palette-tint);border-radius:3px;margin:10px 0}.theme-sample-chart>span{display:block;width:72%;height:100%;background:var(--palette-chart);border-radius:3px}
+
+/* Optional icon colour follows each navigation state when no override is saved. */
+.theme-sample-sidebar>span{display:flex;align-items:center;gap:6px}.theme-sample-sidebar .nav-icon{width:14px;height:14px;flex:0 0 14px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;color:var(--palette-nav-icon,currentColor)}

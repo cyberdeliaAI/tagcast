@@ -1,6 +1,6 @@
 # Standalone downloads and builds
 
-Tagcast 1.1.0 packages the shared Python server and editor/player in an Electron
+Tagcast 1.2.0 packages the shared Python server and editor/player in an Electron
 desktop app. No separate browser, Python or Node.js installation is required.
 Python/source installs and the bundled terminal CLI retain browser use. See
 [Electron desktop and Python/browser use](electron.md) for the shared-code design.
@@ -9,10 +9,10 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-1.1.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-1.1.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-1.1.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-1.1.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| macOS, Apple Silicon | `tagcast-1.2.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-1.2.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-1.2.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-1.2.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -25,9 +25,10 @@ Settings, tokens, cache and local account favourites remain in `~/.tagcast/`, or
 `TAGCAST_HOME`. Electron's Chromium profile is separate from your browser's
 preferences, local Change history and in-memory queue; those are not migrated.
 
-The apps are not Developer ID signed/notarized or Authenticode signed. macOS has
-an ad-hoc integrity signature. If opening is blocked, use **System Settings →
-Privacy & Security → Open Anyway** on macOS, or **More info → Run anyway** on Windows.
+Official macOS releases from 1.2.0 are Developer ID signed and notarized.
+Ordinary PR/local test builds use an ad-hoc integrity signature instead. Windows
+signing is still pending; only for trusted official downloads, use **More info →
+Run anyway** if Windows warns. See [Code signing](code-signing.md).
 
 Each archive has a separate `.sha256` companion under release Assets. Compare with
 `shasum -a 256` on macOS, `sha256sum` on Linux, or `Get-FileHash` on Windows.
@@ -36,6 +37,14 @@ Native CI covers macOS 15 (Apple Silicon and Intel), Windows Server 2022
 and Ubuntu 22.04. Linux needs a graphical desktop and compatible system libraries
 (glibc 2.35 or newer); the download is not a universal Linux executable. Audio
 outputs and codecs depend on Chromium and the operating system.
+
+Ubuntu 24.04's AppArmor/user-namespace policy can prevent Electron from starting
+before the backend appears. The current packaged startup check runs on Ubuntu
+22.04; successful Ubuntu Python/media CI does not verify the extracted package on
+24.04. Test the official extracted archive there before declaring support. Keep
+the bundled Chromium sandbox enabled: do not use `--no-sandbox` or globally
+disable AppArmor/user-namespace restrictions as a workaround. A distribution-
+specific sandbox integration should be reviewed separately on an actual host.
 
 ## CLI and Python/browser use
 
@@ -96,15 +105,22 @@ the Tagcast entry in `uv.lock` and the Electron package/lockfile versions consis
 `python tools/release_info.py` checks them. Store release notes in
 `.github/release-notes/VERSION.md`.
 
-A main commit named exactly `Publish Tagcast VERSION` creates the stable release
+A main commit named exactly `Publish Tagcast VERSION` creates a draft stable release
 after all regression, start-script and native build checks pass. The beta branch
 retains the `Publish Tagcast X.Y.Z beta N` convention, Python version `X.Y.ZbN`,
 release tag `vX.Y.Z-beta.N` and matching `X.Y.Z-beta.N.md` notes. Beta releases do
 not replace the latest stable release.
 
-`Builds` then attaches all four verified archives and checksums. Publishing a
+`Builds` requires its final verification gate, all four archives/checksums and
+archive-bound signing/notarization reports for both macOS architectures. It uploads
+to the draft, checks the resulting asset set and only then makes the release public.
+Failures leave the draft unpublished. An interrupted partial upload needs explicit
+maintainer review before assets can be replaced. Publishing a
 release manually also triggers native builds. To rebuild an existing compatible
 release, run `Builds` manually with its tag; an empty tag builds artifacts only.
+A nonempty tag requires macOS signing regardless of the test-signing checkbox.
+Existing release assets are never overwritten automatically. Replacing a public
+archive requires a separate, explicitly reviewed publication procedure.
 The tag must match its application version. Tags from before 0.10.1 retain the
 earlier single-console executable format, using the pinned legacy recipe. Only
 publication jobs have write permission. There is no automatic app updater.

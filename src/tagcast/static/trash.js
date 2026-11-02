@@ -212,7 +212,7 @@ async function duplicateCleanupAction(action) {
   } catch (error) {
     if (request === view.request && details === state.details) $("#duplicate-cleanup-status").textContent = error.message;
   } finally {
-    if (request === view.request && details === state.details) { view.busy = false; setActionStatus("#duplicate-cleanup-status", undefined); renderDuplicateCleanup(); }
+    if (request === view.request) { view.busy = false; setActionStatus("#duplicate-cleanup-status", undefined); renderDuplicateCleanup(); }
   }
 }
 

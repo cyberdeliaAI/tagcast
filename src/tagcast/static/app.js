@@ -183,6 +183,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  saveOrder += 1;
   libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
   closeBrowseOptions();
@@ -245,7 +246,7 @@ function coverPreviewAttrs(album) {
 
 function cover(album, small = false, enlarge = false) {
   const initials = album.artist.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
-  const art = album.artwork ? `<img src="${escapeHtml(album.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.remove('has-art');this.remove()">` : "";
+  const art = album.artwork ? `<img src="${escapeHtml(album.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="album">` : "";
   return `<div class="cover ${art ? "has-art" : ""}" ${!small && enlarge ? coverPreviewAttrs(album) : ""} style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
 }
 
@@ -465,12 +466,12 @@ const joinDiscs = albums => albums.length === 1 ? albums[0]
   : {...albums[0], artwork: albums.find(a => a.artwork)?.artwork || "", tracks: albums.flatMap(a => a.tracks)};
 
 function thumb(album) {
-  const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
   return `<span class="thumb" style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
 }
 
 function avatar(name, image) {
-  const img = image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  const img = image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
   return `<span class="artist-avatar">${img}${escapeHtml(initials(name))}</span>`;
 }
 
@@ -631,7 +632,7 @@ function renderArtistPanel() {
   const imageArtist = people.find(a => a.image), image = imageArtist?.image || "";
   const imageArtistId = Number(imageArtist?.id) > 0 ? String(imageArtist.id) : String(people.find(a => Number(a.id) > 0)?.id || "");
   const canChange = live() && people.some(a => Number(a.id) > 0);
-  const photo = `${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<span>${escapeHtml(initials(state.artist))}</span>`;
+  const photo = `${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" data-image-error="remove">` : ""}<span>${escapeHtml(initials(state.artist))}</span>`;
   panel.innerHTML = `${canChange ? `<button type="button" class="artist-photo image-edit-button" id="change-artist-page-image" data-artist-page-image-id="${escapeHtml(imageArtistId)}" aria-label="${image ? "Change" : "Add"} image for ${escapeHtml(state.artist)}">${photo}<span class="image-edit-label">${image ? "Change image" : "Add image"}</span></button>` : `<div class="artist-photo">${photo}</div>`}`;
 }
 
@@ -828,6 +829,7 @@ async function openEditor(ids) {
     toast("Choose albums within one artist."); return;
   }
   let albums;
+  const details = state.details, loadRequest = libraryLoadRequest;
   opening = true; document.body.classList.add("busy");
   try {
     albums = await albumDetails(chosen.map(a => String(a.id)));
@@ -835,6 +837,9 @@ async function openEditor(ids) {
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
     toast(`Could not open the album: ${error.message}`); return;
   } finally { opening = false; document.body.classList.remove("busy"); }
+  if (details !== state.details || loadRequest !== libraryLoadRequest) {
+    toast("The library changed while opening the editor. Open the album again."); return;
+  }
   if (albums.length !== chosen.length) { toast("This album is no longer in your library. Reload the library."); return; }
   if (whole) albums.sort((a, b) => (a.disc || 0) - (b.disc || 0));
   const album = albums[0], bulk = albums.length > 1 && !whole, single = !bulk;
@@ -1366,6 +1371,7 @@ async function boot() {
 }
 
 async function loadLive(refresh = false) {
+  saveOrder += 1;
   const request = ++libraryLoadRequest, session = state.connection.playback_session;
   const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
   let completed = false;
@@ -1629,7 +1635,7 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   }
   entry.status = overallStatus(entry.changes.map(c => c.status));
   rememberHistory();
-  if (order !== saveOrder) { /* a later save's read-back brings newer albums */ }
+  if (order !== saveOrder || !Array.isArray(job.albums)) { /* summaries are delivered once; keep the current library otherwise */ }
   else if (!$("#editor").open && !$("#review").open) {
     applyEditorNames(job.editor_names);
     state.albums = colorize(job.albums); state.details = new Map();
@@ -1720,11 +1726,11 @@ function showTheme() {
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
   const label = {auto: "Auto", light: "Light", dark: "Dark"}[theme];
-  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired"}[palette];
+  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired", apple: "Apple Music Classic"}[palette];
   $("#theme-button").textContent = `${{auto: "◐", light: "☀", dark: "☾"}[theme]} Theme ▾`;
   $("#theme-button").title = `${colour} · ${label}. Choose colour and appearance.`;
   for (const value of ["auto", "light", "dark"]) $("#appearance-" + value).checked = theme === value;
-  for (const value of ["forest", "ocean", "warm", "ibroadcast"]) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
+  for (const value of TagcastThemes.builtins) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
   const customFocus = document.activeElement?.dataset?.customThemeChoice !== undefined ? document.activeElement.value : null;
   const custom = $("#theme-custom-list"), themes = TagcastThemes.snapshot().themes;
   if (custom) custom.innerHTML = themes.length ? `<fieldset><legend>My themes</legend>${themes.map(item => `<label><input type="radio" name="palette" value="${item.id}" data-custom-theme-choice ${item.id === TagcastThemes.active()?.id ? "checked" : ""}> ${escapeHtml(item.name)}</label>`).join("")}</fieldset>` : "";
@@ -1771,3 +1777,16 @@ function setColourPalette(value) {
 }
 TagcastThemes.apply(); showTheme();
 setThemeMenu(false);
+
+// Image errors do not bubble. Capture them without weakening the desktop CSP.
+document.addEventListener("error", event => {
+  const image = event.target, action = image?.dataset?.imageError;
+  if (image?.tagName !== "IMG" || !action) return;
+  if (action === "current") image.outerHTML = '<div class="art-empty">No image</div>';
+  else if (action === "tile") image.closest(".art-tile")?.remove();
+  else if (action === "suggestion") image.closest(".suggestion-art")?.remove();
+  else {
+    if (action === "album") image.parentNode?.classList.remove("has-art");
+    image.remove();
+  }
+}, true);

@@ -106,9 +106,20 @@ function gaplessRetire(g) {
   const position = gaplessPosition(), resume = g.started && !audio.paused;
   const sameSession = live() && g.session === state.connection.playback_session;
   gaplessCancel(); audio.pause(); audio.removeAttribute("src"); audio.load();
-  if (sameSession && typeof queueSync !== "undefined" && queueSync.active && localPlaybackAllowed()) {
-    gaplessTrial.bypass = true; gaplessTrial.offset = position;
-    playCurrent(resume); gaplessTrial.bypass = false;
+  if (sameSession && typeof queueSync !== "undefined" && queueSync.active) {
+    const allowed = queueSync.allowed;
+    queueSync.allowed = true;
+    try {
+      if (localPlaybackAllowed()) {
+        const entry = player.queue[player.index];
+        queueSync.handover = {entry, position};
+        gaplessTrial.bypass = true; gaplessTrial.offset = position;
+        playCurrent(resume && allowed);
+        audio.addEventListener("loadedmetadata", () => {
+          if (queueSync.handover?.entry === entry) queueSync.handover = null;
+        }, {once: true});
+      }
+    } finally { gaplessTrial.bypass = false; queueSync.allowed = allowed; }
   }
 }
 function gaplessCandidate(g, entry = g.current.entry) {

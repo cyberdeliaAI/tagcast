@@ -113,7 +113,8 @@ their shared browsing/player state; a fast local response can otherwise race the
 
 - Source runs require Python 3.11 or newer; standalone downloads bundle Python.
   The desktop launcher uses Tk; normal source/CLI browser use does not require Tk.
-- Runtime dependencies: `ibroadcast>=2.0.1,<3` and `websocket-client>=1.9,<2`; the code also uses `requests`,
+- Runtime dependencies include `ibroadcast>=2.0.1,<3`, `websocket-client>=1.9,<2` and
+  `PyYAML>=6.0.3,<7` for bounded, safe Lyricsfile parsing; the code also uses `requests`,
   currently a transitive dependency of `ibroadcast`.
 - Packaging uses Hatchling; the CLI entry point is `tagcast.app:main`.
 - `pyproject.toml` contains dependency and lint configuration; `uv.lock` pins
@@ -205,8 +206,21 @@ their shared browsing/player state; a fast local response can otherwise race the
 - Track lyrics have a separate textarea/review/save, independent of ordinary metadata
   patches. Now playing and the visited track read native userdata lazily; never scan
   lyrics automatically or read audio. Native lyrics take priority. LRCLIB is explicit, follows its source
-  switch and validates full title/artist and known duration without dropping version
-  text. Public results enter the bounded 30-day SQLite cache. Native lyrics text and
+  switch and reuses the bounded LRCLIB search/matching/parser from Now playing,
+  never Unison. Known duration permits recognized release labels and whole artist
+  credits with the two-second guard; preserve live/acoustic/remix/demo/instrumental.
+  Unknown duration requires full names, album identity and a unique candidate.
+  Prefer available ordinary LRCLIB text; otherwise convert parsed LRC/enhanced
+  LRC/Lyricsfile lines to plain text, preserving verse
+  breaks and the 50,000-character limit; no word/line timestamps enter the editor
+  cache or reviewed save. Share only LRCLIB provider spacing/backoff, not Now playing
+  cancellation or RAM results. Explicit editor work survives a player-track change
+  but rejects replaced accounts/libraries/sessions or a disabled source between
+  provider steps. Keep existing native-read/save serialization and all write guards.
+  Public cache keys include a lookup-version and full album identity, so old misses
+  or legacy marker-bearing public results cannot hide the improved explicit lookup;
+  never migrate/delete native lyrics for this. Public results enter the bounded
+  30-day SQLite cache (missing results expire after one day). Native lyrics text and
   empty results persist separately in native-lyrics.sqlite3 (5,000 rows / 20 MiB text,
   no timed expiry), keyed by account, native track ID and exact track/album identity.
   Other native/custom userdata and review tokens stay in memory. Premium saves bind one track/account/session and the full
@@ -236,6 +250,30 @@ their shared browsing/player state; a fast local response can otherwise race the
   userdata, preserves the typed draft and blocks review if lyrics changed; review/save
   still use fresh complete snapshots. Invalidate saved text before sending any lyrics
   write, restore only confirmed read-back, and retain no stale cache after uncertainty.
+- Online Now playing lyrics (`playback_lyrics.py`, `static/playback-lyrics.js`) are a
+  separate opt-in, display-only path: native-only by default, native-first or
+  Unison-first with consented LRCLIB fallback. Fetch only while the lyrics view is
+  open/visible. Only title, artist, album and duration go to fixed HTTPS endpoints;
+  no cookies, credentials, audio or redirects. Results remain bounded RAM only
+  (12 entries / five minutes), never editor/native/public SQLite caches or saves.
+  Unison `/lyrics` omits duration; send rounded duration and rely on its server
+  filter when absent, validating a supplied duration. LRCLIB searches before get;
+  max three distinct queries, duration within two seconds, then synced/album ranking.
+  Known duration permits recognized release-label/typography/diacritic normalization
+  and whole credited-artist matching, never partial names. Preserve live/acoustic/
+  remix/demo/instrumental identity; unknown duration requires full names and album,
+  with ambiguous LRCLIB results rejected. No ten-second widening or free-text search.
+  Unison errors may fall back only to enabled/consented LRCLIB; healthy Unison keeps
+  priority. Keep separate provider backoff, literal Retry-After, one short 429/503
+  retry (at most two seconds) within a twelve-second provider budget. Do not hold
+  cache/library locks across network/waits. Coalesce same-track reads; newest track
+  selection invalidates old work before another request/cache publication. Outages
+  remain retryable, not cached as missing. Cancellation cannot interrupt OS DNS.
+  TTML chooses one absolute/relative document reading by containment, absolute if
+  both fit; invalid optional words retain readable lines. Positive LRC offsets
+  subtract from both line/word times. Retain bounded safe Lyricsfile 1.0 parsing,
+  word reconstruction checks, source attribution and the authoritative track-relative
+  player clock. No prefetch or playback architecture changes from this fix.
 - Album lyrics sidecar import is an explicitly reviewed album-local extension to
   individual lyrics saves. Keep tracks on the left, selected LRC/TXT files on the
   right, and match only unique track-number/full-title combinations (optional disc
