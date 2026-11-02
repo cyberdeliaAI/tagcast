@@ -8,6 +8,11 @@ const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? nu
 const genresText = list => (list || []).join(" · ");
 const hasCombined = list => (list || []).some(g => g.includes(";"));
 
+// A metadata editor failure: an Error with the English message (for logic, logs and tests)
+// and the code of its errors.editor.* text, which TagcastI18n.errorText(error) shows in the
+// interface language. Callers pass the complete catalog key, so it stays one literal.
+const editorFailure = (key, params) => TagcastI18n.failure(key.replace(/^errors\./, ""), params);
+
 function splitGenres(list) {
   const out = [];
   for (const genre of list || []) {
@@ -19,9 +24,10 @@ function splitGenres(list) {
   return out;
 }
 
+// Errors keep an English message; show them with TagcastI18n.errorText(error).
 function validateGenreList(list, maximum = 200) {
-  if (list.length > 20) throw Error("Use at most 20 labels per track.");
-  if (list.some(value => [...value].length > maximum)) throw Error(`Each label can contain at most ${maximum} characters. Your input has been kept.`);
+  if (list.length > 20) throw editorFailure("errors.editor.label_count");
+  if (list.some(value => [...value].length > maximum)) throw editorFailure("errors.editor.label_length", {maximum});
   return list;
 }
 
@@ -35,24 +41,33 @@ function addGenres(list, text, maximum = 200) {
 }
 
 function genreChips(list, ordered = true) {
-  return list.map((g, i) => `<span class="genre-chip ${ordered && i === 0 ? "main" : ""} ${g.includes(";") ? "combined" : ""}"><button type="button" class="chip-name" data-genre-main="${i}" title="${!ordered ? "Move to the front" : i === 0 ? "Main genre" : "Make this the main genre"}">${escapeHtml(g)}</button>${g.includes(";") ? `<button type="button" class="chip-split" data-genre-split="${i}" title="One text with several genres. Split it into separate genres.">split</button>` : ""}<button type="button" class="chip-remove" data-genre-remove="${i}" aria-label="Remove ${escapeHtml(g)}">×</button></span>`).join("");
+  return list.map((g, i) => `<span class="genre-chip ${ordered && i === 0 ? "main" : ""} ${g.includes(";") ? "combined" : ""}"><button type="button" class="chip-name" data-genre-main="${i}" title="${TagcastI18n.html(!ordered ? "genres.chip.moveFront" : i === 0 ? "genres.chip.main" : "genres.chip.makeMain")}">${escapeHtml(g)}</button>${g.includes(";") ? `<button type="button" class="chip-split" data-genre-split="${i}" title="${TagcastI18n.html("genres.chip.splitTitle")}">${TagcastI18n.html("genres.chip.split")}</button>` : ""}<button type="button" class="chip-remove" data-genre-remove="${i}" aria-label="${TagcastI18n.html("genres.chip.remove", {name: g})}">×</button></span>`).join("");
 }
 
+// Interface text keys per kind of label list (data-noun stays the code "genre" or "composer").
+const genreInputTexts = {
+  genre: {add: "genres.input.addGenre", addFirst: "genres.input.addGenreFirst", addFor: "genres.input.addGenreFor", mixed: "genres.input.mixedGenres"},
+  composer: {add: "genres.input.addComposer", addFirst: "genres.input.addComposerFirst", addFor: "genres.input.addComposerFor", mixed: "genres.input.mixedComposers"}};
+const genreInputText = noun => genreInputTexts[noun === "composer" ? "composer" : "genre"];
+
+// label and hint are escaped interface text (TagcastI18n.html).
 function genreField(name, label, genres, {bulk = false, hint = "", mixed = false, ordered = true, noun = "genre"} = {}) {
-  const head = bulk ? `<label class="field-check"><input type="checkbox" aria-label="Change ${label}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`;
-  return `<div class="field wide">${head}<div class="genre-input ${bulk ? "disabled" : ""}" data-genres="${name}" data-ordered="${ordered ? 1 : 0}" data-noun="${noun}" data-value="${escapeHtml(JSON.stringify(genres))}"><span class="genre-chips">${genreChips(genres, ordered)}</span>${artistChoiceInput(`aria-label="Add a ${noun}: ${escapeHtml(label)}" placeholder="${mixed ? `Mixed: the tracks have different ${noun}s` : genres.length ? `Add a ${noun}` : `Add a ${noun}, Enter or ; for the next`}" ${bulk ? "disabled" : ""}`, bulk, noun)}<small class="genre-validation error-text" data-genre-error role="alert"></small></div>${hint ? `<small>${hint}</small>` : ""}</div>`;
+  const texts = genreInputText(noun);
+  const head = bulk ? `<label class="field-check"><input type="checkbox" aria-label="${changeFieldLabel(label)}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`;
+  const placeholder = TagcastI18n.html(mixed ? texts.mixed : genres.length ? texts.add : texts.addFirst);
+  return `<div class="field wide">${head}<div class="genre-input ${bulk ? "disabled" : ""}" data-genres="${name}" data-ordered="${ordered ? 1 : 0}" data-noun="${noun}" data-value="${escapeHtml(JSON.stringify(genres))}"><span class="genre-chips">${genreChips(genres, ordered)}</span>${artistChoiceInput(`aria-label="${TagcastI18n.html(texts.addFor, {label: TagcastI18n.trusted(label)})}" placeholder="${placeholder}" ${bulk ? "disabled" : ""}`, bulk, noun)}<small class="genre-validation error-text" data-genre-error role="alert"></small></div>${hint ? `<small>${hint}</small>` : ""}</div>`;
 }
 
 const getGenres = el => JSON.parse(el.dataset.value || "[]");
 
 function setGenres(el, list) {
   try { validateGenreList(list, el.dataset.noun === "composer" ? 1000 : 200); }
-  catch (error) { genreValidation(el, error.message); throw error; }
+  catch (error) { genreValidation(el, TagcastI18n.errorText(error)); throw error; }
   genreValidation(el, "");
   el.dataset.value = JSON.stringify(list);
   el.querySelector(".genre-chips").innerHTML = genreChips(list, el.dataset.ordered !== "0");
-  const input = el.querySelector("input"), noun = el.dataset.noun || "genre";
-  input.placeholder = list.length ? `Add a ${noun}` : `Add a ${noun}, Enter or ; for the next`;
+  const input = el.querySelector("input"), texts = genreInputText(el.dataset.noun || "genre");
+  input.placeholder = TagcastI18n.text(list.length ? texts.add : texts.addFirst);
   if (editing) editing.dirty.add(el.dataset.genres);
   el.classList.remove("filled"); void el.offsetWidth; el.classList.add("filled");
 }
@@ -61,7 +76,7 @@ function commitTyped(el) {
   const input = el.querySelector("input");
   if (!input.value.trim()) return;
   try { setGenres(el, addGenres(getGenres(el), input.value, el.dataset.noun === "composer" ? 1000 : 200)); }
-  catch (error) { genreValidation(el, error.message); throw error; }
+  catch (error) { genreValidation(el, TagcastI18n.errorText(error)); throw error; }
   input.value = "";
 }
 
@@ -97,7 +112,7 @@ function splitAlbumGenres() {
     }
   }
   showTrackGenres();
-  toast(count ? `Combined genres split on ${count} ${count === 1 ? "track" : "tracks"}. Review the draft to see them.` : "No combined genres left to split.");
+  toast(count ? TagcastI18n.text("genres.split.done", {count}) : TagcastI18n.text("genres.split.none"));
 }
 
 // The track table shows the genres a track will get, including drafted changes.
@@ -109,7 +124,7 @@ function showTrackGenres() {
     const cell = document.querySelector(`[data-genre-cell="${CSS.escape(String(t.id))}"]`);
     if (!cell) continue;
     const genres = editing.trackPatches[String(t.id)]?.genres || albumGenres || t.genres;
-    cell.textContent = genresText(genres) || "No genre";
+    cell.textContent = genresText(genres) || TagcastI18n.text("editor.track.noGenre");
     cell.classList.toggle("combined", hasCombined(genres));
     cell.classList.toggle("drafted", !sameValue(genres, t.genres));
   }
@@ -120,16 +135,16 @@ document.addEventListener("keydown", event => {
   if (!input) return;
   if (editorArtistChoiceKey(event)) return;
   const el = input.closest(".genre-input");
-  if (event.key === "Enter" || event.key === ";") { event.preventDefault(); try { commitTyped(el); showTrackGenres(); closeEditorArtistChoices(); } catch (error) { toast(error.message); } }
+  if (event.key === "Enter" || event.key === ";") { event.preventDefault(); try { commitTyped(el); showTrackGenres(); closeEditorArtistChoices(); } catch (error) { toast(TagcastI18n.errorText(error)); } }
   else if (event.key === "Backspace" && !input.value) { const list = getGenres(el); if (list.length) { setGenres(el, list.slice(0, -1)); showTrackGenres(); } }
 });
 document.addEventListener("focusout", event => {
   const input = event.target.closest?.(".genre-input input");
-  if (input) { try { commitTyped(input.closest(".genre-input")); showTrackGenres(); } catch (error) { toast(error.message); } }
+  if (input) { try { commitTyped(input.closest(".genre-input")); showTrackGenres(); } catch (error) { toast(TagcastI18n.errorText(error)); } }
 });
 document.addEventListener("click", event => {
   const el = event.target.closest(".genre-input");
-  if (event.target.closest("[data-split-album-genres]")) { try { splitAlbumGenres(); } catch (error) { toast(error.message); } return; }
+  if (event.target.closest("[data-split-album-genres]")) { try { splitAlbumGenres(); } catch (error) { toast(TagcastI18n.errorText(error)); } return; }
   if (!el || el.classList.contains("disabled")) return;
   const list = getGenres(el);
   const remove = event.target.closest("[data-genre-remove]"), main = event.target.closest("[data-genre-main]"), split = event.target.closest("[data-genre-split]");
@@ -137,5 +152,5 @@ document.addEventListener("click", event => {
   else if (split) list.splice(Number(split.dataset.genreSplit), 1, ...splitGenres([list[Number(split.dataset.genreSplit)]]).filter(g => !list.includes(g)));
   else if (main) { const [g] = list.splice(Number(main.dataset.genreMain), 1); list.unshift(g); }
   else { el.querySelector("input").focus(); return; }
-  try { setGenres(el, list); showTrackGenres(); } catch (error) { toast(error.message); }
+  try { setGenres(el, list); showTrackGenres(); } catch (error) { toast(TagcastI18n.errorText(error)); }
 });
