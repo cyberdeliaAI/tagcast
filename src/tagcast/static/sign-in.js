@@ -1,4 +1,5 @@
 // One provider window around the existing device flow. Tokens remain server-side.
+// `message` is the interface text key of the current step, translated when shown.
 const signInFlow = {serial: 0, requestId: "", popup: null, opening: false, message: ""};
 let signInPollGeneration = 0;
 
@@ -22,8 +23,8 @@ function reserveSignInPopup() {
     const popup = window.open("about:blank", "_blank", "popup,width=620,height=800,resizable=yes,scrollbars=yes");
     if (popup) {
       popup.opener = null;
-      popup.document.title = "Sign in to iBroadcast";
-      popup.document.body.textContent = "Opening iBroadcast sign-in…";
+      popup.document.title = TagcastI18n.text("signIn.popup.title");
+      popup.document.body.textContent = TagcastI18n.text("signIn.popup.opening");
     }
     return popup;
   } catch { return null; }
@@ -49,8 +50,7 @@ async function openSignInChild(device, serial, reserved = null) {
   }
   if (serial !== signInFlow.serial) return;
   signInFlow.opening = false;
-  signInFlow.message = opened ? "Approve Tagcast in the iBroadcast sign-in window. This page updates automatically."
-    : "The sign-in window could not be opened. Open iBroadcast in your browser below, or use the code.";
+  signInFlow.message = opened ? "signIn.device.opened" : "signIn.device.blocked";
   connectView("device", {device, fallback: !opened});
 }
 
@@ -73,7 +73,7 @@ async function beginSignIn(target) {
     try { reserved?.close(); } catch {}
     if (serial !== signInFlow.serial) return;
     signInFlow.opening = false;
-    connectView("ready", {error: error.message});
+    connectView("ready", {error: TagcastI18n.errorText(error)});
   }
 }
 
@@ -102,29 +102,29 @@ async function cancelSignIn(render = true) {
   } catch (error) {
     if (serial !== signInFlow.serial || !render) return;
     signInFlow.requestId = id;
-    connectView("device", {device: state.connection.device, error: error.message, fallback: true});
+    connectView("device", {device: state.connection.device, error: TagcastI18n.errorText(error), fallback: true});
     pollDevice();
   }
 }
 
+// Every label carries data-i18n, so an open sign-in step follows a language change
+// without being rebuilt (the code, the approval and the provider window stay as they are).
 function signInDeviceMarkup(device, {error = "", fallback = false} = {}) {
-  const link = signInVerificationUrl(device);
-  return `<div class="connect-step"><p class="muted">${escapeHtml(signInFlow.message || "Opening the iBroadcast sign-in window…")}</p><p class="muted"><span class="spinner"></span>Waiting for you to approve Tagcast…</p>${error}<details ${fallback ? "open" : ""}><summary>Use a code instead</summary><p class="muted">Open iBroadcast and enter this code if requested:</p><div class="device-code">${escapeHtml(device?.user_code || "")}</div><p><a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open iBroadcast in your browser ↗</a></p></details></div><div class="dialog-footer"><button class="button" id="device-cancel">Cancel</button><button class="button primary" id="device-open">Open sign-in window</button></div>`;
+  const link = signInVerificationUrl(device), message = signInFlow.message || "signIn.device.opening";
+  return `<div class="connect-step"><p class="muted" data-i18n="${message}">${TagcastI18n.html(message)}</p><p class="muted" data-i18n="signIn.device.waiting"><span class="spinner"></span>${TagcastI18n.html("signIn.device.waiting")}</p>${error}<details ${fallback ? "open" : ""}><summary data-i18n="signIn.device.useCode">${TagcastI18n.html("signIn.device.useCode")}</summary><p class="muted" data-i18n="signIn.device.enterCode">${TagcastI18n.html("signIn.device.enterCode")}</p><div class="device-code">${escapeHtml(device?.user_code || "")}</div><p><a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" data-i18n="signIn.device.openBrowser">${TagcastI18n.html("signIn.device.openBrowser")}</a></p></details></div><div class="dialog-footer"><button class="button" id="device-cancel" data-i18n="common.cancel">${TagcastI18n.html("common.cancel")}</button><button class="button primary" id="device-open" data-i18n="signIn.device.openWindow">${TagcastI18n.html("signIn.device.openWindow")}</button></div>`;
 }
 
 function finishSignIn(status) {
   ++signInFlow.serial; stopPoll(); closeSignInChild(); signInFlow.requestId = "";
   state.connection = status;
-  $("#connect").close(); toast("Connected to iBroadcast."); updateChrome(); loadLive();
+  $("#connect").close(); toast(TagcastI18n.text("signIn.connected")); updateChrome(); loadLive();
 }
 
 if (typeof window.tagcastSignIn?.onClosed === "function") window.tagcastSignIn.onClosed(event => {
   if (event?.requestId !== signInFlow.requestId) return;
   if (["load-failed", "browser-needed"].includes(event.reason)) {
     signInFlow.opening = false;
-    signInFlow.message = event.reason === "browser-needed"
-      ? "This sign-in needs your browser. Continue with the iBroadcast link below; Tagcast will update automatically."
-      : "The sign-in page could not be loaded. Try opening it in your browser, or use the code.";
+    signInFlow.message = event.reason === "browser-needed" ? "signIn.device.browserNeeded" : "signIn.device.loadFailed";
     if ($("#connect").open) connectView("device", {device: state.connection.device, fallback: true});
   } else {
     // The native window performs its own bound cancellation, including on reload.
