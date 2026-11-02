@@ -52,7 +52,7 @@ function signInApi(origin, pathname, body) {
   });
 }
 
-function installSignIn(owner, origin, dependencies = require("electron"), request = signInApi) {
+function installSignIn(owner, origin, dependencies = require("electron"), request = signInApi, text = () => "Sign in to iBroadcast") {
   const {BrowserWindow, ipcMain, session, screen} = dependencies, contents = owner.webContents;
   let current = null, serial = 0;
   const fromOwner = event => !contents.isDestroyed() && event.sender === contents
@@ -101,7 +101,7 @@ function installSignIn(owner, origin, dependencies = require("electron"), reques
       const sizeFile = dependencies.app ? path.join(dependencies.app.getPath("userData"), "sign-in-window.json") : null;
       const size = windowSize(sizeFile, {width: 620, height: 800, minWidth: 360, minHeight: 480}, area);
       const view = entry.view = new BrowserWindow({parent: owner, ...size, show: false,
-        title: "Sign in to iBroadcast", backgroundColor: "#ffffff", autoHideMenuBar: true,
+        title: text("window.signIn"), backgroundColor: "#ffffff", autoHideMenuBar: true,
         webPreferences: {partition: SIGN_IN_PARTITION, sandbox: true, contextIsolation: true,
           nodeIntegration: false, webSecurity: true, webviewTag: false,
           allowRunningInsecureContent: false, devTools: false, safeDialogs: true}});

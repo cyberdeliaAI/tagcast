@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld("tagcastSignIn", {
   onClosed: callback => listen("signin:closed", callback)
 });
 
+// Menus, window titles and native dialogs follow the interface language: plain texts for fixed names only.
+contextBridge.exposeInMainWorld("tagcastDesktop", {
+  setInterface: value => ipcRenderer.send("desktop:interface", value)
+});
+
 contextBridge.exposeInMainWorld("tagcastUploads", {
   choose: kind => ipcRenderer.invoke("uploads:choose", kind)
 });
