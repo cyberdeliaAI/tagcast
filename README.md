@@ -39,6 +39,10 @@ transitions safely use ordinary playback. See the
 
 *Tagcast 1.2.0 — album details, lyrics and Now playing, captured on 31 October 2026.*
 
+![Tagcast 1.3.0 showing Big Iron by Marty Robbins with synchronised LRCLIB lyrics, a highlighted active line and a cover-coloured background](docs/screenshots/2026-11-02-readme/now-playing-big-iron.png)
+
+*Tagcast 1.3.0 — lyrics follow the current track in Now playing, against an optional cover-coloured background. Online lyrics are displayed temporarily.*
+
 ## What you can do
 
 iBroadcast controls account limits, available tracks and Premium entitlements.
