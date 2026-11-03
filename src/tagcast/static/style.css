@@ -1029,6 +1029,8 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 /* Album selection and explicitly reviewed single-disc merges. */
 .album-page-selection{min-height:36px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;color:var(--ink);font-size:11px}
 .album-page-selection input{margin:0;width:17px;height:17px;accent-color:var(--green)}
+#selection-bar{flex-wrap:wrap}
+#selection-count{flex:1 1 160px;min-width:160px}
 .selection-bar .selection-clear{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;padding:0}
 .selection-clear svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 #album-merge{width:min(820px,calc(100vw - 40px))}
@@ -1038,7 +1040,7 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 .album-merge-tracks li{display:grid;grid-template-columns:35px minmax(0,1fr);gap:10px;padding:9px 0;border-top:1px solid var(--line)}
 .album-merge-tracks small{display:block;color:var(--muted);margin-top:4px}
 .album-merge-tracks li span{overflow-wrap:anywhere}
-@media(max-width:760px){.album-page-selection{flex-basis:100%}#album-merge{width:calc(100vw - 40px)}#selection-bar strong{flex:1;min-width:160px}}
+@media(max-width:760px){.album-page-selection{flex-basis:100%}#album-merge{width:calc(100vw - 40px)}}
 
 /* Explicit local audio downloads: page-scoped, independent of playback. */
 #downloads-page .downloads-grid { display:grid; grid-template-columns:minmax(0, .9fr) minmax(0, 1.3fr); gap:24px; align-items:start; }
@@ -1115,3 +1117,9 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
   #uploads-page .downloads-buttons button { flex:1 1 auto; }
   #uploads-page #music-upload-start { flex-basis:100%; }
 }
+
+/* Interface languages. Japanese uses the system's Japanese fonts and Japanese line breaking (headings and buttons break between phrases where the browser supports it), without the Latin letter tracking of small labels and headings; Japanese text has no italics. */
+:root:lang(ja){font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Yu Gothic",Meiryo,"Noto Sans CJK JP","Noto Sans JP","Segoe UI",sans-serif;line-break:strict;word-break:normal}
+:lang(ja) .eyebrow,:lang(ja) .brand small,:lang(ja) .preview-badge,:lang(ja) .album-table th,:lang(ja) .lookup-source h4,:lang(ja) .art-compare figcaption,:lang(ja) .cover-caption,:lang(ja) h1,:lang(ja) .dialog-heading h2,:lang(ja) .album-detail-info h1,:lang(ja) .help-card h2,:lang(ja) .player-stage .visual-player-header{letter-spacing:normal}
+:lang(ja) em,:lang(ja) i{font-style:normal}
+:lang(ja) h1,:lang(ja) h2,:lang(ja) h3,:lang(ja) button,:lang(ja) .button{word-break:auto-phrase;overflow-wrap:break-word}

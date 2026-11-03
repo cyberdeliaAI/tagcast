@@ -1,7 +1,7 @@
 // Interface text scan in Chromium (Playwright): opens Tagcast's screens and dialogs, connected to
 // tests/mock_ibroadcast.py, and records every text node and translatable attribute per scenario.
 //
-//   node text-scan.cjs <url> <en|nl|pseudo> <out.json> [--shots <dir>] [--width <px>] [--dark]
+//   node text-scan.cjs <url> <en|nl|de|fr|es|ja|pseudo> <out.json> [--shots <dir>] [--width <px>] [--dark]
 //
 // Uses only global functions and routes that exist both before and after translations, so the
 // English output of two builds can be compared scenario by scenario (text-compare.py).
@@ -55,15 +55,17 @@ const scenarios = [
   const context = await browser.newContext({viewport: {width, height: 900}, colorScheme: dark ? "dark" : "light"});
   await context.addInitScript(({mode}) => {
     let seed = 42; Math.random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-    try { localStorage.setItem("tagcast-language", mode === "nl" ? "nl" : "en"); } catch {}
+    try { localStorage.setItem("tagcast-language", mode === "pseudo" ? "en" : mode); } catch {}
   }, {mode});
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", error => errors.push(String(error.message)));
   page.on("dialog", dialog => dialog.dismiss());
+  // The server's language wins when the page starts, so set it before loading.
+  await context.request.post(new URL("/api/settings/interface", url).href, {headers: {"X-Tagcast": "1", "Content-Type": "application/json"},
+    data: {language: mode === "pseudo" ? "en" : mode}});
   await page.goto(url, {waitUntil: "load"});
   await page.waitForFunction(() => typeof state !== "undefined" && state.mode === "live" && state.albums.length > 0, null, {timeout: 20000});
-  if (mode === "nl") await page.evaluate(() => fetch("/api/settings/interface", {method: "POST", headers: {"X-Tagcast": "1", "Content-Type": "application/json"}, body: JSON.stringify({language: "nl"})}));
   if (mode === "pseudo") await page.evaluate(() => TagcastI18n.usePseudo());
   await page.waitForTimeout(400);
   const result = {url, mode, width, dark, errors, scenarios: {}};

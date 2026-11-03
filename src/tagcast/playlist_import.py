@@ -25,20 +25,28 @@ MAX_EXPORT_TEXT = 12 * 1024 * 1024
 CSV_EXPORT_MARKER = "# Tagcast playlist CSV 1: escaped text"
 PAGE = 50
 FIELDS = ("title", "artist", "album", "album_artist", "duration", "year", "track")
+# Column headings recognised automatically: English, then the interface languages' own words
+# (the CSV examples in the interface use them). Compared after fold(), like the headings.
 ALIASES = {
-    "title": ("track name", "track title", "title", "song", "titel"),
-    "artist": ("artist name(s)", "track artist", "artist", "artists", "artiest"),
-    "album": ("album name", "album", "album title"),
-    "album_artist": ("album artist", "album artists", "albumartiest"),
-    "duration": ("duration (ms)", "duration", "length", "time", "speelduur"),
-    "year": ("release date", "release year", "year", "jaar"),
-    "track": ("track number", "track", "tracknummer"),
+    "title": ("track name", "track title", "title", "song", "titel", "songtitel", "titre", "titre du morceau",
+              "título", "canción", "曲名", "タイトル"),
+    "artist": ("artist name(s)", "track artist", "artist", "artists", "artiest", "interpret", "künstler",
+               "artiste", "artista", "アーティスト", "アーティスト名"),
+    "album": ("album name", "album", "album title", "albumtitel", "álbum", "アルバム", "アルバム名"),
+    "album_artist": ("album artist", "album artists", "albumartiest", "albuminterpret", "artiste de l'album",
+                     "artista del álbum", "アルバムアーティスト"),
+    "duration": ("duration (ms)", "duration", "length", "time", "speelduur", "dauer", "länge", "durée",
+                 "duración", "再生時間", "長さ"),
+    "year": ("release date", "release year", "year", "jaar", "jahr", "erscheinungsjahr", "année",
+             "année de sortie", "año", "año de lanzamiento", "年", "リリース年"),
+    "track": ("track number", "track", "tracknummer", "titelnummer", "numéro de piste", "número de pista",
+              "トラック番号"),
 }
 
 
 def guessed_mapping(columns):
     labels = [fold(c) for c in columns]
-    return {key: next((labels.index(alias) for alias in aliases if alias in labels), None)
+    return {key: next((labels.index(fold(alias)) for alias in aliases if fold(alias) in labels), None)
             for key, aliases in ALIASES.items()}
 
 
