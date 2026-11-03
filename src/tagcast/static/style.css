@@ -614,6 +614,19 @@ body.visual-player-open{overflow:hidden}
 .top-actions{flex-wrap:wrap;justify-content:flex-end;gap:10px}
 @media(max-width:760px){.topbar{align-items:flex-start;flex-direction:column;padding:16px 0;gap:12px}.top-actions{justify-content:flex-start;width:100%}.theme-menu{left:0;right:auto}.top-actions .button{padding:9px 10px}}
 
+/* The header language shortcut shares the existing immediate Settings preference. */
+.language-controls{position:relative;display:flex;align-items:center}
+.button.small.language-button{display:flex;align-items:center;justify-content:center;gap:6px;min-width:40px;min-height:36px;padding:8px 9px;border-color:transparent;background:transparent;color:var(--muted)}
+.language-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;flex-shrink:0}
+.language-button:hover,.language-button[aria-expanded="true"]{background:var(--palette-tint,#f0f3e9);color:var(--ink)}
+.language-chevron{font-size:10px}
+.language-panel{position:absolute;left:0;top:calc(100% + 8px);z-index:8;width:250px;max-width:calc(100vw - 48px);max-height:calc(100dvh - 120px);overflow:auto;padding:6px;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px #0003}
+#language-menu button{display:flex;align-items:center;gap:9px;width:100%;min-height:38px;padding:8px;border:0;border-radius:6px;background:transparent;color:inherit;font-size:12px;text-align:left}
+#language-menu button:hover,#language-menu button:focus-visible{background:var(--palette-tint,#f0f3e9)}
+.language-check{width:16px;flex:0 0 16px;color:var(--green)}
+.language-menu-status{margin:6px 8px;padding-top:10px;border-top:1px solid var(--line);font-size:11px}
+@media(max-width:520px){#language-code,.language-chevron{display:none}.button.small.language-button{padding:8px}}
+
 /* Cover previews use a modal image view without touching the audio or library. */
 .album-cover-preview{padding:0;border:0;background:none;color:inherit;border-radius:7px}
 .album-cover-preview .cover{width:100%}
