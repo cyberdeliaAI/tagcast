@@ -145,6 +145,8 @@ their shared browsing/player state; a fast local response can otherwise race the
 
 ## Behavior to preserve
 
+- Keep document scrolling for the main content; show its native scrollbar on page hover outside the sidebar. Desktop sidebar shortcuts use scroll-aware edge fades without a scrollbar; preserve keyboard focus, mobile overflow and native forced-colour/non-hover fallbacks.
+
 - The server binds only to `127.0.0.1`, on port 8912 by default.
 - Preserve Host validation, the `X-Tagcast` POST header, Fetch Metadata checks
   for GET APIs and existing security headers.

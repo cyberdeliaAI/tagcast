@@ -1143,3 +1143,24 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 :lang(ja) .eyebrow,:lang(ja) .brand small,:lang(ja) .preview-badge,:lang(ja) .album-table th,:lang(ja) .lookup-source h4,:lang(ja) .art-compare figcaption,:lang(ja) .cover-caption,:lang(ja) h1,:lang(ja) .dialog-heading h2,:lang(ja) .album-detail-info h1,:lang(ja) .help-card h2,:lang(ja) .player-stage .visual-player-header{letter-spacing:normal}
 :lang(ja) em,:lang(ja) i{font-style:normal}
 :lang(ja) h1,:lang(ja) h2,:lang(ja) h3,:lang(ja) button,:lang(ja) .button{word-break:auto-phrase;overflow-wrap:break-word}
+
+/* Native sidebar scrolling with soft edges only where more shortcuts follow. */
+@media (min-width:761px){
+  .workspace-nav{scrollbar-width:none;scroll-padding-block:44px;
+    --nav-fade-top:0px;--nav-fade-bottom:0px;
+    -webkit-mask-image:linear-gradient(transparent,black var(--nav-fade-top),black calc(100% - var(--nav-fade-bottom)),transparent);
+    mask-image:linear-gradient(transparent,black var(--nav-fade-top),black calc(100% - var(--nav-fade-bottom)),transparent)}
+  .workspace-nav[data-more~="start"]{--nav-fade-top:28px}
+  .workspace-nav[data-more~="end"]{--nav-fade-bottom:44px}
+}
+@media (forced-colors:active){.workspace-nav{-webkit-mask-image:none;mask-image:none;scrollbar-width:auto}}
+/* Scope hover colour to the viewport. Reset inheritance so dialogs, lyrics and
+   other nested scroll areas retain their native scrollbars. Unsupported browsers,
+   non-hover devices and forced colours keep the native viewport bar as well. */
+@media (hover:hover) and (forced-colors:none){
+  @supports (scrollbar-color:transparent transparent) and selector(:has(.sidebar:hover)){
+    :root{scrollbar-color:transparent transparent}
+    :root:hover:not(:has(.sidebar:hover)){scrollbar-color:color-mix(in srgb,var(--muted) 60%,var(--paper)) transparent}
+    body{scrollbar-color:auto}
+  }
+}
