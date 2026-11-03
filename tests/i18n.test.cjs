@@ -132,10 +132,13 @@ test("desktop texts in en.json are exactly the built-in English texts of the des
   assert.deepEqual(fromCatalog, {...ENGLISH});
 });
 
-test("Dutch translates every English key", () => {
-  const dutch = new Set(Object.keys(catalogs.nl).map(base));
-  const missing = [...new Set(Object.keys(english).map(base))].filter(key => !dutch.has(key));
-  assert.deepEqual(missing, [], "Missing Dutch translations");
+test("every complete language translates every English key", () => {
+  for (const language of manifest.languages.filter(l => l.tag !== "en" && l.status === "complete")) {
+    const translated = new Set(Object.keys(catalogs[language.tag]).map(base));
+    const missing = [...new Set(Object.keys(english).map(base))].filter(key => !translated.has(key));
+    assert.deepEqual(missing, [], `Missing ${language.name} translations`);
+  }
+  assert.ok(manifest.languages.some(l => l.tag === "nl" && l.status === "complete"));
 });
 
 test("translated text inside HTML templates is always escaped", () => {
@@ -343,7 +346,7 @@ test("automatic selection only picks complete translations and manual choices al
   const shipped = runtime({languages: ["nl-BE", "en-US"]});
   assert.equal(shipped.i18n.resolve("auto"), "nl", "the shipped Dutch translation is complete");
   assert.equal(shipped.i18n.resolve("en"), "en");
-  assert.equal(runtime({languages: ["de-DE", "fr-FR"]}).i18n.resolve("auto"), "en");
+  assert.equal(runtime({languages: ["it-IT", "pt-BR"]}).i18n.resolve("auto"), "en");
 });
 
 test("the stored choice is restored before painting with one catalog request", async () => {
@@ -417,5 +420,24 @@ test("Python error codes have English text identical to the server message", () 
     for (const m of read(path.join(root, "src/tagcast", file)).matchAll(/\(\s*"([^"]+)",\s*code="([a-z0-9_.]+)"/g)) {
       assert.equal(english[`errors.${m[2]}`], m[1], `${file}: ${m[2]}`);
     }
+  }
+});
+
+test("German, French, Spanish and Japanese are chosen for their own systems and use their own plural forms and numbers", async () => {
+  const fill = (template, count) => template.replace(/\{\{\s*count(?:,\s*number)?\s*\}\}/g, count);
+  assert.equal(runtime({languages: ["de-AT", "en-US"]}).i18n.resolve("auto"), "de", "a regional system language chooses its language");
+  for (const [tag, system, grouped] of [["de", "de-DE", "1.234.567"], ["fr", "fr-CA", null], ["es", "es-MX", null], ["ja", "ja-JP", "1,234,567"]]) {
+    assert.equal(manifest.languages.find(language => language.tag === tag)?.status, "complete", `${tag} ships as complete`);
+    assert.equal(runtime({languages: [system, "en-US"]}).i18n.resolve("auto"), tag, `${system} chooses ${tag}`);
+    const {i18n} = runtime({languages: [system]});
+    assert.equal(await i18n.use(tag), tag);
+    const messages = catalogs[tag], one = messages["common.count.tracks_one"] ?? messages["common.count.tracks_other"];
+    assert.equal(i18n.text("common.count.tracks", {count: 1}), fill(one, 1));
+    assert.equal(i18n.text("common.count.tracks", {count: 7}), fill(messages["common.count.tracks_other"], 7));
+    if (messages["common.count.tracks_many"]) assert.equal(i18n.text("common.count.tracks", {count: 1000000}), fill(messages["common.count.tracks_many"], 1000000));
+    const number = i18n.number(1234567);
+    if (grouped) assert.equal(number, grouped);
+    assert.notEqual(number, "1234567", `${tag} groups digits`);
+    assert.equal(i18n.text("missing.key.for.test"), "missing.key.for.test", "an unknown key never throws");
   }
 });
