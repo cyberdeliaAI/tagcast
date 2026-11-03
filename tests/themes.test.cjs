@@ -121,3 +121,29 @@ test("Apple Music Classic restores before paint and custom themes can inherit it
   const {snapshot}=require('../electron/mini-contract.cjs');
   assert.equal(snapshot({document:'d',entry:'e',segment:'s',sequence:1,palette:'apple'}).palette,'apple');
 });
+
+test("native player and vendor logo contrast follow actual palette backgrounds, independently of appearance",()=>{
+  for(const palette of ['forest','ocean','warm','ibroadcast','apple']) for(const appearance of ['light','dark']){
+    const b=browser({'tagcast-palette':palette,'tagcast-theme':appearance});
+    const expected=palette==='apple' && appearance==='light'?'light':'dark';
+    assert.equal(b.document.documentElement.dataset.shellTone,expected,`${palette}/${appearance} logo`);
+    assert.equal(b.document.documentElement.dataset.playerTone,expected,`${palette}/${appearance} controls`);
+  }
+  const b=browser({'tagcast-theme':'auto'},true), t=theme('custom-contrast1','Mixed backgrounds');
+  t.light={sidebar:'#ffffff','shell-active':'#000000'};
+  t.dark={sidebar:'#000000','shell-active':'#ffffff'};
+  b.api.save(t,true);
+  assert.equal(b.document.documentElement.dataset.shellTone,'dark');
+  assert.equal(b.document.documentElement.dataset.playerTone,'light','Controls use the mixed panel, not just the sidebar');
+  b.media.matches=false;b.listeners.media();
+  assert.equal(b.document.documentElement.dataset.shellTone,'light');
+  assert.equal(b.document.documentElement.dataset.playerTone,'dark');
+  const restarted=browser(b.storage);
+  assert.equal(restarted.document.documentElement.dataset.shellTone,'light');
+  assert.equal(restarted.document.documentElement.dataset.playerTone,'dark');
+  const file=JSON.parse(b.api.exportTheme(t));
+  assert.deepEqual(Object.keys(file.theme.light),['sidebar','shell-active'],'Derived contrast never alters theme files');
+  b.api.builtin('forest');
+  assert.equal(b.document.documentElement.dataset.shellTone,'dark');
+  assert.equal(b.document.documentElement.dataset.playerTone,'dark');
+});
