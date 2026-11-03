@@ -1,18 +1,20 @@
 "use strict";
 
 // Public health is independent of the signed-in account and library snapshot.
-const serviceStatus = {data: null, pending: null, attemptedAt: 0, timer: null, error: "", announced: ""};
-const SERVICE_STATUS_LABELS = {operational: "Operational", degraded: "Degraded performance", outage: "Service disruption", unknown: "Unknown / unavailable"};
-const SERVICE_STATUS_NAMES = [["streaming", "Streaming"], ["api", "API Server"], ["queue", "Play Queue"], ["artwork", "Artwork"], ["library", "Library Generation"]];
+// `error` is true when the public feed could not be read; its note is translated when shown.
+const serviceStatus = {data: null, pending: null, attemptedAt: 0, timer: null, error: false, announced: ""};
+// Values are interface text keys; the object keys are the states the feed reports.
+const SERVICE_STATUS_LABELS = {operational: "serviceStatus.state.operational", degraded: "serviceStatus.state.degraded", outage: "serviceStatus.state.outage", unknown: "serviceStatus.state.unknown"};
+const SERVICE_STATUS_NAMES = [["streaming", "serviceStatus.service.streaming"], ["api", "serviceStatus.service.api"], ["queue", "serviceStatus.service.queue"], ["artwork", "serviceStatus.service.artwork"], ["library", "serviceStatus.service.library"]];
 
 function serviceStatusPanel() {
-  return '<section class="card service-status-card" aria-labelledby="service-status-title"><div class="service-status-heading"><div><h2 id="service-status-title">iBroadcast Service Status</h2><p class="muted">Public service health · separate from your account connection.</p></div><button type="button" class="button small" data-service-refresh>Refresh</button></div><div id="service-status-content"><p class="muted">Checking the public status feed…</p></div><p id="service-status-live" class="service-status-live" role="status" aria-live="polite"></p></section>';
+  return `<section class="card service-status-card" aria-labelledby="service-status-title"><div class="service-status-heading"><div><h2 id="service-status-title">${TagcastI18n.html("serviceStatus.panel.heading")}</h2><p class="muted">${TagcastI18n.html("serviceStatus.panel.intro")}</p></div><button type="button" class="button small" data-service-refresh>${TagcastI18n.html("serviceStatus.panel.refresh")}</button></div><div id="service-status-content"><p class="muted">${TagcastI18n.html("serviceStatus.panel.checkingFeed")}</p></div><p id="service-status-live" class="service-status-live" role="status" aria-live="polite"></p></section>`;
 }
 
 function serviceStatusTimestamp(value) {
   const time = typeof value === "string" ? Date.parse(value) : NaN;
-  if (!Number.isFinite(time)) return "Not available";
-  return `<time datetime="${escapeHtml(value)}">${escapeHtml(new Date(time).toLocaleString("en-GB", {dateStyle: "medium", timeStyle: "short"}))}</time>`;
+  if (!Number.isFinite(time)) return TagcastI18n.html("serviceStatus.time.unavailable");
+  return `<time datetime="${escapeHtml(value)}">${escapeHtml(TagcastI18n.dateTime(time, {dateStyle: "medium", timeStyle: "short"}))}</time>`;
 }
 
 function renderServiceStatus() {
@@ -33,21 +35,25 @@ function renderServiceStatus() {
   const states = rows.map(r => r.status);
   let overall = unknown ? "unknown" : states.includes("outage") ? "outage" : states.includes("degraded") ? "degraded" : "unknown";
   if (!unknown && states.every(s => s === "operational") && data?.overall === "operational") overall = "operational";
-  const summary = {operational: "All five services operational", outage: "Service disruption reported", degraded: "Degraded performance reported", unknown: "Current service status unavailable"}[overall];
+  const summary = TagcastI18n.text({operational: "serviceStatus.summary.operational", outage: "serviceStatus.summary.outage", degraded: "serviceStatus.summary.degraded", unknown: "serviceStatus.summary.unknown"}[overall]);
   const previous = box.querySelector?.("details"), expanded = overall !== "operational" && previous?.dataset?.state !== overall ? Boolean(data) : previous ? previous.open : false;
   const focusId = document.activeElement?.id;
   const focused = document.activeElement?.closest?.("[data-service-refresh]");
-  const note = serviceStatus.error || data?.error || (data?.stale || expired && data ? "Status information is stale or has no reliable timestamp. Refreshing the feed does not make an old report current." : "");
-  box.innerHTML = `<p class="service-status-summary"><span class="service-state-dot state-${overall}" aria-hidden="true"></span><strong>${summary}</strong>${serviceStatus.pending ? '<span class="muted">Checking…</span>' : ""}</p>
+  // Which note is shown, independent of the interface language (announcements follow changes only).
+  const noteId = serviceStatus.error ? "feed" : data?.error ? `error:${data.error}` : data?.stale || expired && data ? "stale" : "";
+  const note = serviceStatus.error ? TagcastI18n.text("serviceStatus.note.feedFailed") : data?.error
+    || (noteId === "stale" ? TagcastI18n.text("serviceStatus.note.stale") : "");
+  const stamp = value => TagcastI18n.trusted(serviceStatusTimestamp(value));
+  box.innerHTML = `<p class="service-status-summary"><span class="service-state-dot state-${overall}" aria-hidden="true"></span><strong>${escapeHtml(summary)}</strong>${serviceStatus.pending ? `<span class="muted">${TagcastI18n.html("serviceStatus.checking")}</span>` : ""}</p>
     ${note ? `<p class="muted service-status-note">${escapeHtml(note)}</p>` : ""}
     ${data?.message && overall !== "operational" && !unknown ? `<p class="muted">${escapeHtml(data.message)}</p>` : ""}
-    <details class="service-status-details" data-state="${overall}" ${expanded ? "open" : ""}><summary id="service-status-expand">View five services</summary><ul>${rows.map(row => `<li><div><strong>${row.name}</strong><span class="service-state state-${row.status}"><span class="service-state-dot" aria-hidden="true"></span>${SERVICE_STATUS_LABELS[row.status]}</span></div>${row.details ? `<p>${escapeHtml(row.details)}</p>` : ""}</li>`).join("")}</ul></details>
-    <div class="service-status-foot"><p>Last successful retrieval: ${serviceStatusTimestamp(data?.fetched_at)}<br>iBroadcast report: ${serviceStatusTimestamp(data?.reported_at)}<br>Last feed attempt: ${serviceStatusTimestamp(data?.checked_at)}</p><a id="service-status-official" href="https://status.ibroadcast.com/" target="_blank" rel="noopener noreferrer">Official status page ↗</a></div><p class="muted service-status-cadence">Checks about every five minutes while Overview is visible. Reports older than 15 minutes are treated as unknown. Times are shown in your local time zone. Missing status does not mean iBroadcast is down.</p>`;
+    <details class="service-status-details" data-state="${overall}" ${expanded ? "open" : ""}><summary id="service-status-expand">${TagcastI18n.html("serviceStatus.details.expand")}</summary><ul>${rows.map(row => `<li><div><strong>${TagcastI18n.html(row.name)}</strong><span class="service-state state-${row.status}"><span class="service-state-dot" aria-hidden="true"></span>${TagcastI18n.html(SERVICE_STATUS_LABELS[row.status])}</span></div>${row.details ? `<p>${escapeHtml(row.details)}</p>` : ""}</li>`).join("")}</ul></details>
+    <div class="service-status-foot"><p>${TagcastI18n.html("serviceStatus.time.fetched", {time: stamp(data?.fetched_at)})}<br>${TagcastI18n.html("serviceStatus.time.reported", {time: stamp(data?.reported_at)})}<br>${TagcastI18n.html("serviceStatus.time.checked", {time: stamp(data?.checked_at)})}</p><a id="service-status-official" href="https://status.ibroadcast.com/" target="_blank" rel="noopener noreferrer">${TagcastI18n.html("serviceStatus.details.official")}</a></div><p class="muted service-status-cadence">${TagcastI18n.html("serviceStatus.details.cadence")}</p>`;
   const button = document.querySelector("[data-service-refresh]");
-  if (button) { button.setAttribute("aria-disabled", String(Boolean(serviceStatus.pending))); button.textContent = serviceStatus.pending ? "Checking…" : "Refresh"; }
+  if (button) { button.setAttribute("aria-disabled", String(Boolean(serviceStatus.pending))); button.textContent = TagcastI18n.text(serviceStatus.pending ? "serviceStatus.checking" : "serviceStatus.panel.refresh"); }
   if (["service-status-expand", "service-status-official"].includes(focusId)) document.querySelector(`#${focusId}`)?.focus({preventScroll: true});
   if (focused && button && !button.disabled) button.focus({preventScroll: true});
-  const key = `${overall}/${note}`;
+  const key = `${overall}/${noteId}`;
   if (key !== serviceStatus.announced) {
     serviceStatus.announced = key;
     const liveStatus = document.querySelector("#service-status-live");
@@ -70,9 +76,9 @@ async function refreshServiceStatus(manual = false) {
     try {
       const data = await api(manual ? "/api/service-status?refresh=1" : "/api/service-status");
       if (!data || !Array.isArray(data.services)) throw Error("Invalid public status response.");
-      serviceStatus.data = data; serviceStatus.error = "";
+      serviceStatus.data = data; serviceStatus.error = false;
     } catch {
-      serviceStatus.error = "The public status feed could not be checked. This does not mean iBroadcast is down.";
+      serviceStatus.error = true;
     } finally { serviceStatus.pending = null; renderServiceStatus(); scheduleServiceStatus(); }
   })();
   renderServiceStatus();

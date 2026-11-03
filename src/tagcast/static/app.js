@@ -13,7 +13,7 @@ function setActionStatus(selector, message, working = false) {
 }
 
 function searchClearButton(id, value = "", disabled = false) {
-  return `<button type="button" class="search-clear" data-search-clear="${escapeHtml(id)}" aria-controls="${escapeHtml(id)}" aria-label="Clear search" title="Clear search" ${!value || disabled ? "hidden" : ""}><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8m0-8-8 8"/></svg></button>`;
+  return `<button type="button" class="search-clear" data-search-clear="${escapeHtml(id)}" aria-controls="${escapeHtml(id)}" aria-label="${TagcastI18n.html("common.clearSearch")}" title="${TagcastI18n.html("common.clearSearch")}" ${!value || disabled ? "hidden" : ""}><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8m0-8-8 8"/></svg></button>`;
 }
 
 function clearableSearchInput(id, attributes, value = "", disabled = false) {
@@ -46,23 +46,30 @@ const state = {playlistsCount: null, albums: [], details: new Map(), albumFavour
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
+// Interface text keys; the visible text follows the interface language.
 const libraryLoadingMessages = [
-  "Summoning your library from the void. Robes optional.",
-  "Convincing the cloud to give your music back…",
-  "Looking behind the digital sofa for your albums…",
-  "Counting your albums. No judgement. Mostly.",
-  "Untangling the world’s longest imaginary headphone cable…",
-  "Asking the server to stop humming and send the tracks…",
-  "Fetching your albums. Apparently ‘a few records’ means several thousand.",
-  "Waking up the cloud hamsters. One of them hit snooze.",
+  "library.loading.void",
+  "library.loading.cloud",
+  "library.loading.sofa",
+  "library.loading.counting",
+  "library.loading.cable",
+  "library.loading.humming",
+  "library.loading.records",
+  "library.loading.hamsters",
 ];
 let libraryLoadingMessageIndex = -1;
+let libraryLoadingRefresh = false;
 
 function nextLibraryLoadingMessage() {
   libraryLoadingMessageIndex = libraryLoadingMessageIndex < 0
     ? Math.floor(Math.random() * libraryLoadingMessages.length)
     : (libraryLoadingMessageIndex + 1) % libraryLoadingMessages.length;
-  return libraryLoadingMessages[libraryLoadingMessageIndex];
+  return TagcastI18n.text(libraryLoadingMessages[libraryLoadingMessageIndex]);
+}
+
+// Whole sentences: the playful message, a fresh download note and the patience note.
+function libraryLoadingText(message, refresh) {
+  return [message, refresh ? TagcastI18n.text("library.loading.fresh") : "", TagcastI18n.text("library.loading.patience")].filter(Boolean).join(" ");
 }
 
 function setLibraryNotice(visible) {
@@ -241,28 +248,29 @@ function largeArtworkUrl(url) {
 }
 
 function coverPreviewAttrs(album) {
-  return album.artwork ? `data-cover-preview data-cover-src="${escapeHtml(album.artwork)}" data-cover-name="${escapeHtml(album.name)}" data-cover-artist="${escapeHtml(album.artist)}" title="Double-click to enlarge the cover"` : "";
+  return album.artwork ? `data-cover-preview data-cover-src="${escapeHtml(album.artwork)}" data-cover-name="${escapeHtml(album.name)}" data-cover-artist="${escapeHtml(album.artist)}" title="${TagcastI18n.html("library.cover.enlarge")}"` : "";
 }
 
 function cover(album, small = false, enlarge = false) {
   const initials = album.artist.split(/\s+/).map(s => s[0]).slice(0, 2).join("");
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="album">` : "";
-  return `<div class="cover ${art ? "has-art" : ""}" ${!small && enlarge ? coverPreviewAttrs(album) : ""} style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : '<span class="cover-caption">TAGCAST / PLACEHOLDER</span>'}</div>`;
+  return `<div class="cover ${art ? "has-art" : ""}" ${!small && enlarge ? coverPreviewAttrs(album) : ""} style="--cover-color:${album.color}">${art}<span class="cover-letter">${escapeHtml(initials)}</span>${small || art ? "" : `<span class="cover-caption">${TagcastI18n.html("library.cover.placeholder")}</span>`}</div>`;
 }
 
 const EDITION = /remaster|deluxe|anniversary|re-record|live|edition|expanded/i;
+// [interface text key, test]; render() translates the key.
 const FILTERS = {
-  all: ["All albums", () => true],
-  year: ["Missing year", a => !a.year],
-  genre: ["Missing genre", a => a.no_genre > 0],
-  artist_image: ["Artist without image", a => !a.artist_image && a.artist !== "Various Artists"],
-  cover: ["Missing cover", a => a.no_cover > 0],
-  combined: ["Combined genres", a => a.combined_genres > 0],  // tags like "Pop;Rock" stored as one genre
-  composer: ["Missing composer", a => a.no_composer > 0],  // search "classical" to narrow it down
-  small: ["1–2 tracks", a => a.track_count <= 2],
-  incomplete: ["Possibly incomplete", a => a.track_gaps > 0],
-  duplicates: ["Duplicate tracks", hasDuplicateTracks],
-  edition: ["Named editions", a => EDITION.test(a.name)],
+  all: ["library.filter.all", () => true],
+  year: ["library.filter.year", a => !a.year],
+  genre: ["library.filter.genre", a => a.no_genre > 0],
+  artist_image: ["library.filter.artistImage", a => !a.artist_image && a.artist !== "Various Artists"],
+  cover: ["library.filter.cover", a => a.no_cover > 0],
+  combined: ["library.filter.combined", a => a.combined_genres > 0],  // tags like "Pop;Rock" stored as one genre
+  composer: ["library.filter.composer", a => a.no_composer > 0],  // search "classical" to narrow it down
+  small: ["library.filter.small", a => a.track_count <= 2],
+  incomplete: ["library.filter.incomplete", a => a.track_gaps > 0],
+  duplicates: ["library.filter.duplicates", hasDuplicateTracks],
+  edition: ["library.filter.edition", a => EDITION.test(a.name)],
 };
 function compareRating(a, b, descending = true) {
   return !a !== !b ? (a ? -1 : 1) : descending ? b - a : a - b;
@@ -285,12 +293,25 @@ const SORTS = {
   uploaded_newest: (a, b) => compareUpload(a, b) || SORTS.artist(a, b),
   uploaded_oldest: (a, b) => compareUpload(a, b, false) || SORTS.artist(a, b),
 };
-const albumSortLabels = {artist: "Album artist · A–Z", artist_za: "Album artist · Z–A",
-  title: "Album title · A–Z", title_za: "Album title · Z–A", random: "Random album order", year: "Release year · oldest first",
-  newest: "Release year · newest first", rating_high: "Rating · highest first", rating_low: "Rating · lowest first",
-  uploaded_newest: "Date uploaded · newest first", uploaded_oldest: "Date uploaded · oldest first"};
-const artistSortLabels = {az: "Name · A–Z", za: "Name · Z–A", random: "Random",
-  rating_high: "Rating · highest first", rating_low: "Rating · lowest first"};
+// Getters keep these shared tables plain value → label maps in the current interface language.
+const albumSortLabels = {
+  get artist() { return TagcastI18n.text("library.sort.artistAz"); },
+  get artist_za() { return TagcastI18n.text("library.sort.artistZa"); },
+  get title() { return TagcastI18n.text("library.sort.titleAz"); },
+  get title_za() { return TagcastI18n.text("library.sort.titleZa"); },
+  get random() { return TagcastI18n.text("library.sort.randomAlbums"); },
+  get year() { return TagcastI18n.text("library.sort.yearOldest"); },
+  get newest() { return TagcastI18n.text("library.sort.yearNewest"); },
+  get rating_high() { return TagcastI18n.text("library.sort.ratingHigh"); },
+  get rating_low() { return TagcastI18n.text("library.sort.ratingLow"); },
+  get uploaded_newest() { return TagcastI18n.text("library.sort.uploadedNewest"); },
+  get uploaded_oldest() { return TagcastI18n.text("library.sort.uploadedOldest"); }};
+const artistSortLabels = {
+  get az() { return TagcastI18n.text("library.sort.nameAz"); },
+  get za() { return TagcastI18n.text("library.sort.nameZa"); },
+  get random() { return TagcastI18n.text("library.sort.random"); },
+  get rating_high() { return TagcastI18n.text("library.sort.ratingHigh"); },
+  get rating_low() { return TagcastI18n.text("library.sort.ratingLow"); }};
 const albumOrder = {ids: [], library: 0};
 const browseChoices = {views: new Map(), kind: null, trigger: null, details: null};
 
@@ -309,7 +330,7 @@ function syncBrowseChoices(kind, filters, sorts, defaultSort) {
   const options = [
     ...Object.entries(sorts).map(([value, label]) => ({key: `sort:${value}`, label, selected: value === inputs.sort.value})),
     ...filters.filter(option => option.value === "all" || option.count > 0).map(option => ({
-      key: `filter:${option.value}`, label: `${option.label}${option.count ? ` · ${option.count.toLocaleString("en")}` : ""}`,
+      key: `filter:${option.value}`, label: option.count ? TagcastI18n.text("library.browse.optionCount", {label: option.label, count: option.count}) : option.label,
       selected: option.value === inputs.filter.value, disabled: Boolean(option.disabled)})),
   ];
   browseChoices.views.set(kind, options);
@@ -332,8 +353,8 @@ function closeBrowseOptions(restoreFocus = false) {
 
 function paintBrowseOptions() {
   const menu = $("#browse-options-menu"), options = browseChoices.views.get(browseChoices.kind) || [];
-  const html = '<div class="browse-options-title" role="presentation"><span>Filter and sort</span><button type="button" role="menuitem" data-browse-close aria-label="Close filter and sort" tabindex="-1">×</button></div>'
-    + [["sort", "Sort"], ["filter", "Show"]].map(([kind, label]) => `<div role="group" aria-label="${label}"><div class="browse-options-heading" role="presentation">${label}</div>${options.filter(option => option.key.startsWith(`${kind}:`)).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`).join("");
+  const html = `<div class="browse-options-title" role="presentation"><span>${TagcastI18n.html("library.browse.title")}</span><button type="button" role="menuitem" data-browse-close aria-label="${TagcastI18n.html("library.browse.close")}" tabindex="-1">×</button></div>`
+    + [["sort", "library.browse.sort"], ["filter", "library.browse.show"]].map(([kind, label]) => `<div role="group" aria-label="${TagcastI18n.html(label)}"><div class="browse-options-heading" role="presentation">${TagcastI18n.html(label)}</div>${options.filter(option => option.key.startsWith(`${kind}:`)).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`).join("");
   if (menu.innerHTML === html) return;
   const focused = document.activeElement?.getAttribute?.("data-browse-choice"), scroll = menu.scrollTop;
   menu.innerHTML = html;
@@ -425,7 +446,8 @@ function discSet(album) {
   const set = discCache.sets.get(discSetKey(album)) || [];
   return set.length > 1 && new Set(set.map(a => a.disc)).size === set.length ? set : null;
 }
-const discLabel = album => { const set = discSet(album); return set ? `Disc ${album.disc || "?"} of ${set.length}` : ""; };
+// Plain text for display only; history labels keep their own English form.
+const discLabel = album => { const set = discSet(album); return set ? TagcastI18n.text("library.disc.ofSet", {disc: album.disc || "?", count: set.length}) : ""; };
 
 // The album lists show the discs of a set as one album; saving still goes per disc,
 // because each disc is its own album in iBroadcast.
@@ -523,7 +545,7 @@ function filteredAlbums() {
 }
 
 function badge(a) {
-  return !a.year ? '<span class="pill missing">Missing year</span>' : a.no_genre ? '<span class="pill missing">Missing genre</span>' : "";
+  return !a.year ? `<span class="pill missing">${TagcastI18n.html("library.badge.missingYear")}</span>` : a.no_genre ? `<span class="pill missing">${TagcastI18n.html("library.badge.missingGenre")}</span>` : "";
 }
 
 function hasDuplicateTracks(album) {
@@ -531,81 +553,43 @@ function hasDuplicateTracks(album) {
 }
 
 function duplicateAlbumBadge(album) {
-  return hasDuplicateTracks(album) ? '<span class="pill missing" title="Repeated track numbers on the same disc. Open the album to compare the tracks.">Duplicated</span>' : "";
+  return hasDuplicateTracks(album) ? `<span class="pill missing" title="${TagcastI18n.html("library.badge.duplicatedTitle")}">${TagcastI18n.html("library.badge.duplicated")}</span>` : "";
 }
 
+// Markup (the disc note can hold icons); list items joined with " · ".
 function albumCardMetadata(a) {
-  return `${a.year || "Year unknown"} · ${a.track_count} ${a.track_count === 1 ? "track" : "tracks"} · ${EDITION.test(a.name) ? "edition" : "album"}${discNote(a) ? ` · ${discNote(a)}` : ""}`;
+  const kind = EDITION.test(a.name) ? "library.card.edition" : "library.card.album";
+  return [a.year || TagcastI18n.html("library.card.yearUnknown"), TagcastI18n.html("common.count.tracks", {count: a.track_count}),
+    TagcastI18n.html(kind), discNote(a)].filter(Boolean).join(" · ");
 }
 
 const isSelected = a => itemIds(a).every(id => state.selected.has(id));
 // The discs of a set as CD icons: up to six, then the number.
 function discIcons(count) {
   const cd = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13zM8 6a2 2 0 1 0 0 4a2 2 0 1 0 0-4z"/></svg>';
-  return `<span class="disc-icons" role="img" aria-label="${count} discs" title="${count} discs">${cd.repeat(Math.min(count, 6))}${count > 6 ? `<small>${count}</small>` : ""}</span>`;
+  const label = TagcastI18n.html("library.disc.count", {count});
+  return `<span class="disc-icons" role="img" aria-label="${label}" title="${label}">${cd.repeat(Math.min(count, 6))}${count > 6 ? `<small>${count}</small>` : ""}</span>`;
 }
-const discNote = a => a.discs ? discIcons(a.discs.length) : a.disc > 1 ? `Disc ${a.disc}` : "";
+const discNote = a => a.discs ? discIcons(a.discs.length) : a.disc > 1 ? TagcastI18n.html("common.disc", {disc: a.disc}) : "";
 
 function selectBox(a) {
-  return state.artist || live() ? `<label class="album-select"><input type="checkbox" data-select="${escapeHtml(a.id)}" aria-label="Select ${escapeHtml(a.name)}" ${isSelected(a) ? "checked" : ""}></label>` : "";
+  return state.artist || live() ? `<label class="album-select"><input type="checkbox" data-select="${escapeHtml(a.id)}" aria-label="${TagcastI18n.html("library.select.album", {name: a.name})}" ${isSelected(a) ? "checked" : ""}></label>` : "";
 }
 
 function gridView(items) {
-  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(albumArtistsText(a))}</span>${hasDuplicateTracks(a) ? `<span class="album-duplicate">${duplicateAlbumBadge(a)}</span>` : ""}</button><div class="card-meta"><div class="album-card-meta-text"><span>${albumCardMetadata(a)}</span>${badge(a)}</div>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</div></article>`).join("");
+  return items.map(a => `<article class="album-card ${isSelected(a) ? "selected" : ""}">${selectBox(a)}<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="${TagcastI18n.html("library.open.album", {name: a.name})}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(albumArtistsText(a))}</span>${hasDuplicateTracks(a) ? `<span class="album-duplicate">${duplicateAlbumBadge(a)}</span>` : ""}</button><div class="card-meta"><div class="album-card-meta-text"><span>${albumCardMetadata(a)}</span>${badge(a)}</div>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</div></article>`).join("");
 }
 
 function listView(items) {
   const genre = a => a.genres.length ? escapeHtml(a.genres.slice(0, 3).join(", ") + (a.genres.length > 3 ? " …" : "")) : "";
-  const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? "None" : `${a.no_genre} missing`}</span>` : "";
+  const missing = a => a.no_genre ? `<span class="pill missing">${a.no_genre === a.track_count ? TagcastI18n.html("library.list.genreNone") : TagcastI18n.html("library.list.genreMissing", {count: a.no_genre})}</span>` : "";
   const selectable = state.artist || live();
-  return `<table class="album-table"><thead><tr>${selectable ? '<th class="col-check" aria-label="Select albums"></th>' : ""}<th class="col-thumb"></th><th>Album</th><th>Album artist</th><th class="col-num">Year</th><th class="col-num">Tracks</th><th>Genre</th><th aria-label="Play or queue album"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${selectable ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button> ${duplicateAlbumBadge(a)}${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td>${albumArtistLinks(a)}</td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="album-table"><thead><tr>${selectable ? `<th class="col-check" aria-label="${TagcastI18n.html("library.list.selectAlbums")}"></th>` : ""}<th class="col-thumb"></th><th>${TagcastI18n.html("library.list.album")}</th><th>${TagcastI18n.html("library.list.albumArtist")}</th><th class="col-num">${TagcastI18n.html("library.list.year")}</th><th class="col-num">${TagcastI18n.html("library.list.tracks")}</th><th>${TagcastI18n.html("library.list.genre")}</th><th aria-label="${TagcastI18n.html("library.list.playOrQueue")}"></th></tr></thead><tbody>${items.map(a => `<tr class="${isSelected(a) ? "selected" : ""}">${selectable ? `<td class="col-check">${selectBox(a)}</td>` : ""}<td class="col-thumb"><button class="row-open" data-album="${escapeHtml(a.id)}" aria-label="${TagcastI18n.html("library.open.album", {name: a.name})}">${thumb(a)}</button></td><td><button class="row-open row-title" data-album="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button> ${duplicateAlbumBadge(a)}${discNote(a) ? ` <span class="muted">· ${discNote(a)}</span>` : ""}</td><td>${albumArtistLinks(a)}</td><td class="col-num">${a.year || '<span class="pill missing">—</span>'}</td><td class="col-num">${a.track_count}</td><td>${genre(a)} ${missing(a)}</td><td>${typeof albumCardActions === "function" ? albumCardActions(a) : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function render() {
   if (typeof syncMetadataExport === "function") syncMetadataExport();
-  const scope = albumShelf().filter(a => !state.artist || albumHasArtist(a, state.artist));
-  syncBrowseChoices("albums", Object.entries(FILTERS).map(([value, [label, keep]]) => ({value, label, count: scope.filter(keep).length})), albumSortLabels, "artist");
-  $("#cleanup-filter").hidden = !live() || $("#filter").value !== "combined";
-  $("#duplicate-cleanup-open").hidden = !live() || $("#filter").value !== "duplicates";
-  $("#browse-artist-count").textContent = artistGroups().length.toLocaleString("en");
-  $("#total-albums").textContent = $("#album-count").textContent = albumShelf().length.toLocaleString("en");
-  const trackCount = state.albums.reduce((sum, a) => sum + a.track_count, 0);
-  $("#track-count").textContent = trackCount.toLocaleString("en");
-  $("#total-tracks").textContent = `${trackCount.toLocaleString("en")} ${trackCount === 1 ? "track" : "tracks"}`;
-  $("#history-count").textContent = state.history.length;
-  if (!state.screen || state.screen === "albums") $("#breadcrumb").textContent = state.artist || "Albums";
-  $("#page-title").textContent = state.artist || "Your albums.";
-  $("#page-eyebrow").textContent = state.artist ? "ALBUM ARTIST" : "A LITTLE ORDER. ONE ALBUM AT A TIME.";
-  renderArtistPanel();
-  $("#page-subtitle").textContent = $("#filter").value === "duplicates"
-    ? "Albums with repeated track numbers on the same disc, including tracks whose titles differ. Open an album to compare the copies."
-    : state.artist ? "Open an album to listen, or select albums by this artist to edit, tag or move to the trash together." : live() ? "Browse your collection, play an album, or select albums to tag, merge or move to the trash together." : "Browse your collection, play an album, and edit its details when you choose.";
-  $("#selection-help").textContent = state.artist ? "Selection is limited to this artist" : live() ? "Select albums to tag, merge or move to the trash together" : "Open an album to see its tracks and listen";
-  $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
-  for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
-  const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
-  $("#per-page").value = String(size);
-  state.page = Math.min(state.page, maxPage);
-  $("#results-count").textContent = `${items.length.toLocaleString("en")} ${items.length === 1 ? "album" : "albums"}${state.artist ? ` by ${state.artist}` : " in your collection"}`;
-  const page = items.slice(state.page * size, (state.page + 1) * size);
-  $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
-  $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? '<div class="empty"><span class="spinner"></span>Checking your iBroadcast library… A full download of a large library can take half a minute.</div>' : '<div class="empty">No albums match your filters. Try another artist or search.</div>');
-  $("#select-page").checked = page.length > 0 && page.every(isSelected);
-  $("#select-page").indeterminate = page.some(isSelected) && !page.every(isSelected);
-  $("#select-page").disabled = !page.length || saving || checking > 0;
-  $("#select-page-label").textContent = `${page.length && page.every(isSelected) ? "Deselect" : "Select all"} on this page (${page.length})`;
-  $("#selection-bar").hidden = !state.selected.size;
-  if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
-  if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
-  $("#trash-selection").hidden = !live();
-  $("#download-selection").hidden = !live();
-  $("#download-selection").disabled = saving || checking > 0 || state.loading || !state.selected.size;
-  $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
-  $("#edit-selection").hidden = !state.artist;
-  const chosen = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id)));
-  const visible = new Set(items), outside = chosen.filter(a => !visible.has(a)).length;
-  $("#selection-count").textContent = `${chosen.length} ${chosen.length === 1 ? "album" : "albums"} selected${state.artist ? ` · ${state.artist}` : ""}${outside ? ` · ${outside} outside current results` : ""}`;
-  $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${state.page + 1} of ${(maxPage + 1).toLocaleString("en")}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>Next →</button>` : "";
+  renderLibrary();
   if (typeof renderAlbumView === "function") renderAlbumView();
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();
   if (typeof renderArtistProfile === "function") renderArtistProfile();
@@ -622,6 +606,56 @@ function render() {
   if (typeof syncAudioDownloadsPage === "function") syncAudioDownloadsPage();
 }
 
+// The album shelf with its header, counts, selection and pagination, from memory only.
+// A language change repaints just this part (relabel keeps an artist page title, which
+// artists.js decorates with the favourite heart; the artist name itself is never translated).
+function renderLibrary(relabel = false) {
+  const scope = albumShelf().filter(a => !state.artist || albumHasArtist(a, state.artist));
+  syncBrowseChoices("albums", Object.entries(FILTERS).map(([value, [label, keep]]) => ({value, label: TagcastI18n.text(label), count: scope.filter(keep).length})), albumSortLabels, "artist");
+  $("#cleanup-filter").hidden = !live() || $("#filter").value !== "combined";
+  $("#duplicate-cleanup-open").hidden = !live() || $("#filter").value !== "duplicates";
+  $("#browse-artist-count").textContent = TagcastI18n.number(artistGroups().length);
+  $("#total-albums").textContent = $("#album-count").textContent = TagcastI18n.number(albumShelf().length);
+  const trackCount = state.albums.reduce((sum, a) => sum + a.track_count, 0);
+  $("#track-count").textContent = TagcastI18n.number(trackCount);
+  $("#total-tracks").textContent = TagcastI18n.text("library.total.tracks", {count: trackCount});
+  $("#history-count").textContent = state.history.length;
+  if (!state.screen || state.screen === "albums") $("#breadcrumb").textContent = state.artist || TagcastI18n.text("library.page.breadcrumb");
+  if (!relabel || !state.artist) $("#page-title").textContent = state.artist || TagcastI18n.text("library.page.title");
+  $("#page-eyebrow").textContent = TagcastI18n.text(state.artist ? "library.page.eyebrowArtist" : "library.page.eyebrow");
+  renderArtistPanel();
+  $("#page-subtitle").textContent = TagcastI18n.text($("#filter").value === "duplicates" ? "library.page.subtitleDuplicates"
+    : state.artist ? "library.page.subtitleArtist" : live() ? "library.page.subtitleLive" : "library.page.subtitleDemo");
+  $("#selection-help").textContent = TagcastI18n.text(state.artist ? "library.selection.helpArtist" : live() ? "library.selection.helpLive" : "library.selection.helpDemo");
+  $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
+  for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
+  const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
+  $("#per-page").value = String(size);
+  state.page = Math.min(state.page, maxPage);
+  $("#results-count").textContent = state.artist ? TagcastI18n.text("library.results.byArtist", {count: items.length, artist: state.artist})
+    : TagcastI18n.text("library.results.collection", {count: items.length});
+  const page = items.slice(state.page * size, (state.page + 1) * size);
+  $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
+  $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? `<div class="empty"><span class="spinner"></span>${TagcastI18n.html("library.empty.loading")}</div>` : `<div class="empty">${TagcastI18n.html("library.empty.noMatch")}</div>`);
+  $("#select-page").checked = page.length > 0 && page.every(isSelected);
+  $("#select-page").indeterminate = page.some(isSelected) && !page.every(isSelected);
+  $("#select-page").disabled = !page.length || saving || checking > 0;
+  $("#select-page-label").textContent = TagcastI18n.text(page.length && page.every(isSelected) ? "library.selectPage.deselect" : "library.selectPage.select", {count: page.length});
+  $("#selection-bar").hidden = !state.selected.size;
+  if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
+  if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
+  $("#trash-selection").hidden = !live();
+  $("#download-selection").hidden = !live();
+  $("#download-selection").disabled = saving || checking > 0 || state.loading || !state.selected.size;
+  $("#trash-selection").disabled = saving || checking > 0 || !state.selected.size;
+  $("#edit-selection").hidden = !state.artist;
+  const chosen = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id)));
+  const visible = new Set(items), outside = chosen.filter(a => !visible.has(a)).length;
+  $("#selection-count").textContent = [TagcastI18n.text("library.selection.count", {count: chosen.length}), state.artist,
+    outside ? TagcastI18n.text("library.selection.outside", {count: outside}) : ""].filter(Boolean).join(" · ");
+  $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: state.page + 1, pages: maxPage + 1})}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
+}
+
 // On an artist's page the artist image takes the place of the library total.
 function renderArtistPanel() {
   const panel = $("#artist-panel"), albums = state.artist ? albumShelf().filter(a => albumHasArtist(a, state.artist)) : [];
@@ -633,7 +667,7 @@ function renderArtistPanel() {
   const imageArtistId = Number(imageArtist?.id) > 0 ? String(imageArtist.id) : String(people.find(a => Number(a.id) > 0)?.id || "");
   const canChange = live() && people.some(a => Number(a.id) > 0);
   const photo = `${image ? `<img src="${escapeHtml(image.replace(/-150$/, "-300"))}" alt="" referrerpolicy="no-referrer" data-image-error="remove">` : ""}<span>${escapeHtml(initials(state.artist))}</span>`;
-  panel.innerHTML = `${canChange ? `<button type="button" class="artist-photo image-edit-button" id="change-artist-page-image" data-artist-page-image-id="${escapeHtml(imageArtistId)}" aria-label="${image ? "Change" : "Add"} image for ${escapeHtml(state.artist)}">${photo}<span class="image-edit-label">${image ? "Change image" : "Add image"}</span></button>` : `<div class="artist-photo">${photo}</div>`}`;
+  panel.innerHTML = `${canChange ? `<button type="button" class="artist-photo image-edit-button" id="change-artist-page-image" data-artist-page-image-id="${escapeHtml(imageArtistId)}" aria-label="${TagcastI18n.html(image ? "library.artistImage.changeFor" : "library.artistImage.addFor", {artist: state.artist})}">${photo}<span class="image-edit-label">${TagcastI18n.html(image ? "library.artistImage.change" : "library.artistImage.add")}</span></button>` : `<div class="artist-photo">${photo}</div>`}`;
 }
 
 // The album after this one in the current list, for working through a filter.
@@ -654,23 +688,34 @@ function numberInputAttributes(key, value) {
   return `min="${Math.min(0, original)}" max="${Math.max(2050, original)}" step="1" data-original-year="${original}"`;
 }
 
+// "Change <field>" for a bulk checkbox; label is already escaped markup text.
+const changeFieldLabel = label => TagcastI18n.html("editor.field.change", {field: TagcastI18n.trusted(label)});
+
+// label and hint are escaped interface text (TagcastI18n.html); placeholder is plain text.
 function field(name, label, value, options = {}) {
   const {type = "text", wide = false, hint = "", bulk = false, placeholder = ""} = options;
-  return `<div class="field ${wide ? "wide" : ""}">${bulk ? `<label class="field-check"><input type="checkbox" aria-label="Change ${label}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`}<input aria-label="${label}" name="${name}" type="${type}" value="${escapeHtml(value || "")}" ${type === "number" ? numberInputAttributes(name, value) : 'maxlength="1000"'} placeholder="${escapeHtml(placeholder)}" ${bulk ? "disabled" : ""}>${hint ? `<small>${hint}</small>` : ""}</div>`;
+  return `<div class="field ${wide ? "wide" : ""}">${bulk ? `<label class="field-check"><input type="checkbox" aria-label="${changeFieldLabel(label)}" data-enable="${name}"> ${label}</label>` : `<span>${label}</span>`}<input aria-label="${label}" name="${name}" type="${type}" value="${escapeHtml(value || "")}" ${type === "number" ? numberInputAttributes(name, value) : 'maxlength="1000"'} placeholder="${escapeHtml(placeholder)}" ${bulk ? "disabled" : ""}>${hint ? `<small>${hint}</small>` : ""}</div>`;
 }
 
 function albumArtistField(albums, bulk) {
   const various = albums.every(a => a.artist_id === 0 && a.artist === "Various Artists");
   const value = various ? "" : common(albums, "artist");
-  return `<div class="field wide">${bulk ? '<label class="field-check"><input type="checkbox" aria-label="Change Album artist" data-enable="artist"> Album artist</label>' : '<span>Album artist</span>'}${artistChoiceInput(`aria-label="Album artist" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="Type to find an existing artist, or enter a new name" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>Choose an existing artist from the suggestions, or type a new name. Track artists stay unchanged.</small><small id="album-various-artists-note" role="status" hidden>Additional album artists will be cleared when you save the reviewed draft. Track artists and track credits stay unchanged. Untick Various Artists to restore these fields.</small></div>`;
+  const label = TagcastI18n.html("editor.field.albumArtist");
+  return `<div class="field wide">${bulk ? `<label class="field-check"><input type="checkbox" aria-label="${changeFieldLabel(label)}" data-enable="artist"> ${label}</label>` : `<span>${label}</span>`}${artistChoiceInput(`aria-label="${label}" name="artist" type="text" maxlength="1000" value="${escapeHtml(value)}" placeholder="${TagcastI18n.html("editor.field.albumArtistPlaceholder")}" ${bulk || various ? "disabled" : ""} ${various ? "hidden" : ""}`, bulk || various)}<label class="checkline"><input type="checkbox" id="album-various-artists" ${various ? "checked" : ""} ${bulk ? "disabled" : ""}> Various Artists</label><small>${TagcastI18n.html("editor.field.albumArtistHint")}</small><small id="album-various-artists-note" role="status" hidden>${TagcastI18n.html("editor.field.variousArtistsNote")}</small></div>`;
 }
 
 // Reuse already loaded names; only a small matching list enters the DOM.
 const editorArtistChoices = {albums: null, names: null, labels: null, indexes: new Map(), values: [], input: null, results: [], active: -1, details: null, draft: null};
 
+// Interface text keys of the name suggestions, per kind of name.
+const editorChoiceTexts = {
+  artist: {show: "editor.choices.showArtists", menu: "editor.choices.existingArtists", choose: "editor.choices.chooseArtist", none: "editor.choices.noArtist"},
+  genre: {show: "editor.choices.showGenres", menu: "editor.choices.existingGenres", choose: "editor.choices.chooseGenre", none: "editor.choices.noGenre"},
+  composer: {show: "editor.choices.showComposers", menu: "editor.choices.existingComposers", choose: "editor.choices.chooseComposer", none: "editor.choices.noComposer"}};
+const editorChoiceText = kind => editorChoiceTexts[kind === "genre" || kind === "composer" ? kind : "artist"];
+
 function artistChoiceInput(attributes, disabled = false, kind = "artist") {
-  const noun = kind === "genre" ? "genres" : kind === "composer" ? "composers" : "artists";
-  return `<span class="artist-choice"><input ${attributes} role="combobox" aria-autocomplete="list" aria-controls="editor-artist-names" aria-expanded="false" data-artist-suggestions data-editor-choice-kind="${kind}" autocomplete="off"><button type="button" class="artist-choice-toggle" data-artist-choices-toggle aria-label="Show existing ${noun}" aria-haspopup="listbox" aria-controls="editor-artist-names" ${disabled ? "disabled" : ""}>▾</button></span>`;
+  return `<span class="artist-choice"><input ${attributes} role="combobox" aria-autocomplete="list" aria-controls="editor-artist-names" aria-expanded="false" data-artist-suggestions data-editor-choice-kind="${kind}" autocomplete="off"><button type="button" class="artist-choice-toggle" data-artist-choices-toggle aria-label="${TagcastI18n.html(editorChoiceText(kind).show)}" aria-haspopup="listbox" aria-controls="editor-artist-names" ${disabled ? "disabled" : ""}>▾</button></span>`;
 }
 
 function applyEditorNames(names) {
@@ -723,10 +768,10 @@ function fillEditorArtistChoices(input, all = false) {
     if (matches.length === 40) break;
   }
   Object.assign(editorArtistChoices, {input, results: matches, active: -1, details: state.details, draft: editing});
-  const menu = $("#editor-artist-names"), noun = kind === "genre" ? "genre" : kind === "composer" ? "composer" : "artist";
-  menu.setAttribute("aria-label", `Existing ${noun}s`);
+  const menu = $("#editor-artist-names"), texts = editorChoiceText(kind);
+  menu.setAttribute("aria-label", TagcastI18n.text(texts.menu));
   menu.innerHTML = matches.map((name, index) => `<button type="button" role="option" aria-selected="false" tabindex="-1" id="editor-artist-choice-${index}" data-artist-choice="${index}">${escapeHtml(name)}</button>`).join("")
-    + `<p class="muted">${matches.length === 40 ? "Showing up to 40 matches. Type more to narrow the list." : matches.length ? `Choose ${noun === "artist" ? "an" : "a"} ${noun}, or type a new name.` : `No existing ${noun} matches. You can keep this new name.`}</p>`;
+    + `<p class="muted">${TagcastI18n.html(matches.length === 40 ? "editor.choices.limit" : matches.length ? texts.choose : texts.none)}</p>`;
   input.removeAttribute("aria-activedescendant"); input.setAttribute("aria-expanded", "true");
   const anchor = input.getBoundingClientRect(), width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
   const below = height - anchor.bottom - 8, above = anchor.top - 8, down = below >= Math.min(240, above);
@@ -748,7 +793,7 @@ function chooseEditorArtist(index) {
       if (!values.some(value => value.toLocaleLowerCase() === name.toLocaleLowerCase())) setGenres(labels, [...values, name]);
       else genreValidation(labels, "");
       input.value = ""; showTrackGenres();
-    } catch (error) { toast(error.message); return; }
+    } catch (error) { toast(TagcastI18n.errorText(error)); return; }
   } else {
     input.value = name;
     input.dispatchEvent(new Event("input", {bubbles: true}));
@@ -826,7 +871,7 @@ async function openEditor(ids) {
   const set = chosen.length > 1 ? discSet(chosen[0]) : null;
   const whole = Boolean(set && set.length === chosen.length && set.every(d => chosen.includes(d)));
   if (chosen.length > 1 && !whole && (!state.artist || chosen.some(a => !albumHasArtist(a, state.artist)))) {
-    toast("Choose albums within one artist."); return;
+    toast(TagcastI18n.text("editor.open.oneArtist")); return;
   }
   let albums;
   const details = state.details, loadRequest = libraryLoadRequest;
@@ -835,12 +880,12 @@ async function openEditor(ids) {
     albums = await albumDetails(chosen.map(a => String(a.id)));
   } catch (error) {
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
-    toast(`Could not open the album: ${error.message}`); return;
+    toast(TagcastI18n.text("editor.open.failed", {error: TagcastI18n.errorText(error)})); return;
   } finally { opening = false; document.body.classList.remove("busy"); }
   if (details !== state.details || loadRequest !== libraryLoadRequest) {
-    toast("The library changed while opening the editor. Open the album again."); return;
+    toast(TagcastI18n.text("editor.open.libraryChanged")); return;
   }
-  if (albums.length !== chosen.length) { toast("This album is no longer in your library. Reload the library."); return; }
+  if (albums.length !== chosen.length) { toast(TagcastI18n.text("editor.open.albumMissing")); return; }
   if (whole) albums.sort((a, b) => (a.disc || 0) - (b.disc || 0));
   const album = albums[0], bulk = albums.length > 1 && !whole, single = !bulk;
   editing = {ids: albums.map(a => String(a.id)), originals: structuredClone(albums), trackPatches: {}, bulk, set: whole, tab: "album", dirty: new Set()};
@@ -848,12 +893,20 @@ async function openEditor(ids) {
   const allTracks = albums.flatMap(a => a.tracks);
   // Two discs of one set with one disc number would no longer be a set.
   const sameSet = bulk && albums.some(a => (discSet(a) || []).filter(d => editing.ids.includes(String(d.id))).length > 1);
-  const mixed = key => whole && !common(albums, key) && albums.some(a => a[key]) ? {placeholder: "Mixed: the discs differ"} : {};
-  const trackRow = t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button type="button" class="play" data-play="${escapeHtml(t.id)}" aria-label="Play ${escapeHtml(t.title)}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}${t.composers?.length ? `<small class="track-composer">${escapeHtml(t.composers.join(", "))}</small>` : ""}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${escapeHtml(genresText(t.genres) || "No genre")}</span></td><td><button type="button" class="track-edit" data-track="${escapeHtml(t.id)}">Edit</button></td></tr>`;
-  const trackRows = whole ? albums.map(a => `<tr class="disc-row"><td colspan="4">Disc ${a.disc || "?"}</td></tr>${a.tracks.map(trackRow).join("")}`).join("") : album.tracks.map(trackRow).join("");
-  const editorTabs = bulk ? "" : `<div id="editor-tabs" class="favourites-tabs editor-tabs" role="tablist" aria-label="Edit album or tracks"><button type="button" id="editor-tab-album" role="tab" data-editor-tab="album" aria-selected="true" aria-controls="editor-album-panel" tabindex="0">Edit album</button><button type="button" id="editor-tab-tracks" role="tab" data-editor-tab="tracks" aria-selected="false" aria-controls="editor-tracks-panel" tabindex="-1">Edit tracks <span>${allTracks.length}</span></button></div>`;
-  const trackPanel = bulk ? '<div id="track-inline"></div>' : `<section id="editor-tracks-panel" role="tabpanel" aria-labelledby="editor-tab-tracks" hidden><div class="tracks-heading"><h3>Tracks <span class="muted">(${allTracks.length})</span></h3><span class="muted">Choose a track to edit</span></div><div class="editor-track-workspace"><div class="editor-track-list"><table class="track-table"><thead><tr><th>#</th><th>Title</th><th>Year / Genre</th><th></th></tr></thead><tbody>${trackRows}</tbody></table></div><div id="track-inline"><p class="empty">Choose a track from the list to edit its details, credits or lyrics.</p></div></div></section>`;
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${whole ? `ONE ALBUM / ALL ${albums.length} DISCS` : bulk ? "ONE ARTIST / SELECTED ALBUMS" : "ONE ALBUM / YOUR DETAILS"}</div><h2>${bulk ? "Edit selected albums" : "Edit album"}</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="editing" aria-label="Help with album editing" title="Help with album editing">?</button><button class="close" data-close="editor" aria-label="Close album editor">×</button></div></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="Change the cover">${cover(album, true)}<span>Change cover</span></button>`}<div><h3>${escapeHtml(bulk ? `${albums.length} albums by ${state.artist || album.artist}` : album.name)}</h3><div class="muted">${escapeHtml(album.artist)} <span aria-hidden="true">·</span> ${allTracks.length} tracks${whole ? ` <span aria-hidden="true">·</span> ${albums.length} discs` : !bulk ? ` <span aria-hidden="true">·</span> ${discLabel(album) || `Disc ${album.disc || "unknown"}`}` : ""}${!bulk && !whole && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">Edit all ${discSet(album).length} discs together →</button>` : ""}</div><div class="header-actions"><span class="pill">${live() ? "Live iBroadcast library" : "Sample data · local draft"}</span>${live() && single ? `<button class="text-action" data-play-album>▶ Play album</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}Artist image</button>` : ""}` : ""}</div></div></div>${editorTabs}<div class="edit-layout" id="editor-layout"><form id="metadata-form"><section id="editor-album-panel" ${bulk ? "" : 'role="tabpanel" aria-labelledby="editor-tab-album"'}><div class="fields">${bulk ? "" : field("name", "Album title", whole ? common(albums, "name") : album.name, {wide: true, ...mixed("name")})}${albumArtistField(albums, bulk)}${creditsField(albums[0], {album: true, bulk: bulk || !albums.every(a => sameValue(a.credits || [], albums[0].credits || [])), mixed: !albums.every(a => sameValue(a.credits || [], albums[0].credits || []))})}${field("year", "Release year", common(albums, "year"), {type: "number", bulk, hint: "1800–2050. Use 0 to clear the year.", ...mixed("year")})}${whole || sameSet ? "" : field("disc", "Disc number", common(albums, "disc"), {type: "number", bulk})}${genreField("genres", "Genres · all tracks in this selection", allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: "The first genre is the main one; click another to make it the main genre."})}${allTracks.some(t => hasCombined(t.genres)) ? `<p class="genre-note wide">${allTracks.filter(t => hasCombined(t.genres)).length} ${allTracks.filter(t => hasCombined(t.genres)).length === 1 ? "track has" : "tracks have"} several genres stored as one text, like “${escapeHtml(allTracks.find(t => hasCombined(t.genres)).genres.find(g => g.includes(";")))}”. <button type="button" class="text-action" data-split-album-genres>Split combined genres</button></p>` : ""}${genreField("composers", "Composers · all tracks in this selection", allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: "Mostly for classical music. A name iBroadcast doesn't know yet is added as an artist when you save."})}</div><label class="checkline"><input type="checkbox" id="track-years"> Also apply the release year to tracks in this selection</label><div class="scope-note">${whole ? `All ${albums.length} discs of this album are included; iBroadcast keeps each disc as its own album and gets the change once per disc. A cover goes on every disc; change a disc number per disc, from the album page.` : bulk ? `Only these ${albums.length} selected albums and their tracks are included. Check a field to change it; unchecked fields stay as they are.` : "Only this album is being edited. Suggestions only fill in the form: nothing is saved until you review it."}</div></section>${trackPanel}</form>${bulk ? '<aside class="sources"><div class="eyebrow">YOUR SELECTION</div><h3>Included albums</h3>' + albums.map(a => `<p class="muted">${escapeHtml(a.name)}${discLabel(a) ? ` · ${discLabel(a)}` : ""}</p>`).join("") + '<div class="year-note"><strong>Look up one album at a time</strong>Open an individual album to consult MusicBrainz or Last.fm.</div></aside>' : lookupPanel(album)}</div><div class="dialog-footer"><span class="muted">${live() ? "You review every change before it is saved to iBroadcast." : "Nothing is sent to iBroadcast."}</span><button class="button" data-close="editor">Cancel</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>Next album →</button>`}<button class="button primary" id="review-button">Review draft →</button></div>`;
+  const mixed = key => whole && !common(albums, key) && albums.some(a => a[key]) ? {placeholder: TagcastI18n.text("editor.field.mixedDiscs")} : {};
+  const noGenre = TagcastI18n.html("editor.track.noGenre");
+  const trackRow = t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button type="button" class="play" data-play="${escapeHtml(t.id)}" aria-label="${TagcastI18n.html("editor.track.play", {title: t.title})}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}${t.composers?.length ? `<small class="track-composer">${escapeHtml(t.composers.join(", "))}</small>` : ""}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${genresText(t.genres) ? escapeHtml(genresText(t.genres)) : noGenre}</span></td><td><button type="button" class="track-edit" data-track="${escapeHtml(t.id)}">${TagcastI18n.html("editor.track.edit")}</button></td></tr>`;
+  const trackRows = whole ? albums.map(a => `<tr class="disc-row"><td colspan="4">${TagcastI18n.html("common.disc", {disc: a.disc || "?"})}</td></tr>${a.tracks.map(trackRow).join("")}`).join("") : album.tracks.map(trackRow).join("");
+  const editorTabs = bulk ? "" : `<div id="editor-tabs" class="favourites-tabs editor-tabs" role="tablist" aria-label="${TagcastI18n.html("editor.tabs.label")}"><button type="button" id="editor-tab-album" role="tab" data-editor-tab="album" aria-selected="true" aria-controls="editor-album-panel" tabindex="0">${TagcastI18n.html("editor.editAlbum")}</button><button type="button" id="editor-tab-tracks" role="tab" data-editor-tab="tracks" aria-selected="false" aria-controls="editor-tracks-panel" tabindex="-1">${TagcastI18n.html("editor.tabs.tracks")} <span>${allTracks.length}</span></button></div>`;
+  const trackPanel = bulk ? '<div id="track-inline"></div>' : `<section id="editor-tracks-panel" role="tabpanel" aria-labelledby="editor-tab-tracks" hidden><div class="tracks-heading"><h3>${TagcastI18n.html("editor.tracks.heading")} <span class="muted">(${allTracks.length})</span></h3><span class="muted">${TagcastI18n.html("editor.tracks.choose")}</span></div><div class="editor-track-workspace"><div class="editor-track-list"><table class="track-table"><thead><tr><th>#</th><th>${TagcastI18n.html("editor.tracks.columnTitle")}</th><th>${TagcastI18n.html("editor.tracks.columnYearGenre")}</th><th></th></tr></thead><tbody>${trackRows}</tbody></table></div><div id="track-inline"><p class="empty">${TagcastI18n.html("editor.tracks.empty")}</p></div></div></section>`;
+  const eyebrow = whole ? TagcastI18n.html("editor.eyebrow.set", {count: albums.length}) : TagcastI18n.html(bulk ? "editor.eyebrow.bulk" : "editor.eyebrow.album");
+  const help = TagcastI18n.html("editor.help.album"), dot = ' <span aria-hidden="true">·</span> ';
+  const discText = whole ? TagcastI18n.html("library.disc.count", {count: albums.length})
+    : discLabel(album) ? escapeHtml(discLabel(album)) : album.disc ? TagcastI18n.html("common.disc", {disc: album.disc}) : TagcastI18n.html("editor.header.discUnknown");
+  const combined = allTracks.filter(t => hasCombined(t.genres));
+  const scope = whole ? TagcastI18n.html("editor.scope.set", {count: albums.length}) : bulk ? TagcastI18n.html("editor.scope.bulk", {count: albums.length}) : TagcastI18n.html("editor.scope.album");
+  const sources = bulk ? `<aside class="sources"><div class="eyebrow">${TagcastI18n.html("editor.selection.eyebrow")}</div><h3>${TagcastI18n.html("editor.selection.heading")}</h3>` + albums.map(a => `<p class="muted">${escapeHtml(a.name)}${discLabel(a) ? ` · ${escapeHtml(discLabel(a))}` : ""}</p>`).join("") + `<div class="year-note"><strong>${TagcastI18n.html("editor.selection.lookupHeading")}</strong>${TagcastI18n.html("editor.selection.lookupNote")}</div></aside>` : lookupPanel(album);
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${TagcastI18n.html(bulk ? "editor.heading.bulk" : "editor.editAlbum")}</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="editing" aria-label="${help}" title="${help}">?</button><button class="close" data-close="editor" aria-label="${TagcastI18n.html("editor.close")}">×</button></div></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="${TagcastI18n.html("editor.cover.changeTitle")}">${cover(album, true)}<span>${TagcastI18n.html("editor.cover.change")}</span></button>`}<div><h3>${bulk ? TagcastI18n.html("editor.bulk.heading", {count: albums.length, artist: state.artist || album.artist}) : escapeHtml(album.name)}</h3><div class="muted">${escapeHtml(album.artist)}${dot}${TagcastI18n.html("editor.header.tracks", {count: allTracks.length})}${whole || !bulk ? `${dot}${discText}` : ""}${!bulk && !whole && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">${TagcastI18n.html("editor.header.editSet", {count: discSet(album).length})}</button>` : ""}</div><div class="header-actions"><span class="pill">${TagcastI18n.html(live() ? "editor.header.live" : "editor.header.sample")}</span>${live() && single ? `<button class="text-action" data-play-album>${TagcastI18n.html("editor.header.playAlbum")}</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}${TagcastI18n.html("editor.header.artistImage")}</button>` : ""}` : ""}</div></div></div>${editorTabs}<div class="edit-layout" id="editor-layout"><form id="metadata-form"><section id="editor-album-panel" ${bulk ? "" : 'role="tabpanel" aria-labelledby="editor-tab-album"'}><div class="fields">${bulk ? "" : field("name", TagcastI18n.html("editor.field.albumTitle"), whole ? common(albums, "name") : album.name, {wide: true, ...mixed("name")})}${albumArtistField(albums, bulk)}${creditsField(albums[0], {album: true, bulk: bulk || !albums.every(a => sameValue(a.credits || [], albums[0].credits || [])), mixed: !albums.every(a => sameValue(a.credits || [], albums[0].credits || []))})}${field("year", TagcastI18n.html("editor.field.releaseYear"), common(albums, "year"), {type: "number", bulk, hint: TagcastI18n.html("editor.field.releaseYearHint"), ...mixed("year")})}${whole || sameSet ? "" : field("disc", TagcastI18n.html("editor.field.discNumber"), common(albums, "disc"), {type: "number", bulk})}${genreField("genres", TagcastI18n.html("editor.field.genres"), allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: TagcastI18n.html("editor.field.genresHint")})}${combined.length ? `<p class="genre-note wide">${TagcastI18n.html("editor.genres.combinedNote", {count: combined.length, example: combined[0].genres.find(g => g.includes(";"))})} <button type="button" class="text-action" data-split-album-genres>${TagcastI18n.html("editor.genres.split")}</button></p>` : ""}${genreField("composers", TagcastI18n.html("editor.field.composers"), allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: TagcastI18n.html("editor.field.composersHint")})}</div><label class="checkline"><input type="checkbox" id="track-years"> ${TagcastI18n.html("editor.field.trackYears")}</label><div class="scope-note">${scope}</div></section>${trackPanel}</form>${sources}</div><div class="dialog-footer"><span class="muted">${TagcastI18n.html(live() ? "editor.footer.live" : "editor.footer.demo")}</span><button class="button" data-close="editor">${TagcastI18n.html("common.cancel")}</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>${TagcastI18n.html("editor.footer.nextAlbum")}</button>`}<button class="button primary" id="review-button">${TagcastI18n.html("editor.footer.review")}</button></div>`;
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   // A mixed disc-set year is a blank placeholder, not an instruction to clear tracks.
   $("#track-years").checked = metadataEditingDefaults.applyYearToTracks && !bulk
@@ -883,8 +936,8 @@ function setEditorTab(tab, focus = false) {
   const help = $("#editor .help-trigger");
   if (help) {
     help.dataset.helpContext = tab === "tracks" ? "editing-tracks" : "editing";
-    help.setAttribute("aria-label", tab === "tracks" ? "Help with track editing" : "Help with album editing");
-    help.title = tab === "tracks" ? "Help with track editing" : "Help with album editing";
+    help.setAttribute("aria-label", TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album"));
+    help.title = TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album");
   }
   if (tab === "tracks" && typeof renderLyrics === "function") renderLyrics("track");
   if (focus) $(`#editor-tab-${tab}`).focus({preventScroll: true});
@@ -893,14 +946,15 @@ function setEditorTab(tab, focus = false) {
 function readNumber(value) {
   if (value === "") return 0;
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 0 || n > 9999) throw Error("Numbers must be whole values from 0 to 9999.");
+  if (!Number.isInteger(n) || n < 0 || n > 9999) throw editorFailure("errors.editor.number_range");
   return n;
 }
 
+// The error message stays English; show it with TagcastI18n.errorText(error).
 function readYear(value) {
   const n = Number(value || 0);
   if (!Number.isInteger(n) || (n !== 0 && (n < 1800 || n > 2050))) {
-    throw Error("Years must be from 1800 to 2050. Use 0 to clear the year.");
+    throw editorFailure("errors.editor.year_range");
   }
   return n;
 }
@@ -913,7 +967,7 @@ function readMetadataNumber(key, value, before) {
 function validateYearInput(input) {
   let message = "";
   try { readMetadataNumber("year", input.value, Number(input.dataset.originalYear)); }
-  catch (error) { message = error.message; }
+  catch (error) { message = TagcastI18n.errorText(error); }
   input.setCustomValidity?.(message);
 }
 
@@ -924,7 +978,7 @@ function stashTrack() {
   const data = {};
   for (const input of pane.querySelectorAll("input[data-key]")) {
     if (input.dataset.key === "year" && input.validity?.badInput) {
-      throw Error("Years must be from 1800 to 2050. Use 0 to clear the year.");
+      throw editorFailure("errors.editor.year_range");
     }
     data[input.dataset.key] = input.type === "number" ? readMetadataNumber(input.dataset.key, input.value, original[input.dataset.key]) : input.value.trim();
   }
@@ -934,19 +988,23 @@ function stashTrack() {
   if (composers) { commitTyped(composers); data.composers = getGenres(composers); }
   const credits = pane.querySelector('[data-credit-editor="track-credits"]');
   if (credits && (credits.dataset.dirty === "true" || editing.trackPatches[pane.dataset.track]?.credits)) data.credits = readCredits(credits);
-  if (!data.title) throw Error("A track title cannot be empty.");
+  if (!data.title) throw editorFailure("errors.editor.track_title_empty");
   editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => !sameValue(original[key], value)));
 }
 
 function editTrack(id) {
-  try { stashTrack(); } catch (error) { toast(error.message); return; }
+  try { stashTrack(); } catch (error) { toast(TagcastI18n.errorText(error)); return; }
   showTrackGenres();
   const original = editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === id);
   if (!original) return;
   setEditorTab("tracks");
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
-  pane.innerHTML = `<div class="track-inline"><h3>Track ${original.track}: ${escapeHtml(original.title)}</h3><div class="fields">${[["title", "Track title", "text"], ["artist", "Track artist", "text"], ["year", "Track year", "number"], ["track", "Track number", "number"]].map(([key, label, type]) => `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="Track artist" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="Find an existing artist, or enter a new name"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`).join("")}${genreField("track-genres", "Track genres", track.genres || [])}${creditsField(track)}</div><section id="track-lyrics" class="track-lyrics" hidden></section><p class="muted">Track years: 1800–2050; use 0 to clear. Individual track edits take priority over album-wide track changes.</p></div>`;
+  const fields = [["title", "editor.track.titleField", "text"], ["artist", "editor.track.artistField", "text"], ["year", "editor.track.yearField", "number"], ["track", "editor.track.numberField", "number"]];
+  pane.innerHTML = `<div class="track-inline"><h3>${TagcastI18n.html("editor.track.heading", {number: original.track, title: original.title})}</h3><div class="fields">${fields.map(([key, labelKey, type]) => {
+    const label = TagcastI18n.html(labelKey);
+    return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`;
+  }).join("")}${genreField("track-genres", TagcastI18n.html("editor.track.genresField"), track.genres || [])}${creditsField(track)}</div><section id="track-lyrics" class="track-lyrics" hidden></section><p class="muted">${TagcastI18n.html("editor.track.note")}</p></div>`;
   renderLyrics("track", lyricsSelection(original));
   for (const button of document.querySelectorAll("#editor-tracks-panel button[data-track]")) {
     button.setAttribute("aria-pressed", String(button.dataset.track === id));
@@ -976,7 +1034,7 @@ function buildReview() {
       const input = form.elements.namedItem(key);
       if (!input || input.disabled || (!editing.bulk && !editing.dirty.has(key))) continue;
       const value = input.type === "number" ? readMetadataNumber(key, input.value, common(editing.originals, key)) : input.value.trim();
-      if (["name", "artist"].includes(key) && !value) throw Error("Album title and artist cannot be empty.");
+      if (["name", "artist"].includes(key) && !value) throw editorFailure("errors.editor.album_fields_empty");
       if (editing.originals.every(item => item[key] === value)) continue;
       albumPatch[key] = value;
     }
@@ -996,7 +1054,7 @@ function buildReview() {
       if (!allTracks.every(t => sameValue(t.composers, value))) trackPatch.composers = value;
     }
     if ($("#track-years").checked) {
-      if (form.elements.year.disabled) throw Error("Enable Release year before applying it to tracks.");
+      if (form.elements.year.disabled) throw editorFailure("errors.editor.year_disabled");
       trackPatch.year = readYear(form.elements.year.value);
     }
     const changes = [];
@@ -1017,16 +1075,22 @@ function buildReview() {
         diff("track", track, patch, album.id);
       }
     }
-    if (!changes.length) { toast("There are no changes to review."); return; }
+    if (!changes.length) { toast(TagcastI18n.text("review.toast.noChanges")); return; }
     pending = {scope: editing.bulk ? "artist" : "album", selection: editing.originals.map(a => ({id: a.id, name: a.name, artist: a.artist})), changes};
     showReview(changes);
-  } catch (error) { toast(error.message); }
+  } catch (error) { toast(TagcastI18n.errorText(error)); }
 }
 
+// Review and Change history render stored English data; only these labels follow the
+// interface language, at render time.
 const shown = value => (Array.isArray(value) ? value.map(entry => typeof entry === "object" && entry !== null
-  ? `${entry.name} (${creditRoleLabels[entry.type || "artist"] || entry.type}${entry.phrase ? ` · ${entry.phrase}` : ""})` : entry).join(" · ") : value) || "Empty";
-const fieldLabel = key => key === "credits" ? "Additional artists and credits" : key === "name" ? "Title" : key === "track" ? "Track number" : key === "artist_id" ? "Album artist" : key[0].toUpperCase() + key.slice(1);
-const fieldShown = (key, values, side) => key === "artist_id" ? values[`${side}_name`] || (values[side] === 0 ? "Various Artists" : `Artist ${values[side]}`) : shown(values[side]);
+  ? `${entry.name} (${creditRoleLabels[entry.type || "artist"] || entry.type}${entry.phrase ? ` · ${entry.phrase}` : ""})` : entry).join(" · ") : value) || TagcastI18n.text("history.value.empty");
+const FIELD_LABELS = {credits: "history.field.credits", name: "history.field.name", title: "history.field.title", track: "history.field.track",
+  artist_id: "history.field.artistId", artist: "history.field.artist", year: "history.field.year", disc: "history.field.disc",
+  genres: "history.field.genres", composers: "history.field.composers", cover: "history.field.cover", image: "history.field.image",
+  trash: "history.field.trash", album: "history.field.album"};
+const fieldLabel = key => Object.hasOwn(FIELD_LABELS, key) ? TagcastI18n.text(FIELD_LABELS[key]) : key[0].toUpperCase() + key.slice(1);
+const fieldShown = (key, values, side) => key === "artist_id" ? values[`${side}_name`] || (values[side] === 0 ? "Various Artists" : TagcastI18n.text("history.value.artistId", {id: values[side]})) : shown(values[side]);
 
 // Albums one by one; track changes grouped by field and value, so twelve tracks that get
 // the same genre read as one line instead of twelve.
@@ -1037,7 +1101,7 @@ function reviewList(changes) {
   const severalAlbums = new Set(tracks.map(c => String(c.albumId))).size > 1;
   const albumName = id => {
     const a = state.details.get(String(id)) || editing?.originals.find(o => String(o.id) === String(id));
-    return a ? a.name + (discSet(a) ? ` · Disc ${a.disc || "?"}` : "") : "";
+    return a ? a.name + (discSet(a) ? ` · ${TagcastI18n.text("common.disc", {disc: a.disc || "?"})}` : "") : "";
   };
   const groups = new Map();
   for (const c of tracks) {
@@ -1049,9 +1113,9 @@ function reviewList(changes) {
   }
   const trackRows = [...groups.values()].map(g => `${row(g.key, g.values)}${g.labels.length === 1
     ? `<p class="diff-tracks">${escapeHtml(g.labels[0])}</p>`
-    : `<details class="diff-tracks"><summary>${g.labels.length} tracks</summary><ul>${g.labels.map(l => `<li>${escapeHtml(l)}</li>`).join("")}</ul></details>`}`).join("");
-  return albums.map(c => `<section class="diff-group"><h3>Album · ${escapeHtml(c.label)}</h3>${Object.entries(c.fields).map(([key, v]) => row(key, v)).join("")}</section>`).join("")
-    + (tracks.length ? `<section class="diff-group"><h3>${tracks.length === 1 ? "Track" : `Tracks · ${tracks.length} changed`}</h3>${trackRows}</section>` : "");
+    : `<details class="diff-tracks"><summary>${TagcastI18n.html("review.diff.tracks", {count: g.labels.length})}</summary><ul>${g.labels.map(l => `<li>${escapeHtml(l)}</li>`).join("")}</ul></details>`}`).join("");
+  return albums.map(c => `<section class="diff-group"><h3>${TagcastI18n.html("review.group.album", {label: c.label})}</h3>${Object.entries(c.fields).map(([key, v]) => row(key, v)).join("")}</section>`).join("")
+    + (tracks.length ? `<section class="diff-group"><h3>${TagcastI18n.html("review.group.tracks", {count: tracks.length})}</h3>${trackRows}</section>` : "");
 }
 
 function showReview(changes) {
@@ -1083,8 +1147,8 @@ function applyDraft() {
   for (const change of pending.changes) {
     const album = state.details.get(String(change.albumId));
     const target = change.kind === "album" ? album : album?.tracks.find(t => String(t.id) === String(change.id));
-    if (!target) { toast("The selection changed. Open the album again."); return; }
-    for (const [key, value] of Object.entries(change.fields)) if (!sameValue(key === "credits" ? creditValues(target) : target[key], value.before)) { toast("A value changed since this draft. Review it again."); return; }
+    if (!target) { toast(TagcastI18n.text("review.toast.selectionChanged")); return; }
+    for (const [key, value] of Object.entries(change.fields)) if (!sameValue(key === "credits" ? creditValues(target) : target[key], value.before)) { toast(TagcastI18n.text("review.toast.valueChanged")); return; }
   }
   const next = thenNext();
   applyLocally(pending.changes);
@@ -1093,7 +1157,7 @@ function applyDraft() {
   if (next) setTimeout(() => openEditor(shelfIds(next)), 0);
   if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
   $("#review").close(); $("#editor").close(); render();
-  toast("Draft applied to this preview. Your iBroadcast library was not changed.");
+  toast(TagcastI18n.text("review.toast.previewApplied"));
 }
 
 // Show reviewed values right away; a live save replaces them with iBroadcast's read-back.
@@ -1141,12 +1205,28 @@ function dropTracks(ids) {
   if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
 }
 
+// What Change history shows besides the entries: a cleared note and a status key.
+const historyView = {cleared: false, status: ""};
+
 function showHistory() {
   $("#history-status").textContent = "";
+  historyView.cleared = false; historyView.status = "";
   $("#history-clear-review").hidden = true;
   updateHistoryControls();
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>Undo</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="Before" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="After" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${new Date(entry.created).toLocaleString("en-GB")} · ${entry.changes.length} records</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">Review the rest again →</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("") : '<p class="empty">No drafts yet. Open an album to start editing.</p>';
+  renderHistory();
   $("#history").showModal();
+}
+
+// Entries are stored English data; labels, status pills, dates and counts are rendered in
+// the interface language. A language change repaints this while the dialog is open.
+function historyDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : TagcastI18n.dateTime(date);
+}
+
+function renderHistory() {
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
+    : `<p class="empty">${TagcastI18n.html(historyView.cleared ? "history.cleared" : "history.empty")}</p>`;
 }
 
 document.addEventListener("click", event => {
@@ -1155,7 +1235,7 @@ document.addEventListener("click", event => {
     if (close.dataset.close === "lyrics-review" && trackLyrics.busy) return;
     if (close.dataset.close === "playlist-import") {
       if (typeof requestClosePlaylistImport === "function") requestClosePlaylistImport();
-      else toast("Tagcast was updated. Reload this tab to finish the update; the current CSV import will be lost.");
+      else toast(TagcastI18n.text("app.update.reloadImport"));
     }
     else $(`#${close.dataset.close}`).close();
     return;
@@ -1235,7 +1315,7 @@ $("#edit-selection").addEventListener("click", () => openEditor([...state.select
 $("#apply-draft").addEventListener("click", applyDraft);
 $("#show-history").addEventListener("click", showHistory);
 function exportHistory() {
-  if (!state.history.length) { toast("Make and review an edit before exporting the change history."); return; }
+  if (!state.history.length) { toast(TagcastI18n.text("history.export.empty")); return; }
   const blob = new Blob([JSON.stringify({format: "tagcast-history", version: 2, exported: new Date().toISOString(), entries: state.history}, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob), link = document.createElement("a");
   link.href = url; link.download = `tagcast-history-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -1252,13 +1332,13 @@ function updateHistoryControls() {
   if (settingsExport) settingsExport.disabled = !state.history.length;
   for (const id of ["#history-clear", "#history-clear-confirm"]) {
     $(id).disabled = !state.history.length || busy;
-    $(id).title = busy ? "Wait until saves and their checks have finished." : "";
+    $(id).title = busy ? TagcastI18n.text("history.clear.busy") : "";
   }
 }
 
 $("#history-clear").addEventListener("click", () => {
   if (!state.history.length || saving || checking) return;
-  $("#history-status").textContent = "";
+  $("#history-status").textContent = ""; historyView.status = "";
   $("#history-clear-review").hidden = false;
   $("#history-clear-cancel").focus();
 });
@@ -1272,12 +1352,13 @@ $("#history-clear-confirm").addEventListener("click", () => {
     // Keep an empty current key so the earlier library-studio history cannot return.
     localStorage.setItem("tagcast-history", "[]");
   } catch {
-    $("#history-status").textContent = "Change history could not be cleared from browser storage. Try again when storage is available.";
+    historyView.status = "history.clear.storageFailed";
+    $("#history-status").textContent = TagcastI18n.text("history.clear.storageFailed");
     return;
   }
   state.history = [];
   render(); showHistory();
-  $("#history-content").innerHTML = '<p class="empty">Change history cleared. Your library is unchanged.</p>';
+  historyView.cleared = true; renderHistory();
   $("#history .close").focus();
 });
 window.addEventListener("beforeunload", event => { if (saving || state.history.some(h => h.status === "preview_only")) { event.preventDefault(); event.returnValue = ""; } });
@@ -1297,6 +1378,8 @@ async function api(path, body) {
   if (!response.ok) {
     const error = Error(data.error || `Tagcast returned HTTP ${response.status}.`);
     error.status = response.status; error.data = data;
+    // A stable code lets the interface translate known errors; the English message stays as is.
+    if (typeof data.code === "string") { error.code = data.code; error.params = data.params && typeof data.params === "object" ? data.params : {}; }
     throw error;
   }
   return data;
@@ -1307,9 +1390,11 @@ function colorize(albums) {
   return albums.map((a, i) => ({...a, color: known.get(String(a.id)) || colors[i % colors.length]}));
 }
 
+// Stored statuses stay codes; the pill shows them in the interface language.
+const STATUS_LABELS = {saved: "history.status.saved", sent: "history.status.sent", blocked: "history.status.blocked", unverified: "history.status.unverified",
+  failed: "history.status.failed", not_sent: "history.status.notSent", preview_only: "history.status.previewOnly"};
 function statusPill(status) {
-  const labels = {saved: "Saved", sent: "Checking…", blocked: "Not sent · setting", unverified: "Not confirmed", failed: "Failed", not_sent: "Not sent", preview_only: "Preview only"};
-  return `<span class="status ${escapeHtml(status)}">${escapeHtml(labels[status] || status)}</span>`;
+  return `<span class="status ${escapeHtml(status)}">${Object.hasOwn(STATUS_LABELS, status) ? TagcastI18n.html(STATUS_LABELS[status]) : escapeHtml(status)}</span>`;
 }
 
 function updatePlaylistCount(value = state.playlistsCount) {
@@ -1317,7 +1402,7 @@ function updatePlaylistCount(value = state.playlistsCount) {
   const node = $("#playlist-count");
   const known = live() && state.connection.connected && !state.loading && state.playlistsCount !== null;
   node.hidden = !known;
-  node.textContent = known ? state.playlistsCount.toLocaleString("en") : "";
+  node.textContent = known ? TagcastI18n.number(state.playlistsCount) : "";
 }
 
 function updateChrome() {
@@ -1330,12 +1415,19 @@ function updateChrome() {
   if (typeof updateRecentlyPlayedControls === "function") updateRecentlyPlayedControls();
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
   updateHistoryControls();
-  const c = state.connection;
+  paintChrome();
+}
+
+// Connection, mode and notice texts from the current state only; also repainted on a
+// language change.
+function paintChrome() {
+  const c = state.connection, account = c.account || TagcastI18n.text("connection.title.connected");
   $("#status-dot").className = `status-dot ${live() && !state.loading ? "live" : state.loading ? "busy" : ""}`;
-  $("#connection-title").textContent = live() ? `${c.account || "Connected"} · iBroadcast` : c.connected ? `${c.account || "Connected"} · Snapshot` : "Preview workspace";
-  $("#connection-title").title = c.connected ? `Connected to iBroadcast as ${c.account || "your account"}` : "No iBroadcast account connected";
+  $("#connection-title").textContent = live() ? `${account} · iBroadcast` : c.connected ? `${account} · ${TagcastI18n.text("connection.title.snapshot")}` : TagcastI18n.text("connection.title.preview");
+  $("#connection-title").title = !c.connected ? TagcastI18n.text("connection.title.none")
+    : c.account ? TagcastI18n.text("connection.title.as", {account: c.account}) : TagcastI18n.text("connection.title.asYourAccount");
   $("#connection-text").hidden = live();
-  $("#connection-text").textContent = live() ? "" : c.connected ? "Reload your library to edit it live." : "No account connected. Edits stay in this browser tab.";
+  $("#connection-text").textContent = live() ? "" : TagcastI18n.text(c.connected ? "connection.text.reload" : "connection.text.none");
   $("#connect-button").hidden = c.connected;
   $("#reload-button").hidden = !c.connected;
   $("#logout-button").hidden = !c.connected;
@@ -1343,20 +1435,20 @@ function updateChrome() {
   badge.classList.add("operation-status");
   badge.setAttribute("data-working", String(checking > 0 && !state.loading && live() && c.connected));
   badge.classList.toggle("live", live());
-  badge.textContent = state.loading ? "Loading library…" : checking ? "Checking saves…" : live() ? "Live" : "Demo · Connect";
-  badge.title = c.connected ? `Connected as ${c.account || "your iBroadcast account"}. Open connection details.` : "Connect your iBroadcast account.";
+  badge.textContent = TagcastI18n.text(state.loading ? "connection.badge.loading" : checking ? "connection.badge.checking" : live() ? "connection.badge.live" : "connection.badge.demo");
+  badge.title = !c.connected ? TagcastI18n.text("connection.badge.connect")
+    : c.account ? TagcastI18n.text("connection.badge.as", {account: c.account}) : TagcastI18n.text("connection.badge.asYourAccount");
   badge.setAttribute("aria-label", `${badge.textContent}. ${badge.title}`);
-  $("#data-notice").textContent = live() ? "Live iBroadcast library. Metadata saves are checked against iBroadcast first and read back afterwards. Your music files are never touched."
-    : "Demo library with sample records. Connect your iBroadcast account to edit your own collection.";
+  $("#data-notice").textContent = TagcastI18n.text(live() ? "connection.notice.live" : "connection.notice.demo");
   $("#library-notice").hidden = !libraryNotice.visible;
   $("#library-loading").hidden = !state.loading;
-  $("#history-note").textContent = live() ? "Saved changes are listed with their read-back status. Export the changes if you want a record of this session." : "Export the changes before closing this tab. Preview drafts are not saved to iBroadcast.";
+  $("#history-note").textContent = TagcastI18n.text(live() ? "history.note.live" : "history.note.demo");
 }
 
 async function boot() {
   const params = new URLSearchParams(location.search);
-  if (params.has("auth_error")) toast(`Sign-in failed: ${params.get("auth_error")}`);
-  if (params.has("connected")) toast("Connected to iBroadcast.");
+  if (params.has("auth_error")) toast(TagcastI18n.text("connection.signIn.failed", {error: params.get("auth_error")}));
+  if (params.has("connected")) toast(TagcastI18n.text("connection.signIn.connected"));
   if (params.size) history.replaceState(null, "", location.pathname);
   try {
     state.connection = await api("/api/status");
@@ -1396,7 +1488,8 @@ async function loadLive(refresh = false) {
   state.loading = true; state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
-  $("#library-loading-detail").textContent = `${nextLibraryLoadingMessage()} ${refresh ? "Downloading a fresh copy of your collection. " : ""}Large libraries can take a little while.`;
+  libraryLoadingRefresh = refresh;
+  $("#library-loading-detail").textContent = libraryLoadingText(nextLibraryLoadingMessage(), refresh);
   updateChrome(); render();
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
@@ -1412,14 +1505,13 @@ async function loadLive(refresh = false) {
     state.connection.combine_sets = Boolean(data.combine_sets);
     if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
     if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
-    const count = `${state.albums.length.toLocaleString("en")} albums`;
-    toast(data.source === "download" ? `Downloaded ${count} from iBroadcast.` : `Loaded ${count}. Nothing changed in iBroadcast since the last download.`);
+    toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
   } catch (error) {
     if (!current()) return;
     completed = true;
     if (error.status === 401) state.connection.connected = false;
     useLocal(demoLibrary(), "demo");
-    toast(`Could not load your library: ${error.message}`);
+    toast(TagcastI18n.text("library.load.failed", {error: TagcastI18n.errorText(error)}));
   } finally {
     if (!completed && request !== libraryLoadRequest) return;
     if (!completed && session !== state.connection.playback_session) {
@@ -1439,10 +1531,15 @@ function connectView(view, extra = {}) {
   const c = state.connection, box = $("#connect-content");
   const error = extra.error ? `<div class="error-box">${escapeHtml(extra.error)}</div>` : "";
   if (view === "connected") {
-    box.innerHTML = `<div class="connect-step"><p class="muted">Connected${c.account ? ` as <strong>${escapeHtml(c.account)}</strong>` : ""}. Tagcast can read your library and save metadata you review.</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">Disconnect</button><button class="button" id="connect-redownload" title="Normally the library is only downloaded when iBroadcast reports a change">Download everything again</button><button class="button primary" id="connect-reload">Reload library</button></div>`;
+    const connected = c.account ? TagcastI18n.html("connection.connected.as", {account: TagcastI18n.trusted(`<strong>${escapeHtml(c.account)}</strong>`)}) : TagcastI18n.html("connection.connected.plain");
+    box.innerHTML = `<div class="connect-step"><p class="muted">${connected} ${TagcastI18n.html("connection.connected.note")}</p>${error}</div><div class="dialog-footer"><button class="button" id="connect-logout">${TagcastI18n.html("connection.disconnect")}</button><button class="button" id="connect-redownload" title="${TagcastI18n.html("connection.redownload.title")}">${TagcastI18n.html("connection.redownload.label")}</button><button class="button primary" id="connect-reload">${TagcastI18n.html("common.reloadLibrary")}</button></div>`;
   } else if (view === "ready") {
     const previous = c.using_default_client === false;
-    box.innerHTML = `<div class="connect-step"><p class="muted">Sign in on the official iBroadcast website and approve the connection. Tagcast returns here automatically. Tagcast asks for permission to <strong>read and edit your music library</strong> and to show your account name. Your password stays on iBroadcast.${typeof musicUploadsView !== "undefined" && musicUploadsView.enabled ? " Music uploads are enabled: this sign-in also requests permission to upload your selected files." : ""}</p><p class="muted">${previous ? "Your previously configured app registration is still in use." : "Tagcast is already registered with iBroadcast. You do not need to create an app or enter a client ID."}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? '<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">Use Tagcast sign-in</button>' : ""}${previous ? '<button class="button" id="browser-start">Use browser redirect</button>' : ""}<button class="button primary" id="device-start">Sign in with iBroadcast →</button></div>${previous ? `<p class="muted">Browser redirect uses <code>http://127.0.0.1:${location.port || 80}/callback</code>; it must match your existing registration.</p>` : ""}`;
+    const permission = TagcastI18n.html("connection.ready.permission", {permission: TagcastI18n.trusted(`<strong>${TagcastI18n.html("connection.ready.permissionScope")}</strong>`)});
+    const intro = [TagcastI18n.html("connection.ready.intro"), permission, TagcastI18n.html("connection.ready.password"),
+      typeof musicUploadsView !== "undefined" && musicUploadsView.enabled ? TagcastI18n.html("connection.ready.uploads") : ""].filter(Boolean).join(" ");
+    const redirect = TagcastI18n.html("connection.ready.redirect", {url: TagcastI18n.trusted(`<code>http://127.0.0.1:${escapeHtml(location.port || 80)}/callback</code>`)});
+    box.innerHTML = `<div class="connect-step"><p class="muted">${intro}</p><p class="muted">${TagcastI18n.html(previous ? "connection.ready.previous" : "connection.ready.registered")}</p>${error}</div><div class="dialog-footer">${previous && !c.client_id_from_env && !c.connected ? `<button class="text-button" id="client-default" style="color:var(--green);margin-right:auto">${TagcastI18n.html("connection.ready.useDefault")}</button>` : ""}${previous ? `<button class="button" id="browser-start">${TagcastI18n.html("connection.ready.useBrowser")}</button>` : ""}<button class="button primary" id="device-start">${TagcastI18n.html("connection.ready.signIn")}</button></div>${previous ? `<p class="muted">${redirect}</p>` : ""}`;
   } else if (view === "device") {
     box.innerHTML = signInDeviceMarkup(extra.device, {error, fallback: extra.fallback});
   }
@@ -1475,7 +1572,7 @@ function pollDevice(delay = 2000) {
       }
       if (status.device.state === "error" || (status.device.expires_at && status.device.expires_at * 1000 < Date.now())) {
         stopPoll(); closeSignInChild(); signInFlow.requestId = "";
-        connectView("ready", {error: status.device.error || "The sign-in expired. Start again."}); return;
+        connectView("ready", {error: status.device.error || TagcastI18n.text("connection.signIn.expired")}); return;
       }
     } catch { /* keep the existing single poller through brief hiccups */ }
     if (generation === signInPollGeneration) pollDevice();
@@ -1501,17 +1598,17 @@ async function connectAction(target) {
     } else if (target.id === "connect-redownload") {
       $("#connect").close(); loadLive(true);
     } else if (target.id === "connect-logout" || target.id === "logout-button") {
-      if (!confirm("Disconnect from iBroadcast? Your saved changes stay in iBroadcast; the sign-in on this computer is removed.")) return;
+      if (!confirm(TagcastI18n.text("connection.disconnectConfirm"))) return;
       await api("/api/auth/logout", {});
       state.connection = {...state.connection, connected: false, account: "", device: null};
       if ($("#connect").open) $("#connect").close();
       useLocal(demoLibrary(), "demo"); state.artist = null; state.selected.clear();
-      updateChrome(); render(); toast("Disconnected. The sign-in was removed from this computer.");
+      updateChrome(); render(); toast(TagcastI18n.text("connection.disconnected"));
     }
   } catch (error) {
     target.disabled = false;
     const view = ["device-start", "browser-start", "client-default"].includes(target.id) ? "ready" : state.connection.connected ? "connected" : "ready";
-    if ($("#connect").open) connectView(view, {error: error.message}); else toast(error.message);
+    if ($("#connect").open) connectView(view, {error: TagcastI18n.errorText(error)}); else toast(TagcastI18n.errorText(error));
   }
 }
 
@@ -1527,19 +1624,17 @@ function renderReviewChrome(changes) {
   const apply = $("#apply-draft"), count = changes.length;
   $("#then-next-label").hidden = pending?.scope !== "album";
   apply.disabled = false; reloadOnApply = false;
-  apply.textContent = live() ? `Save ${count} ${count === 1 ? "record" : "records"} to iBroadcast` : "Apply to preview";
+  apply.textContent = live() ? TagcastI18n.text("review.apply.save", {count}) : TagcastI18n.text("review.apply.preview");
   $("#review-cancel").disabled = false;
   $("#review-status").innerHTML = "";
-  $("#review-intro").textContent = live()
-    ? "Saving writes these values to your iBroadcast library. Tagcast first checks that nothing changed in iBroadcast since you loaded it; if something did, nothing is written."
-    : "These changes apply only to this preview. Connect your account to save them to iBroadcast.";
-  const warnings = [];
+  $("#review-intro").textContent = TagcastI18n.text(live() ? "review.intro.live" : "review.intro.demo");
+  const warnings = [];  // markup
   if (live()) {
     const known = knownArtists();
     const fresh = [...new Set(changes.flatMap(c => [...(c.fields.artist ? [c.fields.artist.after] : []), ...(c.fields.composers?.after || [])]))].filter(n => !known.has(n.toLocaleLowerCase()));
-    if (fresh.length) warnings.push(`New ${fresh.length === 1 ? "artist" : "artists"} in iBroadcast: ${fresh.map(n => `“${escapeHtml(n)}”`).join(", ")}. Check the spelling; Tagcast will create ${fresh.length === 1 ? "it" : "them"} unless your library already has ${fresh.length === 1 ? "an artist" : "artists"} with that name.`);
-    if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push("“Combine Multi-Disc Album Sets” is on in your iBroadcast settings. iBroadcast doesn't accept album changes (title, album artist, year, disc) while it is, so those will not be sent; track changes such as genres are saved. To save album changes, turn the setting off in iBroadcast first, then use “Review the rest” afterwards.");
-    if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push("Changing an album artist can make iBroadcast regroup the album. The library is read back after saving so you see the result.");
+    if (fresh.length) warnings.push(TagcastI18n.html("review.warning.newArtists", {count: fresh.length, names: TagcastI18n.trusted(fresh.map(n => `“${escapeHtml(n)}”`).join(", "))}));
+    if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push(TagcastI18n.html("review.warning.combineSets"));
+    if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push(TagcastI18n.html("review.warning.albumArtist"));
   }
   $("#review-warnings").innerHTML = warnings.map(w => `<div class="warn-box">${w}</div>`).join("");
 }
@@ -1557,8 +1652,8 @@ async function saveDraft() {
   saving = true;
   const yearReviewContext = typeof beginYearReviewSave === "function" ? beginYearReviewSave(editing) : null;
   const apply = $("#apply-draft");
-  apply.disabled = true; $("#review-cancel").disabled = true; apply.textContent = "Saving…";
-  setActionStatus("#review-status", "Checking iBroadcast and saving…", true);
+  apply.disabled = true; $("#review-cancel").disabled = true; apply.textContent = TagcastI18n.text("review.saving");
+  setActionStatus("#review-status", TagcastI18n.text("review.status.checkingAndSaving"), true);
   try {
     const result = await api("/api/save", {changes: pending.changes});
     const byId = new Map((result.results || []).map(r => [`${r.kind}:${r.id}`, r.status]));
@@ -1577,7 +1672,7 @@ async function saveDraft() {
     if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
     $("#review").close(); $("#editor").close(); render();
     if (overall === "failed" || !statuses.length || result.error) showResults(result, overall, entry);
-    else toast(`${statuses.length} ${statuses.length === 1 ? "record" : "records"} saved. Checking the result with iBroadcast in the background…`);
+    else toast(TagcastI18n.text("review.saved", {count: statuses.length}));
     if (yearReviewContext) acceptedYearReviewSave(yearReviewContext);
     if (result.job) {
       const verification = followJob(result.job, entry);
@@ -1587,18 +1682,18 @@ async function saveDraft() {
   } catch (error) {
     if (yearReviewContext) yearReviewContext.saving = false;
     apply.disabled = false; $("#review-cancel").disabled = false;
-    apply.textContent = "Try again";
+    apply.textContent = TagcastI18n.text("common.tryAgain");
     if (error.status === 401) {
       state.connection.connected = false; updateChrome();
-      $("#review-status").innerHTML = `<span class="error-text">${escapeHtml(error.message)}</span>`;
+      $("#review-status").innerHTML = `<span class="error-text">${escapeHtml(TagcastI18n.errorText(error))}</span>`;
       apply.disabled = true;
     } else if (error.status === 409) {
-      $("#review-status").innerHTML = `<span class="error-text">${escapeHtml(error.message)}</span>`;
-      apply.textContent = "Reload library"; reloadOnApply = true;
+      $("#review-status").innerHTML = `<span class="error-text">${escapeHtml(TagcastI18n.errorText(error))}</span>`;
+      apply.textContent = TagcastI18n.text("common.reloadLibrary"); reloadOnApply = true;
       apply.disabled = false;
       return;
     } else {
-      $("#review-status").innerHTML = `<span class="error-text">Nothing was confirmed: ${escapeHtml(error.message)}</span>`;
+      $("#review-status").innerHTML = `<span class="error-text">${TagcastI18n.html("review.error.notConfirmed", {error: TagcastI18n.errorText(error)})}</span>`;
     }
   } finally {
     saving = false;
@@ -1611,7 +1706,7 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   const order = ++saveOrder;
   rememberHistory();
   checking += 1; updateChrome();
-  let job;
+  let job, shownError = "";
   try {
     for (;;) {
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1619,13 +1714,14 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
       if (job.state !== "checking") break;
     }
   } catch (error) {
-    job = {state: "error", error: error.message};
+    // The history entry keeps the English message; the toast shows a known code translated.
+    job = {state: "error", error: error.message}; shownError = TagcastI18n.errorText(error);
   } finally { checking -= 1; updateChrome(); }
   if (!stillCurrent()) return null;
   if (job.state === "error") {
     entry.status = "unverified"; entry.error = [entry.error, job.error].filter(Boolean).join(" ");
     for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
-    rememberHistory(); toast(job.error); return job;
+    rememberHistory(); toast(shownError || job.error); return job;
   }
   const byId = new Map(job.results.map(r => [`${r.kind}:${r.id}`, r.status]));
   for (const c of entry.changes) {
@@ -1644,26 +1740,33 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   } else { applyEditorNames(job.editor_names); pendingAlbums = job.albums; }
   onDone?.(job);
   const done = job.results.filter(r => r.status === "saved").length;
-  if (entry.status === "saved") toast(`Confirmed by iBroadcast: ${done} ${done === 1 ? "record" : "records"} saved.`);
+  if (entry.status === "saved") toast(TagcastI18n.text("review.confirmed", {count: done}));
   else showResults({results: job.results, error: entry.error}, entry.status, entry);
   return job;
 }
 
+// Field codes in save results, as short lowercase names; unknown codes stay as they are.
+const RESULT_FIELDS = {name: "review.resultField.title", title: "review.resultField.title", track: "review.resultField.trackNumber",
+  artist: "review.resultField.artist", year: "review.resultField.year", disc: "review.resultField.disc",
+  genres: "review.resultField.genres", composers: "review.resultField.composers", credits: "review.resultField.credits"};
+const resultFieldName = field => Object.hasOwn(RESULT_FIELDS, field) ? TagcastI18n.text(RESULT_FIELDS[field]) : field;
+
 function showResults(result, overall, entry) {
   const rows = result.results || [];
   const saved = rows.filter(r => r.status === "saved").length;
-  $("#results-title").textContent = !rows.length ? "Already up to date" : overall === "saved" ? `${saved} ${saved === 1 ? "record" : "records"} saved` : overall === "unverified" ? "Saved, partly not confirmed" : "Save incomplete";
+  $("#results-title").textContent = !rows.length ? TagcastI18n.text("review.results.upToDate") : overall === "saved" ? TagcastI18n.text("review.results.saved", {count: saved})
+    : TagcastI18n.text(overall === "unverified" ? "review.results.partlyUnconfirmed" : "review.results.incomplete");
   const notes = [];
   if (result.message) notes.push(`<p class="muted">${escapeHtml(result.message)}</p>`);
   if (result.error) notes.push(`<div class="error-box">${escapeHtml(result.error)}</div>`);
-  if (result.created_artists?.length) notes.push(`<p class="muted">New artists created: ${result.created_artists.map(n => `“${escapeHtml(n)}”`).join(", ")}.</p>`);
-  if (overall === "unverified") notes.push('<div class="warn-box">iBroadcast accepted the request, but the library it returned does not show every new value yet. Reload the library in a minute to check.</div>');
-  if (result.readBackFailed) notes.push('<div class="warn-box">The library could not be read back. Reload it before editing further.</div>');
+  if (result.created_artists?.length) notes.push(`<p class="muted">${TagcastI18n.html("review.results.createdArtists", {count: result.created_artists.length, names: TagcastI18n.trusted(result.created_artists.map(n => `“${escapeHtml(n)}”`).join(", "))})}</p>`);
+  if (overall === "unverified") notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.unverified")}</div>`);
+  if (result.readBackFailed) notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.readBackFailed")}</div>`);
   const index = entry ? state.history.indexOf(entry) : -1;
   if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
-    notes.push(`<p><button class="button small" data-review-rest="${index}">Review the rest again →</button> <span class="muted">Sends only what wasn't saved.</span></p>`);
+    notes.push(`<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button> <span class="muted">${TagcastI18n.html("review.results.restNote")}</span></p>`);
   }
-  $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${escapeHtml(r.kind === "album" ? "Album" : "Track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(f => f === "name" ? "title" : f === "track" ? "track number" : f).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");
+  $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${TagcastI18n.html(r.kind === "album" ? "review.results.album" : "review.results.track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(resultFieldName).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");
   if (!$("#results").open) $("#results").showModal();
 }
 
@@ -1694,7 +1797,7 @@ document.addEventListener("click", event => {
   if (event.target.closest("#next-album")) {
     const next = editing && nextAlbumId(editing.ids[0]);
     const changed = editing && (editing.dirty.size || Object.keys(editing.trackPatches).length || $("#track-inline")?.dataset.track);
-    if (!next || (changed && !confirm("Leave this album without reviewing your changes?"))) return;
+    if (!next || (changed && !confirm(TagcastI18n.text("editor.leaveConfirm")))) return;
     $("#editor").close(); openEditor(shelfIds(next));
   }
 });
@@ -1706,7 +1809,7 @@ $("#then-next").addEventListener("change", event => {
 document.addEventListener("click", event => {
   const rest = event.target.closest("[data-review-rest]");
   if (rest && live()) reviewRest(state.history[Number(rest.dataset.reviewRest)]);
-  else if (rest) toast("Connect your iBroadcast account to save these changes.");
+  else if (rest) toast(TagcastI18n.text("history.reviewRestConnect"));
 });
 
 document.addEventListener("click", event => {
@@ -1715,7 +1818,7 @@ document.addEventListener("click", event => {
   const album = state.albums.find(a => String(a.id) === button.dataset.editSet), set = album && discSet(album);
   if (!set) return;
   const changed = editing && (editing.dirty.size || Object.keys(editing.trackPatches).length);
-  if (changed && !confirm("Leave this album without reviewing your changes?")) return;
+  if (changed && !confirm(TagcastI18n.text("editor.leaveConfirm"))) return;
   $("#editor").close();
   openEditor(set.map(a => String(a.id)));
 });
@@ -1725,15 +1828,17 @@ function showTheme() {
   TagcastThemes.apply();
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
-  const label = {auto: "Auto", light: "Light", dark: "Dark"}[theme];
-  const colour = TagcastThemes.active()?.name || {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired", apple: "Apple Music Classic"}[palette];
-  $("#theme-button").textContent = `${{auto: "◐", light: "☀", dark: "☾"}[theme]} Theme ▾`;
-  $("#theme-button").title = `${colour} · ${label}. Choose colour and appearance.`;
+  const label = TagcastI18n.text({auto: "app.theme.auto", light: "app.theme.light", dark: "app.theme.dark"}[theme]);
+  const palettes = {forest: "app.theme.forest", ocean: "app.theme.ocean", warm: "app.theme.warm", ibroadcast: "app.theme.ibroadcast", apple: "app.theme.apple"};
+  // A custom theme's name is the user's own text; built-in palette names follow the interface language.
+  const colour = TagcastThemes.active()?.name || (Object.hasOwn(palettes, palette) ? TagcastI18n.text(palettes[palette]) : undefined);
+  $("#theme-button").textContent = TagcastI18n.text("app.theme.button", {icon: {auto: "◐", light: "☀", dark: "☾"}[theme]});
+  $("#theme-button").title = TagcastI18n.text("app.theme.buttonTitle", {colour, appearance: label});
   for (const value of ["auto", "light", "dark"]) $("#appearance-" + value).checked = theme === value;
   for (const value of TagcastThemes.builtins) $("#palette-" + value).checked = !TagcastThemes.active() && palette === value;
   const customFocus = document.activeElement?.dataset?.customThemeChoice !== undefined ? document.activeElement.value : null;
   const custom = $("#theme-custom-list"), themes = TagcastThemes.snapshot().themes;
-  if (custom) custom.innerHTML = themes.length ? `<fieldset><legend>My themes</legend>${themes.map(item => `<label><input type="radio" name="palette" value="${item.id}" data-custom-theme-choice ${item.id === TagcastThemes.active()?.id ? "checked" : ""}> ${escapeHtml(item.name)}</label>`).join("")}</fieldset>` : "";
+  if (custom) custom.innerHTML = themes.length ? `<fieldset><legend>${TagcastI18n.html("app.theme.mine")}</legend>${themes.map(item => `<label><input type="radio" name="palette" value="${item.id}" data-custom-theme-choice ${item.id === TagcastThemes.active()?.id ? "checked" : ""}> ${escapeHtml(item.name)}</label>`).join("")}</fieldset>` : "";
   if (customFocus) custom?.querySelector(`[value="${customFocus}"]`)?.focus({preventScroll: true});
 }
 
@@ -1747,7 +1852,7 @@ $("#theme-button").addEventListener("click", () => setThemeMenu($("#theme-menu")
 document.addEventListener("click", event => { if (event.target.closest?.("[data-open-theme-editor]")) { setThemeMenu(false); showSettings("appearance"); } });
 $("#theme-menu").addEventListener("change", event => {
   if (event.target.dataset.customThemeChoice !== undefined) {
-    try { TagcastThemes.activate(event.target.value); showTheme(); } catch { showTheme(); toast("The theme could not be applied. Check that browser storage is available."); }
+    try { TagcastThemes.activate(event.target.value); showTheme(); } catch { showTheme(); toast(TagcastI18n.text("app.theme.applyFailed")); }
   } else if (event.target.dataset.appearanceChoice !== undefined) {
     const value = event.target.value;
     if (!["auto", "light", "dark"].includes(value)) return;
@@ -1782,7 +1887,7 @@ setThemeMenu(false);
 document.addEventListener("error", event => {
   const image = event.target, action = image?.dataset?.imageError;
   if (image?.tagName !== "IMG" || !action) return;
-  if (action === "current") image.outerHTML = '<div class="art-empty">No image</div>';
+  if (action === "current") image.outerHTML = `<div class="art-empty">${TagcastI18n.html("artwork.noImage")}</div>`;
   else if (action === "tile") image.closest(".art-tile")?.remove();
   else if (action === "suggestion") image.closest(".suggestion-art")?.remove();
   else {
@@ -1790,3 +1895,28 @@ document.addEventListener("error", event => {
     image.remove();
   }
 }, true);
+
+// A language change repaints only read-only views, from memory: the album shelf with its
+// header and pagination, the artist panel, connection and mode texts, the theme button, the
+// loading note and Change history while it is open. The metadata editor, review, artwork,
+// results and connection dialogs keep their content and drafts until they are opened again;
+// no request, selection, page, save or read-back changes.
+TagcastI18n.subscribe(() => {
+  renderLibrary(true);
+  if (browseChoices.kind === "artists") paintBrowseOptions();
+  paintChrome();
+  updateHistoryControls();
+  showTheme();
+  if (state.loading && libraryLoadingMessageIndex >= 0) {
+    $("#library-loading-detail").textContent = libraryLoadingText(TagcastI18n.text(libraryLoadingMessages[libraryLoadingMessageIndex]), libraryLoadingRefresh);
+  }
+  if ($("#history").open) {
+    const focused = document.activeElement, undo = focused?.dataset?.undo, rest = focused?.dataset?.reviewRest;
+    renderHistory();
+    if (historyView.status) $("#history-status").textContent = TagcastI18n.text(historyView.status);
+    if (undo !== undefined || rest !== undefined) {
+      [...document.querySelectorAll("#history-content [data-undo], #history-content [data-review-rest]")]
+        .find(node => undo !== undefined ? node.dataset.undo === undo : node.dataset.reviewRest === rest)?.focus();
+    }
+  }
+});

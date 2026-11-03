@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 import requests
 
 from . import __version__
+from .errors import CodedError
 
 USER_AGENT = (f"Tagcast/{__version__} "
               "( https://github.com/cyberdeliaAI/tagcast )")
@@ -30,7 +31,7 @@ MIN_SCORE = 0.45
 LASTFM_PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"
 
 
-class SourceError(Exception):
+class SourceError(CodedError):
     pass
 
 

@@ -2,6 +2,8 @@
 
 // Native iBroadcast track ratings: 5 likes, 1 dislikes, 0 clears the rating.
 // Only one server page is downloaded; no browser copy of the entire track library.
+// pending.message is an interface text key; errors are kept as Error objects and shown through
+// TagcastI18n.errorText(), so a language change can show them again.
 const storedFavouritesSize = storedPageSize("tagcast-favourites-per-page");
 const favourites = {rows: [], total: 0, count: null, query: "", page: 0,
   pageSize: [50, 100, 200].includes(storedFavouritesSize) ? storedFavouritesSize : 50, request: 0,
@@ -27,10 +29,11 @@ function renderFavouriteHub() {
     tab.setAttribute("tabindex", key === kind ? "0" : "-1");
   }
   $("#favourite-albums-count").textContent = live() && !state.loading && !state.albumFavouriteError
-    ? albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))).length.toLocaleString("en") : "";
+    ? TagcastI18n.number(albumShelf().filter(a => itemIds(a).every(id => state.albumFavourites.has(id))).length) : "";
   $("#favourite-artists-count").textContent = live() && !state.loading && !state.artistFavouriteError
-    ? artistGroups().filter(([, group]) => favouriteArtistGroup(group)).length.toLocaleString("en") : "";
-  $("#breadcrumb").innerHTML = `Favourites<span class="slash" aria-hidden="true">/</span><span aria-current="page">${{tracks: "Tracks", albums: "Albums", artists: "Album artists"}[kind]}</span>`;
+    ? TagcastI18n.number(artistGroups().filter(([, group]) => favouriteArtistGroup(group)).length) : "";
+  const page = {tracks: "nav.sidebar.tracks", albums: "nav.sidebar.albums", artists: "nav.sidebar.albumArtists"}[kind];
+  $("#breadcrumb").innerHTML = `${TagcastI18n.html("nav.sidebar.favourites")}<span class="slash" aria-hidden="true">/</span><span aria-current="page">${TagcastI18n.html(page)}</span>`;
 }
 
 function showFavouriteView(kind = favouriteHub.kind) {
@@ -57,15 +60,15 @@ $("#favourites-tabs").addEventListener("keydown", event => {
 function heartButton(track) {
   const pending = favourites.pending?.id === String(track.id) ? favourites.pending : null;
   const rating = Number(track.rating) || 0, liked = (pending?.rating ?? rating) >= 5;
-  const label = liked ? `Remove ${track.title} from favourites (clear track rating)` : `Add ${track.title} to favourites (set track rating to 5)`;
-  return `<button class="favourite-button ${pending ? "is-pending" : ""}" data-favourite="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${liked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(pending?.message || label)}" title="${escapeHtml(pending?.message || label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${heartIcon}</button>${trackDislikeButton(track)}`;
+  const label = pending ? TagcastI18n.text(pending.message) : TagcastI18n.text(liked ? "favourites.heart.remove" : "favourites.heart.add", {title: track.title});
+  return `<button class="favourite-button ${pending ? "is-pending" : ""}" data-favourite="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${liked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${heartIcon}</button>${trackDislikeButton(track)}`;
 }
 
 function trackDislikeButton(track) {
   const pending = favourites.pending?.id === String(track.id) ? favourites.pending : null;
   const rating = Number(track.rating) || 0, disliked = (pending?.rating ?? rating) === 1;
-  const label = disliked ? `Clear dislike of ${track.title}` : `Dislike ${track.title} (track rating 1)`;
-  return `<button type="button" class="favourite-button dislike-button ${pending ? "is-pending" : ""}" data-dislike="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${disliked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(pending?.message || label)}" title="${escapeHtml(pending?.message || label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${dislikeIcon}</button>`;
+  const label = pending ? TagcastI18n.text(pending.message) : TagcastI18n.text(disliked ? "favourites.dislike.clear" : "favourites.dislike.add", {title: track.title});
+  return `<button type="button" class="favourite-button dislike-button ${pending ? "is-pending" : ""}" data-dislike="${escapeHtml(track.id)}" data-rating="${rating}" data-favourite-title="${escapeHtml(track.title)}" aria-pressed="${disliked}" aria-busy="${Boolean(pending)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" ${!live() || state.loading || favourites.busy || saving || checking ? "disabled" : ""}>${dislikeIcon}</button>`;
 }
 
 function resetFavourites() {
@@ -75,7 +78,7 @@ function resetFavourites() {
 }
 
 function updateFavouriteControls() {
-  $("#favourites-count").textContent = live() && favourites.count !== null ? favourites.count.toLocaleString("en") : "";
+  $("#favourites-count").textContent = live() && favourites.count !== null ? TagcastI18n.number(favourites.count) : "";
   renderFavouriteHub();
   const track = player.queue[player.index];
   const button = $("#player-favourite");
@@ -86,7 +89,7 @@ function updateFavouriteControls() {
   button.classList.toggle("is-pending", Boolean(pending));
   button.setAttribute("aria-busy", String(Boolean(pending)));
   button.setAttribute("aria-pressed", String(liked));
-  button.setAttribute("aria-label", pending?.message || (liked ? "Remove current track from favourites (clear track rating)" : "Add current track to favourites (set track rating to 5)"));
+  button.setAttribute("aria-label", TagcastI18n.text(pending?.message || (liked ? "favourites.player.remove" : "favourites.player.add")));
   button.title = button.getAttribute("aria-label");
   const dislike = $("#player-dislike");
   dislike.innerHTML = dislikeIcon; dislike.disabled = button.disabled;
@@ -94,7 +97,7 @@ function updateFavouriteControls() {
   dislike.setAttribute("aria-pressed", String(disliked));
   dislike.setAttribute("aria-busy", String(Boolean(pending)));
   dislike.classList.toggle("is-pending", Boolean(pending));
-  dislike.title = pending?.message || (disliked ? "Clear current track dislike" : "Dislike current track (rating 1)");
+  dislike.title = TagcastI18n.text(pending?.message || (disliked ? "favourites.player.clearDislike" : "favourites.player.dislike"));
   dislike.setAttribute("aria-label", dislike.title);
   for (const node of document.querySelectorAll("[data-favourite], [data-dislike]")) {
     const update = favourites.pending?.id === (node.dataset.favourite ?? node.dataset.dislike) ? favourites.pending : null;
@@ -102,7 +105,7 @@ function updateFavouriteControls() {
     node.classList.toggle("is-pending", Boolean(update));
     node.setAttribute("aria-busy", String(Boolean(update)));
     node.setAttribute("aria-pressed", String(node.dataset.dislike !== undefined ? (update?.rating ?? Number(node.dataset.rating)) === 1 : (update?.rating ?? Number(node.dataset.rating)) >= 5));
-    if (update) { node.title = update.message; node.setAttribute("aria-label", update.message); }
+    if (update) { node.title = TagcastI18n.text(update.message); node.setAttribute("aria-label", node.title); }
   }
 }
 
@@ -128,15 +131,15 @@ async function refreshPlayerRatings() {
   } catch { /* existing playback continues; a write still checks the current rating */ }
 }
 
-async function toggleFavourite(id, before, title = "this track", requestedRating = null) {
+async function toggleFavourite(id, before, title = TagcastI18n.text("favourites.thisTrack"), requestedRating = null) {
   if (!live() || state.loading || favourites.busy || saving || checking) return;
-  if (DIALOGS_WITH_DRAFTS.some(selector => $(selector).open)) { toast("Close the editor or review first, then change favourites."); return; }
+  if (DIALOGS_WITH_DRAFTS.some(selector => $(selector).open)) { toast(TagcastI18n.text("favourites.closeEditorFirst")); return; }
   const rating = requestedRating ?? (before >= 5 ? 0 : 5);
   if (![0, 1, 5].includes(rating)) return;
-  if (rating === 5 && before > 0 && before < 5 && !confirm(`“${title}” has track rating ${before}. Add to favourites and replace it with rating 5 in iBroadcast?`)) return;
-  if (rating === 1 && before > 1 && !confirm(`Dislike “${title}” and replace its current track rating ${before} with 1 in iBroadcast?`)) return;
+  if (rating === 5 && before > 0 && before < 5 && !confirm(TagcastI18n.text("favourites.confirm.replace", {title, rating: before}))) return;
+  if (rating === 1 && before > 1 && !confirm(TagcastI18n.text("favourites.confirm.dislike", {title, rating: before}))) return;
   const epoch = favourites.epoch;
-  const update = {id: String(id), rating, message: "Saving track rating…"};
+  const update = {id: String(id), rating, message: "favourites.status.saving"};
   favourites.pending = update;
   favourites.busy = true; saving = true; updateChrome();
   let accepted = false;
@@ -145,8 +148,8 @@ async function toggleFavourite(id, before, title = "this track", requestedRating
     accepted = true;
     if (epoch !== favourites.epoch) return;
     if (response.job) {
-      update.message = "Track rating sent · checking iBroadcast…"; updateFavouriteControls();
-      toast("Track rating sent. Checking it against iBroadcast…");
+      update.message = "favourites.status.checking"; updateFavouriteControls();
+      toast(TagcastI18n.text("favourites.toast.sent"));
       let job;
       do {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -154,11 +157,11 @@ async function toggleFavourite(id, before, title = "this track", requestedRating
         job = await api(`/api/jobs/${encodeURIComponent(response.job)}`);
       } while (job.state === "checking");
       if (epoch !== favourites.epoch) return;
-      if (job.state !== "done") throw Error(job.error || "The rating could not be read back. Reload the library.");
+      if (job.state !== "done") throw job.error ? Error(job.error) : viewFailure("errors.favourites.readback_failed");
       const result = job.results?.find(t => String(t.id) === String(id));
-      if (!result) throw Error("The rating could not be read back. Reload the library.");
+      if (!result) throw viewFailure("errors.favourites.readback_failed");
       setTrackRating(String(id), result.rating);
-      if (result.status !== "saved") throw Error("iBroadcast did not confirm this track rating. Reload the library before trying again.");
+      if (result.status !== "saved") throw viewFailure("errors.favourites.unconfirmed");
     } else setTrackRating(String(id), response.rating);
     if (favourites.pending === update) favourites.pending = null;
     updateFavouriteControls(); renderAlbumView(); renderTrackSearch();
@@ -166,12 +169,12 @@ async function toggleFavourite(id, before, title = "this track", requestedRating
     // Fetch just one page to update the count and remove/add the changed row.
     await loadFavourites();
     if (epoch !== favourites.epoch) return;
-    toast(rating === 5 ? "Added to iBroadcast favourites (track rating 5)." : rating === 1 ? "Track disliked in iBroadcast (track rating 1)." : "Track rating cleared in iBroadcast.");
+    toast(TagcastI18n.text(rating === 5 ? "favourites.toast.added" : rating === 1 ? "favourites.toast.disliked" : "favourites.toast.cleared"));
   } catch (error) {
     if (epoch !== favourites.epoch) return;
     if (error.status === 401) state.connection.connected = false;
     if (accepted) favourites.details = null;
-    toast(`${accepted ? "Track rating sent, but not confirmed" : "Could not change track rating"}: ${error.message}`);
+    toast(TagcastI18n.text(accepted ? "favourites.toast.unconfirmed" : "favourites.toast.failed", {error: TagcastI18n.errorText(error)}));
   } finally {
     if (epoch !== favourites.epoch) return;
     if (favourites.pending === update) favourites.pending = null;
@@ -195,7 +198,7 @@ async function loadFavourites() {
     syncTrackRatings(favourites.rows);
   } catch (error) {
     if (request !== favourites.request || epoch !== favourites.epoch) return;
-    favourites.error = error.status === 404 ? "Restart Tagcast to use favourites: the running server is older than this page." : error.message;
+    favourites.error = error.status === 404 ? viewFailure("errors.favourites.server_outdated") : error;
     favourites.rows = []; favourites.total = 0;
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
   } finally {
@@ -209,14 +212,14 @@ function renderFavourites() {
   if (state.screen !== "favourites") return;
   if (live() && !state.loading && !favourites.loading && favourites.details !== state.details) { loadFavourites(); return; }
   $("#favourites-per-page").value = String(favourites.pageSize);
-  $("#favourites-results").textContent = !live() || state.loading ? "" : favourites.loading ? "Loading favourites…" : `${favourites.total.toLocaleString("en")} ${favourites.total === 1 ? "track" : "tracks"}`;
-  $("#favourites-list").innerHTML = !live() ? '<div class="empty">Connect iBroadcast to see and change your favourites.</div>'
-    : state.loading || favourites.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading favourites…</div>'
-    : favourites.error ? `<p class="error-box" role="alert">${escapeHtml(favourites.error)}</p>`
-    : favourites.rows.length ? `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>Title / Artist</th><th>Album</th><th class="track-year">Year</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>${favourites.rows.map(foundTrackRow).join("")}</tbody></table>`
-    : `<div class="empty">${favourites.query ? "No favourites match your search." : "No favourites yet. Use a heart on an album, a track search result or the player."}</div>`;
+  $("#favourites-results").textContent = !live() || state.loading ? "" : favourites.loading ? TagcastI18n.text("favourites.list.loading") : TagcastI18n.text("browse.count.tracks", {count: favourites.total});
+  $("#favourites-list").innerHTML = !live() ? `<div class="empty">${TagcastI18n.html("favourites.list.connect")}</div>`
+    : state.loading || favourites.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("favourites.list.loading")}</div>`
+    : favourites.error ? `<p class="error-box" role="alert">${escapeHtml(TagcastI18n.errorText(favourites.error))}</p>`
+    : favourites.rows.length ? trackResultsTable(favourites.rows)
+    : `<div class="empty">${TagcastI18n.html(favourites.query ? "favourites.list.noMatch" : "favourites.list.empty")}</div>`;
   const max = Math.max(0, Math.ceil(favourites.total / favourites.pageSize) - 1);
-  $("#favourites-pagination").innerHTML = live() && !favourites.loading && max > 0 ? `<button class="button small" data-favourite-page="-1" ${favourites.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${favourites.page + 1} of ${(max + 1).toLocaleString("en")}</span><button class="button small" data-favourite-page="1" ${favourites.page === max ? "disabled" : ""}>Next →</button>` : "";
+  $("#favourites-pagination").innerHTML = live() && !favourites.loading && max > 0 ? `<button class="button small" data-favourite-page="-1" ${favourites.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: favourites.page + 1, pages: max + 1})}</span><button class="button small" data-favourite-page="1" ${favourites.page === max ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
   markPlaying();
   if (typeof syncHistory === "function") syncHistory();
 }
@@ -291,7 +294,7 @@ async function loadRecentlyPlayed(refresh = false) {
     syncTrackRatings(recentlyPlayed.rows);
   } catch (error) {
     if (!current()) return;
-    recentlyPlayed.error = error.status === 404 ? "Restart Tagcast to use Recently played: the running server is older than this page." : error.message;
+    recentlyPlayed.error = error.status === 404 ? viewFailure("errors.favourites.recent_outdated") : error;
     recentlyPlayed.rows = []; recentlyPlayed.total = 0;
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
   } finally {
@@ -309,17 +312,17 @@ function renderRecentlyPlayed() {
       && recentlyPlayed.details !== state.details) { loadRecentlyPlayed(); return; }
   $("#recently-played-per-page").value = String(recentlyPlayed.pageSize);
   $("#recently-played-refresh").disabled = !live() || !playReporting.enabled || state.loading || recentlyPlayed.loading;
-  $("#recently-played-results").textContent = recentlyPlayed.loading ? "Checking iBroadcast’s recent tracks…"
-    : recentlyPlayed.available ? `${recentlyPlayed.total.toLocaleString("en")} ${recentlyPlayed.total === 1 ? "track" : "tracks"} · most recent first` : "";
-  $("#recently-played-list").innerHTML = !live() ? '<div class="empty">Connect iBroadcast to see recently played tracks.</div>'
-    : !playReporting.enabled ? '<div class="empty">Enable Record played tracks in iBroadcast in Settings to show this list.</div>'
-    : state.loading || recentlyPlayed.loading ? '<div class="empty" role="status"><span class="spinner"></span>Checking iBroadcast’s recent tracks…</div>'
-    : recentlyPlayed.error ? `<p class="error-box" role="alert">${escapeHtml(recentlyPlayed.error)}</p>`
-    : !recentlyPlayed.available ? '<div class="empty">iBroadcast did not provide a Recently played playlist for this account.</div>'
-    : recentlyPlayed.rows.length ? `<table class="album-tracks track-results"><thead><tr><th class="track-number"></th><th>Title / Artist</th><th>Album</th><th class="track-year">Year</th><th class="track-time">Time</th><th class="track-heart" aria-label="Favourite"></th></tr></thead><tbody>${recentlyPlayed.rows.map(foundTrackRow).join("")}</tbody></table>`
-    : `<div class="empty">${$("#recently-played-search").value.trim() ? "No recent tracks match your search." : "No recently played tracks in iBroadcast yet."}</div>`;
+  $("#recently-played-results").textContent = recentlyPlayed.loading ? TagcastI18n.text("favourites.recent.checking")
+    : recentlyPlayed.available ? TagcastI18n.text("favourites.recent.count", {count: recentlyPlayed.total}) : "";
+  $("#recently-played-list").innerHTML = !live() ? `<div class="empty">${TagcastI18n.html("favourites.recent.connect")}</div>`
+    : !playReporting.enabled ? `<div class="empty">${TagcastI18n.html("favourites.recent.enable")}</div>`
+    : state.loading || recentlyPlayed.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("favourites.recent.checking")}</div>`
+    : recentlyPlayed.error ? `<p class="error-box" role="alert">${escapeHtml(TagcastI18n.errorText(recentlyPlayed.error))}</p>`
+    : !recentlyPlayed.available ? `<div class="empty">${TagcastI18n.html("favourites.recent.unavailable")}</div>`
+    : recentlyPlayed.rows.length ? trackResultsTable(recentlyPlayed.rows)
+    : `<div class="empty">${TagcastI18n.html($("#recently-played-search").value.trim() ? "favourites.recent.noMatch" : "favourites.recent.empty")}</div>`;
   const max = Math.max(0, Math.ceil(recentlyPlayed.total / recentlyPlayed.pageSize) - 1);
-  $("#recently-played-pagination").innerHTML = live() && playReporting.enabled && !recentlyPlayed.loading && max > 0 ? `<button class="button small" data-recent-page="-1" ${recentlyPlayed.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${recentlyPlayed.page + 1} of ${max + 1}</span><button class="button small" data-recent-page="1" ${recentlyPlayed.page === max ? "disabled" : ""}>Next →</button>` : "";
+  $("#recently-played-pagination").innerHTML = live() && playReporting.enabled && !recentlyPlayed.loading && max > 0 ? `<button class="button small" data-recent-page="-1" ${recentlyPlayed.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.page", {page: recentlyPlayed.page + 1, pages: max + 1})}</span><button class="button small" data-recent-page="1" ${recentlyPlayed.page === max ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
   markPlaying();
   if (typeof syncHistory === "function") syncHistory();
 }
@@ -345,4 +348,15 @@ $("#recently-played-per-page").addEventListener("change", () => {
 document.addEventListener("click", event => {
   const page = event.target.closest("[data-recent-page]");
   if (page && !recentlyPlayed.loading) { recentlyPlayed.page = Math.max(0, recentlyPlayed.page + Number(page.dataset.recentPage)); loadRecentlyPlayed(); }
+});
+
+// A language change rewrites the player's rating buttons and the Favourites tabs, and repaints a
+// visible Favourites or Recently played list from memory (never a new server read).
+TagcastI18n.subscribe(() => {
+  updateFavouriteControls();
+  if (state.screen === "favourites" && !(live() && !state.loading && !favourites.loading && favourites.details !== state.details)) {
+    keepFocusWhile($("#favourites-page"), renderFavourites);
+  }
+  if (state.screen === "recently-played" && !(live() && playReporting.enabled && !state.loading && !recentlyPlayed.loading
+      && recentlyPlayed.details !== state.details)) keepFocusWhile($("#recently-played-page"), renderRecentlyPlayed);
 });

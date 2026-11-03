@@ -1,9 +1,17 @@
 "use strict";
 
 // Native artist identities stay separate; names are never split on punctuation here.
-const creditRoleLabels = {artist: "Artist", band: "Band", composer: "Composer", lyricist: "Lyricist",
-  conductor: "Conductor", publisher: "Publisher", involved_person: "Involved person",
-  original_lyricist: "Original lyricist", original_artist: "Original artist"};
+// Role codes stay data; getters give each role's label in the current interface language.
+const creditRoleLabels = {
+  get artist() { return TagcastI18n.text("credits.role.artist"); },
+  get band() { return TagcastI18n.text("credits.role.band"); },
+  get composer() { return TagcastI18n.text("credits.role.composer"); },
+  get lyricist() { return TagcastI18n.text("credits.role.lyricist"); },
+  get conductor() { return TagcastI18n.text("credits.role.conductor"); },
+  get publisher() { return TagcastI18n.text("credits.role.publisher"); },
+  get involved_person() { return TagcastI18n.text("credits.role.involvedPerson"); },
+  get original_lyricist() { return TagcastI18n.text("credits.role.originalLyricist"); },
+  get original_artist() { return TagcastI18n.text("credits.role.originalArtist"); }};
 
 function albumArtistEntries(album) {
   const primary = {id: String(album.artist_id || 0), name: album.artist,
@@ -27,25 +35,27 @@ function creditRows(entries, album = false, disabled = false) {
   return entries.map((entry, index) => {
     const role = entry.type || "artist", roles = album ? ["artist", "band"] : Object.keys(creditRoleLabels);
     if (!roles.includes(role)) roles.push(role);
+    const number = index + 1;
     return `<div class="credit-row" data-credit-row data-original="${escapeHtml(JSON.stringify(entry))}">
-      <label>Artist name${artistChoiceInput(`data-credit-name placeholder="Find an existing artist, or enter a new name" value="${escapeHtml(entry.name || "")}" ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} artist name"`, disabled, role === "composer" ? "composer" : "artist")}</label>
-      <label>Role<select data-credit-role ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} role">${roles.map(r => `<option value="${escapeHtml(r)}" ${r === role ? "selected" : ""}>${escapeHtml(creditRoleLabels[r] || r)}</option>`).join("")}</select></label>
-      <label>Credit phrase <small>(optional)</small><input data-credit-phrase value="${escapeHtml(entry.phrase || "")}" ${disabled ? "disabled" : ""} aria-label="Credit ${index + 1} phrase"></label>
-      <button type="button" class="button small" data-credit-remove ${disabled ? "disabled" : ""} aria-label="Remove credit ${index + 1}">Remove</button>
+      <label>${TagcastI18n.html("credits.row.name")}${artistChoiceInput(`data-credit-name placeholder="${TagcastI18n.html("editor.choices.findArtist")}" value="${escapeHtml(entry.name || "")}" ${disabled ? "disabled" : ""} aria-label="${TagcastI18n.html("credits.row.nameAria", {number})}"`, disabled, role === "composer" ? "composer" : "artist")}</label>
+      <label>${TagcastI18n.html("credits.row.role")}<select data-credit-role ${disabled ? "disabled" : ""} aria-label="${TagcastI18n.html("credits.row.roleAria", {number})}">${roles.map(r => `<option value="${escapeHtml(r)}" ${r === role ? "selected" : ""}>${escapeHtml(Object.hasOwn(creditRoleLabels, r) ? creditRoleLabels[r] : r)}</option>`).join("")}</select></label>
+      <label>${TagcastI18n.html("credits.row.phrase")} <small>${TagcastI18n.html("credits.row.optional")}</small><input data-credit-phrase value="${escapeHtml(entry.phrase || "")}" ${disabled ? "disabled" : ""} aria-label="${TagcastI18n.html("credits.row.phraseAria", {number})}"></label>
+      <button type="button" class="button small" data-credit-remove ${disabled ? "disabled" : ""} aria-label="${TagcastI18n.html("credits.row.removeAria", {number})}">${TagcastI18n.html("common.remove")}</button>
     </div>`;
   }).join("");
 }
 
 function creditsField(record, {album = false, bulk = false, mixed = false} = {}) {
   const entries = mixed ? [] : creditValues(record), key = album ? "album-credits" : "track-credits";
-  const label = album ? "Additional album artists" : "Additional artists and credits";
+  const label = TagcastI18n.html(album ? "credits.field.album" : "credits.field.track");
+  const note = [mixed ? TagcastI18n.html("credits.field.mixed") : "", TagcastI18n.html(album ? "credits.field.albumNote" : "credits.field.trackNote")].filter(Boolean).join(" ");
   return `<div class="field wide credit-editor ${bulk ? "disabled" : ""}" data-credit-editor="${key}" data-album-credits="${album}" data-dirty="false">
-    ${bulk ? `<label class="field-check"><input type="checkbox" data-credit-enable> Change ${label.toLowerCase()}</label>` : `<span>${label}</span>`}
-    <p class="muted">${mixed ? "Different existing credits. Enabling this field replaces the additional credits on every selected disc. " : ""}${album ? "The primary album artist stays in the field above. Each additional artist also gets this album in their own artist view." : "The main track artist stays above. Keep each person and role separate; changing a name assigns another artist."}</p>
+    ${bulk ? `<label class="field-check"><input type="checkbox" data-credit-enable> ${TagcastI18n.html(album ? "credits.field.changeAlbum" : "credits.field.changeTrack")}</label>` : `<span>${label}</span>`}
+    <p class="muted">${note}</p>
     <div data-credit-rows>${creditRows(entries, album, bulk)}</div>
-    <button type="button" class="button small" data-credit-add ${bulk ? "disabled" : ""}>+ Add ${album ? "album artist" : "credit"}</button>
+    <button type="button" class="button small" data-credit-add ${bulk ? "disabled" : ""}>${TagcastI18n.html(album ? "credits.field.addAlbumArtist" : "credits.field.addCredit")}</button>
     <small class="error-text" data-credit-error role="alert"></small>
-    <small>Up to 100 additional credits. Names and phrases: up to 1,000 characters. All changes are reviewed before saving.</small>
+    <small>${TagcastI18n.html("credits.field.limits")}</small>
   </div>`;
 }
 
@@ -55,19 +65,19 @@ function readCredits(editor) {
   try { return [...editor.querySelectorAll("[data-credit-row]")].map(row => {
     const original = JSON.parse(row.dataset.original), name = row.querySelector("[data-credit-name]").value.trim();
     const role = row.querySelector("[data-credit-role]").value, phrase = row.querySelector("[data-credit-phrase]").value;
-    if (!name || name.length > 1000 || phrase.length > 1000) throw Error("Credit names are required; names and phrases can contain at most 1,000 characters.");
+    if (!name || name.length > 1000 || phrase.length > 1000) throw editorFailure("errors.editor.credit_invalid");
     return {artist_id: name === original.name ? original.artist_id : null, name,
       type: role === (original.type || "artist") ? original.type : role,
       phrase: phrase === (original.phrase || "") ? original.phrase : phrase};
-  }); } catch (issue) { if (error) error.textContent = issue.message; throw issue; }
+  }); } catch (issue) { if (error) error.textContent = TagcastI18n.errorText(issue); throw issue; }
 }
 
 function numberCreditRows(editor) {
   for (const [index, row] of [...editor.querySelectorAll("[data-credit-row]")].entries()) {
-    for (const [selector, label] of [["[data-credit-name]", "artist name"], ["[data-credit-role]", "role"], ["[data-credit-phrase]", "phrase"]]) {
-      row.querySelector(selector).setAttribute("aria-label", `Credit ${index + 1} ${label}`);
+    for (const [selector, label] of [["[data-credit-name]", "credits.row.nameAria"], ["[data-credit-role]", "credits.row.roleAria"], ["[data-credit-phrase]", "credits.row.phraseAria"]]) {
+      row.querySelector(selector).setAttribute("aria-label", TagcastI18n.text(label, {number: index + 1}));
     }
-    row.querySelector("[data-credit-remove]").setAttribute("aria-label", `Remove credit ${index + 1}`);
+    row.querySelector("[data-credit-remove]").setAttribute("aria-label", TagcastI18n.text("credits.row.removeAria", {number: index + 1}));
   }
 }
 
@@ -82,7 +92,7 @@ document.addEventListener("change", event => {
   if (event.target.matches?.("[data-credit-role]")) {
     const row = event.target.closest("[data-credit-row]"), composer = event.target.value === "composer";
     row.querySelector("[data-credit-name]").dataset.editorChoiceKind = composer ? "composer" : "artist";
-    row.querySelector("[data-artist-choices-toggle]").setAttribute("aria-label", composer ? "Show existing composers" : "Show existing artists");
+    row.querySelector("[data-artist-choices-toggle]").setAttribute("aria-label", TagcastI18n.text(composer ? "editor.choices.showComposers" : "editor.choices.showArtists"));
     closeEditorArtistChoices();
   }
   if (event.target.matches?.("[data-credit-enable]")) {
@@ -96,7 +106,7 @@ document.addEventListener("click", event => {
   if (!editor || editor.classList.contains("disabled")) return;
   if (event.target.closest("[data-credit-add]")) {
     const rows = editor.querySelector("[data-credit-rows]"), count = rows.querySelectorAll("[data-credit-row]").length;
-    if (count >= 100) { toast("Use at most 100 additional artist credits."); return; }
+    if (count >= 100) { toast(TagcastI18n.text("credits.field.tooMany")); return; }
     rows.insertAdjacentHTML("beforeend", creditRows([{artist_id: null, name: "", type: "artist", phrase: null}], editor.dataset.albumCredits === "true"));
     numberCreditRows(editor);
     rows.lastElementChild.querySelector("input").focus(); editor.dataset.dirty = "true";

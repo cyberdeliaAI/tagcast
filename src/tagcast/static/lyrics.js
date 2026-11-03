@@ -3,6 +3,9 @@
 // Native lyrics are lazy and account/session-bound. Public lookup is always explicit.
 const trackLyrics = {details: null, entries: new Map(), cacheRead: null, review: null, viewer: null, busy: false, revision: 0};
 let albumLyricsCheck = null;
+// Errors are kept as Error objects (or server text) and shown through TagcastI18n.errorText(),
+// so a coded error follows the interface language whenever its panel is drawn again.
+let lyricsRepaintOnly = false;
 
 function resetTrackLyrics() {
   if (typeof resetPlaybackLyrics === "function") resetPlaybackLyrics();
@@ -41,8 +44,8 @@ function knownTrackLyrics(track) {
 function lyricsLabelButton(track) {
   const data = knownTrackLyrics(track);
   if (!data) return "";
-  const hint = data.source === "lrclib" ? "Lyrics available from LRCLIB" : "Lyrics saved in iBroadcast";
-  return `<button type="button" class="lyrics-label" data-lyrics-view="${escapeHtml(track.id)}" title="${hint}" aria-label="View lyrics for ${escapeHtml(track.title)}" aria-haspopup="dialog">Lyrics</button>`;
+  const hint = TagcastI18n.html(data.source === "lrclib" ? "lyrics.label.lrclib" : "lyrics.source.ibroadcast");
+  return `<button type="button" class="lyrics-label" data-lyrics-view="${escapeHtml(track.id)}" title="${hint}" aria-label="${TagcastI18n.html("lyrics.label.view", {title: track.title})}" aria-haspopup="dialog">${TagcastI18n.html("lyrics.label.button")}</button>`;
 }
 
 function albumLyricsLabel(track) {
@@ -86,7 +89,7 @@ async function restoreAlbumLyrics() {
     repaintLyrics();
   } catch (error) {
     forgetRead();
-    if (current()) toast(`Could not read saved lyrics: ${error.message}`);
+    if (current()) toast(TagcastI18n.text("lyrics.cache.readFailed", {error: TagcastI18n.errorText(error)}));
   }
 }
 
@@ -98,7 +101,8 @@ function cancelAlbumLyricsCheck() {
 function stopAlbumLyricsCheck() {
   if (!albumLyricsCheck?.running) return;
   albumLyricsCheck.running = false;
-  albumLyricsCheck.message = `Stopped after ${albumLyricsCheck.checked} of ${albumLyricsCheck.total} tracks. Results already read are kept.`;
+  const {checked, total} = albumLyricsCheck;
+  albumLyricsCheck.summary = () => TagcastI18n.text("lyrics.check.stopped", {checked, count: total});
   renderAlbumLyricsCheck();
 }
 
@@ -108,7 +112,7 @@ function renderAlbumLyricsCheck() {
   box.hidden = !job || state.screen !== "album" || job.id !== albumView.id || job.details !== state.details;
   if (box.hidden) return;
   const status = $("#album-lyrics-status");
-  status.textContent = job.running ? `Checking album lyrics… ${job.checked} of ${job.total} tracks` : job.message;
+  status.textContent = job.running ? TagcastI18n.text("lyrics.check.progress", {checked: job.checked, count: job.total}) : job.summary?.() ?? "";
   status.classList.toggle("operation-status", job.running); status.dataset.working = String(job.running);
   $("#album-lyrics-stop").hidden = !job.running;
 }
@@ -119,10 +123,10 @@ async function checkAlbumLyrics() {
   const tracks = [...new Map(albumLyricsTracks().map(track => [String(track.id), track])).values()];
   if (!tracks.length) return;
   // Keep the complete checked album within the existing bounded in-memory cache.
-  if (tracks.length > 100) { toast("Album lyrics checks support up to 100 tracks. Check individual tracks in Edit tracks or Now playing for this album."); return; }
+  if (tracks.length > 100) { toast(TagcastI18n.text("lyrics.check.tooMany")); return; }
   lyricsEntry(lyricsSelection(tracks[0]));
   const job = {id: albumView.id, details: state.details, session: state.connection.playback_session,
-    revision: trackLyrics.revision, request: albumView.request, total: tracks.length, checked: 0, found: 0, running: true, message: ""};
+    revision: trackLyrics.revision, request: albumView.request, total: tracks.length, checked: 0, found: 0, running: true, summary: null};
   albumLyricsCheck = job; renderAlbumLyricsCheck();
   const current = () => {
     const valid = albumLyricsCheck === job && job.running && live() && !state.loading
@@ -140,7 +144,8 @@ async function checkAlbumLyrics() {
     }
     if (!current()) return;
     if (entry.error) {
-      job.running = false; job.message = `Lyrics check stopped: ${entry.error} Results already read are kept.`;
+      const error = entry.error;
+      job.running = false; job.summary = () => TagcastI18n.text("lyrics.check.failed", {error: TagcastI18n.errorText(error)});
       renderAlbumLyricsCheck(); return;
     }
     job.checked += 1;
@@ -148,7 +153,8 @@ async function checkAlbumLyrics() {
     refreshAlbumLyricsLabels(); renderAlbumLyricsCheck();
   }
   if (!current()) return;
-  job.running = false; job.message = `Checked ${job.checked} tracks · Lyrics available for ${job.found}.`;
+  const {checked, found} = job;
+  job.running = false; job.summary = () => TagcastI18n.text("lyrics.check.done", {count: checked, found});
   renderAlbumLyricsCheck();
 }
 
@@ -176,9 +182,16 @@ function openLyricsViewer(button) {
   if (!data) return;
   trackLyrics.viewer = {id: String(track.id), focus: button};
   $("#lyrics-viewer-title").textContent = track.title;
-  $("#lyrics-viewer-content").innerHTML = `<p class="muted">${escapeHtml(track.artist)}</p><div class="lyrics-text" tabindex="0" role="region" aria-label="Lyrics">${escapeHtml(data.text)}</div><p class="muted lyrics-source">${data.source === "lrclib" ? '<a href="https://lrclib.net/" target="_blank" rel="noopener noreferrer">LRCLIB ↗</a> · Saved on this computer' : "Saved in iBroadcast"}</p>`;
+  $("#lyrics-viewer-content").innerHTML = `<p class="muted">${escapeHtml(track.artist)}</p><div class="lyrics-text" tabindex="0" role="region" aria-label="${TagcastI18n.html("lyrics.viewer.region")}">${escapeHtml(data.text)}</div><p class="muted lyrics-source">${lyricsSavedSource(data)}</p>`;
   $("#lyrics-viewer").showModal();
   $("#lyrics-viewer-close").focus({preventScroll: true});
+}
+
+// Where displayed lyrics are kept. The LRCLIB link text is a service name.
+function lyricsSavedSource(data) {
+  return data.source === "lrclib"
+    ? TagcastI18n.html("lyrics.source.savedLocal", {link: TagcastI18n.trusted('<a href="https://lrclib.net/" target="_blank" rel="noopener noreferrer">LRCLIB ↗</a>')})
+    : TagcastI18n.html("lyrics.source.savedIbroadcast");
 }
 
 function canEditTrackLyrics(entry) {
@@ -222,25 +235,24 @@ function renderLyrics(context, selection = visibleLyricsSelection(context)) {
   box.hidden = !selection;
   if (!selection) { box.innerHTML = ""; return; }
   const entry = lyricsEntry(selection), data = entry.data;
-  if (!data && !entry.loading && !entry.error) loadTrackLyrics(selection, entry);
+  if (!data && !entry.loading && !entry.error && !lyricsRepaintOnly) loadTrackLyrics(selection, entry);
   const focused = document.activeElement?.closest?.(context === "track" ? "#track-lyrics" : "#now-playing-lyrics");
   const focusAction = focused ? document.activeElement?.dataset?.lyricsAction : null;
   const action = (name, label, disabled = false) => `<button type="button" class="button small" data-lyrics-action="${name}" data-lyrics-context="${context}" ${disabled ? "disabled" : ""}>${label}</button>`;
-  const status = entry.loading ? '<p class="operation-status muted" data-working="true" role="status">Checking lyrics…</p>'
-    : entry.error ? `<p class="error-text" role="status">${escapeHtml(entry.error)}</p>${action("retry", "Check again")}` : "";
-  const source = data?.source === "lrclib" ? '<a href="https://lrclib.net/" target="_blank" rel="noopener noreferrer">LRCLIB ↗</a> · Saved on this computer'
-    : "iBroadcast";
-  const note = data?.status === "instrumental" ? "LRCLIB marks this recording as instrumental."
-    : data?.status === "missing" ? "No matching lyrics found."
-      : data?.status === "not_cached" ? "No lyrics stored in iBroadcast. Find lyrics sends this track’s title, artist, album and known duration to LRCLIB." : "";
-  const find = data?.can_lookup ? action("find", "Find lyrics on LRCLIB", entry.loading) : "";
-  const refresh = data ? action("retry", "Check iBroadcast again", entry.loading) : "";
-  const text = data?.text ? `<details data-lyrics-expanded="${context}" ${entry.open ? "open" : ""}><summary>${data.source === "lrclib" ? "LRCLIB" : "iBroadcast"}</summary><div class="lyrics-text">${escapeHtml(data.text)}</div>${data.source === "lrclib" ? `<p class="muted lyrics-source">${source}</p>` : ""}</details>` : "";
+  const status = entry.loading ? `<p class="operation-status muted" data-working="true" role="status">${TagcastI18n.html("lyrics.status.checking")}</p>`
+    : entry.error ? `<p class="error-text" role="status">${escapeHtml(TagcastI18n.errorText(entry.error))}</p>${action("retry", TagcastI18n.html("lyrics.action.checkAgain"))}` : "";
+  const note = data?.status === "instrumental" ? TagcastI18n.html("lyrics.note.instrumental")
+    : data?.status === "missing" ? TagcastI18n.html("lyrics.note.missing")
+      : data?.status === "not_cached" ? TagcastI18n.html("lyrics.note.notCached") : "";
+  const find = data?.can_lookup ? action("find", TagcastI18n.html("lyrics.action.find"), entry.loading) : "";
+  const refresh = data ? action("retry", TagcastI18n.html("lyrics.action.checkIbroadcast"), entry.loading) : "";
+  const text = data?.text ? `<details data-lyrics-expanded="${context}" ${entry.open ? "open" : ""}><summary>${data.source === "lrclib" ? "LRCLIB" : "iBroadcast"}</summary><div class="lyrics-text">${escapeHtml(data.text)}</div>${data.source === "lrclib" ? `<p class="muted lyrics-source">${lyricsSavedSource(data)}</p>` : ""}</details>` : "";
   if (context === "track" && canEditTrackLyrics(entry)) {
     const draft = entry.draft ?? data?.native_text ?? "";
-    box.innerHTML = `<h4>Lyrics</h4><label class="field"><span>Track lyrics in iBroadcast</span><textarea id="track-lyrics-text" rows="8" maxlength="50000" aria-label="Track lyrics in iBroadcast" ${entry.loading ? "disabled" : ""}>${escapeHtml(draft)}</textarea></label><p class="muted">Save lyrics separately after review. Other track fields and additional metadata stay as they are.</p><div class="lyrics-actions">${find}${data?.source === "lrclib" && data.text ? action("use", "Use these lyrics", entry.loading) : ""}${action("review", "Review lyrics…", entry.loading || draft === data?.native_text)}${refresh}</div>${status}${note ? `<p class="muted">${note}</p>` : ""}${data?.source === "lrclib" ? text : ""}`;
+    const field = TagcastI18n.html("lyrics.editor.field");
+    box.innerHTML = `<h4>${TagcastI18n.html("lyrics.heading")}</h4><label class="field"><span>${field}</span><textarea id="track-lyrics-text" rows="8" maxlength="50000" aria-label="${field}" ${entry.loading ? "disabled" : ""}>${escapeHtml(draft)}</textarea></label><p class="muted">${TagcastI18n.html("lyrics.editor.note")}</p><div class="lyrics-actions">${find}${data?.source === "lrclib" && data.text ? action("use", TagcastI18n.html("lyrics.action.use"), entry.loading) : ""}${action("review", TagcastI18n.html("lyrics.action.review"), entry.loading || draft === data?.native_text)}${refresh}</div>${status}${note ? `<p class="muted">${note}</p>` : ""}${data?.source === "lrclib" ? text : ""}`;
   } else {
-    box.innerHTML = `<h3>Lyrics</h3>${text}${status}${note ? `<p class="muted">${note}</p>` : ""}<div class="lyrics-actions">${find}${refresh}</div>`;
+    box.innerHTML = `<h3>${TagcastI18n.html("lyrics.heading")}</h3>${text}${status}${note ? `<p class="muted">${note}</p>` : ""}<div class="lyrics-actions">${find}${refresh}</div>`;
   }
   if (focusAction) box.querySelector(`[data-lyrics-action="${focusAction}"]`)?.focus({preventScroll: true});
 }
@@ -248,6 +260,12 @@ function renderLyrics(context, selection = visibleLyricsSelection(context)) {
 function repaintLyrics() {
   for (const context of ["track", "player"]) renderLyrics(context);
   refreshAlbumLyricsLabels();
+}
+
+// Language changes repaint lyrics from memory only: no lyrics request starts while they run.
+function repaintWithoutLyricsRequests(render) {
+  lyricsRepaintOnly = true;
+  try { render(); } finally { lyricsRepaintOnly = false; }
 }
 
 function loadTrackLyrics(selection, entry, lookup = false, refresh = false) {
@@ -267,7 +285,7 @@ async function readTrackLyrics(selection, entry, lookup, refresh) {
       : await api(`/api/lyrics?${new URLSearchParams({...selection, refresh: refresh ? "1" : "0"})}`);
     if (!current()) return;
     entry.data = data;
-  } catch (error) { if (current()) entry.error = error.message; }
+  } catch (error) { if (current()) entry.error = error; }
   finally {
     if (current()) {
       entry.pending = null;
@@ -290,7 +308,7 @@ async function reviewTrackLyrics(selection, entry) {
     if (details !== state.details || revision !== trackLyrics.revision
         || selection.session !== state.connection.playback_session || entry.error) return;
     if (entry.data.native_text !== before) {
-      entry.error = "Lyrics changed since the saved cache. Check the refreshed text and your draft before reviewing again.";
+      entry.error = playbackFailure("errors.lyrics.changed_since_cache");
       renderLyrics("track", selection); return;
     }
   }
@@ -302,10 +320,11 @@ async function reviewTrackLyrics(selection, entry) {
         || selection.session !== state.connection.playback_session || !$("#editor").open
         || lyricsKey(visibleLyricsSelection("track")) !== lyricsKey(selection)) return;
     trackLyrics.review = {data, entry, selection, details, revision};
-    $("#lyrics-review-content").innerHTML = `<h3>${escapeHtml(data.title)}</h3><p>Change only this track’s lyrics in iBroadcast. Additional metadata and music files stay unchanged.</p><details><summary>Before</summary><div class="lyrics-text">${escapeHtml(data.before || "No lyrics")}</div></details><details open><summary>After${data.after ? "" : " · Remove lyrics"}</summary><div class="lyrics-text">${escapeHtml(data.after || "No lyrics")}</div></details>`;
+    const none = TagcastI18n.html("lyrics.review.none");
+    $("#lyrics-review-content").innerHTML = `<h3>${escapeHtml(data.title)}</h3><p>${TagcastI18n.html("lyrics.review.intro")}</p><details><summary>${TagcastI18n.html("lyrics.review.before")}</summary><div class="lyrics-text">${data.before ? escapeHtml(data.before) : none}</div></details><details open><summary>${TagcastI18n.html(data.after ? "lyrics.review.after" : "lyrics.review.afterRemove")}</summary><div class="lyrics-text">${data.after ? escapeHtml(data.after) : none}</div></details>`;
     $("#lyrics-save-status").textContent = ""; $("#lyrics-save").disabled = false;
     $("#lyrics-review").showModal();
-  } catch (error) { if (details === state.details && revision === trackLyrics.revision) entry.error = error.message; }
+  } catch (error) { if (details === state.details && revision === trackLyrics.revision) entry.error = error; }
   finally { entry.loading = false; if (details === state.details) renderLyrics("track"); }
 }
 
@@ -317,20 +336,20 @@ async function saveTrackLyrics() {
   for (const button of $("#lyrics-review").querySelectorAll('[data-close="lyrics-review"]')) button.disabled = true;
   const status = $("#lyrics-save-status");
   status.classList.add("operation-status"); status.dataset.working = "true";
-  status.textContent = "Saving lyrics and checking iBroadcast…";
+  status.textContent = TagcastI18n.text("lyrics.review.saving");
   // Consume the browser review too; errors require a new native read and review.
   trackLyrics.review = null;
   try {
     const data = await api("/api/lyrics/save", {id: review.data.id, approved: true});
     if (review.details !== state.details || review.revision !== trackLyrics.revision
         || review.selection.session !== state.connection.playback_session) return;
-    if (data.status !== "saved") throw Error("Lyrics were sent but could not be confirmed. Check iBroadcast before reviewing again.");
+    if (data.status !== "saved") throw playbackFailure("errors.lyrics.save_unconfirmed");
     review.entry.draft = null; review.entry.data = null; review.entry.error = "";
     review.entry.focusAfterLoad = true;
-    $("#lyrics-review").close(); repaintLyrics(); toast(data.cache_error || "Lyrics saved and confirmed in iBroadcast.");
+    $("#lyrics-review").close(); repaintLyrics(); toast(data.cache_error || TagcastI18n.text("lyrics.review.saved"));
   } catch (error) {
-    status.textContent = `${error.message} This request will not be sent again. Close this review and check lyrics again before retrying.`;
-    review.entry.error = "Check iBroadcast before reviewing another lyrics change.";
+    status.textContent = TagcastI18n.text("lyrics.review.saveFailed", {error: TagcastI18n.errorText(error)});
+    review.entry.error = playbackFailure("errors.lyrics.check_before_review");
     review.entry.data = null;
     refreshAlbumLyricsLabels();
   } finally {
@@ -379,4 +398,18 @@ $("#lyrics-review").addEventListener("close", () => {
     repaintLyrics();
     if (visibleLyricsSelection("track")) $("#track-lyrics-text")?.focus({preventScroll: true});
   }
+});
+
+// A language change rewrites read-only lyrics text from memory: album lyrics labels, the album
+// check status and the open viewer's labels. Lyrics stay as they are; the track editor and the
+// review dialog keep their text until they are drawn again. Now playing repaints in player.js.
+TagcastI18n.subscribe(() => {
+  if (typeof albumView === "undefined") return;
+  refreshAlbumLyricsLabels(); renderAlbumLyricsCheck();
+  const viewer = trackLyrics.viewer, data = viewer && knownTrackLyrics(albumLyricsTrack(viewer.id));
+  if (!data) return;
+  const content = $("#lyrics-viewer-content");
+  content.querySelector(".lyrics-text")?.setAttribute("aria-label", TagcastI18n.text("lyrics.viewer.region"));
+  const source = content.querySelector(".lyrics-source");
+  if (source) source.innerHTML = lyricsSavedSource(data);
 });

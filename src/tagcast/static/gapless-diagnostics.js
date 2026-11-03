@@ -2,8 +2,9 @@
 
 // Optional listening-build instrumentation. No timers, network, storage or audio reads.
 const gaplessDiagnostics = {enabled: false, events: [], dropped: 0, start: 0, started: null, generation: 0, restore: [], detach: null};
+// Only this panel is interface text; recorded events and the downloaded report stay English.
 function gaplessDiagnosticsPanel() {
-  return `<section class="settings-section" data-settings-category="playback"><details class="settings-details"><summary>Optional playback diagnostics</summary><p class="muted">For reporting a playback problem in Tagcast. Off each time you open the app. Records anonymous queue positions, preparation and buffer timings, player events and fallback categories. No track names, account details, stream URLs or music are recorded. The latest 2,000 events stay in memory until you explicitly download them or close the app.</p><label class="checkline"><input type="checkbox" id="gapless-diagnostics-enabled" ${gaplessDiagnostics.enabled ? "checked" : ""}> Collect playback diagnostics</label><button type="button" class="button small" id="gapless-diagnostics-download" ${gaplessDiagnostics.events.length ? "" : "disabled"}>Download diagnostics ↓</button><p id="gapless-diagnostics-status" role="status">${gaplessDiagnostics.enabled ? "Collecting anonymous playback events." : "Diagnostics are off."} Use Activity Monitor for total app memory.</p></details></section>`;
+  return `<section class="settings-section" data-settings-category="playback"><details class="settings-details"><summary>${TagcastI18n.html("gaplessSettings.diagnostics.summary")}</summary><p class="muted">${TagcastI18n.html("gaplessSettings.diagnostics.note", {limit: 2000})}</p><label class="checkline"><input type="checkbox" id="gapless-diagnostics-enabled" ${gaplessDiagnostics.enabled ? "checked" : ""}> ${TagcastI18n.html("gaplessSettings.diagnostics.collect")}</label><button type="button" class="button small" id="gapless-diagnostics-download" ${gaplessDiagnostics.events.length ? "" : "disabled"}>${TagcastI18n.html("gaplessSettings.diagnostics.download")}</button><p id="gapless-diagnostics-status" role="status">${TagcastI18n.html(gaplessDiagnostics.enabled ? "gaplessSettings.diagnostics.collecting" : "gaplessSettings.diagnostics.off")} ${TagcastI18n.html("gaplessSettings.diagnostics.memory")}</p></details></section>`;
 }
 function gaplessDiagnosticEvent(kind, values = {}) {
   if (!gaplessDiagnostics.enabled || !["diagnostics-enabled", "diagnostics-disabled", "prepare-start", "prepare-ready", "prepare-failed", "track-boundary", "fallback", "buffer-append", "buffer-remove", "buffer-exception", "buffer-update", "buffer-error", "source-buffer-created", "sourceopen", "sourceended", "sourceclose", ...["play", "playing", "pause", "waiting", "stalled", "seeking", "seeked", "ended", "error", "ratechange", "emptied"].map(name => "audio-" + name)].includes(kind)) return;
@@ -123,6 +124,6 @@ document.addEventListener("change", event => {
   if (event.target.id !== "gapless-diagnostics-enabled") return;
   gaplessDiagnosticsSet(event.target.checked);
   $("#gapless-diagnostics-download").disabled = !gaplessDiagnostics.events.length;
-  $("#gapless-diagnostics-status").textContent = gaplessDiagnostics.enabled ? "Collecting anonymous playback events. Download after reproducing the problem." : "Collection stopped. You can download the retained events; enabling again starts a new log.";
+  $("#gapless-diagnostics-status").textContent = TagcastI18n.text(gaplessDiagnostics.enabled ? "gaplessSettings.diagnostics.started" : "gaplessSettings.diagnostics.stopped");
 });
 document.addEventListener("click", event => { if (event.target.id === "gapless-diagnostics-download") gaplessDiagnosticsDownload(); });

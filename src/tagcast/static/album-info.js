@@ -34,32 +34,34 @@ function albumInformationFocus() {
     : focused?.matches?.("#album-information [data-album-information-retry]") ? "[data-album-information-retry]" : "";
 }
 
-function renderAlbumInformation(restoreFocus = "") {
-  clearTimeout(albumInformationRetryTimer);
+// quiet: repaint from memory after a language change; never starts or refreshes a lookup.
+function renderAlbumInformation(restoreFocus = "", quiet = false) {
   const box = $("#album-information");
   if (!box) return;
   const selection = albumInformationSelection();
   const source = albumBackgroundSource();
+  const key = selection && albumInformationKey(selection);
+  if (quiet && albumInformation.enabled && selection && source === "theaudiodb" && !albumInformation.entries.has(key)) return;
+  clearTimeout(albumInformationRetryTimer);
   box.hidden = !albumInformation.enabled || !selection || source !== "theaudiodb";
   if (box.hidden) {
     box.innerHTML = "";
     // A metadata-only cache replacement can reach this renderer without an album repaint.
-    if (albumInformation.enabled && selection && source === "pending") loadGuideAlbumNotes();
+    if (albumInformation.enabled && selection && source === "pending" && !quiet) loadGuideAlbumNotes();
     return;
   }
-  const key = albumInformationKey(selection);
   let entry = albumInformation.entries.get(key);
   if (!entry) {
     entry = {data: null, loading: true, error: ""}; albumInformation.entries.set(key, entry);
     while (albumInformation.entries.size > 100) albumInformation.entries.delete(albumInformation.entries.keys().next().value);
     loadAlbumInformation(selection, key, entry);
-  } else if (!entry.loading && !entry.error && entry.data?.expires_at <= Date.now() / 1000
+  } else if (!quiet && !entry.loading && !entry.error && entry.data?.expires_at <= Date.now() / 1000
       && Date.now() - entry.checkedAt >= 60000) {
     entry.loading = true; loadAlbumInformation(selection, key, entry);
   }
   const focused = restoreFocus || albumInformationFocus();
   const data = entry.data, wait = Math.max(0, Math.ceil(((entry.retryAt || 0) - Date.now()) / 1000));
-  const retryTime = wait ? new Date(entry.retryAt).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "";
+  const retryTime = wait ? TagcastI18n.dateTime(entry.retryAt, {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "";
   if (entry.error && wait) {
     const revision = albumInformation.revision;
     albumInformationRetryTimer = setTimeout(() => {
@@ -68,20 +70,21 @@ function renderAlbumInformation(restoreFocus = "") {
           && albumInformationSelection() && albumInformationKey(albumInformationSelection()) === key) renderAlbumInformation();
     }, wait * 1000);
   }
-  const note = entry.error ? `<p class="error-text" role="status">${escapeHtml(entry.error)} <button type="button" class="text-action" data-album-information-retry${wait ? " disabled" : ""}>${wait ? `Try again at ${escapeHtml(retryTime)}` : "Try again"}</button></p>`
-    : entry.loading ? '<p class="muted" role="status">Loading album information…</p>' : "";
+  const note = entry.error ? `<p class="error-text" role="status">${escapeHtml(TagcastI18n.errorText(entry.error))} <button type="button" class="text-action" data-album-information-retry${wait ? " disabled" : ""}>${wait ? TagcastI18n.html("artists.biography.retryAt", {time: retryTime}) : TagcastI18n.html("common.tryAgain")}</button></p>`
+    : entry.loading ? `<p class="muted" role="status">${TagcastI18n.html("albumInfo.loading")}</p>` : "";
   box.dataset.albumInformationKey = key;
   if (data?.status === "ready" && data.description) {
     const url = /^https:\/\/www\.theaudiodb\.com\/album\/[0-9]{1,20}$/.test(data.url || "") ? data.url : "https://www.theaudiodb.com/";
-    box.innerHTML = `<details ${entry.open ? "open" : ""}><summary>About this album <span class="muted">TheAudioDB</span></summary><div class="artist-biography-text">${String(data.description).split(/\n+/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div><p class="artist-biography-source">Album information: <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">TheAudioDB ↗</a> · English · Saved on this computer</p>${note}</details>`;
+    const link = TagcastI18n.trusted(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">TheAudioDB ↗</a>`);
+    box.innerHTML = `<details ${entry.open ? "open" : ""}><summary>${TagcastI18n.html("albumInfo.summary")} <span class="muted">TheAudioDB</span></summary><div class="artist-biography-text">${String(data.description).split(/\n+/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div><p class="artist-biography-source">${TagcastI18n.html("albumInfo.source", {source: link})}</p>${note}</details>`;
   } else {
-    const missing = data?.reason === "missing_identity" ? "An album title and named album artist are needed for album information."
-      : data?.status === "ambiguous" ? "More than one album matches this artist and title on TheAudioDB; no text was chosen."
-      : data?.status === "unavailable" ? "Album found on TheAudioDB, but no English background text is available."
-      : data?.status === "missing" ? "No matching album found on TheAudioDB for this artist and title." : "";
+    const missing = data?.reason === "missing_identity" ? "albumInfo.missingIdentity"
+      : data?.status === "ambiguous" ? "albumInfo.ambiguous"
+      : data?.status === "unavailable" ? "albumInfo.unavailable"
+      : data?.status === "missing" ? "albumInfo.missing" : "";
     const source = data?.status === "unavailable" && /^https:\/\/www\.theaudiodb\.com\/album\/[0-9]{1,20}$/.test(data.url || "")
-      ? ` <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">View album on TheAudioDB ↗</a>` : "";
-    box.innerHTML = `${missing ? `<p class="muted">${escapeHtml(missing)}${source}</p>` : ""}${note}`;
+      ? ` <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">${TagcastI18n.html("albumInfo.view")} ↗</a>` : "";
+    box.innerHTML = `${missing ? `<p class="muted">${TagcastI18n.html(missing)}${source}</p>` : ""}${note}`;
     box.hidden = !box.innerHTML;
   }
   if (focused) box.querySelector(focused)?.focus();
@@ -109,7 +112,7 @@ async function loadAlbumInformation(selection, key, entry) {
     }
   } catch (error) {
     if (current()) {
-      entry.error = error.message;
+      entry.error = error;
       const wait = Number(error.data?.retry_after);
       entry.retryAt = Number.isFinite(wait) && wait > 0 ? Date.now() + Math.min(wait, 60) * 1000 : 0;
     }

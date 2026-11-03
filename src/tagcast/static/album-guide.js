@@ -62,14 +62,15 @@ function albumBackgroundSource() {
   return guideAlbumNoteRows().length ? "guide" : "theaudiodb";
 }
 
-function renderGuideAlbumNotes() {
+// quiet: a language repaint from memory (see renderAlbumInformation); focus: a control to focus again.
+function renderGuideAlbumNotes({quiet = false, focus = ""} = {}) {
   const panel = $("#album-guide-notes");
   if (!panel || state.screen !== "album") return;
   const entries = guideNoteEntries(), rows = guideAlbumNoteRows();
-  panel.innerHTML = rows.map(({entry, note}) => `<details class="album-guide-note" data-guide-note="${entry.id}" ${guideNotes.open.has(entry.id) ? "open" : ""}><summary>About this album <span>1001 Albums${rows.length > 1 ? ` · ${escapeHtml(entry.album)}` : ""}</span></summary><div class="album-guide-note-copy">${note.context ? `<p class="muted">${escapeHtml(note.context)}</p>` : ""}<p>${escapeHtml(note.text)}</p><p class="muted">Adapted excerpt · <a href="${escapeHtml(note.source_url)}" target="_blank" rel="noopener noreferrer">Wikipedia contributors ↗</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a></p></div></details>`).join("")
-    || (entries.length && guideNotes.error ? '<p class="muted">Album background could not be loaded. Refresh Tagcast to try again.</p>' : "");
+  panel.innerHTML = rows.map(({entry, note}) => `<details class="album-guide-note" data-guide-note="${entry.id}" ${guideNotes.open.has(entry.id) ? "open" : ""}><summary>${TagcastI18n.html("albumInfo.summary")} <span>1001 Albums${rows.length > 1 ? ` · ${escapeHtml(entry.album)}` : ""}</span></summary><div class="album-guide-note-copy">${note.context ? `<p class="muted">${escapeHtml(note.context)}</p>` : ""}<p>${escapeHtml(note.text)}</p><p class="muted">${TagcastI18n.html("guide.notes.adapted")} · <a href="${escapeHtml(note.source_url)}" target="_blank" rel="noopener noreferrer">${TagcastI18n.html("guide.notes.contributors")} ↗</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a></p></div></details>`).join("")
+    || (entries.length && guideNotes.error ? `<p class="muted">${TagcastI18n.html("guide.notes.failed")}</p>` : "");
   panel.hidden = !panel.innerHTML;
-  if (typeof renderAlbumInformation === "function") renderAlbumInformation();
+  if (typeof renderAlbumInformation === "function") renderAlbumInformation(focus, quiet);
 }
 
 function loadGuideAlbumNotes() {
@@ -190,7 +191,7 @@ async function loadAlbumGuide(analyse = false) {
     if (analyse) albumGuide.page = 0;
   } catch (error) {
     if (request !== albumGuide.request || details !== state.details) return;
-    albumGuide.error = error.status === 404 ? "Restart Tagcast to use 1001 Albums: the running server is older than this page." : error.message;
+    albumGuide.error = error.status === 404 ? viewFailure("errors.guide.server_outdated") : error;
   } finally {
     if (request === albumGuide.request) {
       albumGuide.loading = false; albumGuide.analysing = false; renderAlbumGuide();
@@ -202,16 +203,16 @@ async function loadAlbumGuide(analyse = false) {
 
 function guideAlbumCard(entry, shelf) {
   const albums = [...new Set(entry.album_ids.map(id => shelf.get(String(id))).filter(Boolean))];
-  const a = albums[0], status = entry.manual ? entry.status === "found" ? "Linked by you" : "Linked album unavailable"
-    : {found: "In your library", possible: "Possible match", missing: "Not found"}[entry.status];
+  const a = albums[0], status = entry.manual ? entry.status === "found" ? "guide.status.linked" : "guide.status.linkedUnavailable"
+    : {found: "guide.status.found", possible: "guide.status.possible", missing: "guide.status.missing"}[entry.status];
   const reference = `<span class="album-name">${escapeHtml(entry.album)}</span><span class="album-artist">${escapeHtml(entry.artist)}</span>`;
-  return `<article class="album-card guide-card"><span class="guide-status ${entry.status === "possible" ? "guide-possible" : ""}">${status}</span>
-    ${a ? `<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}${reference}</button>`
+  return `<article class="album-card guide-card"><span class="guide-status ${entry.status === "possible" ? "guide-possible" : ""}">${status ? TagcastI18n.html(status) : ""}</span>
+    ${a ? `<button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="${TagcastI18n.html("browse.albumCard.open", {name: a.name})}">${cover(a)}${reference}</button>`
       : `<div class="guide-missing">${cover({name: entry.album, artist: entry.artist, color: colors[(entry.id - 1) % colors.length]})}${reference}</div>`}
-    <p class="guide-edition muted">${a && (a.name !== entry.album || a.artist !== entry.artist) ? `Your edition: ${escapeHtml(a.artist)} · ${escapeHtml(a.name)}` : ""}</p>
-    ${albums.length > 1 ? `<div class="guide-editions">${albums.map((album, i) => `<button class="text-action" data-album="${escapeHtml(album.id)}" title="${escapeHtml(album.artist)} · ${escapeHtml(album.name)} · ${album.year || "Unknown year"}">Edition ${i + 1}${album.year ? ` (${album.year})` : ""}</button>`).join(" · ")}</div>` : ""}
+    <p class="guide-edition muted">${a && (a.name !== entry.album || a.artist !== entry.artist) ? TagcastI18n.html("guide.card.edition", {artist: a.artist, album: a.name}) : ""}</p>
+    ${albums.length > 1 ? `<div class="guide-editions">${albums.map((album, i) => `<button class="text-action" data-album="${escapeHtml(album.id)}" title="${escapeHtml(album.artist)} · ${escapeHtml(album.name)} · ${album.year || TagcastI18n.html("guide.card.unknownYear")}">${album.year ? TagcastI18n.html("guide.card.editionYear", {number: i + 1, year: album.year}) : TagcastI18n.html("guide.card.editionNumber", {number: i + 1})}</button>`).join(" · ")}</div>` : ""}
     <div class="card-meta"><span>${entry.year} · #${entry.id}</span>${a && entry.status === "found" ? albumCardActions(a) : ""}</div>
-    <div class="guide-link-actions"><button class="text-action" data-guide-link="${entry.id}">${entry.manual ? "Change link…" : entry.status === "possible" ? "Confirm match…" : "Choose album…"}</button>${entry.manual ? `<button class="text-action" data-guide-unlink="${entry.id}">Undo link</button>` : ""}</div></article>`;
+    <div class="guide-link-actions"><button class="text-action" data-guide-link="${entry.id}">${TagcastI18n.html(entry.manual ? "guide.link.change" : entry.status === "possible" ? "guide.link.confirm" : "guide.link.choose")}</button>${entry.manual ? `<button class="text-action" data-guide-unlink="${entry.id}">${TagcastI18n.html("guide.link.undo")}</button>` : ""}</div></article>`;
 }
 
 function renderAlbumGuide() {
@@ -219,7 +220,7 @@ function renderAlbumGuide() {
   if (albumGuide.enabled && live() && !state.loading && !albumGuide.loading && albumGuide.details !== state.details) { loadAlbumGuide(); return; }
   const data = albumGuide.data, ready = data?.state === "ready";
   $("#guide-analyse").disabled = !albumGuide.enabled || !live() || state.loading || albumGuide.loading || guideLink.busy;
-  $("#guide-analyse").textContent = albumGuide.analysing ? "Analysing…" : ready || data?.state === "stale" ? "Analyse again" : "Analyse my library";
+  $("#guide-analyse").textContent = TagcastI18n.text(albumGuide.analysing ? "guide.analyse.running" : ready || data?.state === "stale" ? "guide.analyse.again" : "guide.analyse.start");
   $("#guide-toolbar").hidden = !ready;
   $("#guide-decades").hidden = !ready;
   $("#guide-matching-choice").hidden = !ready;
@@ -229,15 +230,16 @@ function renderAlbumGuide() {
   $("#guide-per-page").value = String(albumGuide.pageSize);
   $("#guide-sort").value = albumGuide.sort;
   const decades = ready ? [...new Set(data.entries.map(e => Math.floor(e.year / 10) * 10))].sort((a, b) => a - b) : [];
-  $("#guide-decades").innerHTML = ["all", ...decades.map(String)].map(value => `<button class="chip" data-guide-decade="${value}" aria-pressed="${albumGuide.decade === value}">${value === "all" ? "All decades" : `${value}s`}</button>`).join("");
-  $("#guide-results").textContent = ready ? `${fmt(data.counts.found)} of ${fmt(data.total)} albums found · ${fmt(data.counts.possible)} possible · ${fmt(data.counts.missing)} not found` : "";
-  $("#guide-note").textContent = !albumGuide.enabled ? "Enable 1001 Albums in Settings to show this section."
-    : !live() ? "Connect iBroadcast and load your library to analyse your collection."
-    : state.loading ? "Waiting for your library to load…"
-    : albumGuide.loading ? albumGuide.analysing ? "Comparing album titles and artists locally. Your library is unchanged." : "Reading your saved analysis…"
-    : data?.state === "stale" ? "Your library or the reference list has changed. Analyse again to update the results."
-    : ready ? "Analysis saved on this computer. Matches compare album metadata; they do not confirm that every track is present. Possible matches do not count as found."
-    : "Analysis runs only when you press Analyse my library. No music files are scanned and nothing is sent to iBroadcast.";
+  $("#guide-decades").innerHTML = ["all", ...decades.map(String)].map(value => `<button class="chip" data-guide-decade="${value}" aria-pressed="${albumGuide.decade === value}">${value === "all" ? TagcastI18n.html("guide.decades.all") : TagcastI18n.html("guide.decades.decade", {decade: value})}</button>`).join("");
+  const count = value => Number(value || 0);
+  $("#guide-results").textContent = ready ? TagcastI18n.text("guide.results", {found: count(data.counts.found), total: count(data.total), possible: count(data.counts.possible), missing: count(data.counts.missing)}) : "";
+  $("#guide-note").textContent = TagcastI18n.text(!albumGuide.enabled ? "guide.note.disabled"
+    : !live() ? "guide.note.connect"
+    : state.loading ? "guide.note.waiting"
+    : albumGuide.loading ? albumGuide.analysing ? "guide.note.analysing" : "guide.note.reading"
+    : data?.state === "stale" ? "guide.note.stale"
+    : ready ? "guide.note.ready"
+    : "guide.note.idle");
   const words = foldText(albumGuide.query).split(" ").filter(Boolean);
   const rows = ready ? data.entries.filter(e => (albumGuide.filter === "all" || e.status === albumGuide.filter)
     && (albumGuide.decade === "all" || Math.floor(e.year / 10) * 10 === Number(albumGuide.decade))
@@ -247,12 +249,12 @@ function renderAlbumGuide() {
   const max = Math.max(0, Math.ceil(rows.length / albumGuide.pageSize) - 1);
   albumGuide.page = Math.max(0, Math.min(albumGuide.page, max));
   const shelf = new Map(albumShelf().flatMap(a => itemIds(a).map(id => [id, a])));
-  $("#guide-list").innerHTML = albumGuide.error ? `<p class="error-box" role="alert">${escapeHtml(albumGuide.error)}</p>`
-    : albumGuide.loading || state.loading ? '<div class="empty" role="status"><span class="spinner"></span>Please wait…</div>'
+  $("#guide-list").innerHTML = albumGuide.error ? `<p class="error-box" role="alert">${escapeHtml(TagcastI18n.errorText(albumGuide.error))}</p>`
+    : albumGuide.loading || state.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("guide.list.wait")}</div>`
     : ready ? rows.length ? rows.slice(albumGuide.page * albumGuide.pageSize, (albumGuide.page + 1) * albumGuide.pageSize).map(e => guideAlbumCard(e, shelf)).join("")
-      : '<div class="empty">No albums match this selection.</div>'
-    : `<div class="empty">${!albumGuide.enabled ? '<button class="button" data-open-settings>Open Settings</button>' : "Run an analysis to discover which albums from the list are in your collection."}</div>`;
-  $("#guide-pagination").innerHTML = ready && max > 0 ? `<button class="button small" data-guide-page="-1" ${!albumGuide.page ? "disabled" : ""}>← Previous</button><span>Page ${albumGuide.page + 1} of ${max + 1}</span><button class="button small" data-guide-page="1" ${albumGuide.page === max ? "disabled" : ""}>Next →</button>` : "";
+      : `<div class="empty">${TagcastI18n.html("guide.list.empty")}</div>`
+    : `<div class="empty">${!albumGuide.enabled ? `<button class="button" data-open-settings>${TagcastI18n.html("guide.list.openSettings")}</button>` : TagcastI18n.html("guide.list.idle")}</div>`;
+  $("#guide-pagination").innerHTML = ready && max > 0 ? `<button class="button small" data-guide-page="-1" ${!albumGuide.page ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.page", {page: albumGuide.page + 1, pages: max + 1})}</span><button class="button small" data-guide-page="1" ${albumGuide.page === max ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
   if (typeof syncHistory === "function") syncHistory();
 }
 
@@ -297,9 +299,9 @@ $("#guide-show-matching").addEventListener("change", async () => {
   guideDisplay.pending = save.catch(() => {});
   try {
     const data = await save;
-    if (data.guide_matching_details !== visible) throw Error("Restart Tagcast to save this preference.");
+    if (data.guide_matching_details !== visible) throw viewFailure("errors.guide.preference_outdated");
   } catch (error) {
-    if (guideDisplay.matching === visible) toast(`Display changed, but could not remember it on this computer: ${error.message}`);
+    if (guideDisplay.matching === visible) toast(TagcastI18n.text("guide.display.saveFailed", {error: TagcastI18n.errorText(error)}));
   }
 });
 document.addEventListener("click", event => {
@@ -340,9 +342,10 @@ function renderGuideLink() {
   const ids = new Set(guideLink.entry.album_ids);
   const rows = albumShelf().filter(a => words.length ? words.every(w => foldText(`${a.artist} ${a.name} ${a.year}`).includes(w))
     : itemIds(a).some(i => ids.has(i)));
-  $("#guide-link-count").textContent = rows.length ? `${fmt(rows.length)} ${rows.length === 1 ? "album" : "albums"}${rows.length > 50 ? " · showing the first 50; refine your search" : ""}` : "";
-  $("#guide-link-choices").innerHTML = rows.length ? rows.slice(0, 50).map(a => `<div class="guide-link-choice"><div><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(a.artist)} · ${albumCardMetadata(a)}</small></div><button class="button small" data-guide-pick="${escapeHtml(a.id)}" ${guideLink.busy ? "disabled" : ""}>Use this album</button></div>`).join("")
-    : `<p class="muted">${words.length ? "No albums match. Try a shorter title or artist name." : "Search your library by album title or artist to choose a match."}</p>`;
+  $("#guide-link-count").textContent = rows.length ? [TagcastI18n.text("browse.count.albums", {count: rows.length}),
+    ...rows.length > 50 ? [TagcastI18n.text("guide.link.limited")] : []].join(" · ") : "";
+  $("#guide-link-choices").innerHTML = rows.length ? rows.slice(0, 50).map(a => `<div class="guide-link-choice"><div><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(a.artist)} · ${albumCardMetadata(a)}</small></div><button class="button small" data-guide-pick="${escapeHtml(a.id)}" ${guideLink.busy ? "disabled" : ""}>${TagcastI18n.html("guide.link.use")}</button></div>`).join("")
+    : `<p class="muted">${TagcastI18n.html(words.length ? "guide.link.noMatch" : "guide.link.prompt")}</p>`;
 }
 
 async function saveGuideLink(id, ids) {
@@ -358,11 +361,11 @@ async function saveGuideLink(id, ids) {
     if (request !== guideLink.request || details !== state.details || session !== state.connection.playback_session
       || !albumGuide.enabled || !live()) return;
     albumGuide.data = data; resetGuideAlbumNotes(); $("#guide-link-dialog").close();
-    toast(ids.length ? "Album linked locally. Your iBroadcast library is unchanged." : "Manual link removed. Automatic analysis is unchanged.");
+    toast(TagcastI18n.text(ids.length ? "guide.link.linked" : "guide.link.removed"));
   } catch (error) {
     if (request !== guideLink.request || details !== state.details || session !== state.connection.playback_session
       || !albumGuide.enabled || !live()) return;
-    const message = error.status === 404 ? "Restart Tagcast, then reload this page. The running server does not support manual album links yet." : error.message;
+    const message = TagcastI18n.errorText(error.status === 404 ? viewFailure("errors.guide.links_outdated") : error);
     $("#guide-link-error").textContent = message; toast(message);
   } finally {
     if (request === guideLink.request) { guideLink.busy = false; renderGuideLink(); renderAlbumGuide(); }
@@ -377,3 +380,19 @@ $("#guide-link-dialog").addEventListener("close", () => {
   guideLink.focus = null;
 });
 updateAlbumGuideControls();
+
+// A language change repaints the visible 1001 Albums page and the read-only matches of an open link
+// dialog from memory. The dialog's search text is never touched.
+TagcastI18n.subscribe(() => {
+  if (state.screen === "album-guide"
+      && !(albumGuide.enabled && live() && !state.loading && !albumGuide.loading && albumGuide.details !== state.details)) keepFocusWhile($("#album-guide-page"), renderAlbumGuide);
+  if ($("#guide-link-dialog").open && guideLink.entry) keepFocusWhile($("#guide-link-choices"), renderGuideLink);
+});
+
+// The source line keeps the book's own title and link; only the sentence around it is translated.
+function renderGuideSource() {
+  const node = $("#guide-source");
+  if (node) node.innerHTML = TagcastI18n.html("guide.intro.source", {book: TagcastI18n.trusted('<cite><a href="https://en.wikipedia.org/wiki/1001_Albums_You_Must_Hear_Before_You_Die" target="_blank" rel="noopener noreferrer">1001 Albums You Must Hear Before You Die</a></cite>')});
+}
+renderGuideSource();
+TagcastI18n.subscribe(renderGuideSource);

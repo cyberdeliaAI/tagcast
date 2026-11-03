@@ -2,16 +2,20 @@
 
 // Exact, paginated groups that open their albums. Live libraries are indexed on the server;
 // only the local demo uses the browser's complete album details.
-const browseKinds = {
-  decades: {label: "Decades", noun: "decades", singular: "decade", subtitle: "Choose a decade and discover a random selection of albums. Track years take precedence, with album years as fallback."},
-  "track-artists": {label: "Track artists", noun: "track artists", singular: "track artist", subtitle: "Explore the performers credited on your tracks. Open a card to see their albums."},
-  composers: {label: "Composers", noun: "composers", singular: "composer", subtitle: "Explore composer credits. Open a card to see their albums."},
-  genres: {label: "Genres", noun: "genres", singular: "genre", subtitle: "Explore main and additional genres. Combined labels such as Pop;Rock stay together as stored."},
-  tags: {label: "Tags", noun: "tags", singular: "tag", subtitle: "Your own iBroadcast labels, separate from genres. Open a tag to find matching albums. Manage assignments on an album or track."},
-  years: {label: "Release year", noun: "release years", singular: "release year", subtitle: "Explore tracks by release year. The track year takes precedence, with the album year as fallback. Missing years appear under Unknown year."},
-  "upload-folders": {label: "Upload folders", noun: "upload folders", singular: "upload folder", subtitle: "Find albums by their original upload folder. These are stored upload paths, not folders on this computer or playlist folders."},
-  uploaded: {label: "Date uploaded", noun: "upload days", singular: "upload day", subtitle: "Find albums by the upload day stored by iBroadcast, independently of release year. Dates are shown as stored, without a time-zone conversion."},
-};
+// Interface text keys per group. `label` and `subtitle` read in the current language, so other
+// pages (help, breadcrumbs) that use browseKinds follow a language change too.
+const browseKinds = Object.fromEntries(Object.entries({
+  decades: {label: "nav.sidebar.decades", subtitle: "browse.decades.subtitle", search: "browse.decades.search", sort: "browse.decades.sort", count: "browse.decades.count"},
+  "track-artists": {label: "nav.sidebar.trackArtists", subtitle: "browse.trackArtists.subtitle", search: "browse.trackArtists.search", sort: "browse.trackArtists.sort", count: "browse.trackArtists.count"},
+  composers: {label: "nav.sidebar.composers", subtitle: "browse.composers.subtitle", search: "browse.composers.search", sort: "browse.composers.sort", count: "browse.composers.count"},
+  genres: {label: "nav.sidebar.genres", subtitle: "browse.genres.subtitle", search: "browse.genres.search", sort: "browse.genres.sort", count: "browse.genres.count"},
+  tags: {label: "nav.sidebar.tags", subtitle: "browse.tags.subtitle", search: "browse.tags.search", sort: "browse.tags.sort", count: "browse.tags.count"},
+  years: {label: "nav.sidebar.releaseYear", subtitle: "browse.years.subtitle", search: "browse.years.search", sort: "browse.years.sort", count: "browse.years.count"},
+  "upload-folders": {label: "nav.sidebar.uploadFolders", subtitle: "browse.uploadFolders.subtitle", search: "browse.uploadFolders.search", sort: "browse.uploadFolders.sort", count: "browse.uploadFolders.count"},
+  uploaded: {label: "nav.sidebar.dateUploaded", subtitle: "browse.uploaded.subtitle", search: "browse.uploaded.search", sort: "browse.uploaded.sort", count: "browse.uploaded.count"},
+}).map(([kind, keys]) => [kind, {keys,
+  get label() { return TagcastI18n.text(keys.label); },
+  get subtitle() { return TagcastI18n.text(keys.subtitle); }}]));
 
 const uploadBrowseKind = () => ["upload-folders", "uploaded"].includes(browseView.kind);
 
@@ -29,29 +33,21 @@ function uploadBrowseTitle() {
 // https://rockhall.com/inductees/joy-division-new-order/
 // https://www.ifpi.org/resources/
 const decadeIntroductions = {
-  "1900": "Ragtime, brass bands and parlour songs filled theatres and homes, while cylinders and early discs carried performers to new listeners. In concert music, late Romantic richness met new approaches to harmony and colour.",
-  "1910": "Ragtime and dance bands shared the stage with early blues and, by 1917, the first jazz recordings. Concert music broke with tradition through bold rhythms and unfamiliar harmonies, and Tin Pan Alley songs travelled widely as sheet music.",
-  "1920": "Jazz, blues and dance orchestras reached growing audiences through records and the new medium of radio. Improvising soloists and expressive singers came to the fore, alongside the first country recordings, Broadway songs and adventurous concert music.",
-  "1930": "Big-band swing brought dance rhythms, memorable singers and inventive soloists to a wide audience. Film musicals, blues, gospel and country found loyal followings, and Latin rhythms such as the rumba found eager dancers.",
-  "1940": "Bebop gave jazz a fast, adventurous language as the swing era wound down. Jump blues fed into rhythm and blues, bluegrass took shape and crooners lent popular song a softer intimacy.",
-  "1950": "Rock and roll carried the energy of rhythm and blues and country to teenage audiences through radio and 45 rpm singles. Doo-wop, electric blues, mambo and modern jazz thrived as well, and the long-playing record gave albums room to grow.",
-  "1960": "Pop and rock became a space for rapid experimentation, from the British beat boom and folk-rock to psychedelic studio sounds. Soul, bossa nova, free jazz and the folk revival added a wealth of other voices.",
-  "1970": "Funk and disco filled dance floors, progressive rock stretched the album format and punk brought a sharper edge. Reggae, heavy metal, singer-songwriters and jazz fusion found large audiences, while early hip-hop and electronic experiments pointed ahead.",
-  "1980": "Synth-pop, new wave and the first house and techno tracks grew around synthesisers, drum machines and sampling. Music videos and portable cassette players changed how songs were seen and heard, as hip-hop widened its reach and rock and metal filled arenas.",
-  "1990": "Grunge, alternative rock and Britpop gave guitar music fresh directions, while hip-hop and R&B became major creative forces. House, techno and drum and bass filled clubs and raves, and CD reissues put older recordings back into circulation.",
-  "2000": "Hip-hop, R&B, pop, indie rock and electronic music shared an increasingly digital world. Downloads, digital music players and music blogs changed how listeners discovered songs, opening new routes for independent artists.",
-  "2010": "Streaming and playlists changed everyday listening, bringing music from many places within easy reach. Pop, hip-hop and electronic dance music crossed paths, K-pop and Latin pop reached charts worldwide and independent artists built audiences online.",
-  "2020": "Streaming and short video clips connect pop, hip-hop and electronic music with regional scenes around the world. New releases sit alongside rediscovered recordings, bringing fresh voices and older favourites into the same listening space.",
+  "1900": "browse.decadeIntro.y1900", "1910": "browse.decadeIntro.y1910", "1920": "browse.decadeIntro.y1920",
+  "1930": "browse.decadeIntro.y1930", "1940": "browse.decadeIntro.y1940", "1950": "browse.decadeIntro.y1950",
+  "1960": "browse.decadeIntro.y1960", "1970": "browse.decadeIntro.y1970", "1980": "browse.decadeIntro.y1980",
+  "1990": "browse.decadeIntro.y1990", "2000": "browse.decadeIntro.y2000", "2010": "browse.decadeIntro.y2010",
+  "2020": "browse.decadeIntro.y2020",
 };
 
 function decadeIntroduction(key) {
-  if (Object.hasOwn(decadeIntroductions, key)) return decadeIntroductions[key];
+  if (Object.hasOwn(decadeIntroductions, key)) return TagcastI18n.text(decadeIntroductions[key]);
   const year = Number(key);
   if (!Number.isInteger(year) || year <= 0 || year % 10 !== 0) return "";
-  if (year >= 1800 && year < 1900) return "Concert halls, opera houses and music at home shaped this era of classical and Romantic music. Recordings in your collection may revisit works written long before recording became widespread.";
-  if (year < 1800) return "Music from earlier centuries lives on through songs, instrumental works and performances passed down across generations. Explore the recordings that connect your collection with this period.";
-  if (year > new Date().getFullYear()) return "The music of this decade is still ahead of us. Explore releases associated with these future years in your collection.";
-  return "Discover the music your collection connects with these years, from familiar styles to new directions and distinctive voices.";
+  if (year >= 1800 && year < 1900) return TagcastI18n.text("browse.decadeIntro.nineteenthCentury");
+  if (year < 1800) return TagcastI18n.text("browse.decadeIntro.earlier");
+  if (year > new Date().getFullYear()) return TagcastI18n.text("browse.decadeIntro.future");
+  return TagcastI18n.text("browse.decadeIntro.general");
 }
 const browseView = {kind: "track-artists", key: null, label: "", rows: [], albumIds: new Set(), total: 0, page: 0,
   query: "", sort: "az", pageSize: storedPageSize("tagcast-browse-per-page") || 24,
@@ -107,7 +103,7 @@ function localBrowse() {
   let rows;
   if (browseView.key !== null) {
     const group = groups.get(browseView.key);
-    if (!group) throw Error("This group is no longer available. Open the overview again.");
+    if (!group) throw viewFailure("errors.nav.group_missing");
     browseView.label = group.label;
     if (uploadBrowseKind()) {
       rows = group.rows.filter(t => matches([t.title, t.artist, t.album, t.album_artist, ...t.performers.map(p => p.name), ...t.composers].join(" ")));
@@ -151,7 +147,8 @@ async function loadBrowse() {
     browseView.membershipQuery = browseView.query; browseView.loaded = true;
   } catch (error) {
     if (request !== browseView.request || details !== state.details) return;
-    browseView.error = error.status === 404 ? "Restart Tagcast to use these overviews: the running server is older than this page." : error.message;
+    // An Error, shown through TagcastI18n.errorText() so a language change can show it again.
+    browseView.error = error.status === 404 ? viewFailure("errors.nav.browse_outdated") : error;
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
   } finally {
     if (request === browseView.request && details === state.details) { browseView.loading = false; renderBrowse(); }
@@ -160,16 +157,16 @@ async function loadBrowse() {
 
 function browseCard(g) {
   const people = ["track-artists", "composers"].includes(browseView.kind);
-  const albums = g.albums == null ? "" : `${g.albums.toLocaleString("en")} ${g.albums === 1 ? "album" : "albums"}`;
-  const tracks = `${g.tracks.toLocaleString("en")} ${g.tracks === 1 ? "track" : "tracks"}`;
+  const albums = g.albums == null ? "" : TagcastI18n.html("browse.count.albums", {count: g.albums});
+  const tracks = TagcastI18n.html("browse.count.tracks", {count: g.tracks});
   const image = g.image ? `<img src="${escapeHtml(g.image.replace(/-150$/, "-300"))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
-  return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="Open albums for ${escapeHtml(g.label)}">
+  return `<button class="artist-card ${people ? "" : "browse-label-card"}" data-browse-key="${escapeHtml(g.key)}" data-browse-label="${escapeHtml(g.label)}" aria-label="${TagcastI18n.html("browse.card.open", {label: g.label})}">
     ${people ? `<span class="artist-card-photo">${image}<span>${escapeHtml(initials(g.label))}</span></span>` : ""}
-    <strong>${escapeHtml(g.label)}</strong>${g.archived ? '<small class="muted">Archived in iBroadcast</small>' : ""}<span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
+    <strong>${escapeHtml(g.label)}</strong>${g.archived ? `<small class="muted">${TagcastI18n.html("browse.card.archived")}</small>` : ""}<span class="artist-card-count">${albums || tracks}</span>${albums ? `<small class="artist-card-tracks">${tracks}</small>` : ""}</button>`;
 }
 
 function browseAlbumCard(a) {
-  return `<article class="album-card"><button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="Open ${escapeHtml(a.name)}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button>
+  return `<article class="album-card"><button class="album-open" data-album="${escapeHtml(a.id)}" aria-label="${TagcastI18n.html("browse.albumCard.open", {name: a.name})}">${cover(a)}<span class="album-name">${escapeHtml(a.name)}</span><span class="album-artist">${escapeHtml(a.artist)}</span></button>
     <div class="card-meta"><div class="album-card-meta-text"><span>${albumCardMetadata(a)}</span>${badge(a)}</div>${albumCardActions(a)}</div></article>`;
 }
 
@@ -201,33 +198,37 @@ function renderBrowse() {
   $("#browse-tag-rename").hidden = !detail;
   $("#browse-tag-delete").hidden = !detail;
   const decades = browseView.kind === "decades", surprise = detail && decades;
-  $("#browse-title").textContent = detail ? (uploads ? uploadBrowseTitle() : browseView.label) || "Albums" : `${config.label}.`;
-  $("#breadcrumb").innerHTML = detail ? `${escapeHtml(config.label)}<span class="slash" aria-hidden="true">/</span><span aria-current="page">${escapeHtml((uploads ? uploadBrowseTitle() : browseView.label) || "Albums")}</span>` : escapeHtml(config.label);
-  $("#browse-eyebrow").textContent = detail ? config.label.toLocaleUpperCase() : "EXPLORE YOUR COLLECTION";
-  $("#browse-subtitle").textContent = uploadDetail ? "Albums with at least one track in this upload group. An album may appear in several folders or days. Open or play an album to use the complete album."
-    : surprise ? "A random selection from this decade. Open an album to listen, add it to your queue, or try Surprise me again." : detail ? "Albums with at least one matching track. Open an album to see its tracks, listen or edit." : config.subtitle;
+  const groupTitle = (uploads ? uploadBrowseTitle() : browseView.label) || TagcastI18n.text("nav.sidebar.albums");
+  $("#browse-title").textContent = detail ? groupTitle : TagcastI18n.text("browse.overview.title", {label: config.label});
+  $("#breadcrumb").innerHTML = detail ? `${escapeHtml(config.label)}<span class="slash" aria-hidden="true">/</span><span aria-current="page">${escapeHtml(groupTitle)}</span>` : escapeHtml(config.label);
+  $("#browse-eyebrow").textContent = detail ? config.label.toLocaleUpperCase() : TagcastI18n.text("browse.eyebrow");
+  $("#browse-subtitle").textContent = uploadDetail ? TagcastI18n.text("browse.detail.uploadSubtitle")
+    : surprise ? TagcastI18n.text("browse.detail.decadeSubtitle") : detail ? TagcastI18n.text("browse.detail.subtitle") : config.subtitle;
   $("#browse-upload-path").hidden = !(uploadDetail && browseView.kind === "upload-folders");
   $("#browse-upload-path").textContent = uploadDetail && browseView.kind === "upload-folders" ? browseView.label : "";
   const introduction = surprise ? decadeIntroduction(browseView.key) : "";
   $("#browse-decade-intro").textContent = introduction;
   $("#browse-decade-intro").hidden = !introduction;
   $("#browse-back").hidden = !detail;
-  $("#browse-back").textContent = `← Back to ${backLabel(config.label)}`;
+  $("#browse-back").textContent = TagcastI18n.text("nav.back", {page: backLabel(config.label)});
   $("#browse-toolbar").hidden = decades && !detail;
   $("#browse-search-field").hidden = decades && !detail;
-  $("#browse-search").placeholder = uploadDetail ? "Search albums, artists or tracks in this group" : detail ? "Search albums in this group" : `Search ${config.noun}`;
-  $("#browse-search").setAttribute("aria-label", detail ? "Search group albums" : `Search ${config.noun}`);
+  $("#browse-search").placeholder = TagcastI18n.text(uploadDetail ? "browse.detail.searchUpload" : detail ? "browse.detail.search" : config.keys.search);
+  $("#browse-search").setAttribute("aria-label", TagcastI18n.text(detail ? "browse.detail.searchLabel" : config.keys.search));
   $("#browse-per-page").value = String(browseView.pageSize);
   $("#browse-per-page").hidden = decades && !detail;
   $("#browse-surprise").hidden = !surprise;
   $("#browse-surprise").disabled = state.loading || browseView.loading || Boolean(browseView.error);
   const sort = $("#browse-sort");
   sort.hidden = decades;
-  sort.setAttribute("aria-label", detail ? "Sort group albums" : `Sort ${config.noun}`);
-  sort.innerHTML = detail ? '<option value="artist">Album artist · A–Z</option><option value="artist_za">Album artist · Z–A</option><option value="title">Album title · A–Z</option><option value="title_za">Album title · Z–A</option><option value="year">Release year · oldest first</option><option value="newest">Release year · newest first</option>'
-    : browseView.kind === "uploaded" ? '<option value="za">Upload day · newest first</option><option value="az">Upload day · oldest first</option><option value="count">Most tracks first</option>'
-    : ["years", "decades"].includes(browseView.kind) ? '<option value="az">Year · oldest first</option><option value="za">Year · newest first</option><option value="count">Most tracks first</option>'
-    : '<option value="az">Name · A–Z</option><option value="za">Name · Z–A</option><option value="count">Most tracks first</option>';
+  sort.setAttribute("aria-label", TagcastI18n.text(detail ? "browse.detail.sortLabel" : config.keys.sort));
+  const sorts = detail ? [["artist", "browse.sort.albumArtistAz"], ["artist_za", "browse.sort.albumArtistZa"], ["title", "browse.sort.albumTitleAz"],
+      ["title_za", "browse.sort.albumTitleZa"], ["year", "browse.sort.releaseYearOldest"], ["newest", "browse.sort.releaseYearNewest"]]
+    : browseView.kind === "uploaded" ? [["za", "browse.sort.uploadDayNewest"], ["az", "browse.sort.uploadDayOldest"], ["count", "browse.sort.mostTracks"]]
+    : ["years", "decades"].includes(browseView.kind) ? [["az", "browse.sort.yearOldest"], ["za", "browse.sort.yearNewest"], ["count", "browse.sort.mostTracks"]]
+    : [["az", "browse.sort.nameAz"], ["za", "browse.sort.nameZa"], ["count", "browse.sort.mostTracks"]];
+  const options = sorts.map(([value, key]) => `<option value="${value}">${TagcastI18n.html(key)}</option>`).join("");
+  if (sort.innerHTML !== options) sort.innerHTML = options;
   sort.value = browseView.sort;
   let rows = browseView.rows;
   if (detail && browseView.loaded && !state.loading && !browseView.loading) {
@@ -242,16 +243,17 @@ function renderBrowse() {
     browseView.page = Math.min(browseView.page, Math.max(0, Math.ceil(albums.length / browseView.pageSize) - 1));
     rows = albums.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
   }
-  $("#browse-results").textContent = state.loading || browseView.loading ? "Loading…" : browseView.error ? ""
-    : surprise ? `Showing ${rows.length} random ${rows.length === 1 ? "album" : "albums"} of ${browseView.total.toLocaleString("en")}` : `${browseView.total.toLocaleString("en")} ${detail ? browseView.total === 1 ? "album" : "albums" : browseView.total === 1 ? config.singular : config.noun}`;
+  $("#browse-results").textContent = state.loading || browseView.loading ? TagcastI18n.text("common.loading") : browseView.error ? ""
+    : surprise ? TagcastI18n.text("browse.results.random", {count: rows.length, total: browseView.total})
+    : TagcastI18n.text(detail ? "browse.count.albums" : config.keys.count, {count: browseView.total});
   const list = $("#browse-list");
   list.className = detail ? "album-grid" : uploads ? "upload-group-list" : "artists-grid";
-  list.innerHTML = state.loading || browseView.loading ? '<div class="empty" role="status"><span class="spinner"></span>Loading your collection…</div>'
-    : browseView.error ? `<p class="error-box" role="alert">${escapeHtml(browseView.error)}</p>`
-    : !rows.length ? '<div class="empty">No matches in this library.</div>'
+  list.innerHTML = state.loading || browseView.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("browse.list.loading")}</div>`
+    : browseView.error ? `<p class="error-box" role="alert">${escapeHtml(TagcastI18n.errorText(browseView.error))}</p>`
+    : !rows.length ? `<div class="empty">${TagcastI18n.html("browse.list.empty")}</div>`
     : detail ? rows.map(browseAlbumCard).join("") : rows.map(browseCard).join("");
   const max = Math.max(0, Math.ceil(browseView.total / browseView.pageSize) - 1);
-  $("#browse-pagination").innerHTML = !surprise && !state.loading && !browseView.loading && max > 0 ? `<button class="button small" data-browse-page="-1" ${browseView.page === 0 ? "disabled" : ""}>← Previous</button><span>Page ${browseView.page + 1} of ${(max + 1).toLocaleString("en")}</span><button class="button small" data-browse-page="1" ${browseView.page === max ? "disabled" : ""}>Next →</button>` : "";
+  $("#browse-pagination").innerHTML = !surprise && !state.loading && !browseView.loading && max > 0 ? `<button class="button small" data-browse-page="-1" ${browseView.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: browseView.page + 1, pages: max + 1})}</span><button class="button small" data-browse-page="1" ${browseView.page === max ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
   updateFavouriteControls();
   updateRandomControls();
   if (typeof syncHistory === "function") syncHistory();
@@ -299,4 +301,11 @@ document.addEventListener("click", event => {
   if (group) { showBrowse(browseView.kind, group.dataset.browseKey, {label: group.dataset.browseLabel}); return; }
   const page = event.target.closest("[data-browse-page]");
   if (page && !browseView.loading) { browseView.page = Math.max(0, browseView.page + Number(page.dataset.browsePage)); refreshBrowseList(); window.scrollTo?.({top: 0}); }
+});
+
+// A language change repaints the visible overview or group from memory. A page that is still
+// waiting for its first or a newer library read is left to that read.
+TagcastI18n.subscribe(() => {
+  if (state.screen !== "browse") return;
+  if (state.loading || browseView.loading || browseView.details === state.details && (browseView.loaded || browseView.error)) renderBrowse();
 });

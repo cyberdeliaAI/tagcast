@@ -8,15 +8,17 @@
 const nav = {ready: false, restoring: false, pending: null, views: new Map(), details: null, scope: 0, scroll: null, crumbs: []};
 const DIALOGS_WITH_DRAFTS = ["#editor", "#review", "#artwork", "#trash-review", "#cleanup", "#duplicate-cleanup", "#playlist-dialog", "#playlist-import", "#tag-dialog", "#lyrics-import", "#album-merge"];
 
+// [id, interface text key (null: a product name shown as is), always visible, hidden by default]
 const SIDEBAR_ITEMS = [
-  ["show-artists", "Album artists", true], ["all-albums", "Albums", true],
-  ["show-track-artists", "Track artists"], ["show-composers", "Composers"],
-  ["show-genres", "Genres"], ["show-tags", "Tags"], ["show-years", "Release year"], ["show-decades", "Decades"],
-  ["show-upload-folders", "Upload folders", false, true], ["show-uploaded", "Date uploaded", false, true],
-  ["show-tracks", "Tracks"], ["show-favourites", "Favourites"], ["show-playlists", "Playlists"],
-  ["show-recently-played", "Recently played"], ["show-downloads", "Downloads"], ["show-uploads", "Uploads"],
-  ["show-album-guide", "1001 Albums"], ["show-overview", "Overview"], ["show-history", "Change history", true],
+  ["show-artists", "nav.sidebar.albumArtists", true], ["all-albums", "nav.sidebar.albums", true],
+  ["show-track-artists", "nav.sidebar.trackArtists"], ["show-composers", "nav.sidebar.composers"],
+  ["show-genres", "nav.sidebar.genres"], ["show-tags", "nav.sidebar.tags"], ["show-years", "nav.sidebar.releaseYear"], ["show-decades", "nav.sidebar.decades"],
+  ["show-upload-folders", "nav.sidebar.uploadFolders", false, true], ["show-uploaded", "nav.sidebar.dateUploaded", false, true],
+  ["show-tracks", "nav.sidebar.tracks"], ["show-favourites", "nav.sidebar.favourites"], ["show-playlists", "nav.sidebar.playlists"],
+  ["show-recently-played", "nav.sidebar.recentlyPlayed"], ["show-downloads", "nav.sidebar.downloads"], ["show-uploads", "nav.sidebar.uploads"],
+  ["show-album-guide", null], ["show-overview", "nav.sidebar.overview"], ["show-history", "nav.sidebar.changeHistory", true],
 ];
+const sidebarItemLabel = key => key ? TagcastI18n.text(key) : "1001 Albums";
 const sidebarLayout = readSidebarLayout();
 
 function defaultHiddenSidebarItems() {
@@ -61,21 +63,36 @@ function applySidebarLayout() {
 function saveSidebarLayout() {
   applySidebarLayout();
   try { localStorage.setItem("tagcast-sidebar", JSON.stringify(sidebarLayout)); }
-  catch { toast("Sidebar changed for this tab. This browser could not save the preference."); }
+  catch { toast(TagcastI18n.text("nav.sidebarSettings.notSaved")); }
 }
 
 function sidebarSettingsRows() {
   return sidebarLayout.order.map((id, index) => {
-    const [, label, required] = SIDEBAR_ITEMS.find(item => item[0] === id);
-    const note = required ? "Always available" : id === "show-album-guide" && !albumGuide.enabled ? "Enable 1001 Albums under Discovery to show it"
-      : id === "show-uploads" && (typeof musicUploadsView === "undefined" || !musicUploadsView.enabled) ? "Enable Music uploads under Data & exports to show it"
-      : id === "show-recently-played" && !playReporting.enabled ? "Enable play reporting under Playback to show it" : "";
-    return `<li class="sidebar-setting-row"><label><input type="checkbox" data-sidebar-item="${id}" ${sidebarLayout.hidden.includes(id) ? "" : "checked"} ${required ? "disabled" : ""}><span>${label}${note ? `<small>${note}</small>` : ""}</span></label><div><button type="button" class="button small" data-sidebar-move="${id}" data-direction="-1" aria-label="Move ${label} up" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="button small" data-sidebar-move="${id}" data-direction="1" aria-label="Move ${label} down" ${index === sidebarLayout.order.length - 1 ? "disabled" : ""}>↓</button></div></li>`;
+    const [, key, required] = SIDEBAR_ITEMS.find(item => item[0] === id), label = sidebarItemLabel(key);
+    const note = required ? "nav.sidebarSettings.alwaysAvailable" : id === "show-album-guide" && !albumGuide.enabled ? "nav.sidebarSettings.enableGuide"
+      : id === "show-uploads" && (typeof musicUploadsView === "undefined" || !musicUploadsView.enabled) ? "nav.sidebarSettings.enableUploads"
+      : id === "show-recently-played" && !playReporting.enabled ? "nav.sidebarSettings.enableRecentlyPlayed" : "";
+    return `<li class="sidebar-setting-row"><label><input type="checkbox" data-sidebar-item="${id}" ${sidebarLayout.hidden.includes(id) ? "" : "checked"} ${required ? "disabled" : ""}><span>${escapeHtml(label)}${note ? `<small>${TagcastI18n.html(note)}</small>` : ""}</span></label><div><button type="button" class="button small" data-sidebar-move="${id}" data-direction="-1" aria-label="${TagcastI18n.html("nav.sidebarSettings.moveUp", {label})}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="button small" data-sidebar-move="${id}" data-direction="1" aria-label="${TagcastI18n.html("nav.sidebarSettings.moveDown", {label})}" ${index === sidebarLayout.order.length - 1 ? "disabled" : ""}>↓</button></div></li>`;
   }).join("");
 }
 
 function sidebarSettingsPanel() {
-  return `<section class="sidebar-layout-settings" data-settings-category="interface"><h3>Sidebar</h3><p class="muted">Show or hide extra shortcuts and move items with the arrow buttons. Changes apply immediately and are remembered in this browser. Hiding a shortcut keeps its feature and your music available. Connection controls and Settings always stay visible.</p><ul id="sidebar-layout-list">${sidebarSettingsRows()}</ul><button type="button" class="button small" data-sidebar-reset>Restore default sidebar</button></section>`;
+  return `<section class="sidebar-layout-settings" data-settings-category="interface" data-sidebar-settings><h3>${TagcastI18n.html("nav.sidebarSettings.heading")}</h3><p class="muted">${TagcastI18n.html("nav.sidebarSettings.intro")}</p><ul id="sidebar-layout-list">${sidebarSettingsRows()}</ul><button type="button" class="button small" data-sidebar-reset>${TagcastI18n.html("nav.sidebarSettings.restore")}</button></section>`;
+}
+
+// After a language change: rebuild only this immediate-preference section of Settings, in place,
+// keeping its visibility and the focused control. The server settings form is never touched.
+function renderSidebarSettings() {
+  const section = document.querySelector("[data-sidebar-settings]");
+  if (!section?.isConnected || typeof section.insertAdjacentHTML !== "function") return;
+  const focused = section.contains?.(document.activeElement) ? document.activeElement : null;
+  const target = focused?.dataset?.sidebarMove ? `[data-sidebar-move="${focused.dataset.sidebarMove}"][data-direction="${focused.dataset.direction}"]`
+    : focused?.dataset?.sidebarItem ? `[data-sidebar-item="${focused.dataset.sidebarItem}"]` : focused?.matches?.("[data-sidebar-reset]") ? "[data-sidebar-reset]" : "";
+  section.insertAdjacentHTML("afterend", sidebarSettingsPanel());
+  const fresh = section.nextElementSibling;
+  if (fresh) fresh.hidden = section.hidden;
+  section.remove();
+  if (target) fresh?.querySelector(target)?.focus();
 }
 
 document.addEventListener("change", event => {
@@ -101,7 +118,7 @@ document.addEventListener("click", event => {
   if (event.target.closest("[data-sidebar-reset]")) {
     sidebarLayout.order = SIDEBAR_ITEMS.map(([id]) => id); sidebarLayout.hidden = defaultHiddenSidebarItems();
     saveSidebarLayout(); $("#sidebar-layout-list").innerHTML = sidebarSettingsRows();
-    toast("Default sidebar restored.");
+    toast(TagcastI18n.text("nav.sidebarSettings.restored"));
   }
 });
 applySidebarLayout();
@@ -111,7 +128,7 @@ applySidebarLayout();
 function setSidebarMenu(open) {
   $("#sidebar").classList.toggle("menu-open", open);
   $("#menu-toggle").setAttribute("aria-expanded", String(open));
-  $("#menu-toggle").setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+  $("#menu-toggle").setAttribute("aria-label", TagcastI18n.text(open ? "nav.menu.close" : "nav.menu.open"));
 }
 
 function closeSidebarMenu() {
@@ -151,20 +168,34 @@ function parseRoute(hash) {
   return null;
 }
 
+// Page names for breadcrumbs and Back buttons, in the current interface language. History entries
+// keep a copy for pages named by library data (an artist, album, playlist or browse group); fixed
+// page names are looked up again whenever they are shown, so they follow a language change.
+const ROUTE_LABELS = {artists: "nav.sidebar.albumArtists", albums: "nav.sidebar.albums", tracks: "nav.sidebar.tracks",
+  favourites: "nav.route.favouriteTracks", playlists: "nav.sidebar.playlists", "album-favourites": "nav.route.albumFavourites",
+  "artist-favourites": "nav.route.favouriteArtists", "recently-played": "nav.sidebar.recentlyPlayed", overview: "nav.sidebar.overview",
+  downloads: "nav.sidebar.downloads", uploads: "nav.sidebar.uploads"};
+
 function routeLabel(hash, saved = history.state) {
   const route = parseRoute(hash);
   if (!route) return "";
-  if (route.screen === "settings") return "Settings";
+  if (route.screen === "settings") return TagcastI18n.text("nav.route.settings");
   if (route.screen === "album-guide") return "1001 Albums";
   if (route.screen === "browse") return route.key === null ? browseKinds[route.kind].label : saved?.browse?.label || browseKinds[route.kind].label;
-  if (route.playlist) return saved?.label || (String(collectionsView.data?.id) === route.playlist ? collectionsView.data.name : "Playlist");
-  if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || "the album";
-  return route.artist || {artists: "Album artists", albums: "Albums", tracks: "Tracks", favourites: "Favourite tracks", playlists: "Playlists", "album-favourites": "Album favourites", "artist-favourites": "Favourite album artists", "recently-played": "Recently played", overview: "Overview", downloads: "Downloads", uploads: "Uploads"}[route.screen];
+  if (route.playlist) return saved?.label || (String(collectionsView.data?.id) === route.playlist ? collectionsView.data.name : TagcastI18n.text("nav.route.playlist"));
+  if (route.album) return state.albums.find(a => String(a.id) === route.album)?.name || TagcastI18n.text("nav.route.theAlbum");
+  return route.artist || (ROUTE_LABELS[route.screen] ? TagcastI18n.text(ROUTE_LABELS[route.screen]) : undefined);
 }
 
-function viewState(index, from) {
-  return {index, from, scrollY: nav.scroll?.hash === `#/${currentRoute()}` ? nav.scroll.top : Math.max(0, window.scrollY || 0),
-    label: state.screen === "browse" && browseView.key !== null ? browseView.label : state.screen === "playlists" && collectionsView.playlist ? collectionsView.data?.name || "Playlist" : routeLabel(`#/${currentRoute()}`, {}),
+// True for pages whose name is interface text rather than library data.
+function fixedRoute(hash) {
+  const route = parseRoute(hash);
+  return Boolean(route) && !route.playlist && !route.album && !route.artist && !(route.screen === "browse" && route.key !== null);
+}
+
+function viewState(index, from, fromHash = "") {
+  return {index, from, fromHash, scrollY: nav.scroll?.hash === `#/${currentRoute()}` ? nav.scroll.top : Math.max(0, window.scrollY || 0),
+    label: state.screen === "browse" && browseView.key !== null ? browseView.label : state.screen === "playlists" && collectionsView.playlist ? collectionsView.data?.name || TagcastI18n.text("nav.route.playlist") : routeLabel(`#/${currentRoute()}`, {}),
     albumOrigin: state.screen === "album" ? history.state?.albumOrigin || [] : [], search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
     albumsRandomIds: $("#sort").value === "random" ? albumOrder.ids : [], albumsLibrary: albumOrder.library,
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
@@ -232,12 +263,12 @@ function syncHistory() {
     if (hash !== location.hash) {
       const origin = state.screen === "album" ? albumOrigin(location.hash, entry) : [];
       for (const [key, view] of nav.views) if (view.index > (entry.index || 0)) nav.views.delete(key);
-      const view = viewState((entry.index || 0) + 1, routeLabel(location.hash, entry));
+      const view = viewState((entry.index || 0) + 1, routeLabel(location.hash, entry), location.hash);
       view.albumOrigin = origin; view.scrollY = nav.scroll?.hash === hash ? nav.scroll.top : 0;
       history.pushState(view, "", hash);
     } else {
       // Safari refuses more than ~100 history updates in a short time.
-      const view = viewState(entry.index || 0, entry.from || "");
+      const view = viewState(entry.index || 0, entry.from || "", entry.fromHash || "");
       if (JSON.stringify(view) !== JSON.stringify(entry)) history.replaceState(view, "", hash);
     }
     if (state.screen !== "album") {
@@ -252,10 +283,12 @@ function renderAlbumBreadcrumb() {
   if (state.screen !== "album") return;
   navigationScope();
   const origin = (history.state?.albumOrigin || []).filter(item => item.scope === nav.scope && parseRoute(item.hash));
-  nav.crumbs = origin.length ? origin : [{hash: "#/albums", label: "Albums", scope: nav.scope, saved: {}}];
+  nav.crumbs = origin.length ? origin : [{hash: "#/albums", label: TagcastI18n.text("nav.sidebar.albums"), scope: nav.scope, saved: {}}];
   const album = state.albums.find(a => String(a.id) === albumView.id);
-  $("#breadcrumb").innerHTML = nav.crumbs.map((item, index) => `<button type="button" class="breadcrumb-link" data-album-crumb="${index}">${escapeHtml(item.label)}</button><span class="slash" aria-hidden="true">/</span>`).join("")
-    + `<span aria-current="page">${escapeHtml(album?.name || "Album")}</span>`;
+  // Fixed page names are shown in the current language; library names come from the entry.
+  const label = item => fixedRoute(item.hash) ? routeLabel(item.hash, item.saved || {}) || item.label : item.label;
+  $("#breadcrumb").innerHTML = nav.crumbs.map((item, index) => `<button type="button" class="breadcrumb-link" data-album-crumb="${index}">${escapeHtml(label(item))}</button><span class="slash" aria-hidden="true">/</span>`).join("")
+    + `<span aria-current="page">${album?.name ? escapeHtml(album.name) : TagcastI18n.html("nav.breadcrumb.album")}</span>`;
 }
 
 function followBreadcrumb(target) {
@@ -288,7 +321,7 @@ document.addEventListener("click", event => {
 function showArtistBack() {
   const button = $("#artist-back");
   button.hidden = !(state.screen === "albums" && state.artist);
-  button.textContent = `← Back to ${backLabel("Album artists")}`;
+  button.textContent = TagcastI18n.text("nav.back", {page: backLabel(TagcastI18n.text("nav.sidebar.albumArtists"))});
 }
 $("#artist-back").addEventListener("click", () => goBack("artists"));
 
@@ -298,7 +331,9 @@ function canGoBack() {
 
 // The label of a "← Back" button: the page you came from, or where Back falls back to.
 function backLabel(fallback) {
-  return canGoBack() && history.state.from ? history.state.from : fallback;
+  if (!canGoBack() || !history.state.from) return fallback;
+  const hash = history.state.fromHash;
+  return hash && fixedRoute(hash) ? routeLabel(hash, {}) || history.state.from : history.state.from;
 }
 
 function goBack(fallback) {
@@ -368,8 +403,8 @@ window.addEventListener("popstate", event => {
     // Keep the page under an open editor; Back works again once it is closed.
     nav.restoring = true;
     try { showRoute(parseRoute(`#/${currentRoute()}`) || {screen: "artists"}); } finally { nav.restoring = false; }
-    history.pushState(viewState((event.state?.index || 0) + 1, routeLabel(location.hash)), "", `#/${currentRoute()}`);
-    toast("Close the editor first, then go back.");
+    history.pushState(viewState((event.state?.index || 0) + 1, routeLabel(location.hash), location.hash), "", `#/${currentRoute()}`);
+    toast(TagcastI18n.text("nav.history.closeEditorFirst"));
     return;
   }
   navigationScope();
@@ -390,6 +425,16 @@ function restorePendingRoute() {
   try { showRoute(route); } finally { nav.restoring = false; }
   history.replaceState(viewState(0, ""), "", `#/${currentRoute()}`);
 }
+
+// A language change rewrites the menu button, the Sidebar settings section and the Back and
+// breadcrumb labels from memory. Each page's own script re-renders its visible content.
+TagcastI18n.subscribe(() => {
+  if (!nav.ready) return;
+  $("#menu-toggle").setAttribute("aria-label", TagcastI18n.text($("#sidebar").classList.contains("menu-open") ? "nav.menu.close" : "nav.menu.open"));
+  renderSidebarSettings();
+  showArtistBack();
+  renderAlbumBreadcrumb();
+});
 
 (() => {
   const route = parseRoute(location.hash);

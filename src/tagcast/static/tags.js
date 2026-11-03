@@ -19,7 +19,7 @@ function tagCurrent(request) {
 }
 
 function tagLinks(tags) {
-  return (tags || []).map(t => `<button type="button" class="tag-chip" data-browse-kind="tags" data-browse-key="${escapeHtml(t.id)}" data-browse-label="${escapeHtml(t.name)}">${escapeHtml(t.name)}${t.archived ? " · archived" : ""}</button>`).join("");
+  return (tags || []).map(t => `<button type="button" class="tag-chip" data-browse-kind="tags" data-browse-key="${escapeHtml(t.id)}" data-browse-label="${escapeHtml(t.name)}">${escapeHtml(t.name)}${t.archived ? ` · ${TagcastI18n.html("tags.chip.archived")}` : ""}</button>`).join("");
 }
 
 function albumTagChips(album) {
@@ -28,13 +28,13 @@ function albumTagChips(album) {
   for (const track of album.tracks) for (const tag of track.tags || []) {
     const row = tags.get(tag.id) || {...tag, count: 0}; row.count += 1; tags.set(tag.id, row);
   }
-  return [...tags.values()].map(tag => `<span class="album-tag-chip">${tagLinks([tag])}${tag.count < album.tracks.length ? `<small class="muted" title="Assigned to ${tag.count} of ${album.tracks.length} tracks">${tag.count}/${album.tracks.length} tracks</small>` : ""}</span>`).join("")
-    + `<button type="button" class="album-tag-add" data-album-tags="${escapeHtml(album.id)}" aria-label="Add or manage tags for this album" ${album.tags_loaded === false ? 'title="Load and manage album tags"' : ""}>+ Tag</button>`;
+  return [...tags.values()].map(tag => `<span class="album-tag-chip">${tagLinks([tag])}${tag.count < album.tracks.length ? `<small class="muted" title="${TagcastI18n.html("tags.album.assignedTitle", {assigned: tag.count, count: album.tracks.length})}">${TagcastI18n.html("tags.album.assigned", {assigned: tag.count, count: album.tracks.length})}</small>` : ""}</span>`).join("")
+    + `<button type="button" class="album-tag-add" data-album-tags="${escapeHtml(album.id)}" aria-label="${TagcastI18n.html("tags.album.manage")}" ${album.tags_loaded === false ? `title="${TagcastI18n.html("tags.album.load")}"` : ""}>${TagcastI18n.html("tags.album.add")}</button>`;
 }
 
 function trackTagControls(album, track) {
   if (!live()) return "";
-  return `<button type="button" class="track-tag-action" data-track-tags="${escapeHtml(track.id)}" data-tag-album="${escapeHtml(album.id)}" aria-label="Manage tags for ${escapeHtml(track.title)}" title="Manage track tags"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m10 3-4 18M18 3l-4 18M3 9h18M2 15h18"/></svg></button>`;
+  return `<button type="button" class="track-tag-action" data-track-tags="${escapeHtml(track.id)}" data-tag-album="${escapeHtml(album.id)}" aria-label="${TagcastI18n.html("tags.track.manage", {title: track.title})}" title="${TagcastI18n.html("tags.track.manageTitle")}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m10 3-4 18M18 3l-4 18M3 9h18M2 15h18"/></svg></button>`;
 }
 
 function beginTagDialog(action, origin = null) {
@@ -46,7 +46,7 @@ function beginTagDialog(action, origin = null) {
     view.focus = document.activeElement; view.scroll = window.scrollY || 0;
     $("#tag-dialog").showModal();
   }
-  $("#tag-dialog-content").innerHTML = '<p role="status" class="operation-status" data-working="true">Loading tags…</p>';
+  $("#tag-dialog-content").innerHTML = `<p role="status" class="operation-status" data-working="true">${TagcastI18n.html("tags.dialog.loading")}</p>`;
   return view.request;
 }
 
@@ -59,8 +59,8 @@ async function openSelectedAlbumTags() {
   if (!live() || saving || checking || tagDraft.busy) return;
   const groups = albumShelf().filter(a => itemIds(a).some(id => state.selected.has(id)));
   if (!groups.length) return;
-  if (groups.some(a => !isSelected(a))) { toast("Select complete albums, including every disc of a set."); return; }
-  if (groups.length > 20 || groups.flatMap(itemIds).length > 100) { toast("Choose up to 20 complete albums / 100 discs for one tag review."); return; }
+  if (groups.some(a => !isSelected(a))) { toast(TagcastI18n.text("tags.selection.incomplete")); return; }
+  if (groups.length > 20 || groups.flatMap(itemIds).length > 100) { toast(TagcastI18n.text("tags.selection.tooMany")); return; }
   return openTagSelection({albums: groups.flatMap(itemIds), track: null, multiple: true});
 }
 
@@ -81,31 +81,38 @@ async function openTagSelection(target, query = "") {
     tagDraft.selection = selection;
     renderTagSelection();
     await loadTagChoices();
-  } catch (error) { if (tagCurrent(request)) tagError(error.message); }
+  } catch (error) { if (tagCurrent(request)) tagError(TagcastI18n.errorText(error)); }
 }
 
 function tagAlbumSummary() {
   if (!tagDraft.target?.multiple || !tagDraft.selection?.albums) return "";
-  return `<ul class="tag-album-summary">${tagDraft.selection.albums.map(album => `<li><strong>${escapeHtml(album.name)}</strong> · ${escapeHtml(album.artist)} · ${album.tracks} ${album.tracks === 1 ? "track" : "tracks"}${album.ids.length > 1 ? ` · ${album.ids.length} discs` : ""}</li>`).join("")}</ul>`;
+  return `<ul class="tag-album-summary">${tagDraft.selection.albums.map(album => `<li><strong>${escapeHtml(album.name)}</strong> · ${escapeHtml(album.artist)} · ${TagcastI18n.html("common.count.tracks", {count: album.tracks})}${album.ids.length > 1 ? ` · ${TagcastI18n.html("tags.selection.discs", {count: album.ids.length})}` : ""}</li>`).join("")}</ul>`;
+}
+
+// The server labels a multi-album selection in English ("2 selected albums"); show the same
+// count in the interface language. Album and track names are data and stay as they are.
+function tagSelectionLabel(selection = tagDraft.selection) {
+  return tagDraft.target?.multiple && Array.isArray(selection?.albums)
+    ? TagcastI18n.text("tags.selection.albums", {count: selection.albums.length}) : selection.label;
 }
 
 function renderTagSelection() {
   const view = tagDraft, selection = view.selection;
-  $("#tag-dialog-content").innerHTML = `<h3>${escapeHtml(selection.label)}</h3>${tagAlbumSummary()}<p class="muted">${selection.tracks} ${selection.tracks === 1 ? "track" : "tracks"}. Tags are your own labels, separate from genres. Keep as is preserves partial assignments.</p>
-    <div class="toolbar"><div class="search search-with-clear"><span aria-hidden="true">⌕</span><input id="tag-search" maxlength="200" aria-label="Search tags" placeholder="Search tags" value="${escapeHtml(view.query)}">${searchClearButton("tag-search", view.query)}</div><button type="button" class="button small" id="tag-new">New tag…</button></div>
-    <div id="tag-choices"></div><div class="pagination" id="tag-pagination"></div><p class="muted" id="tag-change-count"></p><div class="dialog-footer"><button class="button" data-close="tag-dialog">Cancel</button><button class="button primary" id="tag-review" disabled>Review tag changes →</button></div>`;
+  $("#tag-dialog-content").innerHTML = `<h3>${escapeHtml(tagSelectionLabel(selection))}</h3>${tagAlbumSummary()}<p class="muted">${TagcastI18n.html("tags.selection.intro", {count: selection.tracks})}</p>
+    <div class="toolbar"><div class="search search-with-clear"><span aria-hidden="true">⌕</span><input id="tag-search" maxlength="200" aria-label="${TagcastI18n.html("tags.selection.search")}" placeholder="${TagcastI18n.html("tags.selection.search")}" value="${escapeHtml(view.query)}">${searchClearButton("tag-search", view.query)}</div><button type="button" class="button small" id="tag-new">${TagcastI18n.html("tags.selection.new")}</button></div>
+    <div id="tag-choices"></div><div class="pagination" id="tag-pagination"></div><p class="muted" id="tag-change-count"></p><div class="dialog-footer"><button class="button" data-close="tag-dialog">${TagcastI18n.html("common.cancel")}</button><button class="button primary" id="tag-review" disabled>${TagcastI18n.html("tags.selection.review")}</button></div>`;
   $("#tag-search").focus();
 }
 
 async function loadTagChoices() {
   const view = tagDraft, request = view.request, listRequest = ++view.listRequest;
-  $("#tag-choices").innerHTML = '<p role="status" class="operation-status" data-working="true">Loading tags…</p>';
+  $("#tag-choices").innerHTML = `<p role="status" class="operation-status" data-working="true">${TagcastI18n.html("tags.dialog.loading")}</p>`;
   try {
     const data = await api(`/api/tags?${new URLSearchParams({q: view.query, offset: String(view.offset)})}`);
     if (!tagCurrent(request) || listRequest !== view.listRequest || !view.selection || !$("#tag-dialog").open) return;
     view.rows = data.tags; view.total = data.total; view.offset = data.offset;
     renderTagChoices();
-  } catch (error) { if (tagCurrent(request) && listRequest === view.listRequest) tagError(error.message); }
+  } catch (error) { if (tagCurrent(request) && listRequest === view.listRequest) tagError(TagcastI18n.errorText(error)); }
 }
 
 function renderTagChoices() {
@@ -113,12 +120,16 @@ function renderTagChoices() {
   const rows = new Map([...view.selection.tags.filter(t => foldText(t.name).includes(foldText(view.query))), ...view.rows].map(t => [t.id, t]));
   $("#tag-choices").innerHTML = [...rows.values()].map(tag => {
     const count = attached.get(tag.id)?.selected || 0, change = view.changes.get(tag.id)?.action || "";
-    return `<label class="tag-choice"><span><strong>${escapeHtml(tag.name)}</strong><small>${count ? `${count} of ${view.selection.tracks} tracks` : "Not assigned"}${tag.archived ? " · Archived in iBroadcast" : ""}</small></span><select data-tag-change="${escapeHtml(tag.id)}" aria-label="Tag action for ${escapeHtml(tag.name)}"><option value="" ${!change ? "selected" : ""}>Keep as is</option>${!tag.archived ? `<option value="add" ${change === "add" ? "selected" : ""}>Add to ${view.selection.tracks === 1 ? "track" : "all tracks"}</option>` : ""}${count ? `<option value="remove" ${change === "remove" ? "selected" : ""}>Remove from ${view.selection.tracks === 1 ? "track" : "all tracks"}</option>` : ""}</select></label>`;
-  }).join("") || '<p class="empty">No tags found. Use New tag to create an empty label, then assign it here.</p>';
-  $("#tag-change-count").textContent = `${view.changes.size} tag changes selected across this search and all pages`;
+    return `<label class="tag-choice"><span><strong>${escapeHtml(tag.name)}</strong><small>${count ? TagcastI18n.html("tags.choice.assigned", {assigned: count, count: view.selection.tracks}) : TagcastI18n.html("tags.choice.notAssigned")}${tag.archived ? ` · ${TagcastI18n.html("tags.choice.archived")}` : ""}</small></span><select data-tag-change="${escapeHtml(tag.id)}" aria-label="${TagcastI18n.html("tags.choice.action", {tag: tag.name})}"><option value="" ${!change ? "selected" : ""}>${TagcastI18n.html("tags.choice.keep")}</option>${!tag.archived ? `<option value="add" ${change === "add" ? "selected" : ""}>${TagcastI18n.html("tags.choice.add", {count: view.selection.tracks})}</option>` : ""}${count ? `<option value="remove" ${change === "remove" ? "selected" : ""}>${TagcastI18n.html("tags.choice.remove", {count: view.selection.tracks})}</option>` : ""}</select></label>`;
+  }).join("") || `<p class="empty">${TagcastI18n.html("tags.choice.empty")}</p>`;
+  renderTagChangeCount();
   $("#tag-review").disabled = !view.changes.size;
   $("#tag-new").disabled = Boolean(view.changes.size);
-  $("#tag-pagination").innerHTML = view.total > 50 ? `<button class="button small" data-tag-page="-50" ${view.offset ? "" : "disabled"}>← Previous</button><span>${Math.floor(view.offset / 50) + 1} / ${Math.ceil(view.total / 50)}</span><button class="button small" data-tag-page="50" ${view.offset + 50 >= view.total ? "disabled" : ""}>Next →</button>` : "";
+  $("#tag-pagination").innerHTML = view.total > 50 ? `<button class="button small" data-tag-page="-50" ${view.offset ? "" : "disabled"}>${TagcastI18n.html("common.pagination.previous")}</button><span>${Math.floor(view.offset / 50) + 1} / ${Math.ceil(view.total / 50)}</span><button class="button small" data-tag-page="50" ${view.offset + 50 >= view.total ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
+}
+
+function renderTagChangeCount() {
+  $("#tag-change-count").textContent = TagcastI18n.text("tags.choice.changes", {count: tagDraft.changes.size});
 }
 
 async function openTagAction(action, id = null, origin = null) {
@@ -129,15 +140,15 @@ async function openTagAction(action, id = null, origin = null) {
     if (!tagCurrent(request) || !$("#tag-dialog").open) return;
     tagDraft.tag = tag;
     renderTagAction();
-  } catch (error) { if (tagCurrent(request)) tagError(error.message); }
+  } catch (error) { if (tagCurrent(request)) tagError(TagcastI18n.errorText(error)); }
 }
 
 function renderTagAction(name = null) {
   const {action, tag} = tagDraft;
-  const title = action === "create" ? "Create an empty tag" : action === "rename" ? "Rename tag" : "Delete tag";
-  $("#tag-dialog-content").innerHTML = `<h3>${title}</h3>${tag ? `<p>${escapeHtml(tag.name)} · ${tag.total_tracks} tagged tracks${tag.archived ? " · Archived" : ""}</p>` : ""}
-    ${action === "delete" ? '<div class="warn-box">Delete this label and its assignments throughout iBroadcast, including hidden or trashed tracks. Your music is kept. This cannot be undone in Tagcast.</div>' : `<label class="field wide"><span>Tag name</span><input id="tag-name" maxlength="200" value="${escapeHtml(name ?? tag?.name ?? "")}" placeholder="For example: Listen later"></label>`}
-    ${action === "create" ? '<p class="muted">Creates an empty label. Assign it to an album or track afterwards.</p>' : ""}<div class="dialog-footer"><button class="button" data-close="tag-dialog">Cancel</button><button class="button primary" id="tag-review">Review →</button></div>`;
+  const title = action === "create" ? "tags.action.create" : action === "rename" ? "tags.action.rename" : "tags.action.delete";
+  $("#tag-dialog-content").innerHTML = `<h3>${TagcastI18n.html(title)}</h3>${tag ? `<p>${escapeHtml(tag.name)} · ${TagcastI18n.html("tags.action.tagged", {count: tag.total_tracks})}${tag.archived ? ` · ${TagcastI18n.html("tags.action.archived")}` : ""}</p>` : ""}
+    ${action === "delete" ? `<div class="warn-box">${TagcastI18n.html("tags.action.deleteWarning")}</div>` : `<label class="field wide"><span>${TagcastI18n.html("tags.action.name")}</span><input id="tag-name" maxlength="200" value="${escapeHtml(name ?? tag?.name ?? "")}" placeholder="${TagcastI18n.html("tags.action.placeholder")}"></label>`}
+    ${action === "create" ? `<p class="muted">${TagcastI18n.html("tags.action.createNote")}</p>` : ""}<div class="dialog-footer"><button class="button" data-close="tag-dialog">${TagcastI18n.html("common.cancel")}</button><button class="button primary" id="tag-review">${TagcastI18n.html("tags.action.review")}</button></div>`;
   (action === "delete" ? $("#tag-review") : $("#tag-name")).focus();
 }
 
@@ -146,33 +157,41 @@ function reviewTags() {
   if (!tagCurrent(view.request) || view.busy) return;
   let descriptions;
   if (view.action === "change") {
-    if (!view.changes.size || view.changes.size > 20) { toast("Choose 1–20 tag changes at a time."); return; }
+    if (!view.changes.size || view.changes.size > 20) { toast(TagcastI18n.text("tags.review.limit")); return; }
     view.body = {action: "change", target: view.target, before: view.selection.before,
       changes: [...view.changes.values()].map(c => ({id: c.tag.id, before: c.tag.before, action: c.action}))};
-    const scope = view.target.multiple ? `all ${view.selection.tracks} tracks of ${view.selection.label.toLowerCase()}`
-      : view.target.track ? `track “${view.selection.label}”` : `${view.selection.tracks} tracks of “${view.selection.label}”`;
-    descriptions = [...view.changes.values()].map(c => `${c.action === "add" ? "Add" : "Remove"} “${c.tag.name}” ${c.action === "add" ? "on" : "from"} ${scope}`);
+    const {selection, target} = view;
+    descriptions = [...view.changes.values()].map(c => {
+      const add = c.action === "add";
+      if (target.multiple) return TagcastI18n.text(add ? "tags.review.addAlbums" : "tags.review.removeAlbums", {tag: c.tag.name, count: selection.tracks, albums: tagSelectionLabel(selection)});
+      if (target.track) return TagcastI18n.text(add ? "tags.review.addTrack" : "tags.review.removeTrack", {tag: c.tag.name, title: selection.label});
+      return TagcastI18n.text(add ? "tags.review.addAlbum" : "tags.review.removeAlbum", {tag: c.tag.name, count: selection.tracks, album: selection.label});
+    });
   } else {
     const name = view.action === "delete" ? "" : $("#tag-name").value.trim();
-    if (view.action !== "delete" && (!name || name.length > 200 || /[\x00-\x1f\x7f]/.test(name))) { toast("Enter a tag name of 1–200 characters."); return; }
+    if (view.action !== "delete" && (!name || name.length > 200 || /[\x00-\x1f\x7f]/.test(name))) { toast(TagcastI18n.text("tags.review.nameInvalid")); return; }
     view.body = {action: view.action, name, ...(view.tag ? {id: view.tag.id, before: view.tag.before} : {})};
-    descriptions = [view.action === "create" ? `Create empty tag “${name}”` : view.action === "rename" ? `Rename “${view.tag.name}” to “${name}” for all ${view.tag.total_tracks} tagged tracks` : `Delete label “${view.tag.name}” and all its ${view.tag.total_tracks} assignments. The music is kept.`];
+    descriptions = [view.action === "create" ? TagcastI18n.text("tags.review.create", {name})
+      : view.action === "rename" ? TagcastI18n.text("tags.review.rename", {tag: view.tag.name, name, count: view.tag.total_tracks})
+        : TagcastI18n.text("tags.review.delete", {tag: view.tag.name, count: view.tag.total_tracks})];
   }
-  $("#tag-dialog-content").innerHTML = `<h3>Review tag changes</h3>${tagAlbumSummary()}<ul>${descriptions.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>${view.action === "delete" ? '<div class="warn-box">This deletes the label and all its assignments throughout iBroadcast. Your music is kept. There is no Undo in Tagcast.</div>' : ""}<p class="muted">These changes sync to iBroadcast. Genres, audio files and playback stay unchanged.</p><div class="dialog-footer"><button class="button" data-close="tag-dialog">Cancel</button><button class="button" id="tag-back">Keep editing</button><button class="button ${view.action === "delete" ? "danger" : "primary"}" id="tag-confirm">${view.action === "delete" ? "Delete this tag" : "Save tag changes"}</button></div>`;
+  const remove = view.action === "delete";
+  $("#tag-dialog-content").innerHTML = `<h3>${TagcastI18n.html("tags.review.heading")}</h3>${tagAlbumSummary()}<ul>${descriptions.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>${remove ? `<div class="warn-box">${TagcastI18n.html("tags.review.deleteWarning")}</div>` : ""}<p class="muted">${TagcastI18n.html("tags.review.sync")}</p><div class="dialog-footer"><button class="button" data-close="tag-dialog">${TagcastI18n.html("common.cancel")}</button><button class="button" id="tag-back">${TagcastI18n.html("tags.review.keepEditing")}</button><button class="button ${remove ? "danger" : "primary"}" id="tag-confirm">${TagcastI18n.html(remove ? "tags.review.confirmDelete" : "tags.review.confirmSave")}</button></div>`;
   $("#tag-back").focus();
 }
 
 function tagError(message) {
   tagDraft.body = null;
-  $("#tag-dialog-content").innerHTML = `<p class="error-box" role="alert">${escapeHtml(message)}</p><p class="muted">No automatic retry. Close and reload Tags to check the result before preparing another review.</p><div class="dialog-footer"><button class="button" data-close="tag-dialog">Close</button></div>`;
+  $("#tag-dialog-content").innerHTML = `<p class="error-box" role="alert">${escapeHtml(message)}</p><p class="muted">${TagcastI18n.html("tags.error.noRetry")}</p><div class="dialog-footer"><button class="button" data-close="tag-dialog">${TagcastI18n.html("common.close")}</button></div>`;
 }
 
 async function saveTags() {
   const view = tagDraft, request = view.request;
   if (!view.body || view.busy || saving || checking || !tagCurrent(request)) return;
   const body = view.body; view.body = null; view.busy = true; saving = true;
+  let unconfirmed = false;
   $("#tag-dialog-close").disabled = true;
-  $("#tag-dialog-content").innerHTML = '<p role="status" class="operation-status" data-working="true">Saving tags and checking iBroadcast…</p>';
+  $("#tag-dialog-content").innerHTML = `<p role="status" class="operation-status" data-working="true">${TagcastI18n.html("tags.save.saving")}</p>`;
   try {
     const response = await api("/api/tags/save", {...body, approved: true});
     if (!tagCurrent(request)) return;
@@ -187,18 +206,28 @@ async function saveTags() {
     if (state.screen === "album") openAlbum(albumView.id);
     const success = !response.error && Array.isArray(job.results) && job.results.length >= response.sent
       && job.results.every(r => r.status === "saved");
-    if (!success) throw Error(response.error || "Some tag changes could not be confirmed. Reload Tags before trying again.");
+    if (!success) {
+      // A server error stays as sent; Tagcast's own message is shown in the interface language.
+      unconfirmed = !response.error;
+      throw Error(response.error || TagcastI18n.englishText("errors.tags.unconfirmed"));
+    }
     if (body.action === "change" && body.target.multiple) {
       for (const id of body.target.albums) state.selected.delete(String(id));
       render();
       if (!state.selected.size) view.focus = $("#search");
     }
     if (body.action === "create") view.query = body.name;
-    $("#tag-dialog-content").innerHTML = `<p role="status">Tag changes saved and confirmed in iBroadcast.</p>${view.origin ? '<p class="muted">The new tag is empty. Return to your selection to assign it after a separate review.</p>' : ""}<div class="dialog-footer"><button class="button" id="tag-done" data-close="tag-dialog">Done</button>${view.origin ? `<button class="button primary" id="tag-return">${view.origin.multiple ? "Return to selected album tags" : "Return to album tags"}</button>` : ""}</div>`;
+    $("#tag-dialog-content").innerHTML = `<p role="status">${TagcastI18n.html("tags.save.done")}</p>${view.origin ? `<p class="muted">${TagcastI18n.html("tags.save.newEmpty")}</p>` : ""}<div class="dialog-footer"><button class="button" id="tag-done" data-close="tag-dialog">${TagcastI18n.html("tags.save.finish")}</button>${view.origin ? `<button class="button primary" id="tag-return">${TagcastI18n.html(view.origin.multiple ? "tags.save.returnSelected" : "tags.save.returnAlbum")}</button>` : ""}</div>`;
     $("#tag-done").focus();
-  } catch (error) { if (tagCurrent(request)) tagError(error.message); }
+  } catch (error) { if (tagCurrent(request)) tagError(unconfirmed ? TagcastI18n.text("errors.tags.unconfirmed") : TagcastI18n.errorText(error)); }
   finally { view.busy = false; saving = false; $("#tag-dialog-close").disabled = false; updateChrome(); }
 }
+
+// The tag dialog is a draft: a language change never rebuilds it, so its choices, input and
+// focus stay as they are until it is reopened. Only the plain change count line follows.
+TagcastI18n.subscribe(() => {
+  if ($("#tag-dialog")?.open && tagDraft.selection && document.getElementById("tag-change-count")) renderTagChangeCount();
+});
 
 $("#tag-dialog").addEventListener("cancel", event => { if (tagDraft.busy) event.preventDefault(); });
 $("#tag-dialog").addEventListener("close", () => {

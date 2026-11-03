@@ -1,4 +1,5 @@
 // Library snapshots are prepared on the server; only small status responses reach JS.
+// `error` keeps the error itself (or a server message) so it is translated when shown.
 const metadataExportView = {
   options: {tags: true, playlists: true, favourites: true}, job: null,
   details: null, session: "", request: 0, poll: 0, timer: null, busy: false, error: "",
@@ -18,33 +19,49 @@ function syncMetadataExport() {
   }
 }
 
+// Static labels carry data-i18n, so they follow a language change without rebuilding
+// the Settings form; actions and status are redrawn by renderMetadataExport().
 function metadataExportPanel() {
-  return `<section class="history-settings" id="metadata-export" data-settings-category="data"><h3>Export library metadata</h3>
-    <p class="muted">Download the loaded iBroadcast library as structured JSON or a ZIP of linked CSV tables. Includes separate album artists, track credits, roles, credit phrases, genres, ratings and upload dates. Uses the full loaded library, regardless of page filters.</p>
-    <p class="muted">This snapshot contains saved metadata; open drafts and later changes are not included. Audio and image files are not included.</p>
-    ${[["tags", "Include loaded tags"], ["playlists", "Include loaded playlists and folders"], ["favourites", "Include local album and artist favourites"]].map(([key, label]) => `<label class="checkline"><input type="checkbox" data-metadata-option="${key}" ${metadataExportView.options[key] ? "checked" : ""}> ${label}</label>`).join("")}
-    <p class="muted">These choices apply to the next preparation. Optional data is included only when already available. The export reports anything unavailable; preparing it never fetches extra library data or changes iBroadcast.</p>
+  return `<section class="history-settings" id="metadata-export" data-settings-category="data"><h3 data-i18n="export.panel.heading">${TagcastI18n.html("export.panel.heading")}</h3>
+    <p class="muted" data-i18n="export.panel.intro">${TagcastI18n.html("export.panel.intro")}</p>
+    <p class="muted" data-i18n="export.panel.snapshot">${TagcastI18n.html("export.panel.snapshot")}</p>
+    ${[["tags", "export.options.tags"], ["playlists", "export.options.playlists"], ["favourites", "export.options.favourites"]].map(([key, label]) => `<label class="checkline" data-i18n="${label}"><input type="checkbox" data-metadata-option="${key}" ${metadataExportView.options[key] ? "checked" : ""}> ${TagcastI18n.html(label)}</label>`).join("")}
+    <p class="muted" data-i18n="export.panel.choices">${TagcastI18n.html("export.panel.choices")}</p>
     <div id="metadata-export-actions"></div><div id="metadata-export-status" role="status" aria-live="polite"></div></section>`;
 }
+
+// Browser-side failures keep an English message for logs and show their interface text key.
+function metadataExportFailure(key, message) {
+  return Object.assign(Error(message), {key});
+}
+
+function metadataExportErrorText(error) {
+  return typeof error?.key === "string" ? TagcastI18n.text(error.key) : TagcastI18n.errorText(error);
+}
+
+// Names of optional manifest sections for display; the manifest keys themselves never change.
+const METADATA_EXPORT_OPTIONAL = {tags: "export.optional.tags", playlists: "export.optional.playlists",
+  album_favourites: "export.optional.albumFavourites", artist_favourites: "export.optional.artistFavourites"};
 
 function renderMetadataExport() {
   if (!(state.screen === "settings")) return;
   const view = metadataExportView;
   const available = live() && !state.loading && Boolean(state.connection.playback_session);
-  $("#metadata-export-actions").innerHTML = `<button type="button" class="button small" data-metadata-prepare="json" ${!available || view.busy ? "disabled" : ""}>Prepare JSON export</button>
-    <button type="button" class="button small" data-metadata-prepare="csv" ${!available || view.busy ? "disabled" : ""}>Prepare CSV ZIP</button>
-    ${view.busy && view.job ? '<button type="button" class="button small" data-metadata-cancel>Cancel preparation</button>' : ""}`;
+  $("#metadata-export-actions").innerHTML = `<button type="button" class="button small" data-metadata-prepare="json" ${!available || view.busy ? "disabled" : ""}>${TagcastI18n.html("export.actions.json")}</button>
+    <button type="button" class="button small" data-metadata-prepare="csv" ${!available || view.busy ? "disabled" : ""}>${TagcastI18n.html("export.actions.csv")}</button>
+    ${view.busy && view.job ? `<button type="button" class="button small" data-metadata-cancel>${TagcastI18n.html("export.actions.cancel")}</button>` : ""}`;
   const job = view.job;
-  let status = !available ? '<p class="muted">Connect iBroadcast and load your library to export its metadata.</p>' : "";
-  if (view.busy) status += '<p class="muted">Preparing the metadata file on the local server… You can close Settings and return here.</p>';
-  if (view.error) status += `<p class="error-text">${escapeHtml(view.error)}</p>`;
+  let status = !available ? `<p class="muted">${TagcastI18n.html("export.status.unavailable")}</p>` : "";
+  if (view.busy) status += `<p class="muted">${TagcastI18n.html("export.status.preparing")}</p>`;
+  if (view.error) status += `<p class="error-text">${escapeHtml(metadataExportErrorText(view.error))}</p>`;
   if (job?.state === "ready" && available) {
     const counts = job.manifest?.counts || {};
-    const optional = Object.entries(job.manifest?.optional || {}).filter(([, value]) => value.requested && value.status !== "included");
+    const optional = Object.entries(job.manifest?.optional || {}).filter(([, value]) => value.requested && value.status !== "included")
+      .map(([key]) => Object.hasOwn(METADATA_EXPORT_OPTIONAL, key) ? TagcastI18n.text(METADATA_EXPORT_OPTIONAL[key]) : key.replaceAll("_", " "));
     const url = `/api/metadata-export/download?id=${encodeURIComponent(job.id)}&session=${encodeURIComponent(view.session)}`;
-    status += `<p>${Number(counts.albums || 0).toLocaleString("en")} native album/disc records · ${Number(counts.tracks || 0).toLocaleString("en")} tracks · ${Number(counts.credits || 0).toLocaleString("en")} credits</p>
-      <p><a class="button small primary" data-metadata-download href="${escapeHtml(url)}" download="${escapeHtml(job.filename)}">Download ${job.format === "json" ? "JSON" : "CSV ZIP"} ↓</a></p>
-      <p class="muted">Ready for 15 minutes after preparation started. The file includes a manifest with counts and optional-data status. ${optional.length ? `Unavailable: ${optional.map(([key]) => escapeHtml(key.replaceAll("_", " "))).join(", ")}.` : ""}</p>`;
+    status += `<p>${[TagcastI18n.html("export.ready.albums", {count: Number(counts.albums || 0)}), TagcastI18n.html("export.ready.tracks", {count: Number(counts.tracks || 0)}), TagcastI18n.html("export.ready.credits", {count: Number(counts.credits || 0)})].join(" · ")}</p>
+      <p><a class="button small primary" data-metadata-download href="${escapeHtml(url)}" download="${escapeHtml(job.filename)}">${TagcastI18n.html(job.format === "json" ? "export.ready.downloadJson" : "export.ready.downloadCsv")}</a></p>
+      <p class="muted">${TagcastI18n.html("export.ready.note")} ${optional.length ? TagcastI18n.html("export.ready.missing", {items: optional.join(", ")}) : ""}</p>`;
   }
   $("#metadata-export-status").innerHTML = status;
 }
@@ -68,12 +85,12 @@ async function prepareMetadataExport(format) {
     const job = await api("/api/metadata-export", {format, session: view.session,
       ...Object.fromEntries(Object.entries(view.options).map(([key, value]) => [`include_${key}`, value]))});
     if (!metadataExportActive(request)) return;
-    if (!/^[a-f0-9]{32}$/.test(job.id) || job.format !== format) throw Error("Could not identify the prepared export. Try again.");
+    if (!/^[a-f0-9]{32}$/.test(job.id) || job.format !== format) throw metadataExportFailure("export.error.unidentified", "Could not identify the prepared export. Try again.");
     view.job = job;
     resumeMetadataExport();
   } catch (error) {
     if (!metadataExportActive(request)) return;
-    view.busy = false; view.error = error.message;
+    view.busy = false; view.error = error;
     renderMetadataExport();
   }
 }
@@ -85,14 +102,14 @@ async function pollMetadataExport() {
   try {
     const data = await api(`/api/metadata-export/status?id=${encodeURIComponent(job.id)}&session=${encodeURIComponent(view.session)}`);
     if (!metadataExportActive(request) || poll !== view.poll || view.job?.id !== job.id) return;
-    if (data.id !== job.id || data.format !== job.format || !["preparing", "ready", "error"].includes(data.state)) throw Error("Invalid export status. Prepare a new export.");
+    if (data.id !== job.id || data.format !== job.format || !["preparing", "ready", "error"].includes(data.state)) throw metadataExportFailure("export.error.invalidStatus", "Invalid export status. Prepare a new export.");
     view.job = data; view.busy = data.state === "preparing";
-    view.error = data.state === "error" ? data.error || "Could not prepare this export." : "";
+    view.error = data.state === "error" ? data.error || metadataExportFailure("export.error.failed", "Could not prepare this export.") : "";
     renderMetadataExport();
     if (view.busy && (state.screen === "settings")) view.timer = setTimeout(pollMetadataExport, 1000);
   } catch (error) {
     if (!metadataExportActive(request) || poll !== view.poll) return;
-    view.job = null; view.busy = false; view.error = error.message;
+    view.job = null; view.busy = false; view.error = error;
     renderMetadataExport();
   }
 }
@@ -110,7 +127,7 @@ async function cancelMetadataExport() {
   if (!job || !metadataExportActive(view.request)) return;
   resetMetadataExport(); renderMetadataExport();
   try { await api("/api/metadata-export/cancel", {id: job.id, session}); }
-  catch (error) { toast(error.message); }
+  catch (error) { toast(metadataExportErrorText(error)); }
 }
 
 
@@ -126,4 +143,9 @@ document.addEventListener("click", event => {
 document.addEventListener("change", event => {
   const key = event.target.dataset?.metadataOption;
   if (Object.hasOwn(metadataExportView.options, key)) metadataExportView.options[key] = event.target.checked;
+});
+
+// Actions and status follow a language change from memory; polling and jobs are untouched.
+TagcastI18n.subscribe(() => {
+  if (state.screen === "settings" && document.querySelector("#metadata-export-actions")) renderMetadataExport();
 });
