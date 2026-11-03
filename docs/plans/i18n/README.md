@@ -14,6 +14,7 @@ Supporting files for [the internationalization plan](../tagcast-internationaliza
 | `tools/browser-timing.cjs` | Page load, evaluation and language switching timings in Chromium (Playwright) |
 | `tools/text-scan.cjs` | Opens every screen and the main dialogs in Chromium against `tests/mock_ibroadcast.py` and records all text, attributes and clipped controls, in any shipped language or pseudo-localization, optionally with screenshots, a narrow width or dark mode |
 | `tools/text-compare.py` | Compares two scans: English output before and after a change, or a translated scan for text that is still English |
+| `tools/selection-layout.cjs` | Checks translated album actions, readable selection counts and keyboard order at 420, 760, 761 and 1280 CSS pixels, in Light/Dark, with selected albums inside and outside the search results |
 
 The categories in the CSV: `ui` (translatable), `dnt-*` (never translated: demo and sample
 metadata, product names), `technical-diagnostic`, `excluded-test-or-build`, and for Python
@@ -47,3 +48,9 @@ connect them through `/api/auth/device`, then run
 `node docs/plans/i18n/tools/text-scan.cjs http://127.0.0.1:8941/ en /tmp/after-en.json` (and `nl`, `de`, `fr`, `es`, `ja`,
 `pseudo`, `--width 420`, `--dark`, `--shots <dir>`) and
 `python3 -I docs/plans/i18n/tools/text-compare.py english /tmp/before-en.json /tmp/after-en.json`.
+
+Against the same connected Premium mock fixture, run the focused layout regression with
+`node docs/plans/i18n/tools/selection-layout.cjs http://127.0.0.1:8941/ /tmp/selection-layout`.
+It captures screenshots and `results.json` for all six languages, makes no write requests and
+fails if an action clips or extends outside its selection bar. The browser executable can be
+selected through `TAGCAST_CHROMIUM_EXECUTABLE` when using an existing Playwright installation.
