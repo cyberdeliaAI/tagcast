@@ -422,3 +422,22 @@ test("Python error codes have English text identical to the server message", () 
     }
   }
 });
+
+test("German, French, Spanish and Japanese are chosen for their own systems and use their own plural forms and numbers", async () => {
+  const fill = (template, count) => template.replace(/\{\{\s*count(?:,\s*number)?\s*\}\}/g, count);
+  assert.equal(runtime({languages: ["de-AT", "en-US"]}).i18n.resolve("auto"), "de", "a regional system language chooses its language");
+  for (const [tag, system, grouped] of [["de", "de-DE", "1.234.567"], ["fr", "fr-CA", null], ["es", "es-MX", null], ["ja", "ja-JP", "1,234,567"]]) {
+    assert.equal(manifest.languages.find(language => language.tag === tag)?.status, "complete", `${tag} ships as complete`);
+    assert.equal(runtime({languages: [system, "en-US"]}).i18n.resolve("auto"), tag, `${system} chooses ${tag}`);
+    const {i18n} = runtime({languages: [system]});
+    assert.equal(await i18n.use(tag), tag);
+    const messages = catalogs[tag], one = messages["common.count.tracks_one"] ?? messages["common.count.tracks_other"];
+    assert.equal(i18n.text("common.count.tracks", {count: 1}), fill(one, 1));
+    assert.equal(i18n.text("common.count.tracks", {count: 7}), fill(messages["common.count.tracks_other"], 7));
+    if (messages["common.count.tracks_many"]) assert.equal(i18n.text("common.count.tracks", {count: 1000000}), fill(messages["common.count.tracks_many"], 1000000));
+    const number = i18n.number(1234567);
+    if (grouped) assert.equal(number, grouped);
+    assert.notEqual(number, "1234567", `${tag} groups digits`);
+    assert.equal(i18n.text("missing.key.for.test"), "missing.key.for.test", "an unknown key never throws");
+  }
+});
