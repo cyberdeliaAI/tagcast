@@ -180,6 +180,9 @@ html[data-library-notice="hidden"] #library-notice{display:none}
 .sidebar-toggle{display:none;place-items:center;width:44px;height:44px;flex:0 0 44px;padding:0;border:1px solid var(--palette-shell-line,#526857);border-radius:7px;background:none;color:inherit}
 .sidebar-toggle:hover,.sidebar-toggle[aria-expanded="true"]{background:var(--palette-shell-active,#344b3d)}
 .workspace-nav{min-height:0;overflow-y:auto;flex-shrink:1;margin-bottom:10px}
+/* Let translated labels wrap while keeping library counts readable. */
+.workspace-nav .nav>span{min-width:0;overflow-wrap:anywhere}
+.workspace-nav .nav b{flex-shrink:0;white-space:nowrap}
 .sidebar-bottom{flex-shrink:0;padding-left:0;padding-right:0}
 .sidebar-bottom .connection-title{overflow-wrap:anywhere}
 .sidebar-actions{margin-top:7px}
