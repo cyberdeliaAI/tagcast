@@ -34,6 +34,8 @@ transitions safely use ordinary playback. See the
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
+**Offline guide:** [Download the illustrated Tagcast 1.4.0 manual (PDF)](https://raw.githubusercontent.com/wiki/cyberdeliaAI/tagcast/manuals/Tagcast-1.4.0-User-Manual.pdf) — English, 38 pages, with screenshots and clickable contents.
+
 ![Tagcast 1.3.0 showing Billy Joel's Storm Front album in the Apple Music Classic Dark palette, with album actions, tracks and the compact player](docs/screenshots/2026-11-02-readme/album-storm-front.png)
 
 *Tagcast 1.3.0 — album details and playback in the Apple Music Classic Dark palette, captured on 2 November 2026.*
