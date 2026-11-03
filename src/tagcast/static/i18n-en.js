@@ -31,6 +31,13 @@ globalThis.TagcastI18nEnglish = Object.freeze({
     "dir": "ltr",
     "format": "fr-FR",
     "status": "complete"
+   },
+   {
+    "tag": "es",
+    "name": "Español",
+    "dir": "ltr",
+    "format": "es-ES",
+    "status": "complete"
    }
   ]
  },
