@@ -11099,6 +11099,93 @@ function playbackState(p) {
     sink: audio.sinkId, queue: player.queue, index: player.index, epoch: player.epoch, history: state.history.length})`);
 }
 
+test("header language: opening is read-only, offers autonyms and dismisses with focus return", async () => {
+  const p = languagePage(); await settle();
+  const before = p.requests.length, button = p.nodes.get("#language-button"), menu = p.nodes.get("#language-menu");
+  assert.equal(p.nodes.get("#language-code").textContent, "EN");
+  assert.equal(button.getAttribute("aria-label"), "Choose interface language (English)");
+  for (const name of ["English", "Nederlands", "Deutsch", "Français", "Español", "日本語", "Automatic · follow system"]) assert.ok(menu.innerHTML.includes(name));
+  p.run('setThemeMenu(true)');
+  await button.emit("click");
+  assert.equal(p.nodes.get("#theme-menu").hidden, true);
+  assert.equal(p.nodes.get("#language-panel").hidden, false);
+  assert.equal(button.getAttribute("aria-expanded"), "true");
+  let prevented = false;
+  await p.emitDocument("keydown", {key: "Escape", preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  assert.equal(p.nodes.get("#language-panel").hidden, true);
+  assert.equal(p.run('document.activeElement === $("#language-button")'), true);
+  await button.emit("click"); await p.emitDocument("click");
+  assert.equal(p.nodes.get("#language-panel").hidden, true);
+  await button.emit("click"); await p.emitDocument("focusin");
+  assert.equal(p.nodes.get("#language-panel").hidden, true);
+  assert.equal(p.requests.length, before);
+});
+
+test("header language: the shortcut shares persistence with Settings and preserves playback and drafts", async () => {
+  const p = languagePage(); await settle();
+  p.run('playTracks(state.details.get("1")); audio.currentTime=42; audio.volume=.4');
+  await p.run('openEditor([state.albums[0].id])');
+  p.run('globalThis.headerDraft=editing; editing.trackPatches[String(editing.originals[0].tracks[0].id)]={title:"Unsaved title"}');
+  const before = playbackState(p), form = p.nodes.get("#editor-content").innerHTML;
+  await p.nodes.get("#language-menu").emit("click", {stopPropagation() {}, target: {closest: () => ({dataset: {interfaceLanguage: "nl"}})}});
+  await p.run("interfaceLanguage.saved"); await settle();
+  assert.equal(p.run("TagcastI18n.choice"), "nl");
+  assert.deepEqual(p.saved, [{language: "nl"}]);
+  assert.equal(p.nodes.get("#language-code").textContent, "NL");
+  assert.equal(p.nodes.get("#header-language-status").hidden, true, "successful saves leave a compact menu");
+  assert.match(p.nodes.get("#language-menu").innerHTML, /aria-checked="true"[^>]+data-interface-language="nl"/);
+  assert.match(p.run("languageSettingsSection()"), /value="nl"[^>]+selected/);
+  assert.deepEqual(playbackState(p), before);
+  assert.equal(p.run("editing === headerDraft"), true);
+  assert.equal(p.nodes.get("#editor-content").innerHTML, form);
+  await p.change({id: "interface-language", value: "en", matches: () => false, closest: () => null}); await settle();
+  assert.equal(p.nodes.get("#language-code").textContent, "EN");
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "fr"}); await settle();
+  assert.equal(p.nodes.get("#language-code").textContent, "FR");
+});
+
+test("header language: arrow keys move focus without changing the saved choice", async () => {
+  const p = languagePage(); await settle();
+  const menu = p.nodes.get("#language-menu");
+  const buttons = ["auto", "en", "nl"].map(value => {
+    p.run(`document.querySelector("#test-language-${value}")`);
+    return p.nodes.get(`#test-language-${value}`);
+  });
+  menu.querySelectorAll = () => buttons;
+  buttons[0].focus();
+  for (const [key, index] of [["ArrowDown",1],["End",2],["ArrowDown",0],["ArrowUp",2],["Home",0]]) {
+    let prevented=false;
+    await menu.emit("keydown", {key, preventDefault() { prevented=true; }});
+    assert.equal(prevented,true); assert.equal(p.run("document.activeElement") === buttons[index], true);
+    assert.equal(buttons[index].tabIndex,0);
+  }
+  assert.deepEqual(p.saved, []);
+});
+
+test("header language: saving, failure and catalog fallback are visible and retryable", async () => {
+  const p = languagePage(); await settle(); let finish;
+  p.setFetch(() => new Promise(resolve => { finish=resolve; }));
+  const saving=p.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  assert.equal(p.nodes.get("#language-button").getAttribute("aria-busy"), "true");
+  assert.equal(p.nodes.get("#header-language-status").hidden, false);
+  finish({ok:false,status:500,json:async()=>({error:"Test unavailable"})}); await saving;
+  assert.equal(p.nodes.get("#language-button").getAttribute("aria-busy"), "false");
+  assert.match(p.nodes.get("#header-language-status").textContent, /Test unavailable/);
+  p.setFetch(() => ({ok:true,json:async()=>({interface_language:"de"})}));
+  p.setCatalogFetch(() => ({ok:false,json:async()=>({})}));
+  await p.run('chooseInterfaceLanguage("de")');
+  assert.equal(p.nodes.get("#language-code").textContent, "EN", "the shortcut describes the actual English fallback");
+  assert.match(p.nodes.get("#header-language-status").textContent, /translation could not be loaded/);
+  assert.match(p.nodes.get("#language-menu").innerHTML, /aria-checked="true"[^>]+data-interface-language="de"/);
+  p.setCatalogFetch(() => ({ok:true,json:async()=>JSON.parse(readFileSync(path.join(staticDir,"i18n/de.json"),"utf8"))}));
+  await p.run('chooseInterfaceLanguage("de")');
+  assert.equal(p.nodes.get("#language-code").textContent, "DE");
+  await p.run('chooseInterfaceLanguage("auto")');
+  assert.equal(p.run("TagcastI18n.choice"), "auto");
+  assert.match(p.nodes.get("#language-menu").innerHTML, /aria-checked="true"[^>]+data-interface-language="auto"/);
+});
+
 test("interface language: English playback text keeps its exact existing wording", async () => {
   const p = languagePage({outputs: true}); await settle();
   p.run('playTracks(state.details.get("1")); audio.pause(); audio.volume = 0.65; setNowPlaying(true); openPlaybackOutput()'); await settle();

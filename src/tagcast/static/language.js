@@ -1,12 +1,45 @@
 "use strict";
 
-// Settings → Interface → Language. The local Tagcast server stores the choice in its own
+// The header and Settings → Interface → Language share one preference. The server stores it in
 // config.json (never at iBroadcast) so browsers and the desktop app agree; this profile keeps
 // a copy for the next start. Switching only rewrites interface text: no reload, no requests
 // besides saving the choice, and playback, the queue, drafts and history stay untouched.
 const interfaceLanguage = {version: 0, saving: false, status: "", statusKey: "", saved: Promise.resolve()};
 
 function interfaceLanguageVersion() { return interfaceLanguage.version; }
+
+function renderHeaderLanguage() {
+  const button = $("#language-button"), menu = $("#language-menu");
+  if (!button || !menu) return;
+  const current = TagcastI18n.languages().find(language => language.tag === TagcastI18n.language);
+  const label = TagcastI18n.text("page.language.choose", {language: current?.name || "English"});
+  button.setAttribute("aria-label", label); button.title = label;
+  button.setAttribute("aria-busy", String(interfaceLanguage.saving));
+  $("#language-code").textContent = (current?.tag || "en").toUpperCase();
+  const focused = document.activeElement?.dataset?.interfaceLanguage;
+  const choice = TagcastI18n.choice || "auto";
+  const options = [{tag: "auto", name: TagcastI18n.text("page.language.automatic")}, ...TagcastI18n.languages()];
+  menu.innerHTML = options.map(language => `<button type="button" role="menuitemradio" aria-checked="${choice === language.tag}" tabindex="${choice === language.tag ? "0" : "-1"}" data-interface-language="${escapeHtml(language.tag)}" ${language.tag === "auto" ? "" : `lang="${escapeHtml(language.tag)}"`}><span class="language-check" aria-hidden="true">${choice === language.tag ? "✓" : ""}</span><span>${language.status && language.status !== "complete" ? TagcastI18n.html("settings.language.preview", {language: language.name}) : escapeHtml(language.name)}</span></button>`).join("");
+  menu.setAttribute("aria-label", TagcastI18n.text("settings.language.label"));
+  if (focused && !menu.hidden) menu.querySelector(`[data-interface-language="${focused}"]`)?.focus({preventScroll: true});
+  const status = $("#header-language-status");
+  const fallback = !interfaceLanguage.saving && TagcastI18n.resolve(choice) !== TagcastI18n.language;
+  const statusKey = interfaceLanguage.statusKey === "settings.language.saved" ? "" : interfaceLanguage.statusKey;
+  status.textContent = fallback ? TagcastI18n.text("page.language.loadFailed") : statusKey
+    ? TagcastI18n.text(statusKey, {error: interfaceLanguage.status}) : "";
+  status.hidden = !status.textContent;
+}
+
+function setHeaderLanguageMenu(open, restoreFocus = false) {
+  const menu = $("#language-menu"), panel = $("#language-panel"), button = $("#language-button");
+  if (!menu || !panel || !button) return;
+  panel.hidden = !open; menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (open) {
+    setThemeMenu(false);
+    menu.querySelector('[aria-checked="true"]')?.focus({preventScroll: true});
+  } else if (restoreFocus) button.focus({preventScroll: true});
+}
 
 function languageSettingsSection() {
   const choice = TagcastI18n.choice || "auto", current = TagcastI18n.languages().find(l => l.tag === TagcastI18n.language);
@@ -27,6 +60,7 @@ function languageSettingsSection() {
 
 // Redraws only this section, in place: it keeps the Settings category's visibility and focus.
 function renderLanguageSettings() {
+  renderHeaderLanguage();
   const section = document.querySelector("[data-language-settings]");
   if (!section?.isConnected || typeof section.insertAdjacentHTML !== "function") return;
   const focused = document.activeElement?.id === "interface-language", hidden = section.hidden;
@@ -43,6 +77,7 @@ async function chooseInterfaceLanguage(value, {remember = true} = {}) {
   const loaded = TagcastI18n.use(value, {remember});
   // Capture and queue the choice before awaiting a catalog: load order must never reorder saves.
   const language = TagcastI18n.choice, previous = interfaceLanguage.saved;
+  renderHeaderLanguage();
   const saving = interfaceLanguage.saved = previous.catch(() => {}).then(async () => {
     if (version !== interfaceLanguage.version) return;
     await loaded;
@@ -86,6 +121,38 @@ function publishDesktopLanguage() {
 
 TagcastI18n.subscribe(() => { renderLanguageSettings(); publishDesktopLanguage(); });
 publishDesktopLanguage();
+renderHeaderLanguage();
+setHeaderLanguageMenu(false);
+$("#language-button")?.addEventListener("click", () => setHeaderLanguageMenu($("#language-panel").hidden));
+$("#language-menu")?.addEventListener("click", event => {
+  const value = event.target.closest?.("[data-interface-language]")?.dataset.interfaceLanguage;
+  if (value === "auto" || TagcastI18n.languages().some(language => language.tag === value)) {
+    // Rendering replaces the clicked row. Do not treat its detached target as an outside click.
+    event.stopPropagation(); chooseInterfaceLanguage(value);
+  }
+});
+$("#language-menu")?.addEventListener("keydown", event => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  const buttons = [...$("#language-menu").querySelectorAll("[data-interface-language]")];
+  if (!buttons.length) return;
+  event.preventDefault();
+  const current = buttons.indexOf(document.activeElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+    : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+  buttons.forEach((button, index) => { button.tabIndex = index === next ? 0 : -1; });
+  buttons[next].focus({preventScroll: true});
+});
+document.addEventListener("click", event => {
+  if (!event.target.closest?.(".language-controls")) setHeaderLanguageMenu(false);
+});
+document.addEventListener("focusin", event => {
+  if (!event.target.closest?.(".language-controls")) setHeaderLanguageMenu(false);
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !$("#language-panel")?.hidden) {
+    event.preventDefault(); setHeaderLanguageMenu(false, true);
+  }
+});
 document.addEventListener("change", event => {
   if (event.target?.id === "interface-language") chooseInterfaceLanguage(event.target.value);
 });
