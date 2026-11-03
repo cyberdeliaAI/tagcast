@@ -124,3 +124,12 @@ archive requires a separate, explicitly reviewed publication procedure.
 The tag must match its application version. Tags from before 0.10.1 retain the
 earlier single-console executable format, using the pinned legacy recipe. Only
 publication jobs have write permission. There is no automatic app updater.
+
+### Source-test Mac runners
+
+Python 3.11 follows GitHub's `macos-latest` image (macOS 26 at the 1.4.0 release).
+Python 3.13 uses `macos-15`, matching the pinned Apple Silicon packaging runner.
+This keeps both generations covered without relying on the same runner pool for
+both Python versions. The existing `Tests · macos-latest · Python 3.13` required-check
+name is retained for branch-protection compatibility; the runner's own log identifies
+macOS 15. Test commands, security settings and release gates are unchanged.

@@ -15,12 +15,19 @@ jobs:
   tests:
     needs: scope
     name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}
-    runs-on: ${{ needs.scope.outputs.full == 'true' && matrix.os || 'ubuntu-latest' }}
+    runs-on: ${{ needs.scope.outputs.full == 'true' && (matrix.runner || matrix.os) || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.13"]
+        include:
+          # Keep the required-check context stable while testing both macOS generations.
+          # The macOS 26 "latest" pool stalled before runner assignment during 1.4.0;
+          # Python 3.13 uses the same pinned macOS 15 image as release packaging.
+          - os: macos-latest
+            python: "3.13"
+            runner: macos-15
     steps:
       - name: Select verification for this target
         shell: python

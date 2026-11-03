@@ -115,7 +115,8 @@ class CIScopeTests(unittest.TestCase):
             self.assertIn("needs: scope", header)
             self.assertNotRegex(header, r"(?m)^    if:")
             if job != "gapless-measured-media":
-                self.assertIn("&& matrix.os || 'ubuntu-latest'", header)
+                choice = "(matrix.runner || matrix.os)" if job == "tests" else "matrix.os"
+                self.assertIn(f"&& {choice} || 'ubuntu-latest'", header)
             entries = re.split(r"(?m)^      - ", steps)[1:]
             self.assertTrue(entries[0].startswith("name: Select verification for this target\n"))
             self.assertIn("CI_FULL: ${{ needs.scope.outputs.full }}", entries[0])
@@ -130,6 +131,28 @@ class CIScopeTests(unittest.TestCase):
             for entry in entries[1:]:
                 # No checkout, installation, tests, native build or artifact upload on docs.
                 self.assertRegex(entry, r"(?m)^        if: (always\(\) && )?needs\.scope\.outputs\.full == 'true'")
+
+    def test_mac_runner_override_preserves_full_tests_and_documentation_fallback(self):
+        source = (ROOT / ".github/workflows/tests.yml").read_text()
+        block = source.split("\n  tests:\n", 1)[1].split("\n  start-scripts:\n", 1)[0]
+        self.assertIn('os: [ubuntu-latest, macos-latest, windows-latest]', block)
+        self.assertIn('python: ["3.11", "3.13"]', block)
+        override = re.search(r'- os: (\S+)\n\s+python: "([^\"]+)"\n\s+runner: (\S+)', block)
+        self.assertIsNotNone(override)
+        self.assertEqual(override.groups(), ("macos-latest", "3.13", "macos-15"))
+        expression = re.search(r"runs-on: \$\{\{ (.*?) \}\}", block)[1]
+        expression = expression.replace("&&", "and").replace("||", "or")
+        for full in ("true", "false"):
+            for os_name in ("ubuntu-latest", "macos-latest", "windows-latest"):
+                for python in ("3.11", "3.13"):
+                    runner = "macos-15" if (os_name, python) == override.groups()[:2] else ""
+                    actual = eval(expression, {"__builtins__": {}}, {
+                        "needs": SimpleNamespace(scope=SimpleNamespace(outputs=SimpleNamespace(full=full))),
+                        "matrix": SimpleNamespace(os=os_name, python=python, runner=runner),
+                    })
+                    expected = (runner or os_name) if full == "true" else "ubuntu-latest"
+                    self.assertEqual(actual, expected, (full, os_name, python))
+        self.assertIn('name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}', block)
 
     def test_final_gates_reject_failed_missing_and_skipped_dependencies(self):
         for filename, expected in (("tests.yml", ["scope", "tests", "start-scripts", "gapless-measured-media"]),
