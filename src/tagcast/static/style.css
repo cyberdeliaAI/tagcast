@@ -1115,3 +1115,9 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
   #uploads-page .downloads-buttons button { flex:1 1 auto; }
   #uploads-page #music-upload-start { flex-basis:100%; }
 }
+
+/* Interface languages. Japanese uses the system's Japanese fonts and Japanese line breaking (headings and buttons break between phrases where the browser supports it), without the Latin letter tracking of small labels and headings; Japanese text has no italics. */
+:root:lang(ja){font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Yu Gothic",Meiryo,"Noto Sans CJK JP","Noto Sans JP","Segoe UI",sans-serif;line-break:strict;word-break:normal}
+:lang(ja) .eyebrow,:lang(ja) .brand small,:lang(ja) .preview-badge,:lang(ja) .album-table th,:lang(ja) .lookup-source h4,:lang(ja) .art-compare figcaption,:lang(ja) .cover-caption,:lang(ja) h1,:lang(ja) .dialog-heading h2,:lang(ja) .album-detail-info h1,:lang(ja) .help-card h2,:lang(ja) .player-stage .visual-player-header{letter-spacing:normal}
+:lang(ja) em,:lang(ja) i{font-style:normal}
+:lang(ja) h1,:lang(ja) h2,:lang(ja) h3,:lang(ja) button,:lang(ja) .button{word-break:auto-phrase;overflow-wrap:break-word}
