@@ -1,6 +1,9 @@
 "use strict";
 
 // Local experiment: lossless FLAC-to-fMP4 framing. No transcoding of original FLAC.
+// Errors keep their English message for logs and tests. This module also runs without the
+// TagcastI18n runtime, so each check names its full catalog key and the error carries the
+// matching code (the key without "errors."); TagcastI18n.errorText() shows the translation.
 const gaplessMedia = (() => {
   const encoder = new TextEncoder();
   const cat = (...items) => { const out = new Uint8Array(items.reduce((n, a) => n + a.length, 0)); let n = 0; for (const a of items) { out.set(a, n); n += a.length; } return out; };
@@ -9,7 +12,7 @@ const gaplessMedia = (() => {
   const box = (name, ...data) => { const content = cat(...data); return cat(u32(content.length + 8), encoder.encode(name), content); };
   const full = (name, flags, ...data) => box(name, u32(flags), ...data);
   const read32 = (a, n) => new DataView(a.buffer, a.byteOffset, a.byteLength).getUint32(n);
-  const check = (condition, message) => { if (!condition) throw new Error(message); };
+  const check = (condition, message, key) => { if (!condition) throw Object.assign(new Error(message), {code: key.slice(7), params: {}}); };
   const crcTable = (bits, poly) => Array.from({length: 256}, (_, i) => { let n = i << (bits - 8); for (let b = 0; b < 8; b++) n = ((n << 1) ^ (n & (1 << (bits - 1)) ? poly : 0)) & ((1 << bits) - 1); return n; });
   const crc8Table = crcTable(8, 7), crc16Table = crcTable(16, 0x8005);
   const crc = (a, start, end, bits = 16) => { const table = bits === 8 ? crc8Table : crc16Table, mask = bits === 8 ? 255 : 65535; let n = 0; for (let i = start; i < end; i++) n = ((n << 8) ^ table[((n >>> (bits - 8)) ^ a[i]) & 255]) & mask; return n; };
@@ -17,13 +20,13 @@ const gaplessMedia = (() => {
   function readUtf(a, pos) {
     const first = a[pos++]; if (first < 128) return [first, pos];
     let count = 0; for (let bit = 128; first & bit; bit >>>= 1) count++;
-    check(count >= 2 && count <= 7 && pos + count - 1 < a.length, "Invalid FLAC frame number.");
+    check(count >= 2 && count <= 7 && pos + count - 1 < a.length, "Invalid FLAC frame number.", "errors.gapless.media_flac_frame_number");
     let value = first & (127 >>> count);
-    for (let i = 1; i < count; i++) { const byte = a[pos++]; check((byte & 192) === 128, "Invalid FLAC frame number."); value = value * 64 + (byte & 63); }
+    for (let i = 1; i < count; i++) { const byte = a[pos++]; check((byte & 192) === 128, "Invalid FLAC frame number.", "errors.gapless.media_flac_frame_number"); value = value * 64 + (byte & 63); }
     return [value, pos];
   }
   function flacHeader(a, start, info) {
-    check(a[start] === 255 && (a[start + 1] & 254) === 248 && !(a[start + 3] & 1), "Invalid FLAC frame.");
+    check(a[start] === 255 && (a[start + 1] & 254) === 248 && !(a[start + 3] & 1), "Invalid FLAC frame.", "errors.gapless.media_flac_frame");
     const variable = Boolean(a[start + 1] & 1), block = a[start + 2] >>> 4, rateCode = a[start + 2] & 15;
     const assignment = a[start + 3] >>> 4, depth = (a[start + 3] >>> 1) & 7;
     let [number, p] = readUtf(a, start + 4), samples;
@@ -32,34 +35,34 @@ const gaplessMedia = (() => {
     else if (block === 6) samples = a[p++] + 1;
     else if (block === 7) { samples = (a[p] << 8 | a[p + 1]) + 1; p += 2; }
     else if (block >= 8) samples = 256 * 2 ** (block - 8);
-    check(samples > 0, "Invalid FLAC block size.");
+    check(samples > 0, "Invalid FLAC block size.", "errors.gapless.media_flac_block_size");
     let rate = [info.rate, 88200, 176400, 192000, 8000, 16000, 22050, 24000, 32000, 44100, 48000, 96000][rateCode];
     if (rateCode === 12) rate = a[p++] * 1000;
     else if (rateCode === 13 || rateCode === 14) { rate = (a[p] << 8 | a[p + 1]) * (rateCode === 14 ? 10 : 1); p += 2; }
     const bits = [info.bits, 8, 12, 0, 16, 20, 24, 32][depth], channels = assignment <= 7 ? assignment + 1 : assignment <= 10 ? 2 : 0;
-    check(rate === info.rate && bits === info.bits && channels === info.channels && crc(a, start, p + 1, 8) === 0, "FLAC frame does not match STREAMINFO.");
+    check(rate === info.rate && bits === info.bits && channels === info.channels && crc(a, start, p + 1, 8) === 0, "FLAC frame does not match STREAMINFO.", "errors.gapless.media_flac_frame_mismatch");
     return {number, samples, variable, headerEnd: p + 1};
   }
   function parseFlac(a) {
-    check(a.length > 42 && String.fromCharCode(...a.subarray(0, 4)) === "fLaC", "Original stream is not native FLAC.");
+    check(a.length > 42 && String.fromCharCode(...a.subarray(0, 4)) === "fLaC", "Original stream is not native FLAC.", "errors.gapless.media_not_flac");
     let pos = 4, info, last = false;
     while (!last) {
-      check(pos + 4 <= a.length, "Truncated FLAC metadata.");
+      check(pos + 4 <= a.length, "Truncated FLAC metadata.", "errors.gapless.media_flac_truncated");
       last = Boolean(a[pos] & 128); const kind = a[pos] & 127, size = a[pos + 1] * 65536 + a[pos + 2] * 256 + a[pos + 3]; pos += 4;
-      check(pos + size <= a.length, "Truncated FLAC metadata.");
+      check(pos + size <= a.length, "Truncated FLAC metadata.", "errors.gapless.media_flac_truncated");
       if (kind === 0) {
-        check(!info && size === 34, "Invalid FLAC STREAMINFO.");
+        check(!info && size === 34, "Invalid FLAC STREAMINFO.", "errors.gapless.media_flac_streaminfo");
         const data = a.slice(pos, pos + size), rate = data[10] * 4096 + data[11] * 16 + (data[12] >>> 4);
         info = {rate, channels: ((data[12] >>> 1) & 7) + 1, bits: ((data[12] & 1) << 4 | data[13] >>> 4) + 1,
           total: (data[13] & 15) * 2 ** 32 + read32(data, 14), streaminfo: data};
       }
       pos += size;
     }
-    check(info && info.total > 0 && info.rate >= 8000 && info.rate <= 192000 && info.channels <= 2 && [16, 24].includes(info.bits), "This FLAC format is outside the gapless trial limits.");
+    check(info && info.total > 0 && info.rate >= 8000 && info.rate <= 192000 && info.channels <= 2 && [16, 24].includes(info.bits), "This FLAC format is outside the gapless trial limits.", "errors.gapless.media_flac_limits");
     const frames = []; let samples = 0;
     while (pos < a.length) {
       const h = flacHeader(a, pos, info), expected = h.variable ? samples : frames.length;
-      check(h.number === expected, "Non-contiguous FLAC frame numbers.");
+      check(h.number === expected, "Non-contiguous FLAC frame numbers.", "errors.gapless.media_flac_frame_order");
       let next = h.headerEnd + 2, checksum = crc(a, pos, next);
       for (; next < a.length - 5; checksum = ((checksum << 8) ^ crc16Table[((checksum >>> 8) ^ a[next]) & 255]) & 65535, next++) {
         if (checksum !== 0 || a[next] !== 255 || (a[next + 1] & 254) !== 248) continue;
@@ -68,11 +71,11 @@ const gaplessMedia = (() => {
         break;
       }
       if (next >= a.length - 5) next = a.length;
-      check(crc(a, pos, next) === 0, "FLAC frame checksum failed.");
+      check(crc(a, pos, next) === 0, "FLAC frame checksum failed.", "errors.gapless.media_flac_checksum");
       frames.push({data: a.subarray(pos, next), samples: h.samples}); samples += h.samples; pos = next;
-      check(frames.length <= 100000 && samples <= info.total, "FLAC frame bounds exceeded.");
+      check(frames.length <= 100000 && samples <= info.total, "FLAC frame bounds exceeded.", "errors.gapless.media_flac_bounds");
     }
-    check(samples === info.total, "FLAC sample count does not match STREAMINFO.");
+    check(samples === info.total, "FLAC sample count does not match STREAMINFO.", "errors.gapless.media_flac_samples");
     return {...info, frames};
   }
   function streamInfo(rate, channels, bits, total, block) {
@@ -82,7 +85,7 @@ const gaplessMedia = (() => {
   }
   function pcmFlac(buffer) {
     const {sampleRate: rate, numberOfChannels: channels, length: total} = buffer, bits = 24, block = 4096, frames = [];
-    check(channels >= 1 && channels <= 2 && total * channels * 4 <= 128 * 1024 ** 2, "MP3 decoding exceeds the trial memory limit.");
+    check(channels >= 1 && channels <= 2 && total * channels * 4 <= 128 * 1024 ** 2, "MP3 decoding exceeds the trial memory limit.", "errors.gapless.media_mp3_memory");
     const planes = Array.from({length: channels}, (_, n) => buffer.getChannelData(n));
     for (let start = 0, number = 0; start < total; start += block, number++) {
       const count = Math.min(block, total - start), head = cat(new Uint8Array([255, 248, 112, (channels - 1) << 4 | 12]), utf(number), u16(count - 1));
@@ -98,20 +101,20 @@ const gaplessMedia = (() => {
   }
   function mp3Info(a) {
     let p = 0;
-    if (String.fromCharCode(...a.subarray(0, 3)) === "ID3") { check(a.length >= 10 && ![6, 7, 8, 9].some(i => a[i] & 128), "Invalid MP3 ID3 header."); p = 10 + a[6] * 2097152 + a[7] * 16384 + a[8] * 128 + a[9]; if (a[5] & 16) p += 10; }
-    check(p + 40 < a.length && a[p] === 255 && (a[p + 1] & 224) === 224, "Missing MP3 frame header.");
+    if (String.fromCharCode(...a.subarray(0, 3)) === "ID3") { check(a.length >= 10 && ![6, 7, 8, 9].some(i => a[i] & 128), "Invalid MP3 ID3 header.", "errors.gapless.media_mp3_id3"); p = 10 + a[6] * 2097152 + a[7] * 16384 + a[8] * 128 + a[9]; if (a[5] & 16) p += 10; }
+    check(p + 40 < a.length && a[p] === 255 && (a[p + 1] & 224) === 224, "Missing MP3 frame header.", "errors.gapless.media_mp3_header");
     const version = (a[p + 1] >>> 3) & 3, layer = (a[p + 1] >>> 1) & 3, index = (a[p + 2] >>> 2) & 3, mono = (a[p + 3] >>> 6) === 3;
-    check(version !== 1 && layer === 1 && index !== 3, "Unsupported MP3 frame format.");
+    check(version !== 1 && layer === 1 && index !== 3, "Unsupported MP3 frame format.", "errors.gapless.media_mp3_format");
     const rate = [44100, 48000, 32000][index] / (version === 3 ? 1 : version === 2 ? 2 : 4), channels = mono ? 1 : 2;
     let x = p + 4 + (a[p + 1] & 1 ? 0 : 2) + (version === 3 ? mono ? 17 : 32 : mono ? 9 : 17);
-    check(["Xing", "Info"].includes(String.fromCharCode(...a.subarray(x, x + 4))), "MP3 has no reliable gapless metadata; standard playback is used.");
+    check(["Xing", "Info"].includes(String.fromCharCode(...a.subarray(x, x + 4))), "MP3 has no reliable gapless metadata; standard playback is used.", "errors.gapless.media_mp3_metadata");
     const flags = read32(a, x + 4); x += 8;
-    check(flags & 1, "MP3 has no exact frame count."); const frames = read32(a, x); x += 4;
+    check(flags & 1, "MP3 has no exact frame count.", "errors.gapless.media_mp3_frame_count"); const frames = read32(a, x); x += 4;
     if (flags & 2) x += 4; if (flags & 4) x += 100; if (flags & 8) x += 4;
-    check(x + 24 <= a.length && /^(LAME|Lavc|Lavf)/.test(String.fromCharCode(...a.subarray(x, x + 9))), "MP3 encoder padding is unknown; standard playback is used.");
+    check(x + 24 <= a.length && /^(LAME|Lavc|Lavf)/.test(String.fromCharCode(...a.subarray(x, x + 9))), "MP3 encoder padding is unknown; standard playback is used.", "errors.gapless.media_mp3_padding");
     const delay = a[x + 21] * 16 + (a[x + 22] >>> 4), padding = (a[x + 22] & 15) * 256 + a[x + 23];
     const total = frames * (version === 3 ? 1152 : 576) - delay - padding;
-    check(total > 0 && total * channels * 4 <= 128 * 1024 ** 2, "MP3 decoding exceeds the trial memory limit.");
+    check(total > 0 && total * channels * 4 <= 128 * 1024 ** 2, "MP3 decoding exceeds the trial memory limit.", "errors.gapless.media_mp3_memory");
     return {rate, channels, total, delay, padding};
   }
   function init(info) {

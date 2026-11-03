@@ -1,11 +1,12 @@
 "use strict";
 
-const {app, BrowserWindow, Menu, dialog, session, shell, screen} = require("electron");
+const {app, BrowserWindow, Menu, dialog, ipcMain, session, shell, screen} = require("electron");
 const http = require("node:http");
 const path = require("node:path");
-const {Backend, backendCommand} = require("./backend.cjs");
+const {Backend, backendCommand, startupError} = require("./backend.cjs");
 const {applicationUrl, externalUrl, permissionAllowed, contentPolicy} = require("./security.cjs");
 const {helpMenu} = require("./help-menu.cjs");
+const {createDesktopText, menuTemplate} = require("./desktop-text.cjs");
 const {installMiniPlayer} = require("./mini-player.cjs");
 const {installSignIn} = require("./sign-in.cjs");
 const {installUploadPicker} = require("./upload-picker.cjs");
@@ -16,25 +17,29 @@ app.setName("Tagcast");
 if (process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.resolve(process.env.TAGCAST_ELECTRON_PROFILE));
 app.enableSandbox();
 let window, backend, origin, miniPlayer, signIn, stopping, finished = false;
+// Menus, titles and dialogs in the interface language the main window last reported.
+const desktop = createDesktopText(path.join(app.getPath("userData"), "interface.json"));
+const t = name => desktop.text(name);
+const errorText = error => error?.textKey ? t(error.textKey) : error?.message;
 
 function readPage(url) {
   return new Promise((resolve, reject) => {
     const request = http.get(url, response => {
       let page = "";
-      if (response.statusCode !== 200 || !response.headers["content-type"]?.startsWith("text/html")) { response.resume(); reject(new Error("Tagcast did not return its interface.")); return; }
+      if (response.statusCode !== 200 || !response.headers["content-type"]?.startsWith("text/html")) { response.resume(); reject(startupError("startup.pageMissing", "Tagcast did not return its interface.")); return; }
       response.setEncoding("utf8");
-      response.on("data", chunk => { page += chunk; if (page.length > 2_000_000) request.destroy(new Error("The application page is too large.")); });
+      response.on("data", chunk => { page += chunk; if (page.length > 2_000_000) request.destroy(startupError("startup.pageTooLarge", "The application page is too large.")); });
       response.on("end", () => resolve(page));
       response.on("error", reject);
     });
-    request.setTimeout(10000, () => request.destroy(new Error("Tagcast's interface timed out.")));
+    request.setTimeout(10000, () => request.destroy(startupError("startup.pageTimeout", "Tagcast's interface timed out.")));
     request.on("error", reject);
   });
 }
 
 function openExternal(value) {
   const safe = externalUrl(value);
-  if (safe) shell.openExternal(safe).catch(() => dialog.showErrorBox("Could not open link", "Open this HTTPS link in your browser instead."));
+  if (safe) shell.openExternal(safe).catch(() => dialog.showErrorBox(t("error.linkTitle"), t("error.linkText")));
 }
 
 function installSession(ses, policy) {
@@ -58,9 +63,9 @@ function createWindow() {
       sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false,
       devTools: !app.isPackaged, backgroundThrottling: false}});
   rememberWindowSize(window, sizeFile);
-  miniPlayer = installMiniPlayer(window, origin);
-  signIn = installSignIn(window, origin);
-  installUploadPicker(window, origin);
+  miniPlayer = installMiniPlayer(window, origin, t);
+  signIn = installSignIn(window, origin, undefined, undefined, t);
+  installUploadPicker(window, origin, undefined, t);
   const contents = window.webContents;
   contents.setWindowOpenHandler(({url}) => { openExternal(url); return {action: "deny"}; });
   contents.on("will-navigate", (event, url) => {
@@ -69,29 +74,30 @@ function createWindow() {
   contents.on("will-redirect", (event, url) => { if (!applicationUrl(url, origin)) event.preventDefault(); });
   contents.on("will-attach-webview", event => event.preventDefault());
   contents.on("will-prevent-unload", event => {
-    const choice = dialog.showMessageBoxSync(window, {type: "question", buttons: ["Keep Tagcast open", "Close Tagcast"],
-      defaultId: 0, cancelId: 0, title: "Close Tagcast?", message: "There are unsaved changes, active music transfers or a save is still running.",
-      detail: "Closing loses unsaved drafts and stops downloads/uploads. Files already sent may still arrive in iBroadcast. Accepted library writes finish before the local server stops."});
+    const choice = dialog.showMessageBoxSync(window, {type: "question", buttons: [t("close.keepOpen"), t("close.close")],
+      defaultId: 0, cancelId: 0, title: t("close.title"), message: t("close.message"), detail: t("close.detail")});
     if (choice === 1) event.preventDefault();
   });
-  contents.on("render-process-gone", () => { if (!stopping) dialog.showErrorBox("Tagcast's window stopped", "Restart Tagcast Desktop. The local server will finish accepted requests before closing."); app.quit(); });
+  contents.on("render-process-gone", () => { if (!stopping) dialog.showErrorBox(t("error.windowStoppedTitle"), t("error.windowStoppedText")); app.quit(); });
   window.once("ready-to-show", () => { if (!miniPlayer?.window) window.show(); });
   window.on("closed", () => { window = null; app.quit(); });
-  window.loadURL(origin).catch(() => { dialog.showErrorBox("Could not open Tagcast", "The local interface could not be loaded. Restart Tagcast Desktop."); window?.destroy(); app.quit(); });
+  window.loadURL(origin).catch(() => { dialog.showErrorBox(t("error.openTitle"), t("error.openText")); window?.destroy(); app.quit(); });
 }
 
 function installMenu() {
-  const template = [
-    ...(process.platform === "darwin" ? [{label: app.name, submenu: [{role: "about"}, {type: "separator"}, {role: "hide"}, {role: "hideOthers"}, {role: "unhide"}, {type: "separator"}, {role: "quit"}]}] : [{label: "File", submenu: [{role: "quit"}]}]),
-    {role: "editMenu"},
-    {label: "View", submenu: [{label: "Open Mini Player", accelerator: "CmdOrCtrl+Shift+M", click: () => miniPlayer?.open()}, {type: "separator"}, {role: "reload"}, {role: "resetZoom"}, {role: "zoomIn"}, {role: "zoomOut"}, {type: "separator"}, {role: "togglefullscreen"}, ...(!app.isPackaged ? [{role: "toggleDevTools"}] : [])]},
-    {role: "windowMenu"},
-    helpMenu(openExternal)
-  ];
+  const english = desktop.english;
+  const template = menuTemplate({platform: process.platform, packaged: app.isPackaged, appName: app.name, text: t, english,
+    openMiniPlayer: () => miniPlayer?.open(), help: helpMenu(openExternal, {text: t, english})});
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-  app.setAboutPanelOptions({applicationName: "Tagcast", applicationVersion: packageInfo.version,
-    copyright: "Independent app by Cyberdelia · Powered by iBroadcast"});
+  app.setAboutPanelOptions({applicationName: "Tagcast", applicationVersion: packageInfo.version, copyright: t("about.credits")});
 }
+
+// Only the main window's own page may report its language; a change rebuilds the menus.
+ipcMain.on("desktop:interface", (event, value) => {
+  const contents = window?.webContents;
+  if (!contents || contents.isDestroyed() || event.sender !== contents || event.senderFrame !== contents.mainFrame || !applicationUrl(contents.getURL(), origin)) return;
+  if (desktop.update(value) && origin) installMenu();
+});
 
 app.on("before-quit", event => {
   if (finished) return;
@@ -107,7 +113,7 @@ else {
     const sourceRoot = app.isPackaged ? null : path.resolve(__dirname, "..");
     backend = new Backend(backendCommand({packaged: app.isPackaged, resourcesPath: process.resourcesPath, sourceRoot, python: process.env.TAGCAST_PYTHON}),
       {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot, onExit: () => {
-        if (!stopping) { dialog.showErrorBox("Tagcast's server stopped", "Restart Tagcast Desktop. No requests will be retried automatically."); window?.destroy(); app.quit(); }
+        if (!stopping) { dialog.showErrorBox(t("error.serverStoppedTitle"), t("error.serverStoppedText")); window?.destroy(); app.quit(); }
       }});
     const ready = await backend.start();
     if (stopping) return;
@@ -119,5 +125,5 @@ else {
     createWindow();
     if (process.env.TAGCAST_ELECTRON_SMOKE_REPORT) require("./smoke.cjs").check({app, window, origin, backend, miniPlayer});
     if (process.env.TAGCAST_SIGN_IN_SMOKE_REPORT) require("./sign-in-smoke.cjs").check({app, window, origin, signIn});
-  }).catch(error => { dialog.showErrorBox("Could not start Tagcast Desktop", error.message + "\nSee tagcast.log in your Tagcast settings folder."); app.quit(); });
+  }).catch(error => { dialog.showErrorBox(t("error.startTitle"), errorText(error) + "\n" + t("error.startHint")); app.quit(); });
 }

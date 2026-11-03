@@ -1,0 +1,7 @@
+{
+  "source": "en",
+  "languages": [
+    {"tag": "en", "name": "English", "dir": "ltr", "format": "en-GB", "status": "complete"},
+    {"tag": "nl", "name": "Nederlands", "dir": "ltr", "format": "nl-NL", "status": "complete"}
+  ]
+}

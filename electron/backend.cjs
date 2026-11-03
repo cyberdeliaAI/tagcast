@@ -5,6 +5,10 @@ const {existsSync} = require("node:fs");
 const path = require("node:path");
 const readline = require("node:readline");
 
+// The English message stays for logs and tests; textKey lets the startup dialog show it in the
+// interface language (desktop-text.cjs).
+const startupError = (textKey, message) => Object.assign(new Error(message), {textKey});
+
 function backendCommand({packaged, resourcesPath, sourceRoot, python}) {
   if (packaged) return {file: path.join(resourcesPath, "backend", process.platform === "win32" ? "tagcast-server.exe" : "tagcast-server"), args: []};
   const local = path.join(sourceRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
@@ -12,9 +16,9 @@ function backendCommand({packaged, resourcesPath, sourceRoot, python}) {
 }
 
 function readyMessage(data, version) {
-  if (data?.event !== "ready" || data.protocol !== 1 || data.version !== version || typeof data.owned !== "boolean") throw new Error("The desktop server does not match this Tagcast version.");
+  if (data?.event !== "ready" || data.protocol !== 1 || data.version !== version || typeof data.owned !== "boolean") throw startupError("startup.versionMismatch", "The desktop server does not match this Tagcast version.");
   const url = new URL(data.url);
-  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw new Error("Invalid desktop server address.");
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw startupError("startup.invalidAddress", "Invalid desktop server address.");
   return {...data, url: url.origin};
 }
 
@@ -33,15 +37,15 @@ class Backend {
       this.child.stderr.resume();
       this.child.stdin.on("error", () => {});
       let settled = false;
-      const timer = setTimeout(() => fail(new Error("Tagcast's local server did not become ready.")), this.timeout);
+      const timer = setTimeout(() => fail(startupError("startup.notReady", "Tagcast's local server did not become ready.")), this.timeout);
       const fail = error => {
         if (settled) return;
         settled = true; clearTimeout(timer); this.stop(); reject(error);
       };
       this.exited = new Promise(done => {
-        this.child.once("error", () => { fail(new Error("Could not start Tagcast's local server.")); done(); });
+        this.child.once("error", () => { fail(startupError("startup.couldNotStart", "Could not start Tagcast's local server.")); done(); });
         this.child.once("exit", (code, signal) => {
-          fail(new Error("Tagcast's local server stopped before it was ready."));
+          fail(startupError("startup.stoppedEarly", "Tagcast's local server stopped before it was ready."));
           done();
           if (!this.stopping) this.onExit({code, signal});
         });
@@ -52,11 +56,11 @@ class Backend {
         try {
           if (line.length > 8192) throw new Error();
           const data = JSON.parse(line);
-          if (data.event === "error") throw new Error("The server port is occupied or another Tagcast version is running. Close that instance and try again.");
+          if (data.event === "error") throw startupError("startup.portBusy", "The server port is occupied or another Tagcast version is running. Close that instance and try again.");
           const ready = readyMessage(data, this.version);
           settled = true; clearTimeout(timer); resolve(ready);
         } catch (error) {
-          fail(error instanceof SyntaxError ? new Error("Invalid response from Tagcast's local server.") : error);
+          fail(error instanceof SyntaxError ? startupError("startup.invalidResponse", "Invalid response from Tagcast's local server.") : error);
         }
       });
     });
@@ -70,4 +74,4 @@ class Backend {
   }
 }
 
-module.exports = {Backend, backendCommand, readyMessage};
+module.exports = {Backend, backendCommand, readyMessage, startupError};

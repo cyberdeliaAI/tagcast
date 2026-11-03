@@ -29,3 +29,22 @@ test("Mini Player applies validated custom colours and clears them when returnin
  v.state({colours:{paper:"#654321"}});assert.deepEqual(v.document.documentElement.style.properties,{"--palette-paper":"#654321"});
  v.state();assert.deepEqual(v.document.documentElement.style.properties,{});
 });
+const dutch=Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(__dirname,"../src/tagcast/static/i18n/nl.json"),"utf8")))
+ .filter(([key])=>key.startsWith("mini.")&&!key.startsWith("mini.status.")).map(([key,value])=>[key.slice(5),value]));
+test("Mini Player shows the owner's translated labels and language without translating metadata",()=>{
+ const v=view();v.state({language:"nl",labels:dutch,title:"Sound",artist:"Now playing"});
+ assert.equal(v.document.documentElement.lang,"nl");assert.equal(v.document.title,"Tagcast · Minispeler");
+ assert.equal(v.nodes.get("title").textContent,"Sound");assert.equal(v.nodes.get("artist").textContent,"Now playing");
+ assert.equal(v.nodes.get("play").getAttribute("aria-label"),"Afspelen");assert.equal(v.nodes.get("previous").getAttribute("aria-label"),"Vorig nummer");
+ assert.equal(v.nodes.get("position").getAttribute("aria-valuetext"),"1:15 van 5:00");assert.equal(v.nodes.get("position").getAttribute("aria-label"),"Spoelen in Sound");
+ v.state({language:"nl",labels:dutch,idle:true,title:"",artist:"",controllable:false});
+ assert.equal(v.nodes.get("title").textContent,"Er wordt niets afgespeeld");assert.equal(v.nodes.get("artist").textContent,"Kies een album in Tagcast");
+ assert.equal(v.nodes.get("position").getAttribute("aria-label"),"Spoelen in het huidige nummer");
+});
+test("Mini Player keeps English for missing labels and placeholders that look like templates stay literal metadata",()=>{
+ const v=view();v.state({title:"{{title}} $& $1"});
+ assert.equal(v.nodes.get("play").getAttribute("aria-label"),"Play");
+ assert.equal(v.nodes.get("position").getAttribute("aria-label"),"Seek in {{title}} $& $1");
+ v.state({language:"nl",labels:{play:"Afspelen"}});
+ assert.equal(v.nodes.get("play").getAttribute("aria-label"),"Afspelen");assert.equal(v.nodes.get("next").getAttribute("aria-label"),"Next track");
+});

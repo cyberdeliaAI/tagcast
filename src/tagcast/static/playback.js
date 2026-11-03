@@ -19,23 +19,25 @@ function playbackOutputCapabilities() {
 function playbackOutputName() {
   if (audio.webkitCurrentPlaybackTargetIsWireless) return "AirPlay";
   const id = audio.sinkId || "";
-  return !id || id === "default" ? "System default" : playbackOutput.names.get(id) || "Selected output";
+  return !id || id === "default" ? TagcastI18n.text("playback.output.systemDefault")
+    : playbackOutput.names.get(id) || TagcastI18n.text("playback.output.selected");
 }
 
 function renderPlaybackVolume() {
   const percent = Math.round((Number.isFinite(audio.volume) ? audio.volume : 1) * 100);
-  const value = `${percent}%${audio.muted ? ", muted" : ""}`;
-  $("#player-output").title = `Volume: ${value} · Output: ${playbackOutputName()}`;
-  $("#player-output").setAttribute("aria-label", `Volume and audio output: ${value}`);
+  const value = TagcastI18n.text(audio.muted ? "playback.volume.valueMuted" : "playback.volume.value", {percent});
+  $("#player-output").title = TagcastI18n.text("playback.output.buttonTitleValue", {volume: value, output: playbackOutputName()});
+  $("#player-output").setAttribute("aria-label", TagcastI18n.text("playback.output.buttonValue", {volume: value}));
   $("#audio-volume").value = String(percent);
   $("#audio-volume").setAttribute("aria-valuetext", value);
-  $("#audio-volume-value").textContent = `${percent}%`;
-  $("#audio-mute").textContent = audio.muted ? "Unmute" : "Mute";
+  $("#audio-volume-value").textContent = TagcastI18n.text("playback.volume.value", {percent});
+  $("#audio-mute").textContent = TagcastI18n.text(audio.muted ? "playback.volume.unmute" : "playback.volume.mute");
   $("#audio-mute").setAttribute("aria-pressed", String(Boolean(audio.muted)));
-  $("#audio-volume-note").textContent = playbackOutput.volumeLimited
-    ? "This browser or output controls volume through your system or device."
-    : "Player volume only. Your system or speaker may also have its own volume control.";
+  $("#audio-volume-note").textContent = TagcastI18n.text(playbackOutput.volumeLimited ? "playback.volume.noteLimited" : "playback.volume.note");
 }
+
+// A language change only rewrites labels: volume, mute state and the output stay as they are.
+TagcastI18n.subscribe(() => renderPlaybackOutput());
 
 function changePlaybackVolume(value) {
   if (!$("#audio-output-dialog").open || !systemPlaybackTrack()) return;
@@ -54,13 +56,14 @@ function renderPlaybackOutput() {
   const name = playbackOutputName(), capabilities = playbackOutputCapabilities();
   renderPlaybackVolume();
   if (!$("#audio-output-dialog").open) return;
-  $("#audio-output-current").textContent = `Current output: ${name}`;
+  $("#audio-output-current").textContent = TagcastI18n.text("playback.output.current", {output: name});
   const choices = playbackOutput.devices.filter(device => device.deviceId !== "default");
   const selected = audio.sinkId || "";
   const extra = selected && selected !== "default" && !choices.some(device => device.deviceId === selected)
-    ? [{deviceId: selected, label: playbackOutput.names.get(selected) || "Selected output"}] : [];
-  $("#audio-output-select").innerHTML = '<option value="">System default</option>' + [...choices, ...extra]
-    .map((device, i) => `<option value="${escapeHtml(device.deviceId)}">${escapeHtml(device.label || `Audio output ${i + 1}`)}</option>`).join("");
+    ? [{deviceId: selected, label: playbackOutput.names.get(selected) || TagcastI18n.text("playback.output.selected")}] : [];
+  // Device labels come from the operating system and are shown exactly as reported.
+  $("#audio-output-select").innerHTML = `<option value="">${TagcastI18n.html("playback.output.systemDefault")}</option>` + [...choices, ...extra]
+    .map((device, i) => `<option value="${escapeHtml(device.deviceId)}">${device.label ? escapeHtml(device.label) : TagcastI18n.html("playback.output.numbered", {number: i + 1})}</option>`).join("");
   $("#audio-output-select").value = selected === "default" ? "" : selected;
   $("#audio-output-devices").hidden = !capabilities.sink || (!choices.length && !selected);
   $("#audio-output-select").disabled = playbackOutput.busy;
@@ -68,10 +71,8 @@ function renderPlaybackOutput() {
   $("#audio-output-choose").disabled = playbackOutput.busy;
   $("#audio-output-airplay").hidden = !capabilities.airplay || playbackOutput.airplay === false;
   $("#audio-output-airplay").disabled = playbackOutput.busy;
-  $("#audio-output-note").textContent = playbackOutput.busy ? "Waiting for the output selection…"
-    : capabilities.choose ? "Choose an output to open your browser’s device picker. Only outputs made available by the browser are listed here."
-      : choices.length ? "Choose one of the outputs available to this browser."
-        : "Choose speakers, headphones or a DAC in your system sound settings. This browser has not made additional outputs available here.";
+  $("#audio-output-note").textContent = TagcastI18n.text(playbackOutput.busy ? "playback.output.waiting"
+    : capabilities.choose ? "playback.output.notePicker" : choices.length ? "playback.output.noteList" : "playback.output.noteSystem");
 }
 
 async function refreshPlaybackOutputs() {
@@ -115,9 +116,9 @@ function closePlaybackOutput(restoreFocus = true) {
 }
 
 function playbackOutputError(error) {
-  if (error?.name === "NotAllowedError") return "Output selection was cancelled or permission was not granted. Your current output is kept.";
-  if (error?.name === "NotFoundError") return "That output is no longer available. Choose another output or System default.";
-  return "Could not change the audio output. Choose an output in your system sound settings.";
+  if (error?.name === "NotAllowedError") return TagcastI18n.text("playback.output.errorCancelled");
+  if (error?.name === "NotFoundError") return TagcastI18n.text("playback.output.errorMissing");
+  return TagcastI18n.text("playback.output.errorGeneric");
 }
 
 async function changePlaybackOutput(choose, id = "") {
@@ -192,7 +193,7 @@ function playSystemPlayback() {
   if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) { gaplessTrial.active.autoPlay = true; return; }
   if (audio.ended) audio.currentTime = 0;
   audio.play().catch(() => {
-    if (details === state.details && track === systemPlaybackTrack()) toast("Press Play in Tagcast to resume audio.");
+    if (details === state.details && track === systemPlaybackTrack()) toast(TagcastI18n.text("playback.resume"));
   });
 }
 

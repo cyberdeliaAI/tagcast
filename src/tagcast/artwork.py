@@ -13,12 +13,14 @@ from urllib.parse import urlparse
 
 import requests
 
+from .errors import CodedError
+
 MAX_IMAGE = 15 * 1024 * 1024
 TIMEOUT = 30
 USER_AGENT = "Tagcast (+https://github.com/cyberdeliaAI/tagcast)"
 
 
-class ArtworkError(ValueError):
+class ArtworkError(CodedError, ValueError):
     pass
 
 

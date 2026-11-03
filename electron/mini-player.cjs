@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {command, snapshot, bounds} = require("./mini-contract.cjs");
 
-function installMiniPlayer(owner, origin) {
+function installMiniPlayer(owner, origin, text = () => "Tagcast · Mini Player") {
   const url = origin + "/mini-player/index.html", ownerContents = owner.webContents;
   const preferences = path.join(app.getPath("userData"), "mini-player.json");
   let mini = null, latest = null, saved = {}, serial = 0;
@@ -41,7 +41,7 @@ function installMiniPlayer(owner, origin) {
     const candidate = bounds(saved, screen.getPrimaryDisplay().workArea);
     const area = screen.getDisplayMatching(candidate).workArea;
     mini = new BrowserWindow({...bounds(saved, area), minWidth: 420, minHeight: 210, show: false,
-      title: "Tagcast · Mini Player", backgroundColor: "#192516", alwaysOnTop: pinned,
+      title: text("window.miniPlayer"), backgroundColor: "#192516", alwaysOnTop: pinned,
       webPreferences: {preload: path.join(__dirname, "mini-preload.cjs"), partition: "tagcast-mini", sandbox: true,
         contextIsolation: true, nodeIntegration: false, webSecurity: true, webviewTag: false, devTools: !app.isPackaged}});
     const view = mini, contents = view.webContents;

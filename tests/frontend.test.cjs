@@ -336,6 +336,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   let respondNotes = null;
   let respondAlbumNotes = null;
   let respondLyricsCache = null;
+  let respondCatalog = null;
   let playbackClock = 0;
   function element() {
     const classes = new Set();
@@ -398,6 +399,9 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
         : {ok:true,json:async()=>({entries:[]})};
       if (url.startsWith("/api/lyrics/cache?")) return respondLyricsCache ? respondLyricsCache(url, options)
         : {ok:true,json:async()=>({tracks:[]})};
+      // Interface text catalogs are static files next to the page.
+      if (/^\/i18n\/[a-z-]+\.json$/i.test(url)) return respondCatalog ? respondCatalog(url, options)
+        : {ok: true, json: async () => JSON.parse(readFileSync(path.join(staticDir, url), "utf8"))};
       if (url === "/api/status" && respondStatus) return respondStatus(url, options);
       if (url === "/api/updates" || url === "/api/updates/check") return respondUpdates ? respondUpdates(url, options)
         : {ok: true, json: async () => ({current: "0.10.1", latest: "0.10.1", available: false, state: "current", auto_updates: true})};
@@ -421,6 +425,8 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     setNotesFetch(handler) { respondNotes = handler; },
     setAlbumNotesFetch(handler) { respondAlbumNotes = handler; },
     setLyricsCacheFetch(handler) { respondLyricsCache = handler; },
+    setCatalogFetch(handler) { respondCatalog = handler; },
+    async emitWindow(type, event = {}) { for (const handler of windowEvents.get(type) || []) await handler(event); },
     flushTimers(delay) {
       for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); }
     },
@@ -2070,8 +2076,8 @@ test('library loading has a global indeterminate indicator independent of the di
   assert.equal(p.nodes.get('#audio').paused,false);
   assert.equal(p.requests.filter(r=>r.url.startsWith('/api/library')).length,1);
   const html=readFileSync(path.join(staticDir,'index.html'),'utf8');
-  assert.match(html,/<progress aria-label="Library loading"><\/progress>/);
-  assert.match(html,/<strong>Loading your iBroadcast library…<\/strong>/);
+  assert.match(html,/<progress aria-label="Library loading"[^>]*><\/progress>/);
+  assert.match(html,/<strong[^>]*>Loading your iBroadcast library…<\/strong>/);
 });
 
 test('an older library reply cannot hide a newer load or replace its albums', async () => {
@@ -4568,7 +4574,7 @@ test("the library info banner can be hidden, remembered and restored without req
   assert.equal(reopened.run("libraryNotice.visible"), false);
   const html = readFileSync(path.join(staticDir, "index.html"), "utf8");
   assert.match(html, /id="settings-button">Settings</);
-  assert.match(html, /<h1 id="settings-title" tabindex="-1">Settings<span>\.<\/span><\/h1>/);
+  assert.match(html, /<h1 id="settings-title" tabindex="-1"[^>]*>Settings<span>\.<\/span><\/h1>/);
 });
 
 test("compact player display choices act independently without changing playback, queue or full metadata views", async () => {
@@ -8445,7 +8451,7 @@ test('Paused imports lists compact local checkpoints and requires an explicit re
   });
   await p.run('openPausedImports()');
   let html=p.nodes.get('#csv-import-content').innerHTML;
-  assert.match(html,/&lt;Saved CSV&gt;/); assert.match(html,/Refresh library & resume/);
+  assert.match(html,/&lt;Saved CSV&gt;/); assert.match(html,/Refresh library &amp; resume/);
   assert.equal(p.nodes.get('#csv-import-pause').hidden,true);
   await p.click({'[data-csv-remove-paused]':{dataset:{csvRemovePaused:'b'.repeat(32)}}});
   assert.match(p.nodes.get('#csv-import-content').innerHTML,/Keep saved import/);
@@ -10651,7 +10657,7 @@ test('Apple Music Classic is a fifth built-in palette and icon reset restores it
  assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
  assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
  p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
- assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette's icon colour/);
+ assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette(?:'|&#39;)s icon colour/);
  p.run('themeEditorColour("nav-icon","#123456",false);themeEditorColour("nav-icon","",false)');
  assert.equal(p.run('Object.hasOwn(themeEditorView.draft.light,"nav-icon")'),false);
  assert.equal(p.nodes.get('#theme-hex-nav-icon').value,'#c8102e');
@@ -11074,4 +11080,337 @@ test("Artwork error fallbacks use CSP-compatible capture handlers",async()=>{
   }
   for(const file of ['app.js','artwork.js','artists.js','browse.js','lookup.js'])
     assert.doesNotMatch(readFileSync(path.join(staticDir,file),'utf8'),/onerror=/);
+});
+
+// Interface language proof of concept: Sound dialog, Now playing queue, queue menu and Mini Player.
+function languagePage(options) {
+  const p = playbackPage(options);
+  const saved = [];
+  p.setFetch((url, request) => {
+    assert.equal(url, "/api/settings/interface", `Unexpected request ${url}`);
+    saved.push(JSON.parse(request.body));
+    return {ok: true, json: async () => ({interface_language: saved.at(-1).language})};
+  });
+  return Object.assign(p, {saved});
+}
+function playbackState(p) {
+  return p.json(`({src: audio.src, time: audio.currentTime, paused: audio.paused, volume: audio.volume, muted: audio.muted,
+    sink: audio.sinkId, queue: player.queue, index: player.index, epoch: player.epoch, history: state.history.length})`);
+}
+
+test("interface language: English playback text keeps its exact existing wording", async () => {
+  const p = languagePage({outputs: true}); await settle();
+  p.run('playTracks(state.details.get("1")); audio.pause(); audio.volume = 0.65; setNowPlaying(true); openPlaybackOutput()'); await settle();
+  const count = p.run("player.queue.length");
+  assert.equal(p.nodes.get("#now-playing-count").textContent, `${count} tracks`);
+  const title = p.run("player.queue[0].title");
+  assert.match(p.nodes.get("#now-playing-list").innerHTML, new RegExp(`aria-label="Remove ${title.replace(/[()]/g, "\\$&")} from play queue, position 1" title="Remove from play queue"`));
+  assert.equal(p.nodes.get("#audio-output-current").textContent, "Current output: System default");
+  assert.equal(p.nodes.get("#audio-mute").textContent, "Mute");
+  assert.equal(p.nodes.get("#audio-volume-value").textContent, "65%");
+  assert.equal(p.nodes.get("#player-output").title, "Volume: 65% · Output: System default");
+  assert.equal(p.nodes.get("#player-output").getAttribute("aria-label"), "Volume and audio output: 65%");
+  await p.nodes.get("#audio-mute").emit("click");
+  assert.equal(p.nodes.get("#audio-volume").getAttribute("aria-valuetext"), "65%, muted");
+  assert.equal(p.nodes.get("#audio-mute").textContent, "Unmute");
+  assert.match(p.nodes.get("#audio-output-select").innerHTML, /<option value="">System default<\/option>.*USB DAC/);
+  p.run('appendToQueue(state.details.get("2"), null, true)');
+  assert.equal(p.nodes.get("#toast").textContent, `Playing next: ${p.run('state.details.get("2").tracks.length')} tracks to the queue.`);
+  assert.match(p.nodes.get("#now-playing-list").innerHTML, /<small>Up next · /);
+  p.run('removeQueueEntry(1, nowPlayingRows.revision)');
+  assert.match(p.nodes.get("#toast").textContent, /^Removed “.+” from the play queue\.$/);
+  assert.equal(p.run('document.documentElement.lang'), undefined, "English needs no attribute change");
+  assert.equal(p.requests.filter(r => r.url.startsWith("/i18n/")).length, 0);
+});
+
+test("interface language: switching to Dutch during playback rewrites labels only", async () => {
+  const p = languagePage({outputs: true}); await settle();
+  p.run(`const album = state.details.get("1"); album.name = "Play queue"; album.tracks[0].title = "Now playing"; album.tracks[0].artist = "Sound";
+    playTracks(album); audio.currentTime = 42; audio.volume = 0.5; setNowPlaying(true); openPlaybackOutput()`); await settle();
+  const before = playbackState(p), storedHistory = p.run('localStorage.getItem("tagcast-history")');
+  const settingsRequests = p.requests.length;
+  await p.change({id: "interface-language", value: "nl", matches: () => false, closest: () => null}); await settle(); await settle();
+  assert.deepEqual(p.requests.slice(settingsRequests).map(r => r.url), ["/i18n/nl.json", "/api/settings/interface"]);
+  assert.deepEqual(p.saved, [{language: "nl"}]);
+  assert.deepEqual(playbackState(p), before, "audio, output, queue and history are unchanged");
+  assert.equal(p.run('localStorage.getItem("tagcast-history")'), storedHistory);
+  assert.equal(p.run('localStorage.getItem("tagcast-language")'), "nl");
+  assert.equal(p.run('document.documentElement.lang'), "nl");
+  assert.equal(p.nodes.get("#audio-output-dialog").open, true, "the open dialog stays open");
+  assert.equal(p.nodes.get("#audio-output-current").textContent, "Huidige uitvoer: Systeemstandaard");
+  assert.equal(p.nodes.get("#audio-mute").textContent, "Dempen");
+  assert.match(p.nodes.get("#audio-output-select").innerHTML, /<option value="">Systeemstandaard<\/option>.*USB DAC/, "device names stay as reported");
+  assert.equal(p.nodes.get("#now-playing-count").textContent, `${before.queue.length} nummers`);
+  const list = p.nodes.get("#now-playing-list").innerHTML;
+  assert.match(list, /<strong>Now playing<\/strong><small>Sound · Play queue<\/small>/, "metadata that looks like interface text is never translated");
+  assert.match(list, /aria-label="Now playing uit de afspeelwachtrij verwijderen, positie 1"/);
+  p.run('appendToQueue(state.details.get("2"))');
+  assert.match(p.nodes.get("#toast").textContent, /^\d+ nummers aan de wachtrij toegevoegd\.$/);
+  await p.change({id: "interface-language", value: "en", matches: () => false, closest: () => null}); await settle(); await settle();
+  assert.equal(p.nodes.get("#audio-output-current").textContent, "Current output: System default");
+  assert.equal(p.requests.filter(r => r.url === "/i18n/nl.json").length, 1, "the Dutch catalog is loaded once");
+});
+
+test("interface language: an open metadata draft keeps its form and data during a switch", async () => {
+  const p = languagePage(); await settle();
+  await p.run("openEditor([state.albums[0].id])");
+  p.run(`editing.trackPatches[String(editing.originals[0].tracks[0].id)] = {title: "Draft title"}; globalThis.draftBefore = editing`);
+  const form = p.nodes.get("#editor-content").innerHTML, requests = p.requests.length;
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.equal(p.run("editing === draftBefore"), true);
+  assert.equal(p.nodes.get("#editor").open, true);
+  assert.equal(p.nodes.get("#editor-content").innerHTML, form, "the editor is not rebuilt");
+  assert.deepEqual(p.json(`editing.trackPatches[String(editing.originals[0].tracks[0].id)]`), {title: "Draft title"});
+  assert.deepEqual(p.requests.slice(requests).map(r => r.url), ["/i18n/nl.json"], "switching makes no API request");
+});
+
+test("interface language: the Mini Player receives the owner's language and labels, never translated metadata", async () => {
+  const p = languagePage(); await settle();
+  p.run('playTracks(state.details.get("1"))');
+  const title = p.run("player.queue[0].title");
+  let mini = p.json("miniSnapshot()");
+  assert.equal(mini.language, "en"); assert.equal(mini.labels.play, "Play"); assert.equal(mini.labels.seekIn, "Seek in {{title}}");
+  assert.equal(mini.idle, false); assert.equal(mini.title, title);
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  mini = p.json("miniSnapshot()");
+  assert.equal(mini.language, "nl"); assert.equal(mini.labels.play, "Afspelen"); assert.equal(mini.labels.position, "{{elapsed}} van {{duration}}");
+  assert.equal(mini.title, title, "the track title is passed unchanged");
+  p.run("stopPlayer()");
+  mini = p.json("miniSnapshot()");
+  assert.equal(mini.idle, true); assert.equal(mini.title, ""); assert.equal(mini.artist, "");
+  assert.equal(mini.labels.idleTitle, "Er wordt niets afgespeeld");
+});
+
+test("interface language: the server's choice applies at start, but never overrides a newer local choice", async () => {
+  const p = page({deferReady: true}); await settle();
+  let answer;
+  p.setFetch(url => {
+    if (url === "/api/settings") return new Promise(resolve => { answer = value => resolve({ok: true, json: async () => ({sources: [], interface_language: value})}); });
+    if (url === "/api/settings/interface") return {ok: true, json: async () => ({interface_language: "en"})};
+    throw Error(`Unexpected ${url}`);
+  });
+  const started = p.emitDocument("DOMContentLoaded"); await settle();
+  answer("nl"); await started; await settle(); await settle();
+  assert.equal(p.run("TagcastI18n.language"), "nl");
+  assert.equal(p.run('localStorage.getItem("tagcast-language")'), "nl");
+  const reading = p.run("loadSettings()"); await settle();
+  await p.change({id: "interface-language", value: "en", matches: () => false, closest: () => null}); await settle();
+  answer("nl"); await reading; await settle(); await settle();
+  assert.equal(p.run("TagcastI18n.language"), "en", "an older server reply cannot undo the user's newer choice");
+  assert.equal(p.run("TagcastI18n.choice"), "en");
+});
+
+test("interface language: other tabs follow through the storage event without a server request", async () => {
+  const p = page(); await settle();
+  const requests = p.requests.length;
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "nl"}); await settle(); await settle();
+  assert.equal(p.run("TagcastI18n.language"), "nl");
+  assert.deepEqual(p.requests.slice(requests).map(r => r.url), ["/i18n/nl.json"]);
+  await p.emitWindow("storage", {key: "tagcast-history", newValue: "[]"});
+  assert.equal(p.run("TagcastI18n.language"), "nl");
+});
+
+test("interface language: a newer tab choice is persisted after an older in-flight save", async () => {
+  const p = languagePage(); await settle();
+  const pending = []; let persisted = "en";
+  p.setFetch((url, request) => {
+    assert.equal(url, "/api/settings/interface");
+    const language = JSON.parse(request.body).language;
+    return new Promise(resolve => pending.push({language, finish() {
+      persisted = language; resolve({ok: true, json: async () => ({interface_language: language})});
+    }}));
+  });
+  p.run('playTracks(state.details.get("1"))');
+  await p.run('openEditor([state.albums[0].id])');
+  p.run('globalThis.languageDraft = editing; globalThis.languageSession = state.connection; musicUploadsView.busy = true; audioDownloadsView.busy = true; signInFlow.opening = true');
+  const transfers = p.json('({uploads:musicUploadsView,downloads:audioDownloadsView,signIn:signInFlow})');
+  const playback = playbackState(p), form = p.nodes.get("#editor-content").innerHTML;
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  assert.equal(pending.length, 1);
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "en"}); await settle();
+  assert.equal(p.run("TagcastI18n.choice"), "en");
+  pending[0].finish(); await first; await settle();
+  assert.deepEqual(pending.map(row => row.language), ["nl", "en"]);
+  assert.equal(p.run("interfaceLanguage.saving"), true, "the newer save owns the busy status");
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saving");
+  pending[1].finish(); await p.run("interfaceLanguage.saved"); await settle();
+  assert.equal(persisted, "en"); assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saved");
+  assert.deepEqual(playbackState(p), playback);
+  assert.equal(p.run("editing === languageDraft && state.connection === languageSession"), true);
+  assert.equal(p.nodes.get("#editor-content").innerHTML, form);
+  assert.deepEqual(p.json('({uploads:musicUploadsView,downloads:audioDownloadsView,signIn:signInFlow})'), transfers);
+});
+
+test("interface language: obsolete errors do not hide a newer failure and retry recovers", async () => {
+  const p = languagePage(); await settle(); const pending = [];
+  p.setFetch((url, request) => new Promise((resolve, reject) => pending.push({language: JSON.parse(request.body).language, resolve, reject})));
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "en"});
+  pending[0].reject(Error("old save failed")); await first; await settle();
+  assert.equal(pending.length, 2);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saving");
+  pending[1].reject(Error("latest save failed")); await p.run("interfaceLanguage.saved.catch(() => {})"); await settle();
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saveFailed");
+  assert.equal(p.run("interfaceLanguage.status"), "latest save failed");
+  assert.equal(p.run("TagcastI18n.choice"), "en");
+  const retry = p.run('chooseInterfaceLanguage("en")'); await settle();
+  pending[2].resolve({ok: true, json: async () => ({interface_language: "en"})}); await retry;
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.equal(p.run("interfaceLanguage.statusKey"), "settings.language.saved");
+  p.run('applyServerLanguage({interface_language:"nl"})'); await settle();
+  assert.equal(p.run("TagcastI18n.choice"), "nl", "fresh server settings are accepted after recovery");
+});
+
+test("interface language: delayed catalogs cannot enqueue an obsolete save after a newer choice", async () => {
+  const p = languagePage(); await settle(); let release;
+  p.setCatalogFetch(() => new Promise(resolve => { release = resolve; }));
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle();
+  const latest = p.run('chooseInterfaceLanguage("en")'); await settle();
+  release({ok: true, json: async () => JSON.parse(readFileSync(path.join(staticDir, "i18n/nl.json"), "utf8"))});
+  await Promise.all([first, latest]);
+  assert.deepEqual(p.saved, [{language: "en"}], "only the current choice may start a write");
+  assert.equal(p.run("TagcastI18n.language"), "en");
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+});
+
+test("interface language: reordered responses across tabs converge on the newer choice", async () => {
+  const a = languagePage(), b = languagePage(); await settle(); let persisted = "en";
+  const requests = [];
+  for (const page of [a, b]) page.setFetch((url, options) => new Promise(resolve => {
+    const language = JSON.parse(options.body).language;
+    requests.push({language, finish() { persisted = language; resolve({ok: true, json: async () => ({interface_language: language})}); }});
+  }));
+  const old = a.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  const latest = b.run('chooseInterfaceLanguage("en")'); await settle();
+  await a.emitWindow("storage", {key: "tagcast-language", newValue: "en"});
+  requests[1].finish(); await latest;
+  assert.equal(persisted, "en");
+  requests[0].finish(); await old; await settle();
+  assert.equal(a.run("TagcastI18n.choice"), "en", "an old response never rolls back the newer UI");
+  assert.equal(requests[2].language, "en"); requests[2].finish();
+  await a.run("interfaceLanguage.saved"); await settle();
+  assert.equal(persisted, "en");
+  for (const page of [a, b]) assert.equal(page.run("interfaceLanguage.saving"), false);
+});
+
+test("interface language: a missing catalog keeps English, the choice and every action working", async () => {
+  const p = languagePage(); await settle();
+  p.setCatalogFetch(() => ({ok: false, json: async () => ({})}));
+  p.run('playTracks(state.details.get("1")); setNowPlaying(true)');
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.equal(p.run("TagcastI18n.language"), "en");
+  assert.equal(p.run("TagcastI18n.choice"), "nl");
+  assert.match(p.nodes.get("#now-playing-count").textContent, /^\d+ tracks?$/);
+  p.run('appendToQueue(state.details.get("2"))');
+  assert.match(p.nodes.get("#toast").textContent, /^Added \d+ tracks to the queue\.$/);
+});
+
+test("interface language: catalog timeout finishes saving and a retry recovers without reload", async () => {
+  const p = languagePage(); await settle(); let release, attempts = 0;
+  p.setCatalogFetch(() => ++attempts === 1 ? new Promise(resolve => { release = resolve; })
+    : {ok: true, json: async () => JSON.parse(readFileSync(path.join(staticDir, "i18n/nl.json"), "utf8"))});
+  p.run('playTracks(state.details.get("1"))');
+  const playback = playbackState(p);
+  const first = p.run('chooseInterfaceLanguage("nl")'); await settle();
+  assert.equal(p.run("interfaceLanguage.saving"), true);
+  p.flushTimers(10000); await first; await settle();
+  assert.equal(p.run("TagcastI18n.language"), "en"); assert.equal(p.run("TagcastI18n.choice"), "nl");
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.deepEqual(p.saved, [{language: "nl"}], "catalog failure does not discard the saved preference");
+  release({ok: true, json: async () => ({})}); await settle();
+  await p.run('chooseInterfaceLanguage("nl")');
+  assert.equal(p.run("TagcastI18n.language"), "nl");
+  assert.equal(p.run("interfaceLanguage.saving"), false);
+  assert.deepEqual(playbackState(p), playback);
+});
+
+test("interface language: coded errors are translated while their English message stays unchanged", async () => {
+  const p = languagePage(); await settle();
+  p.setFetch(url => {
+    if (url === "/api/x") return {ok: false, status: 401, json: async () => ({error: "Your iBroadcast session expired. Connect again.", code: "session.expired", connected: false})};
+    if (url === "/api/y") return {ok: false, status: 400, json: async () => ({error: "Server text without code."})};
+    throw Error(url);
+  });
+  assert.equal(await p.run('api("/api/x").catch(e => TagcastI18n.errorText(e))'), "Your iBroadcast session expired. Connect again.");
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.equal(await p.run('api("/api/x").catch(e => TagcastI18n.errorText(e))'), "Je iBroadcast-sessie is verlopen. Maak opnieuw verbinding.");
+  assert.equal(await p.run('api("/api/x").catch(e => e.message)'), "Your iBroadcast session expired. Connect again.");
+  assert.equal(await p.run('api("/api/y").catch(e => TagcastI18n.errorText(e))'), "Server text without code.");
+  p.run('playTracks(state.details.get("1"))');
+  await p.run('addToQueue("1", "no-such-track")'); await settle();
+  assert.equal(p.nodes.get("#toast").textContent, "Kan niet aan de wachtrij toevoegen: Dit nummer staat niet meer op dat album. Laad de bibliotheek opnieuw.");
+  assert.equal(p.run('(() => { try { appendToQueue(state.details.get("1"), "no-such-track"); } catch (e) { return e.message; } })()'),
+    "This track is no longer on that album. Reload the library.");
+});
+
+test("interface language: the setting is an immediate preference outside the server settings form", async () => {
+  const p = livePage(); await settle();
+  p.run('showSettings("interface")');
+  const html = p.nodes.get("#settings-content").innerHTML;
+  assert.match(html, /<select id="interface-language" >/, "never disabled: focus stays while the choice is saved");
+  assert.doesNotMatch(html, /<select id="interface-language"[^>]*name=/);
+  assert.match(html, /<option value="auto" selected>Automatic \(English\)<\/option>/);
+  assert.match(html, /<option value="nl" lang="nl" >Nederlands<\/option>/);
+  assert.match(html, /never translated/);
+  assert.equal(p.run("settingsView.dirty"), false);
+});
+
+test("interface language: Tagcast Desktop receives the settled language and desktop texts, never pseudo-localization", async () => {
+  const p = languagePage(); await settle();
+  p.run("globalThis.desktopSent = []; window.tagcastDesktop = {setInterface: value => desktopSent.push(JSON.parse(JSON.stringify(value)))}; publishDesktopLanguage()");
+  let sent = p.json("desktopSent");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].language, "en");
+  assert.equal(sent[0].labels["menu.file"], "File");
+  assert.ok(Object.keys(sent[0].labels).every(name => !name.startsWith("desktop.")), "names are sent without the desktop. prefix");
+  await p.change({id: "interface-language", value: "nl", matches: () => false, closest: () => null}); await settle(); await settle();
+  sent = p.json("desktopSent");
+  assert.equal(sent.at(-1).language, "nl");
+  assert.equal(sent.at(-1).labels["close.title"], "Tagcast sluiten?");
+  assert.equal(sent.at(-1).labels["menu.openMiniPlayer"], "Minispeler openen");
+  const count = sent.length;
+  p.run("TagcastI18n.usePseudo()");
+  assert.equal(p.json("desktopSent").length, count, "pseudo-localization is never reported to the app");
+  p.run("window.tagcastDesktop = {setInterface() { throw new Error('closed'); }}; publishDesktopLanguage()");
+});
+
+test("interface language: library, album, browse and settings screens switch in place, without requests or lost state", async () => {
+  const p = languagePage(); await settle();
+  const nl = JSON.parse(readFileSync(path.join(staticDir, "i18n/nl.json"), "utf8"));
+  p.run(`showRoute({screen: "albums"}); state.selected = new Set([state.albums[0].id]); render()`); await settle();
+  const before = {selected: p.json("[...state.selected]"), page: p.run("state.page"), history: p.run('localStorage.getItem("tagcast-history")'), view: p.run("state.view")};
+  const total = p.run("state.albums.reduce((sum, album) => sum + (album.track_count || 0), 0)");
+  const requests = p.requests.length;
+  await p.run('TagcastI18n.use("nl")'); await settle(); await settle();
+  assert.deepEqual(p.requests.slice(requests).map(r => r.url), ["/i18n/nl.json"], "only the catalog is fetched");
+  assert.deepEqual({selected: p.json("[...state.selected]"), page: p.run("state.page"), history: p.run('localStorage.getItem("tagcast-history")'), view: p.run("state.view")}, before);
+  assert.match(p.nodes.get("#page-title").textContent, new RegExp(`^${nl["library.page.title"]}\\.?$`));
+  assert.equal(p.nodes.get("#selection-count").textContent.split(" · ")[0], nl["library.selection.count_one"].replace("{{count}}", "1"));
+  assert.match(p.nodes.get("#total-tracks").textContent, total === 1 ? /nummer$/ : /nummers$/);
+  // An open album page switches back and forth from memory as well.
+  await p.run('TagcastI18n.use("en")'); await settle();
+  p.run(`showRoute({screen: "album", album: state.albums[0].id})`); await settle(); await settle();
+  const album = p.requests.length, englishAlbum = p.nodes.get("#album-page").innerHTML;
+  assert.match(englishAlbum, /tracks?</);
+  await p.run('TagcastI18n.use("nl")'); await settle(); await settle();
+  assert.deepEqual(p.requests.slice(album).map(r => r.url), [], "the catalog is already loaded and the album is not fetched again");
+  assert.match(p.nodes.get("#album-page").innerHTML, /nummers?</);
+  p.run('showSettings("interface")');
+  const settings = p.nodes.get("#settings-content").innerHTML;
+  assert.match(settings, /<option value="nl" lang="nl" selected>Nederlands<\/option>/);
+  assert.match(settings, new RegExp(nl["settings.language.heading"]));
+  // Back to English restores the exact English wording.
+  await p.run('TagcastI18n.use("en")'); await settle();
+  p.run(`showRoute({screen: "albums"})`); await settle();
+  assert.match(p.nodes.get("#page-title").textContent, /^Your albums\.?$/);
+});
+
+test("interface language: a translated desktop file chooser error keeps its English message for logs", async () => {
+  const p = languagePage(); await settle();
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  const shown = p.run(`TagcastI18n.errorText(Object.assign(new Error("Choose at most 100 paths without line breaks."), {code: "desktop.picker_limit"}))`);
+  assert.equal(shown, "Kies maximaal 100 paden zonder regeleinden.");
+  assert.equal(p.run(`TagcastI18n.errorText(new Error("Server said no."))`), "Server said no.", "uncoded server text stays as sent");
 });

@@ -8,21 +8,40 @@ function miniIdentity(object) {
   if (!miniOwner.ids.has(object)) miniOwner.ids.set(object, String(++miniOwner.serial));
   return miniOwner.ids.get(object);
 }
+// The passive Mini Player has no catalogs or storage; it shows the owner's labels so both
+// windows always use the same language. Labels are cached per language.
+const MINI_LABELS = ["appTitle", "documentTitle", "waiting", "idleTitle", "idleArtist", "play", "pause", "previous", "next",
+  "seekCurrentTrack", "seekIn", "position", "pin", "unpin", "pinUnavailable", "openMain", "windowControls", "transport",
+  "progress", "shell", "playerChanged", "playerUnavailable"];
+const miniLabelCache = {language: "", labels: null};
+function miniLabels() {
+  if (miniLabelCache.language !== TagcastI18n.language) {
+    // Keep {{title}}, {{elapsed}} and {{duration}} for the view; never fill metadata here.
+    const placeholders = {title: "{{title}}", elapsed: "{{elapsed}}", duration: "{{duration}}"};
+    miniLabelCache.labels = Object.fromEntries(MINI_LABELS.map(name => [name, TagcastI18n.text(`mini.${name}`, placeholders)]));
+    miniLabelCache.language = TagcastI18n.language;
+  }
+  return miniLabelCache.labels;
+}
 function miniSnapshot() {
   const track = player.queue[player.index], g = gaplessTrial.active;
   const available = Boolean(track && live() && !$("#player").hidden);
   const controllable = available && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
   const duration = playerTrackDuration(), ready = !g || Boolean(g.started && g.current && g.ready !== false);
   const theme = document.documentElement.dataset.theme;
+  const status = !available ? "" : !controllable ? "remote" : audio.error ? "error" : g && (!ready || g.seekIntent) ? "preparing"
+    : audio.readyState < 3 && !audio.paused ? "buffering" : g ? "gapless" : "";
   return {document: miniOwner.document, sequence: ++miniOwner.sequence,
     entry: available ? `${player.epoch}:${miniIdentity(track)}` : "", segment: g ? miniIdentity(g.current || g) : `normal:${miniOwner.normal}`,
-    title: available ? track.title : "Nothing playing", artist: available ? track.artist || track.album?.artist || "" : "Choose an album in Tagcast",
+    // Metadata fields carry only metadata; idle text comes from the translated labels.
+    title: available ? track.title : "", artist: available ? track.artist || track.album?.artist || "" : "", idle: !available,
     album: available ? track.album?.name || "" : "", cover: available ? track.album?.artwork || "" : "",
     position: available && ready ? playerTrackPosition() : 0, duration: available && ready ? duration : 0,
     paused: g && !ready ? !g.autoPlay : audio.paused,
     controllable, seekable: controllable && ready && !state.loading && !audio.error && Number.isFinite(duration) && duration > 0,
     previous: controllable && player.index > 0, next: controllable && player.index < player.queue.length - 1,
-    status: !available ? "" : !controllable ? "Playback is controlled on another device" : audio.error ? "Playback error · try Next or open Tagcast" : g && (!ready || g.seekIntent) ? "Preparing audio…" : audio.readyState < 3 && !audio.paused ? "Buffering…" : g ? "Gapless · experimental" : "",
+    status: status ? TagcastI18n.text(`mini.status.${status}`) : "",
+    language: TagcastI18n.language, direction: TagcastI18n.direction, labels: miniLabels(),
     theme: theme === "dark" || (!theme && globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
     palette: document.documentElement.dataset.palette || "forest",
     colours: TagcastThemes.active() ? {...TagcastThemes.active()[TagcastThemes.mode()]} : {}};
@@ -40,7 +59,7 @@ function miniApplyCommand(command) {
       if (g?.ready === false) { g.autoPlay = true; break; }
       if (!audio.getAttribute("src") || audio.error) return false;
       if (audio.ended) { if (g) seekSystemPlayback(0); else audio.currentTime = 0; }
-      audio.play().catch(() => toast("Playback could not start. Open Tagcast to check the player.")); break;
+      audio.play().catch(() => toast(TagcastI18n.text("mini.owner.playFailed"))); break;
     case "previous": if (!current.previous) return false; step(-1); break;
     case "next": if (!current.next) return false; step(1); break;
     case "seek": if (!current.seekable || !Number.isFinite(command.position) || command.position < 0 || command.position > current.duration) return false; seekSystemPlayback(command.position); break;
@@ -64,6 +83,7 @@ if (window.tagcastMiniOwner) {
   for (const name of ["loadstart", "ended"]) audio.addEventListener(name, () => { miniOwner.normal += 1; publishMiniPlayer(); });
   for (const name of ["play", "pause", "playing", "waiting", "stalled", "ended", "error", "emptied", "loadedmetadata", "seeked"]) audio.addEventListener(name, publishMiniPlayer);
   document.addEventListener("tagcast-theme-change", publishMiniPlayer);
+  TagcastI18n.subscribe(publishMiniPlayer);
   document.addEventListener("DOMContentLoaded", () => {
     const button = $("#visual-player-mini"); button.hidden = false;
     button.addEventListener("click", () => window.tagcastMiniOwner.open());

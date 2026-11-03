@@ -3,6 +3,10 @@
 // A presentation snapshot only. No stream URLs, account data or renderer objects.
 const themeRoles = Object.freeze(["brand-background", "brand-ink", "brand-paper", "sidebar", "accent", "shell-ink", "shell-muted", "shell-active", "shell-line", "ink", "muted", "paper", "line", "link", "surface", "soft", "tint", "focus", "primary", "primary-hover", "chart", "primary-ink", "nav-icon"]);
 const actions = new Set(["play", "pause", "previous", "next", "seek"]);
+// Interface labels for the passive window, translated by the owner. Fixed names, plain bounded text.
+const labelNames = Object.freeze(["appTitle", "documentTitle", "waiting", "idleTitle", "idleArtist", "play", "pause", "previous", "next",
+  "seekCurrentTrack", "seekIn", "position", "pin", "unpin", "pinUnavailable", "openMain", "windowControls", "transport",
+  "progress", "shell", "playerChanged", "playerUnavailable"]);
 function command(value) {
   if (!value || !actions.has(value.action) || !["document", "entry", "segment"].every(key => typeof value[key] === "string" && value[key].length <= 100)) return null;
   if (value.action === "seek" && (!Number.isFinite(value.position) || value.position < 0 || value.position > 604800)) return null;
@@ -17,7 +21,11 @@ function snapshot(value) {
   try { const url = new URL(value.cover); if (url.protocol === "https:" && !url.username && !url.password && url.href.length <= 2048) cover = url.href; } catch { /* missing artwork */ }
   const duration = Number.isFinite(value.duration) ? Math.max(0, Math.min(604800, value.duration)) : 0;
   return {document: value.document, entry: value.entry, segment: value.segment, sequence: value.sequence,
-    title: text("title"), artist: text("artist"), album: text("album"), status: text("status", 240), cover,
+    title: text("title"), artist: text("artist"), album: text("album"), status: text("status", 240), cover, idle: value.idle === true,
+    language: typeof value.language === "string" && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$/.test(value.language) ? value.language : "en",
+    direction: value.direction === "rtl" ? "rtl" : "ltr",
+    labels: Object.fromEntries(labelNames.filter(name => typeof value.labels?.[name] === "string")
+      .map(name => [name, value.labels[name].replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 160)])),
     position: Number.isFinite(value.position) ? Math.max(0, Math.min(duration, value.position)) : 0, duration,
     paused: value.paused === true, controllable: value.controllable === true, seekable: value.seekable === true,
     previous: value.previous === true, next: value.next === true,
@@ -32,4 +40,4 @@ function bounds(value, area) {
     x: Math.round(Math.max(area.x, Math.min(area.x + area.width - width, Number.isFinite(value?.x) ? value.x : area.x + (area.width - width) / 2))),
     y: Math.round(Math.max(area.y, Math.min(area.y + area.height - height, Number.isFinite(value?.y) ? value.y : area.y + 80)))};
 }
-module.exports = {command, snapshot, bounds, themeRoles};
+module.exports = {command, snapshot, bounds, themeRoles, labelNames};
