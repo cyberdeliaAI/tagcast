@@ -67,6 +67,9 @@ async function main() {
             assert.ok(metrics.overflow <= 1, `Sidebar overflows horizontally by ${metrics.overflow}px`);
             if (width > 760) assert.equal(metrics.scrollable, true, "Vertical navigation scrolling must remain available");
             for (const button of metrics.buttons) {
+              if (language === "de" && button.id === "show-artists") {
+                assert.equal(button.label.length, 1, "German artist shortcut must not leave a word fragment on another line");
+              }
               for (const rect of [...button.label, ...(button.count?.rects || [])]) {
                 assert.ok(rect.left >= button.left && rect.right <= button.right + 1, `${button.id} clips text`);
               }
