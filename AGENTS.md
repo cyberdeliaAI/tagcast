@@ -937,7 +937,9 @@ their shared browsing/player state; a fast local response can otherwise race the
 - CSV playlist import is a page-local modal under Playlists. Read a file up to 5 MB
   or pasted CSV/TSV text, choose encoding/separator/header and map distinct title/performer
   columns plus optional album, album artist, duration (seconds/ms/mm:ss), year and track
-  number. Never evaluate cells or follow CSV URLs/Spotify/ISRCs. No metadata/audio/provider
+  number. The suggested mapping also recognises common headings in every interface language
+  (`ALIASES`, compared after `fold()`); it is only a suggestion and never changes the parsing.
+  Never evaluate cells or follow CSV URLs/Spotify/ISRCs. No metadata/audio/provider
   fetches for parsing, matching or manual search; use one lazy server-side active-membership
   catalogue and return only 50 CSV rows / 10 suggestions or 50 manual search results.
   By default, full title/performer exact matching preserves version text and requires a unique copy
@@ -1039,7 +1041,7 @@ their shared browsing/player state; a fast local response can otherwise race the
   and local account favourites retain their normal folder. Fuses disable RunAsNode,
   Node options/inspect injection and loading unpackaged application code.
 - Interface language: every interface text of the web interface, the Mini Player and the desktop
-  shell is translatable; English and Dutch ship. Interface text goes through `TagcastI18n.text()` (plain
+  shell is translatable; English, Dutch, German, French, Spanish and Japanese ship. Interface text goes through `TagcastI18n.text()` (plain
   text for `textContent`, attributes, toasts, `confirm()`) or `TagcastI18n.html()` inside every HTML
   template (escapes the message and every value; only `TagcastI18n.trusted()` fragments built from
   fixed markup and escaped text stay markup) with keys in `static/i18n/en.json` (namespaced per feature,
@@ -1054,7 +1056,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   for `TagcastI18n.failure()` live under `errors.<code>`. Desktop menus, window titles and native dialogs
   use `desktop.*` texts that `language.js` sends to the main process (`electron/desktop-text.cjs`,
   `userData/interface.json`); English menus keep Electron's role labels. Catalogs are a strict i18next JSON v4 subset:
-  flat keys, `{{name}}` / `{{name, number}}`, `_one`/`_other` plural suffixes, no markup or nesting.
+  flat keys, `{{name}}` / `{{name, number}}`, plural suffixes chosen by `Intl.PluralRules` (`_one`/`_other`,
+  French and Spanish also `_many`, Japanese only `_other`; a catalog has every category its language needs),
+  no markup or nesting. `manifest.json` marks a language `complete` (offered automatically for a matching
+  system language) or `preview` (only by explicit choice). Japanese uses its own font stack, strict line
+  breaking, phrase breaking for headings and buttons, no letter spacing and no italics (`:lang(ja)` rules
+  at the end of `style.css`).
   Never build sentences by concatenation or pluralize with `=== 1`; never use a global `t`.
   Translation is presentation only: never translate, store or send a label as data. Metadata, device
   names, tags, playlist names, lyrics, settings keys, codes, history, reports, export formats and file or
@@ -1095,11 +1102,12 @@ python3 tools/build_i18n.py
 python3 tools/build_i18n.py --check
 ```
 
-`tests/i18n.test.cjs` fails on missing or unused keys, missing Dutch texts, key-like literals that are
-not keys and `TagcastI18n.text()` inside HTML templates. For a real-browser check,
-`docs/plans/i18n/tools/text-scan.cjs` opens the screens in Chromium (with `mock_ibroadcast.py`) in
-English, Dutch or pseudo-localization (`TagcastI18n.usePseudo()`), and `text-compare.py` compares
-English output between builds or lists untranslated Dutch text.
+`tests/i18n.test.cjs` fails on missing or unused keys, missing texts or plural forms in a complete
+language, key-like literals that are not keys and `TagcastI18n.text()` inside HTML templates. For a
+real-browser check, `docs/plans/i18n/tools/text-scan.cjs` opens the screens in Chromium (with
+`mock_ibroadcast.py`) in any shipped language or pseudo-localization (`TagcastI18n.usePseudo()`), and
+`text-compare.py` compares English output between builds or lists text that is still English. A new
+English text needs a translation in every complete language, or that language moves back to `preview`.
 
 After changes to `style.css`:
 
