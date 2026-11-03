@@ -21,16 +21,15 @@ create separate local copies. Optional music uploads read selected local audio a
 send copies to your own iBroadcast library only after review; see
 [setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [Tagcast 1.3.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.3.0):**
-Follow online lyrics in Now playing, with Unison and LRCLIB fallback, line/word
-highlighting where available and a cover-coloured background. Find lyrics in the
-editor uses the same improved LRCLIB matching, while saving still requires review.
-The Apple Music Classic palette joins the existing themes, alongside an optional
-live spectrum and fixes for sign-in, queues, Cleanup, artwork and downloads.
+**New in [Tagcast 1.4.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.4.0):**
+Use Tagcast in English, Dutch, German, French, Spanish or Japanese, with a compact
+language menu in the header. Expanded Now playing offers an optional rotating CD
+view, alongside the existing cover and lyrics views. Sidebar labels, light-theme
+player contrast and scrollbars are refined without changing playback or save workflows.
 
 Experimental Gapless playback remains optional and off by default. Unsupported
 transitions safely use ordinary playback. See the
-[release notes](.github/release-notes/1.3.0.md) and
+[release notes](.github/release-notes/1.4.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
@@ -86,14 +85,14 @@ tracks, playlists and advanced command-line download options, use ibfetch.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 1.3.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.3.0):
+[Tagcast 1.4.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.4.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.3.0/tagcast-1.3.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.3.0/tagcast-1.3.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.3.0/tagcast-1.3.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.3.0/tagcast-1.3.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
@@ -212,7 +211,7 @@ Tagcast's update check only notifies; it never installs updates automatically.
 
 Tagcast has applied for Windows code signing through SignPath. Signing is
 **not yet active**; approval and integration are pending.
-Tagcast 1.2.0 Windows downloads remain unsigned. The macOS downloads are Developer
+Windows downloads remain unsigned. The macOS downloads are Developer
 ID signed and notarized by Apple, independently of SignPath.
 
 The planned signing service, subject to approval and integration, is:
