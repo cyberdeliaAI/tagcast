@@ -92,8 +92,17 @@ test("the language survives a restart, is written atomically and an unreadable f
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test("every desktop text has a Dutch translation", () => {
-  for (const name of NAMES) assert.ok(dutch[name], `desktop.${name}`);
+test("every desktop text is translated in every complete language", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../src/tagcast/static/i18n/manifest.json"), "utf8"));
+  for (const language of manifest.languages.filter(l => l.tag !== "en" && l.status === "complete")) {
+    const messages = catalog(language.tag);
+    for (const name of NAMES) assert.ok(messages[`desktop.${name}`]?.trim(), `${language.tag}: desktop.${name}`);
+    const text = name => messages[`desktop.${name}`];
+    for (const platform of ["darwin", "win32", "linux"]) {
+      const menu = build(platform, false, text, false);
+      for (const item of labelsOf(menu)) assert.ok(item.type === "separator" || item.label, `${language.tag} ${platform}: unlabelled ${JSON.stringify(item)}`);
+    }
+  }
 });
 
 test("the native file chooser uses the interface language for its title and filters", async () => {
