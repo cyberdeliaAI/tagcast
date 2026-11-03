@@ -66,3 +66,12 @@ such as the [Various Artists walkthrough](https://github.com/cyberdeliaAI/tagcas
 on their own pages. Retain the old page addresses and section headings as links to
 the detailed guides when splitting a page, so existing README, Help and shared
 fragment links remain useful. Keep released behavior separate from local test builds.
+
+## Offline PDF editions
+
+The Wiki's [PDF manual](https://github.com/cyberdeliaAI/tagcast/wiki/PDF-manual)
+page links to the illustrated English 1.4.0 guide. Versioned PDFs live once in the
+Wiki repository under `manuals/`; the application README and product website link
+to the same file. They are documentation downloads, not application resources or
+release-gate inputs. Keep older screenshots labelled and retain the version/date
+and SHA-256 on the Wiki page when publishing another edition.
