@@ -5327,7 +5327,8 @@ test("appearance restores before scripts load and invalid or unavailable storage
   for (const palette of ["ocean", "warm", "ibroadcast", "apple"]) {
     const document = {documentElement: {dataset: {}}};
     vm.runInNewContext(source, {document, localStorage: {getItem: key => key === "tagcast-palette" ? palette : "light"}});
-    assert.deepEqual(document.documentElement.dataset, {theme:"light",palette});
+    const tone = palette === "apple" ? "light" : "dark";
+    assert.deepEqual(document.documentElement.dataset, {theme:"light",palette,shellTone:tone,playerTone:tone});
     const p = page({storage:{"tagcast-palette":palette}});
     assert.equal(p.nodes.get("#palette-" + palette).checked, true);
   }
@@ -5336,7 +5337,7 @@ test("appearance restores before scripts load and invalid or unavailable storage
   assert.equal(p.run('document.documentElement.dataset.theme'), undefined);
   const document = {documentElement: {dataset: {}}};
   vm.runInNewContext(source, {document, localStorage: {getItem() {throw Error("Blocked");}}});
-  assert.deepEqual(document.documentElement.dataset, {});
+  assert.deepEqual(document.documentElement.dataset, {shellTone:"dark",playerTone:"dark"});
   p.run('localStorage.setItem = () => {throw Error("Blocked")};');
   await p.nodes.get("#theme-menu").emit("change", {target: {value: "ocean", dataset: {paletteChoice: ""}}});
   assert.equal(p.run('document.documentElement.dataset.palette'), "ocean");
