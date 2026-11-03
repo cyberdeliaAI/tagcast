@@ -165,7 +165,8 @@ function settingsContentMarkup() {
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> ${TagcastI18n.html("settings.display.trackArtists")}</label>
     <p class="muted">${TagcastI18n.html("settings.display.note")}</p>
     <label>${TagcastI18n.html("settings.display.view")} <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>${TagcastI18n.html("settings.display.fullscreen")}</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>${TagcastI18n.html("settings.display.window")}</option></select></label>
-    <p class="muted">${TagcastI18n.html("settings.display.viewNote")}</p></section>`
+    <p class="muted">${TagcastI18n.html("settings.display.viewNote")}</p>
+    ${typeof visualDiscSettings === "function" ? visualDiscSettings() : ""}</section>`
     + (typeof playbackLyricsSettings === "function" ? playbackLyricsSettings() : "")
     + (typeof visualizerSettings === "function" ? visualizerSettings() : "")
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")

@@ -310,7 +310,7 @@ test('reduced motion uses stepped word underlines without a continuous animation
   assert.equal(p.run('playbackLyricsView.frame'),0);
 });
 
-function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
+function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow, browserResizeObserver} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
   const timers = new Map(), windowEvents = new Map();
@@ -383,7 +383,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   if (openWindow) window.open = openWindow;
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
-    Event, AbortController, performance: {now: () => playbackClock},
+    Event, AbortController, ResizeObserver: browserResizeObserver, performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
@@ -5109,6 +5109,95 @@ test("random playback lazily loads only its selected album, cancels late loads a
   assert.match(p.nodes.get("#toast").textContent,/Offline/);
   assert.equal(p.run('player.randomLoading'),false);
   assert.equal(p.nodes.get("#albums-random").disabled,false);
+});
+
+test("CD artwork is opt-in, profile-local and does not dirty server settings", async () => {
+  const storage = {}, p = livePage({storage}); await settle();
+  assert.equal(p.run('visualDisc.style'), 'cover');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('cd-view'), false);
+  p.run('openSettings("playback")');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /id="player-artwork-style"[^>]*><option value="cover" selected/);
+  const requests = p.requests.length;
+  await p.change({id:'player-artwork-style',value:'cd',matches:()=>false});
+  assert.equal(storage['tagcast-player-artwork'], 'cd');
+  assert.equal(p.run('visualDisc.style'), 'cd');
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.run('settingsView.dirty'), false);
+  const restored = page({storage}); await settle();
+  assert.equal(restored.run('visualDisc.style'), 'cd');
+  const invalid = page({storage:{'tagcast-player-artwork':'invalid'}}); await settle();
+  assert.equal(invalid.run('visualDisc.style'), 'cover');
+  invalid.run('localStorage.setItem=()=>{throw Error("Disabled")};setVisualDiscStyle("cd");setVisualDiscStyle("invalid")');
+  assert.equal(invalid.run('visualDisc.style'), 'cd');
+  invalid.run('localStorage.getItem=()=>{throw Error("Disabled")}');
+  assert.equal(invalid.run('storedVisualDiscStyle()'), 'cover');
+});
+
+test("CD view toggles keep the same audio, queue, artwork and lyrics requests", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"));audio.currentTime=39;audio.volume=.4;audio.playbackRate=1.25;audio.readyState=3;openVisualPlayer()');
+  const before = playbackState(p), requests = p.requests.length;
+  const art = p.nodes.get('#visual-player-art'), writes = [];
+  let imageSrc = art.src;
+  Object.defineProperty(art, 'src', {configurable:true,get(){return imageSrc;},set(value){imageSrc=value;writes.push(value);}});
+  for (let i=0;i<4;i++) await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.deepEqual(playbackState(p), before);
+  assert.deepEqual(writes, [], 'Both presentations reuse the already loaded cover');
+  assert.equal(p.requests.length, requests, 'Changing artwork style does not fetch lyrics or metadata');
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), true);
+  p.run('playbackLyricsView.open=true;renderVisualPlayer()'); await settle();
+  const lyricRequests = p.requests.length;
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.equal(p.nodes.get('.visual-player-content').classList.contains('lyrics-visible'), true);
+  assert.equal(p.run('playbackLyricsView.open'), true);
+  assert.equal(p.requests.length, lyricRequests, 'Open lyrics remain on their existing read/cache path');
+  assert.deepEqual(playbackState(p), before);
+  p.run('hideVisualPlayer()');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
+  assert.equal(p.nodes.get('#audio').paused, false, 'Closing the presentation does not pause playback');
+});
+
+test("CD rotation follows readiness, actual playback, seeking, visibility and safe stops", async () => {
+  const p = livePage({storage:{'tagcast-player-artwork':'cd'}}); await settle();
+  p.run('playTracks(state.details.get("1"));audio.readyState=2;openVisualPlayer()');
+  const stage = p.nodes.get('#visual-player'), a = p.nodes.get('#audio');
+  const spinning = () => stage.classList.contains('disc-spinning');
+  assert.equal(spinning(), false, 'Preparation does not spin the CD');
+  a.readyState = 3; await a.emit('playing'); assert.equal(spinning(), true);
+  await a.emit('stalled'); assert.equal(spinning(), true, 'Buffered audio may keep playing during a network stall');
+  a.pause(); assert.equal(spinning(), false);
+  await a.play(); await a.emit('playing'); assert.equal(spinning(), true);
+  await a.emit('waiting'); assert.equal(spinning(), false);
+  await a.emit('playing'); assert.equal(spinning(), true);
+  a.seeking = true; await a.emit('seeking'); assert.equal(spinning(), false);
+  a.seeking = false; await a.emit('seeked'); assert.equal(spinning(), true);
+  p.run('document.hidden=true'); await p.emitDocument('visibilitychange'); assert.equal(spinning(), false);
+  p.run('document.hidden=false'); await p.emitDocument('visibilitychange'); assert.equal(spinning(), true);
+  await a.emit('loadstart'); assert.equal(spinning(), false);
+  await a.emit('playing'); assert.equal(spinning(), true);
+  p.run('hideVisualPlayer()'); assert.equal(spinning(), false);
+  await a.emit('playing'); assert.equal(spinning(), false, 'Late media events cannot animate a closed view');
+  p.run('openVisualPlayer()'); assert.equal(spinning(), true);
+  a.ended = true; p.run('renderVisualDisc()'); assert.equal(spinning(), false);
+  a.ended = false; await a.emit('emptied'); assert.equal(spinning(), false);
+});
+
+test("CD mode preserves missing-artwork initials, translated controls and paused playback", async () => {
+  const p = livePage({storage:{'tagcast-player-artwork':'cd'}}); await settle();
+  p.run('playTracks(state.details.get("1"));player.queue[player.index].album.artwork="";audio.pause();openVisualPlayer()');
+  const before = playbackState(p), requests = p.requests.length;
+  assert.equal(p.nodes.get('#visual-player-art').hidden, true);
+  assert.ok(p.nodes.get('#visual-player-placeholder').textContent);
+  assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').textContent, 'CD-weergave');
+  assert.equal(p.run('visualDisc.style'), 'cd');
+  assert.deepEqual(playbackState(p), before);
+  assert.equal(p.requests.filter(r=>/\/api\//.test(r.url)).length,
+    p.requests.slice(0,requests).filter(r=>/\/api\//.test(r.url)).length);
 });
 
 test("fullscreen Now playing reuses audio and queue, updates metadata safely and restores the library without requests", async () => {
@@ -11099,6 +11188,93 @@ function playbackState(p) {
     sink: audio.sinkId, queue: player.queue, index: player.index, epoch: player.epoch, history: state.history.length})`);
 }
 
+test("header language: opening is read-only, offers autonyms and dismisses with focus return", async () => {
+  const p = languagePage(); await settle();
+  const before = p.requests.length, button = p.nodes.get("#language-button"), menu = p.nodes.get("#language-menu");
+  assert.equal(p.nodes.get("#language-code").textContent, "EN");
+  assert.equal(button.getAttribute("aria-label"), "Choose interface language (English)");
+  for (const name of ["English", "Nederlands", "Deutsch", "Français", "Español", "日本語", "Automatic · follow system"]) assert.ok(menu.innerHTML.includes(name));
+  p.run('setThemeMenu(true)');
+  await button.emit("click");
+  assert.equal(p.nodes.get("#theme-menu").hidden, true);
+  assert.equal(p.nodes.get("#language-panel").hidden, false);
+  assert.equal(button.getAttribute("aria-expanded"), "true");
+  let prevented = false;
+  await p.emitDocument("keydown", {key: "Escape", preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  assert.equal(p.nodes.get("#language-panel").hidden, true);
+  assert.equal(p.run('document.activeElement === $("#language-button")'), true);
+  await button.emit("click"); await p.emitDocument("click");
+  assert.equal(p.nodes.get("#language-panel").hidden, true);
+  await button.emit("click"); await p.emitDocument("focusin");
+  assert.equal(p.nodes.get("#language-panel").hidden, true);
+  assert.equal(p.requests.length, before);
+});
+
+test("header language: the shortcut shares persistence with Settings and preserves playback and drafts", async () => {
+  const p = languagePage(); await settle();
+  p.run('playTracks(state.details.get("1")); audio.currentTime=42; audio.volume=.4');
+  await p.run('openEditor([state.albums[0].id])');
+  p.run('globalThis.headerDraft=editing; editing.trackPatches[String(editing.originals[0].tracks[0].id)]={title:"Unsaved title"}');
+  const before = playbackState(p), form = p.nodes.get("#editor-content").innerHTML;
+  await p.nodes.get("#language-menu").emit("click", {stopPropagation() {}, target: {closest: () => ({dataset: {interfaceLanguage: "nl"}})}});
+  await p.run("interfaceLanguage.saved"); await settle();
+  assert.equal(p.run("TagcastI18n.choice"), "nl");
+  assert.deepEqual(p.saved, [{language: "nl"}]);
+  assert.equal(p.nodes.get("#language-code").textContent, "NL");
+  assert.equal(p.nodes.get("#header-language-status").hidden, true, "successful saves leave a compact menu");
+  assert.match(p.nodes.get("#language-menu").innerHTML, /aria-checked="true"[^>]+data-interface-language="nl"/);
+  assert.match(p.run("languageSettingsSection()"), /value="nl"[^>]+selected/);
+  assert.deepEqual(playbackState(p), before);
+  assert.equal(p.run("editing === headerDraft"), true);
+  assert.equal(p.nodes.get("#editor-content").innerHTML, form);
+  await p.change({id: "interface-language", value: "en", matches: () => false, closest: () => null}); await settle();
+  assert.equal(p.nodes.get("#language-code").textContent, "EN");
+  await p.emitWindow("storage", {key: "tagcast-language", newValue: "fr"}); await settle();
+  assert.equal(p.nodes.get("#language-code").textContent, "FR");
+});
+
+test("header language: arrow keys move focus without changing the saved choice", async () => {
+  const p = languagePage(); await settle();
+  const menu = p.nodes.get("#language-menu");
+  const buttons = ["auto", "en", "nl"].map(value => {
+    p.run(`document.querySelector("#test-language-${value}")`);
+    return p.nodes.get(`#test-language-${value}`);
+  });
+  menu.querySelectorAll = () => buttons;
+  buttons[0].focus();
+  for (const [key, index] of [["ArrowDown",1],["End",2],["ArrowDown",0],["ArrowUp",2],["Home",0]]) {
+    let prevented=false;
+    await menu.emit("keydown", {key, preventDefault() { prevented=true; }});
+    assert.equal(prevented,true); assert.equal(p.run("document.activeElement") === buttons[index], true);
+    assert.equal(buttons[index].tabIndex,0);
+  }
+  assert.deepEqual(p.saved, []);
+});
+
+test("header language: saving, failure and catalog fallback are visible and retryable", async () => {
+  const p = languagePage(); await settle(); let finish;
+  p.setFetch(() => new Promise(resolve => { finish=resolve; }));
+  const saving=p.run('chooseInterfaceLanguage("nl")'); await settle(); await settle();
+  assert.equal(p.nodes.get("#language-button").getAttribute("aria-busy"), "true");
+  assert.equal(p.nodes.get("#header-language-status").hidden, false);
+  finish({ok:false,status:500,json:async()=>({error:"Test unavailable"})}); await saving;
+  assert.equal(p.nodes.get("#language-button").getAttribute("aria-busy"), "false");
+  assert.match(p.nodes.get("#header-language-status").textContent, /Test unavailable/);
+  p.setFetch(() => ({ok:true,json:async()=>({interface_language:"de"})}));
+  p.setCatalogFetch(() => ({ok:false,json:async()=>({})}));
+  await p.run('chooseInterfaceLanguage("de")');
+  assert.equal(p.nodes.get("#language-code").textContent, "EN", "the shortcut describes the actual English fallback");
+  assert.match(p.nodes.get("#header-language-status").textContent, /translation could not be loaded/);
+  assert.match(p.nodes.get("#language-menu").innerHTML, /aria-checked="true"[^>]+data-interface-language="de"/);
+  p.setCatalogFetch(() => ({ok:true,json:async()=>JSON.parse(readFileSync(path.join(staticDir,"i18n/de.json"),"utf8"))}));
+  await p.run('chooseInterfaceLanguage("de")');
+  assert.equal(p.nodes.get("#language-code").textContent, "DE");
+  await p.run('chooseInterfaceLanguage("auto")');
+  assert.equal(p.run("TagcastI18n.choice"), "auto");
+  assert.match(p.nodes.get("#language-menu").innerHTML, /aria-checked="true"[^>]+data-interface-language="auto"/);
+});
+
 test("interface language: English playback text keeps its exact existing wording", async () => {
   const p = languagePage({outputs: true}); await settle();
   p.run('playTracks(state.details.get("1")); audio.pause(); audio.volume = 0.65; setNowPlaying(true); openPlaybackOutput()'); await settle();
@@ -11414,4 +11590,53 @@ test("interface language: a translated desktop file chooser error keeps its Engl
   const shown = p.run(`TagcastI18n.errorText(Object.assign(new Error("Choose at most 100 paths without line breaks."), {code: "desktop.picker_limit"}))`);
   assert.equal(shown, "Kies maximaal 100 paden zonder regeleinden.");
   assert.equal(p.run(`TagcastI18n.errorText(new Error("Server said no."))`), "Server said no.", "uncoded server text stays as sent");
+});
+
+
+test('sidebar fades follow native scroll geometry with a one-pixel tolerance and leave playback alone', async () => {
+  const p = page(); await settle();
+  const nav = p.nodes.get('#workspace-nav');
+  const before = p.run('JSON.stringify({queue:player.queue,src:audio.src,screen:state.screen,scroll:window.scrollY})');
+  const requests = p.requests.length, history = p.history.length;
+  Object.assign(nav, {scrollTop:0, clientHeight:300, scrollHeight:700});
+  await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'end');
+  nav.scrollTop=125; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'start end');
+  nav.scrollTop=400; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'start');
+  nav.scrollTop=1; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'end');
+  nav.scrollTop=399; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'start');
+  Object.assign(nav, {scrollTop:0, scrollHeight:300});
+  await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), undefined);
+  nav.scrollHeight=301; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), undefined);
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.history.length, history);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,screen:state.screen,scroll:window.scrollY})'), before);
+});
+
+test('sidebar fades refresh on resize, shortcut layout changes and translation changes without moving focus', async () => {
+  const observed=[], callbacks=new Map();
+  const p = page({browserResizeObserver:class {
+    constructor(callback) {this.callback=callback;}
+    observe(node) {observed.push(node); callbacks.set(node,this.callback);}
+  }}); await settle();
+  const nav = p.nodes.get('#workspace-nav'), resize=callbacks.get(nav);
+  assert.equal(observed.filter(node=>node===nav).length,1);
+  Object.assign(nav,{scrollTop:40,clientHeight:300,scrollHeight:500});
+  nav.focus(); resize(); assert.equal(nav.getAttribute('data-more'),'start end');
+  Object.assign(nav,{scrollTop:0,clientHeight:500});
+  resize(); assert.equal(nav.getAttribute('data-more'),undefined);
+  nav.clientHeight=300;
+  await p.change({checked:false,dataset:{sidebarItem:'show-genres'},matches:s=>s==='[data-sidebar-item]'});
+  assert.equal(nav.getAttribute('data-more'),'end');
+  nav.scrollHeight=300;
+  await p.click({'[data-sidebar-move]':{dataset:{sidebarMove:'show-genres',direction:'-1'}}});
+  assert.equal(nav.getAttribute('data-more'),undefined);
+  nav.scrollHeight=600;
+  await p.click({'[data-sidebar-reset]':{}});
+  assert.equal(nav.getAttribute('data-more'),'end');
+  nav.scrollHeight=300; nav.focus();
+  await p.run('TagcastI18n.use("nl")');
+  assert.equal(nav.getAttribute('data-more'),undefined);
+  assert.equal(p.run('document.activeElement === $("#workspace-nav")'),true);
+  assert.equal(nav.scrollTop,0);
+  assert.equal(observed.filter(node=>node===nav).length,1,'One observer for the existing sidebar, including after language changes');
 });
