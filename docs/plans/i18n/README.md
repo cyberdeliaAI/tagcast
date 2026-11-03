@@ -15,6 +15,7 @@ Supporting files for [the internationalization plan](../tagcast-internationaliza
 | `tools/text-scan.cjs` | Opens every screen and the main dialogs in Chromium against `tests/mock_ibroadcast.py` and records all text, attributes and clipped controls, in any shipped language or pseudo-localization, optionally with screenshots, a narrow width or dark mode |
 | `tools/text-compare.py` | Compares two scans: English output before and after a change, or a translated scan for text that is still English |
 | `tools/selection-layout.cjs` | Checks translated album actions, readable selection counts and keyboard order at 420, 760, 761 and 1280 CSS pixels, in Light/Dark, with selected albums inside and outside the search results |
+| `tools/header-language.cjs` | Checks the shared header/Settings language preference in six languages, five palettes, Light/Dark and four widths; verifies keyboard use, uninterrupted playback, persistence, other tabs and failure/retry against an isolated mock profile |
 
 The categories in the CSV: `ui` (translatable), `dnt-*` (never translated: demo and sample
 metadata, product names), `technical-diagnostic`, `excluded-test-or-build`, and for Python

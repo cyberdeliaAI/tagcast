@@ -145,6 +145,8 @@ their shared browsing/player state; a fast local response can otherwise race the
 
 ## Behavior to preserve
 
+- Keep document scrolling for the main content; show its native scrollbar on page hover outside the sidebar. Desktop sidebar shortcuts use scroll-aware edge fades without a scrollbar; preserve keyboard focus, mobile overflow and native forced-colour/non-hover fallbacks.
+
 - The server binds only to `127.0.0.1`, on port 8912 by default.
 - Preserve Host validation, the `X-Tagcast` POST header, Fetch Metadata checks
   for GET APIs and existing security headers.
@@ -663,6 +665,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   in `tagcast-player-view`. Apply on the next opening without requests or audio/queue
   changes. In app window never requests native fullscreen or exits another element's
   fullscreen session. Keep button labels and the Settings Help explanation aligned.
+  Optional CD artwork (`player-disc.js` / `player-disc.css`) is presentation only;
+  album covers remain the default. The header toggle and Playback setting share the
+  profile-local `tagcast-player-artwork` choice. Reuse the same artwork and audio;
+  never fetch, seek, restart playback or change the queue when toggling. Rotate only
+  while the large view is visible and audio is ready/playing; pause during waiting,
+  seeking or pause, preserve the angle on resume and respect reduced motion.
 - Covers in grids/lists open the album immediately; compact-player covers immediately
   open Now playing. Enlarge covers only from the album detail page: double-click
   its real cover, or use Enter on its cover button, to open a modal lightbox.

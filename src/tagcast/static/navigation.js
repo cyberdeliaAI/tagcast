@@ -40,6 +40,15 @@ function readSidebarLayout() {
   } catch { return {order: defaults, hidden: defaultHiddenSidebarItems()}; }
 }
 
+// Only describe native scroll geometry; never move the viewport or a focused shortcut.
+function updateSidebarOverflow() {
+  const container = $("#workspace-nav"), more = [];
+  if (container.scrollTop > 1) more.push("start");
+  if (container.scrollTop + container.clientHeight < container.scrollHeight - 1) more.push("end");
+  if (more.length) container.setAttribute("data-more", more.join(" "));
+  else container.removeAttribute("data-more");
+}
+
 function applySidebarLayout() {
   const container = $("#workspace-nav");
   const buttons = sidebarLayout.order.map(id => {
@@ -58,6 +67,7 @@ function applySidebarLayout() {
     if (container.contains?.(focus) && !focus.hidden) focus.focus({preventScroll:true});
     container.scrollTop = scroll;
   }
+  updateSidebarOverflow();
 }
 
 function saveSidebarLayout() {
@@ -122,6 +132,9 @@ document.addEventListener("click", event => {
   }
 });
 applySidebarLayout();
+$("#workspace-nav").addEventListener("scroll", updateSidebarOverflow, {passive: true});
+const sidebarScrollObserver = typeof ResizeObserver === "function" ? new ResizeObserver(updateSidebarOverflow) : null;
+sidebarScrollObserver?.observe($("#workspace-nav"));
 
 // The mobile menu is a disclosure, not a page or a dialog. Desktop navigation
 // stays visible through CSS; opening the menu never adds a history entry.
@@ -429,6 +442,7 @@ function restorePendingRoute() {
 // A language change rewrites the menu button, the Sidebar settings section and the Back and
 // breadcrumb labels from memory. Each page's own script re-renders its visible content.
 TagcastI18n.subscribe(() => {
+  updateSidebarOverflow();
   if (!nav.ready) return;
   $("#menu-toggle").setAttribute("aria-label", TagcastI18n.text($("#sidebar").classList.contains("menu-open") ? "nav.menu.close" : "nav.menu.open"));
   renderSidebarSettings();
