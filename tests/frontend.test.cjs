@@ -310,7 +310,7 @@ test('reduced motion uses stepped word underlines without a continuous animation
   assert.equal(p.run('playbackLyricsView.frame'),0);
 });
 
-function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow} = {}) {
+function page({hash = "", storage = {}, server = true, browserNavigator = {}, metadataClass, setupAudio, deferReady = false, signInBridge, openWindow, browserResizeObserver} = {}) {
   const nodes = new Map(), requests = [], downloads = [], blobs = new Map();
   const documentEvents = new Map();
   const timers = new Map(), windowEvents = new Map();
@@ -383,7 +383,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   if (openWindow) window.open = openWindow;
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
-    Event, AbortController, performance: {now: () => playbackClock},
+    Event, AbortController, ResizeObserver: browserResizeObserver, performance: {now: () => playbackClock},
     localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
@@ -11590,4 +11590,53 @@ test("interface language: a translated desktop file chooser error keeps its Engl
   const shown = p.run(`TagcastI18n.errorText(Object.assign(new Error("Choose at most 100 paths without line breaks."), {code: "desktop.picker_limit"}))`);
   assert.equal(shown, "Kies maximaal 100 paden zonder regeleinden.");
   assert.equal(p.run(`TagcastI18n.errorText(new Error("Server said no."))`), "Server said no.", "uncoded server text stays as sent");
+});
+
+
+test('sidebar fades follow native scroll geometry with a one-pixel tolerance and leave playback alone', async () => {
+  const p = page(); await settle();
+  const nav = p.nodes.get('#workspace-nav');
+  const before = p.run('JSON.stringify({queue:player.queue,src:audio.src,screen:state.screen,scroll:window.scrollY})');
+  const requests = p.requests.length, history = p.history.length;
+  Object.assign(nav, {scrollTop:0, clientHeight:300, scrollHeight:700});
+  await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'end');
+  nav.scrollTop=125; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'start end');
+  nav.scrollTop=400; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'start');
+  nav.scrollTop=1; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'end');
+  nav.scrollTop=399; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), 'start');
+  Object.assign(nav, {scrollTop:0, scrollHeight:300});
+  await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), undefined);
+  nav.scrollHeight=301; await nav.emit('scroll'); assert.equal(nav.getAttribute('data-more'), undefined);
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.history.length, history);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,screen:state.screen,scroll:window.scrollY})'), before);
+});
+
+test('sidebar fades refresh on resize, shortcut layout changes and translation changes without moving focus', async () => {
+  const observed=[], callbacks=new Map();
+  const p = page({browserResizeObserver:class {
+    constructor(callback) {this.callback=callback;}
+    observe(node) {observed.push(node); callbacks.set(node,this.callback);}
+  }}); await settle();
+  const nav = p.nodes.get('#workspace-nav'), resize=callbacks.get(nav);
+  assert.equal(observed.filter(node=>node===nav).length,1);
+  Object.assign(nav,{scrollTop:40,clientHeight:300,scrollHeight:500});
+  nav.focus(); resize(); assert.equal(nav.getAttribute('data-more'),'start end');
+  Object.assign(nav,{scrollTop:0,clientHeight:500});
+  resize(); assert.equal(nav.getAttribute('data-more'),undefined);
+  nav.clientHeight=300;
+  await p.change({checked:false,dataset:{sidebarItem:'show-genres'},matches:s=>s==='[data-sidebar-item]'});
+  assert.equal(nav.getAttribute('data-more'),'end');
+  nav.scrollHeight=300;
+  await p.click({'[data-sidebar-move]':{dataset:{sidebarMove:'show-genres',direction:'-1'}}});
+  assert.equal(nav.getAttribute('data-more'),undefined);
+  nav.scrollHeight=600;
+  await p.click({'[data-sidebar-reset]':{}});
+  assert.equal(nav.getAttribute('data-more'),'end');
+  nav.scrollHeight=300; nav.focus();
+  await p.run('TagcastI18n.use("nl")');
+  assert.equal(nav.getAttribute('data-more'),undefined);
+  assert.equal(p.run('document.activeElement === $("#workspace-nav")'),true);
+  assert.equal(nav.scrollTop,0);
+  assert.equal(observed.filter(node=>node===nav).length,1,'One observer for the existing sidebar, including after language changes');
 });
