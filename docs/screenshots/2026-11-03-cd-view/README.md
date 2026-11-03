@@ -1,9 +1,9 @@
 # Optional CD view — 3 November 2026
 
 Original screenshots supplied by the project maintainer from the local Apple Silicon
-CD-view test build based on Tagcast 1.3.0. **The CD option is not included in the
-published 1.3.0 downloads.** These images document an unreleased presentation option,
-not a new application release.
+CD-view test build based on Tagcast 1.3.0. **The optional CD view ships in
+Tagcast 1.4.0**; it is not part of the earlier 1.3.0 downloads. These local test
+captures show the presentation included in 1.4.0.
 
 The two captures show the same track in the standard CD layout and with the lyrics
 panel open. The disc is shown partway through its rotation. The ordinary rectangular
