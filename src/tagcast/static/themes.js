@@ -80,6 +80,16 @@ globalThis.TagcastThemes = (() => {
       if (overrides[role]) root.style?.setProperty?.(`--palette-${role}`, overrides[role]);
       else root.style?.removeProperty?.(`--palette-${role}`);
     }
+    const base = builtins.includes(fallbackPalette) ? fallbackPalette : "forest";
+    const shell = colours(theme || {base}, mode());
+    // Match the native control foreground to its 65% active / 35% sidebar CSS tint.
+    const panel = "#" + [1, 3, 5].map(offset => Math.round(
+      parseInt(shell["shell-active"].slice(offset, offset + 2), 16) * .65
+      + parseInt(shell.sidebar.slice(offset, offset + 2), 16) * .35
+    ).toString(16).padStart(2, "0")).join("");
+    const tone = colour => contrast(colour, "#000000") >= contrast(colour, "#ffffff") ? "light" : "dark";
+    root.dataset.shellTone = tone(shell.sidebar);
+    root.dataset.playerTone = tone(panel);
     const identity = JSON.stringify([root.dataset.theme, root.dataset.palette, theme?.id, overrides]);
     if (identity !== applied) { applied = identity; document.dispatchEvent?.(new Event("tagcast-theme-change")); }
   }
