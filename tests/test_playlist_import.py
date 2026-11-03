@@ -41,6 +41,24 @@ def fixture():
 
 
 class CsvParsingTests(unittest.TestCase):
+    def test_column_headings_in_every_interface_language_are_recognised(self):
+        from tagcast.playlist_import import guessed_mapping
+        headings = {
+            "en": ["Title", "Artist", "Album", "Album artist", "Duration", "Year", "Track number"],
+            "nl": ["Titel", "Artiest", "Album", "Albumartiest", "Speelduur", "Jaar", "Tracknummer"],
+            "de": ["Titel", "Interpret", "Album", "Albuminterpret", "Dauer", "Erscheinungsjahr", "Titelnummer"],
+            "fr": ["Titre", "Artiste", "Album", "Artiste de l'album", "Durée", "Année", "Numéro de piste"],
+            "es": ["Título", "Artista", "Álbum", "Artista del álbum", "Duración", "Año", "Número de pista"],
+            "ja": ["曲名", "アーティスト", "アルバム", "アルバムアーティスト", "再生時間", "リリース年", "トラック番号"],
+        }
+        for language, columns in headings.items():
+            with self.subTest(language=language):
+                self.assertEqual(guessed_mapping(columns), {"title": 0, "artist": 1, "album": 2, "album_artist": 3,
+                                                            "duration": 4, "year": 5, "track": 6})
+        self.assertEqual(guessed_mapping(["タイトル", "アーティスト名"])["title"], 0)
+        self.assertEqual(guessed_mapping(["Song", "Interpret"]), {"title": 0, "artist": 1, "album": None,
+                                                                   "album_artist": None, "duration": None, "year": None, "track": None})
+
     def test_quotes_multiline_bom_delimiters_headers_and_line_positions(self):
         columns, rows, delimiter, blank = parse_csv('\ufeffTitle;Artist;Album\r\n"One; Two";Björk;"First\nSecond"\r\n\r\nOther;Kate\r\n', ';')
         self.assertEqual(columns, ['Title', 'Artist', 'Album'])

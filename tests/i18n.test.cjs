@@ -132,10 +132,13 @@ test("desktop texts in en.json are exactly the built-in English texts of the des
   assert.deepEqual(fromCatalog, {...ENGLISH});
 });
 
-test("Dutch translates every English key", () => {
-  const dutch = new Set(Object.keys(catalogs.nl).map(base));
-  const missing = [...new Set(Object.keys(english).map(base))].filter(key => !dutch.has(key));
-  assert.deepEqual(missing, [], "Missing Dutch translations");
+test("every complete language translates every English key", () => {
+  for (const language of manifest.languages.filter(l => l.tag !== "en" && l.status === "complete")) {
+    const translated = new Set(Object.keys(catalogs[language.tag]).map(base));
+    const missing = [...new Set(Object.keys(english).map(base))].filter(key => !translated.has(key));
+    assert.deepEqual(missing, [], `Missing ${language.name} translations`);
+  }
+  assert.ok(manifest.languages.some(l => l.tag === "nl" && l.status === "complete"));
 });
 
 test("translated text inside HTML templates is always escaped", () => {
@@ -343,7 +346,7 @@ test("automatic selection only picks complete translations and manual choices al
   const shipped = runtime({languages: ["nl-BE", "en-US"]});
   assert.equal(shipped.i18n.resolve("auto"), "nl", "the shipped Dutch translation is complete");
   assert.equal(shipped.i18n.resolve("en"), "en");
-  assert.equal(runtime({languages: ["de-DE", "fr-FR"]}).i18n.resolve("auto"), "en");
+  assert.equal(runtime({languages: ["it-IT", "pt-BR"]}).i18n.resolve("auto"), "en");
 });
 
 test("the stored choice is restored before painting with one catalog request", async () => {
