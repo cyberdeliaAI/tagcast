@@ -5111,6 +5111,95 @@ test("random playback lazily loads only its selected album, cancels late loads a
   assert.equal(p.nodes.get("#albums-random").disabled,false);
 });
 
+test("CD artwork is opt-in, profile-local and does not dirty server settings", async () => {
+  const storage = {}, p = livePage({storage}); await settle();
+  assert.equal(p.run('visualDisc.style'), 'cover');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('cd-view'), false);
+  p.run('openSettings("playback")');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /id="player-artwork-style"[^>]*><option value="cover" selected/);
+  const requests = p.requests.length;
+  await p.change({id:'player-artwork-style',value:'cd',matches:()=>false});
+  assert.equal(storage['tagcast-player-artwork'], 'cd');
+  assert.equal(p.run('visualDisc.style'), 'cd');
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(p.requests.length, requests);
+  assert.equal(p.run('settingsView.dirty'), false);
+  const restored = page({storage}); await settle();
+  assert.equal(restored.run('visualDisc.style'), 'cd');
+  const invalid = page({storage:{'tagcast-player-artwork':'invalid'}}); await settle();
+  assert.equal(invalid.run('visualDisc.style'), 'cover');
+  invalid.run('localStorage.setItem=()=>{throw Error("Disabled")};setVisualDiscStyle("cd");setVisualDiscStyle("invalid")');
+  assert.equal(invalid.run('visualDisc.style'), 'cd');
+  invalid.run('localStorage.getItem=()=>{throw Error("Disabled")}');
+  assert.equal(invalid.run('storedVisualDiscStyle()'), 'cover');
+});
+
+test("CD view toggles keep the same audio, queue, artwork and lyrics requests", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"));audio.currentTime=39;audio.volume=.4;audio.playbackRate=1.25;audio.readyState=3;openVisualPlayer()');
+  const before = playbackState(p), requests = p.requests.length;
+  const art = p.nodes.get('#visual-player-art'), writes = [];
+  let imageSrc = art.src;
+  Object.defineProperty(art, 'src', {configurable:true,get(){return imageSrc;},set(value){imageSrc=value;writes.push(value);}});
+  for (let i=0;i<4;i++) await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.deepEqual(playbackState(p), before);
+  assert.deepEqual(writes, [], 'Both presentations reuse the already loaded cover');
+  assert.equal(p.requests.length, requests, 'Changing artwork style does not fetch lyrics or metadata');
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), true);
+  p.run('playbackLyricsView.open=true;renderVisualPlayer()'); await settle();
+  const lyricRequests = p.requests.length;
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.equal(p.nodes.get('.visual-player-content').classList.contains('lyrics-visible'), true);
+  assert.equal(p.run('playbackLyricsView.open'), true);
+  assert.equal(p.requests.length, lyricRequests, 'Open lyrics remain on their existing read/cache path');
+  assert.deepEqual(playbackState(p), before);
+  p.run('hideVisualPlayer()');
+  assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
+  assert.equal(p.nodes.get('#audio').paused, false, 'Closing the presentation does not pause playback');
+});
+
+test("CD rotation follows readiness, actual playback, seeking, visibility and safe stops", async () => {
+  const p = livePage({storage:{'tagcast-player-artwork':'cd'}}); await settle();
+  p.run('playTracks(state.details.get("1"));audio.readyState=2;openVisualPlayer()');
+  const stage = p.nodes.get('#visual-player'), a = p.nodes.get('#audio');
+  const spinning = () => stage.classList.contains('disc-spinning');
+  assert.equal(spinning(), false, 'Preparation does not spin the CD');
+  a.readyState = 3; await a.emit('playing'); assert.equal(spinning(), true);
+  await a.emit('stalled'); assert.equal(spinning(), true, 'Buffered audio may keep playing during a network stall');
+  a.pause(); assert.equal(spinning(), false);
+  await a.play(); await a.emit('playing'); assert.equal(spinning(), true);
+  await a.emit('waiting'); assert.equal(spinning(), false);
+  await a.emit('playing'); assert.equal(spinning(), true);
+  a.seeking = true; await a.emit('seeking'); assert.equal(spinning(), false);
+  a.seeking = false; await a.emit('seeked'); assert.equal(spinning(), true);
+  p.run('document.hidden=true'); await p.emitDocument('visibilitychange'); assert.equal(spinning(), false);
+  p.run('document.hidden=false'); await p.emitDocument('visibilitychange'); assert.equal(spinning(), true);
+  await a.emit('loadstart'); assert.equal(spinning(), false);
+  await a.emit('playing'); assert.equal(spinning(), true);
+  p.run('hideVisualPlayer()'); assert.equal(spinning(), false);
+  await a.emit('playing'); assert.equal(spinning(), false, 'Late media events cannot animate a closed view');
+  p.run('openVisualPlayer()'); assert.equal(spinning(), true);
+  a.ended = true; p.run('renderVisualDisc()'); assert.equal(spinning(), false);
+  a.ended = false; await a.emit('emptied'); assert.equal(spinning(), false);
+});
+
+test("CD mode preserves missing-artwork initials, translated controls and paused playback", async () => {
+  const p = livePage({storage:{'tagcast-player-artwork':'cd'}}); await settle();
+  p.run('playTracks(state.details.get("1"));player.queue[player.index].album.artwork="";audio.pause();openVisualPlayer()');
+  const before = playbackState(p), requests = p.requests.length;
+  assert.equal(p.nodes.get('#visual-player-art').hidden, true);
+  assert.ok(p.nodes.get('#visual-player-placeholder').textContent);
+  assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').textContent, 'CD-weergave');
+  assert.equal(p.run('visualDisc.style'), 'cd');
+  assert.deepEqual(playbackState(p), before);
+  assert.equal(p.requests.filter(r=>/\/api\//.test(r.url)).length,
+    p.requests.slice(0,requests).filter(r=>/\/api\//.test(r.url)).length);
+});
+
 test("fullscreen Now playing reuses audio and queue, updates metadata safely and restores the library without requests", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1")); $("main").inert = false; $(".sidebar").inert = true; audio.currentTime = 43; player.queue[0].title = "<img onerror=bad>"');
