@@ -447,11 +447,15 @@ TagcastI18n.subscribe(() => {
   else renderNowPlaying();
 });
 
+function nowPlayingFocusTarget() {
+  return state.screen === "now-playing" ? $("#now-playing-heading") : $("#now-playing-close");
+}
+
 function setNowPlaying(open) {
   $("#now-playing-panel").hidden = !open;
   document.body.classList.toggle("now-playing-open", open && state.screen !== "now-playing");
   $("#player-queue").setAttribute("aria-expanded", String(open));
-  if (open) { renderNowPlaying(); $("#now-playing-close").focus(); }
+  if (open) { renderNowPlaying(); nowPlayingFocusTarget().focus(); }
   if (typeof placePlayerExtras === "function") placePlayerExtras();
 }
 
@@ -469,6 +473,7 @@ function renderNowPlaying() {
   nowPlayingRows.revision += 1;
   nowPlayingRows.entries = player.queue.slice();
   const track = player.queue[player.index], album = track?.album;
+  $("#now-playing-close").hidden = state.screen === "now-playing";
   $("#now-playing-heading-title").textContent = state.screen === "now-playing" && track ? ` · ${track.title}` : "";
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
     <div class="now-playing-info">${state.screen === "now-playing" ? "" : `<h3>${escapeHtml(track.title)}</h3>`}<p class="now-playing-artist">${albumArtistLinks(album)}</p>
@@ -478,7 +483,7 @@ function renderNowPlaying() {
   if (state.screen !== "now-playing") renderLyrics("player", lyricsSelection(track));
   $("#now-playing-count").textContent = TagcastI18n.text("player.queue.count", {count: player.queue.length});
   $("#queue-clear").disabled = !player.queue.length;
-  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}${index === player.index && !audio.paused ? " playing" : ""}" data-queue-position="${index}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
+  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}${index === player.index && !audio.paused ? " playing" : ""}${index === player.index ? " queue-current" : ""}" data-queue-position="${index}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
     <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : '<span class="queue-playing-icon">▶</span><span class="queue-playing-bars"></span>' : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button><div class="track-row-actions queue-track-actions">${typeof trackTagControls === "function" ? trackTagControls(t.album, t) : ""}${queueButton(t.album.id, t)}${heartButton(t)}</div>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="${TagcastI18n.html("player.queue.remove", {title: t.title, position: index + 1})}" title="${TagcastI18n.html("player.queue.removeTitle")}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
   if (focusedEntry) {
     const index = player.queue.indexOf(focusedEntry);
@@ -504,7 +509,7 @@ function removeQueueEntry(index, revision) {
   } else markPlaying();
   const next = Math.min(index, player.queue.length - 1);
   (next >= 0 ? $("#now-playing-list").querySelector(`[data-queue-remove="${next}"]`)
-    : $("#now-playing-close"))?.focus({preventScroll: true});
+    : nowPlayingFocusTarget())?.focus({preventScroll: true});
   toast(TagcastI18n.text("player.queue.removed", {title: removed.title}));
 }
 

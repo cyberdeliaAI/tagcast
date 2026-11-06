@@ -656,6 +656,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   queue rows reuse the album track actions. Never duplicate the current-track rating controls.
   The listening-page heading combines Now playing with the current title; album artist
   and album names link to their existing browsing destinations.
+  The page has no Close control; focus its heading when opening or removing the last
+  queued entry. Keep Close in the optional side panel and expanded view. The active
+  queue occurrence has one continuous highlight behind its Play button and row actions,
+  including while paused. Desktop lyrics use the space beside the page heading.
   Now playing offers one Remove from play queue button per stored position, replacing
   its number on hover/focus and always visible on touch. Keep it separate from the
   row's Play button, keyboard accessible and bound to the rendered entry/revision.
