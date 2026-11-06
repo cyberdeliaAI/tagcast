@@ -183,8 +183,8 @@ function syncListeningLyricsFollow() {
   const box = $("#listening-lyrics-follow");
   box.checked = playbackLyricsView.following;
   box.disabled = !playbackLyricsView.data?.timed;
-  $(".listening-follow").hidden = state.screen !== "now-playing" || visualPlayer.open;
-  $("#visual-lyrics-follow").hidden = state.screen === "now-playing" && !visualPlayer.open || !playbackLyricsView.data?.timed || playbackLyricsView.following;
+  $(".listening-follow").hidden = !playbackLyricsVisible();
+  $("#visual-lyrics-follow").hidden = true;
 }
 
 function renderPlaybackLyrics() {

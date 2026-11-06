@@ -242,10 +242,13 @@ test('line following uses current-track gapless time, handles seeking and yields
   let stopped=false;
   await p.nodes.get('#visual-lyrics-lines').emit('keydown',{key:'ArrowDown',stopPropagation(){stopped=true;}});
   assert.equal(stopped,true);assert.equal(p.run('playbackLyricsView.following'),false);
-  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,false);
+  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,true);
+  assert.equal(p.nodes.get('.listening-follow').hidden,false);
+  assert.equal(p.nodes.get('#listening-lyrics-follow').checked,false);
   p.run('gaplessPosition=()=>4');await p.nodes.get('#audio').emit('seeked');await settle();
   assert.equal(p.run('playbackLyricsView.active'),1);
-  await p.nodes.get('#visual-lyrics-follow').emit('click');
+  p.nodes.get('#listening-lyrics-follow').checked=true;
+  await p.nodes.get('#listening-lyrics-follow').emit('change');
   assert.equal(p.run('playbackLyricsView.following'),true);
   p.run('gaplessPosition=()=>0;syncPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.active'),-1);
   p.run('gaplessPosition=()=>9;syncPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.active'),-1);
@@ -5222,7 +5225,12 @@ test("CD view toggles keep the same audio, queue, artwork and lyrics requests", 
   const art = p.nodes.get('#visual-player-art'), writes = [];
   let imageSrc = art.src;
   Object.defineProperty(art, 'src', {configurable:true,get(){return imageSrc;},set(value){imageSrc=value;writes.push(value);}});
-  for (let i=0;i<4;i++) await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  for (const style of ['cd','cd','cover','cover']) {
+    await p.nodes.get(`#visual-player-${style === 'cd' ? 'disc' : 'cover'}-toggle`).emit('click');
+    assert.equal(p.run('visualDisc.style'),style);
+    assert.equal(p.nodes.get('#visual-player-cover-toggle').getAttribute('aria-pressed'),String(style === 'cover'));
+    assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-pressed'),String(style === 'cd'));
+  }
   assert.deepEqual(playbackState(p), before);
   assert.deepEqual(writes, [], 'Both presentations reuse the already loaded cover');
   assert.equal(p.requests.length, requests, 'Changing artwork style does not fetch lyrics or metadata');
@@ -5274,11 +5282,32 @@ test("CD mode preserves missing-artwork initials, translated controls and paused
   assert.ok(p.nodes.get('#visual-player-placeholder').textContent);
   assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
   await p.run('TagcastI18n.use("nl")'); await settle();
-  assert.equal(p.nodes.get('#visual-player-disc-toggle').textContent, 'CD-weergave');
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').textContent, 'CD');
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-label'), 'CD-weergave');
   assert.equal(p.run('visualDisc.style'), 'cd');
   assert.deepEqual(playbackState(p), before);
   assert.equal(p.requests.filter(r=>/\/api\//.test(r.url)).length,
     p.requests.slice(0,requests).filter(r=>/\/api\//.test(r.url)).length);
+});
+
+test("expanded context follows queue position, repeat and language without interpreting track HTML", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"));audio.pause();openVisualPlayer();player.queue[1].title="<img onerror=bad>";renderVisualPlayerLabels()');
+  const context=p.nodes.get('#visual-player-context'),before=playbackState(p),requests=p.requests.length;
+  assert.match(context.textContent,/Queue · 1 of/);
+  assert.match(context.textContent,/Next: <img onerror=bad>/);
+  assert.equal(context.innerHTML,"");
+  await p.nodes.get("#player-repeat").emit("click");
+  await p.nodes.get("#player-repeat").emit("click");
+  assert.ok(context.textContent.endsWith(p.run('player.queue[0].title')));
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.match(context.textContent,/Wachtrij/);
+  assert.deepEqual(playbackState(p),before);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/')).length,p.requests.slice(0,requests).filter(r=>r.url.startsWith('/api/')).length);
+  p.run('player.repeat="none";player.index=player.queue.length-1;renderVisualPlayerLabels()');
+  assert.doesNotMatch(context.textContent,/Hierna:/);
+  p.run('player.repeat="queue";renderVisualPlayerLabels()');
+  assert.ok(context.textContent.endsWith(p.run('player.queue[0].title')));
 });
 
 test("fullscreen Now playing reuses audio and queue, updates metadata safely and restores the library without requests", async () => {

@@ -694,11 +694,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   In app window never requests native fullscreen or exits another element's
   fullscreen session. Keep button labels and the Settings Help explanation aligned.
   Optional CD artwork (`player-disc.js` / `player-disc.css`) is presentation only;
-  album covers remain the default. The header toggle and Playback setting share the
+  album covers remain the default. The Cover/CD segmented control and Playback setting share the
   profile-local `tagcast-player-artwork` choice. Reuse the same artwork and audio;
   never fetch, seek, restart playback or change the queue when toggling. Rotate only
   while the large view is visible and audio is ready/playing; pause during waiting,
   seeking or pause, preserve the angle on resume and respect reduced motion.
+  Keep the sleeve upright and animate only the decorative tinted disc behind it. Expanded
+  views share one centred cover/info layout, with lyrics alongside on wide screens.
+  Show queue position/next-track context, the shared Follow switch and readable source attribution;
+  fade lyric edges without hiding errors or retry. Hide the stop/close button only while expanded;
+  both exit controls restore the existing view without stopping audio.
 - Covers in grids/lists open the album immediately; compact-player covers immediately
   open Now playing. Enlarge covers only from the album detail page: double-click
   its real cover, or use Enter on its cover button, to open a modal lightbox.

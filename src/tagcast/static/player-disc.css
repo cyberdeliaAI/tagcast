@@ -1,50 +1,26 @@
-/* The normal cover remains unchanged. CD decoration shares its existing image. */
-.visual-player-disc{display:contents}
-.player-stage .visual-player.cd-view .visual-player-cover{
-  border-radius:8px;
-  background:linear-gradient(135deg,#ffffff0d,transparent 48%,#ffffff07),var(--visual-cover,var(--palette-shell-active,#344b3d));
-  border:1px solid #ffffff24;
-  box-shadow:inset 0 0 0 4px #00000012,inset 0 0 0 5px #ffffff16,0 18px 55px #0003;
-}
+/* One loaded cover stays upright; the decorative disc uses the same cover tint. */
+.visual-player-sleeve{position:absolute;inset:0;z-index:1;overflow:hidden;border-radius:8px;background:var(--visual-cover,var(--palette-shell-active,#344b3d));display:grid;place-items:center;box-shadow:0 18px 45px #0004}
+.visual-player-disc{display:none}
+.player-stage .visual-player.cd-view .visual-player-cover{overflow:visible;background:none;box-shadow:none;border:0}
 .cd-view .visual-player-disc{
-  display:grid;place-items:center;position:absolute;inset:6%;border-radius:50%;overflow:hidden;
-  background:conic-gradient(from 35deg,#c0c4c6,#f5f3ed,#7b858b,#d6dbde,#faf6eb,#a1adb3,#c0c4c6);
-  border:3px solid #c4c9ca;
-  box-shadow:0 0 0 1px #1b2329,0 3px 12px #0006;
-  /* Cut a clear centre out of both the artwork and the metallic hub. */
+  display:block;position:absolute;left:38%;top:2%;width:96%;height:96%;overflow:hidden;border-radius:50%;
+  background:var(--visual-cover,var(--palette-shell-active,#344b3d));border:2px solid #ffffff36;
+  box-shadow:0 0 0 4px #11171a,0 12px 30px #0005;
   -webkit-mask-image:radial-gradient(circle,#0000 0 5.5%,#000 5.8%);
   mask-image:radial-gradient(circle,#0000 0 5.5%,#000 5.8%);
-  animation:visual-disc-turn 20s linear infinite;
-  animation-play-state:paused;
+  animation:visual-disc-turn 20s linear infinite;animation-play-state:paused;
 }
-.player-stage .cd-view .visual-player-disc img{object-fit:cover}
 .cd-view .visual-player-disc::before{
-  content:"";position:absolute;inset:0;z-index:1;border-radius:50%;pointer-events:none;
-  background:conic-gradient(from 25deg,#ffffff15,transparent 18%,#ffffff20 25%,transparent 36%,#0000000a 55%,#ffffff18 75%,transparent 88%,#ffffff15);
-  box-shadow:inset 0 0 0 2px #ffffff6b,inset 0 0 0 6px #0000001f;
+  content:"";position:absolute;inset:-15%;border-radius:50%;pointer-events:none;
+  background:linear-gradient(#12181b66,#12181b66),var(--lyrics-cover-image);background-position:center;background-size:cover;filter:blur(20px);
 }
 .cd-view .visual-player-disc::after{
-  content:"";position:absolute;inset:36%;z-index:2;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,#22272a 0 29%,#71797d 30% 32%,#30363a 33% 45%,#a9b1b6 46% 48%,#d8dde0 49% 65%,#f2f3ef 66% 68%,#b3bcc2 69% 71%,#ffffff36 72%);
-  box-shadow:0 0 0 1px #ffffff85,0 0 0 3px #00000018;
+  content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,transparent 0 5.5%,#151b1e 5.7% 8%,#b9c3c6 8.2% 11.5%,#ffffff66 11.8% 12%,transparent 12.2%),
+    repeating-radial-gradient(circle,transparent 0 8%,#ffffff10 8.2% 8.4%,transparent 8.6% 13%),
+    conic-gradient(from 20deg,transparent 0 12%,#ffffff12 12.1% 20%,transparent 20.1% 65%,#ffffff0b 65.1% 75%,transparent 75.1%);
+  box-shadow:inset 0 0 0 2px #ffffff29,inset 0 0 0 6px #0002;
 }
 .cd-view.disc-spinning .visual-player-disc{animation-play-state:running}
-.player-stage .visual-player.cd-view #visual-player-placeholder{font-size:clamp(40px,9vw,130px);color:#263238;opacity:.55}
-.visual-player-header #visual-player-disc-toggle[aria-pressed="true"]{
-  border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor;
-}
 @keyframes visual-disc-turn{to{transform:rotate(360deg)}}
-@media(min-width:900px) and (min-height:501px){
-  .player-stage .cd-view .visual-player-content:not(.lyrics-visible){
-    display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto auto;
-    align-content:center;align-items:center;column-gap:48px;row-gap:16px;
-    max-width:1080px;margin:0 auto;text-align:left;
-  }
-  .player-stage .cd-view .visual-player-content:not(.lyrics-visible) .visual-player-cover{
-    grid-column:1;grid-row:1/3;justify-self:center;
-    width:min(100%,calc(100dvh - 230px),540px);min-width:0;
-  }
-  .cd-view .visual-player-content:not(.lyrics-visible) .visual-player-info{grid-column:2;grid-row:1;padding:0;align-self:end}
-  .cd-view .visual-player-content:not(.lyrics-visible) #visual-player-status{grid-column:2;grid-row:2;align-self:start;margin:0}
-}
 @media(prefers-reduced-motion:reduce){.cd-view .visual-player-disc{animation:none}}

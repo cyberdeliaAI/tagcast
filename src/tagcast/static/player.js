@@ -32,6 +32,10 @@ function renderVisualPlayerButton() {
     : visualPlayerMode === "window" ? "player.visual.openWindow" : "player.visual.openFullscreen");
   button.setAttribute("aria-label", label);
   button.setAttribute("title", label);
+  button.setAttribute("aria-pressed", String(visualPlayer.open));
+  button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${visualPlayer.open
+    ? 'M8 3v5H3M16 3v5h5M3 16h5v5M21 16h-5v5'
+    : 'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5'}"/></svg>`;
 }
 
 // The status line of the large view keeps how to render its text, so a language change
@@ -183,6 +187,10 @@ function renderVisualPlayerLabels() {
   if (!visualPlayer.open || !track) return;
   $("#player-stage").setAttribute("aria-label", TagcastI18n.text("player.nowPlaying.heading"));
   $("#visual-player-track-artist").textContent = TagcastI18n.text("player.visual.trackArtist", {artist: track.artist});
+  const next = player.repeat === "track" ? track : player.queue[player.index + 1]
+    || (player.repeat === "queue" ? player.queue.find(entry => !entry.upNext) : null);
+  $("#visual-player-context").textContent = TagcastI18n.text(next ? "player.visual.contextNext" : "player.visual.context",
+    {position: player.index + 1, count: player.queue.length, title: next?.title || ""});
 }
 
 function hideVisualPlayer() {
@@ -868,6 +876,7 @@ function renderRepeatButton() {
   button.setAttribute("aria-label", TagcastI18n.text(labels[1]));
   button.setAttribute("aria-pressed", String(player.repeat !== "none"));
   button.title = TagcastI18n.text("player.repeat.title");
+  renderVisualPlayerLabels();
 }
 renderRepeatButton();
 $("#player-repeat").addEventListener("click", () => {
