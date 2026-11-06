@@ -10,10 +10,11 @@ async function checkListeningThemes(window) {
       screen:state.screen,mode:state.mode,audio,source:audio.src,time:audio.currentTime,paused:audio.paused,palette:localStorage.getItem('tagcast-palette')||'forest',
       appearance:document.documentElement.dataset.theme,custom:TagcastThemes.active()?.id};
     const album={...state.details.values().next().value,artwork:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="teal"/></svg>')};
-    player.queue=[{...album.tracks[0],album}];player.index=0;player.album=album;state.mode='live';
+    player.queue=album.tracks.slice(0,2).map(track=>({...track,album}));player.index=0;player.album=album;state.mode='live';
     showScreen('now-playing');
   })()`);
   try {
+    const queueRows = await require('./queue-smoke.cjs').checkQueueRows(window);
     for (const palette of ["forest", "ocean", "warm", "ibroadcast", "apple", "amber"]) {
       const modes = [];
       for (const appearance of ["light", "dark", "auto"]) {
@@ -50,7 +51,7 @@ async function checkListeningThemes(window) {
       samples.push({palette, modes});
     }
     assert.equal(await run("audio===listeningThemeCheck.audio && audio.src===listeningThemeCheck.source && (!listeningThemeCheck.paused || audio.currentTime===listeningThemeCheck.time)"), true, "Appearance never replaces the audio source or seeks a paused player");
-    return samples;
+    return {palettes:samples,queueRows};
   } finally {
     await run(`(() => {
       closeVisualPlayer();const before=listeningThemeCheck;
