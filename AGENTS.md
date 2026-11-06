@@ -685,6 +685,8 @@ their shared browsing/player state; a fast local response can otherwise race the
   in `tagcast-player-view`. Apply on the next opening without requests or audio/queue
   changes. The softened cover-colour background is always shown in both listening views,
   using the already loaded current cover; clear it on navigation or missing artwork.
+  Cover tint inherits the active Light/Dark/Auto palette; never force local dark
+  palette roles onto the listening page, its menus or the expanded player.
   The listening page shares the expanded view’s timed lyrics region and consented source
   selection; move the same region between views and cancel hidden or obsolete reads.
   On sufficiently large windows only the queue and lyrics scroll; keep current-track

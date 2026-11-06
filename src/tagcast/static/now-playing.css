@@ -102,7 +102,7 @@
 @media(max-width:760px){.player-track{gap:8px}.player-track .player-text{font-size:12px}.player-track .player-cover-button{width:38px;height:38px}}
 
 /* One continuous cover background, clipped only at the workspace edges. */
-main.listening-atmosphere{position:relative;background:#0b1218;isolation:isolate;color:#f1f5f9;--ink:#f1f5f9;--muted:#c7ced4;--line:#ffffff26;--white:#18212a;--green:#f1f5f9;--palette-ink:#f1f5f9;--palette-muted:#c7ced4;--palette-link:#f1f5f9;--palette-line:#ffffff26;--palette-surface:#18212a;--palette-tint:#ffffff12}
+main.listening-atmosphere{position:relative;background:var(--paper);isolation:isolate;color:var(--ink)}
 main.listening-atmosphere::before{content:"";position:absolute;inset:-80px;z-index:-1;pointer-events:none;background-image:var(--lyrics-cover-image);background-position:center;background-size:cover;filter:blur(70px);opacity:.30}
 
 /* Fixed desktop hero; only the queue and lyrics are independently scrollable. */
@@ -167,16 +167,16 @@ body.listening-page-open .main-footer{display:none}
 
 /* Translucent listening actions sit on the cover backdrop instead of opaque theme cards. */
 :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button:not(.danger):not(.primary){
-  background:color-mix(in srgb,var(--accent) 7%,transparent);border-color:#ffffff26;
-  color:#e2e7ec;box-shadow:none;font-weight:500;
+  background:color-mix(in srgb,var(--accent) 7%,transparent);border-color:var(--line);
+  color:inherit;box-shadow:none;font-weight:500;
 }
 :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button:not(.danger):not(.primary):hover:not(:disabled){
   background:color-mix(in srgb,var(--accent) 14%,transparent);
-  border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:#fff;
+  border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:inherit;
 }
 .visual-player.cover-atmosphere .visual-player-header .button[aria-pressed="true"]{
   background:color-mix(in srgb,var(--accent) 17%,transparent);
-  border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:#fff;
+  border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:inherit;
 }
 .visual-player.cover-atmosphere #visual-player-disc-toggle[aria-pressed="true"]{
   border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:none;
@@ -239,3 +239,15 @@ body.listening-page-open #mode-badge.live:hover{background:#ffffff14}
 #listening-lyrics-slot .visual-lyrics footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 #listening-lyrics-slot #visual-lyrics-source{font-size:clamp(10px,.8vw,12px);line-height:1.4;margin:0}
 #listening-lyrics-slot #visual-lyrics-source a{color:var(--accent)}
+
+/* Cover tint never overrides the user's Light/Dark choice or its readable controls. */
+:root[data-theme="light"] :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger{color:#a52f38;border-color:#c58489}
+:root[data-theme="light"] :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger:hover{color:#8f2630}
+:root[data-theme="light"] body.listening-page-open :is(#mode-badge.live,.listening-kicker,#visual-lyrics-source a,.queue-current .queue-number,.queue-current .queue-label strong){color:var(--green)}
+:root[data-theme="light"] #listening-lyrics-slot #visual-lyrics-source a{color:var(--green)}
+@media(prefers-color-scheme:light){
+  :root:not([data-theme="dark"]) :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger{color:#a52f38;border-color:#c58489}
+  :root:not([data-theme="dark"]) :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger:hover{color:#8f2630}
+  :root:not([data-theme="dark"]) body.listening-page-open :is(#mode-badge.live,.listening-kicker,#visual-lyrics-source a,.queue-current .queue-number,.queue-current .queue-label strong){color:var(--green)}
+  :root:not([data-theme="dark"]) #listening-lyrics-slot #visual-lyrics-source a{color:var(--green)}
+}
