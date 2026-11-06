@@ -212,6 +212,7 @@ function useLocal(albums, mode) {
   if (typeof resetFavourites === "function") resetFavourites();
   if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
+  if (typeof detachQueueMemory === "function") detachQueueMemory();
   if (typeof stopPlayer === "function") stopPlayer();
   if (typeof resetAlbumView === "function") resetAlbumView();
   for (const album of albums) for (const t of album.tracks) { t.genres = trackGenres(t); t.composers ??= []; }
@@ -1251,7 +1252,7 @@ document.addEventListener("click", event => {
   const track = event.target.closest("button[data-track]");
   if (track) { editTrack(track.dataset.track); return; }
   const page = event.target.closest("[data-page]");
-  if (page) { state.page += Number(page.dataset.page); render(); return; }
+  if (page) { state.page += Number(page.dataset.page); render(); scrollListingStart("#albums-page"); return; }
   if (event.target.closest("#review-button")) buildReview();
 });
 document.addEventListener("keydown", event => {
@@ -1496,6 +1497,7 @@ async function loadLive(refresh = false) {
     if (!current()) return;
     completed = true;
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
     applyEditorNames(data.editor_names);
     updatePlaylistCount(data.playlists_count);
     state.albumFavourites = new Set(data.album_favourites?.albums || []);
@@ -1524,6 +1526,7 @@ async function loadLive(refresh = false) {
     if (typeof refreshPlayerRatings === "function") refreshPlayerRatings();
     if (typeof restorePendingRoute === "function") restorePendingRoute();
     if (typeof syncMusicUploadsPage === "function") syncMusicUploadsPage();
+    if (typeof restoreQueueMemory === "function" && live()) restoreQueueMemory();
   }
 }
 
@@ -1829,7 +1832,7 @@ function showTheme() {
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
   const label = TagcastI18n.text({auto: "app.theme.auto", light: "app.theme.light", dark: "app.theme.dark"}[theme]);
-  const palettes = {forest: "app.theme.forest", ocean: "app.theme.ocean", warm: "app.theme.warm", ibroadcast: "app.theme.ibroadcast", apple: "app.theme.apple"};
+  const palettes = {forest: "app.theme.forest", ocean: "app.theme.ocean", warm: "app.theme.warm", ibroadcast: "app.theme.ibroadcast", apple: "app.theme.apple", amber: "app.theme.amber"};
   // A custom theme's name is the user's own text; built-in palette names follow the interface language.
   const colour = TagcastThemes.active()?.name || (Object.hasOwn(palettes, palette) ? TagcastI18n.text(palettes[palette]) : undefined);
   $("#theme-button").textContent = TagcastI18n.text("app.theme.button", {icon: {auto: "◐", light: "☀", dark: "☾"}[theme]});

@@ -8,6 +8,7 @@ async function checkThemes({window, miniPlayer}) {
  const capture=async name=>{if(shots){await frame();fs.writeFileSync(path.join(shots,name+'.png'),(await owner.capturePage()).toPNG());}};
  const before=await run(`(()=>{globalThis.themeCheckAudio=audio;globalThis.themeCheckQueue=player.queue;return {storage:localStorage.getItem(TagcastThemes.key),appearance:localStorage.getItem('tagcast-theme'),palette:localStorage.getItem('tagcast-palette')};})()`);
  try {
+  const listeningAppearance=await require('./listening-theme-smoke.cjs').checkListeningThemes(window);
   await run(`openSettings('interface');window.scrollTo(0,0)`);await capture('before-settings-interface');
   await run(`showSettings('appearance');window.scrollTo(0,0);`);
   assert.equal(await run('document.querySelector("#theme-name").value.length>0'),true);
@@ -51,7 +52,7 @@ async function checkThemes({window, miniPlayer}) {
   await run('document.querySelector("#theme-save").click()');assert.equal(await run('TagcastThemes.snapshot().themes.length'),2);
   await run('themeEditorLoad(TagcastThemes.snapshot().themes.find(t=>t.id===themeCheckId));renderThemeEditor();');
   // Palette changes must preserve the authoritative audio element and queue object.
-  for(const palette of ['forest','ocean','warm','ibroadcast','apple'])for(const appearance of ['light','dark']) {
+  for(const palette of ['forest','ocean','warm','ibroadcast','apple','amber'])for(const appearance of ['light','dark']) {
    await run(`setColourPalette('${palette}');document.documentElement.dataset.theme='${appearance}';showTheme();showSettings('appearance');themeEditorView.mode='${appearance}';renderThemeEditor();document.querySelector('#theme-editor-form').scrollIntoView({block:'start'});window.scrollBy(0,-20);`);
    assert.equal(await run('themeCheckAudio===audio&&themeCheckQueue===player.queue'),true);
    assert.equal(await run('document.documentElement.scrollWidth>innerWidth'),false);
@@ -90,7 +91,9 @@ async function checkThemes({window, miniPlayer}) {
   const saved=await run('TagcastThemes.active().id');
   await owner.reload();await once(owner,'did-finish-load');
   assert.equal(await run('TagcastThemes.active().id'),saved,'Saved theme survives a full reload');
-  return {savedAndReloaded:true,exportedAndImported:true,previewIsolated:true,invalidInputRetained:true,variantsIndependent:true,draftRetained:true,keyboard:true,sameAudioAndQueue:true,miniColours:true,layouts};
+  return {savedAndReloaded:true,exportedAndImported:true,previewIsolated:true,invalidInputRetained:true,variantsIndependent:true,draftRetained:true,keyboard:true,sameAudioAndQueue:true,miniColours:true,layouts,listeningAppearance};
+ } catch(error) {
+  error.message=error.stack||error.message;throw error;
  } finally {
   owner.setZoomFactor(1);window.setBounds(initialBounds);
   await run(`for(const [key,value]of Object.entries(${JSON.stringify({"tagcast-custom-themes":before.storage,"tagcast-theme":before.appearance,"tagcast-palette":before.palette})})){if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value);}themeEditorView.draft=null;themeEditorView.baseline=null;`).catch(()=>{});

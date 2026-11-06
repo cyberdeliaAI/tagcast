@@ -239,3 +239,82 @@
   --palette-nav-icon:#ff6476;
 }
 }
+
+/* Amber · Original, shared with the importable ibfetch-inspired theme. */
+:root[data-palette="amber"]{
+  --palette-brand-background:#e9a23a;
+  --palette-brand-ink:#241600;
+  --palette-brand-paper:#fafaf8;
+  --palette-sidebar:#eff0ec;
+  --palette-accent:#e9a23a;
+  --palette-shell-ink:#1c2024;
+  --palette-shell-muted:#5c636a;
+  --palette-shell-active:#f3e1bd;
+  --palette-shell-line:#c6cac2;
+  --palette-ink:#1c2024;
+  --palette-muted:#5c636a;
+  --palette-paper:#e2e4df;
+  --palette-line:#c6cac2;
+  --palette-link:#b8730c;
+  --palette-surface:#fafaf8;
+  --palette-soft:#eff0ec;
+  --palette-tint:#f3e1bd;
+  --palette-focus:#b8730c;
+  --palette-primary:#e9a23a;
+  --palette-primary-hover:#f7ac3d;
+  --palette-chart:#e9a23a;
+  --palette-primary-ink:#241600;
+  --palette-nav-icon:#e9a23a;
+}
+:root[data-palette="amber"][data-theme="dark"]{
+  --palette-brand-background:#f0a63a;
+  --palette-brand-ink:#241600;
+  --palette-brand-paper:#272b2f;
+  --palette-sidebar:#1f2225;
+  --palette-accent:#f0a63a;
+  --palette-shell-ink:#e5e6e2;
+  --palette-shell-muted:#969ca2;
+  --palette-shell-active:#43361d;
+  --palette-shell-line:#353a3f;
+  --palette-ink:#e5e6e2;
+  --palette-muted:#969ca2;
+  --palette-paper:#16181a;
+  --palette-line:#353a3f;
+  --palette-link:#f0a63a;
+  --palette-surface:#272b2f;
+  --palette-soft:#1f2225;
+  --palette-tint:#43361d;
+  --palette-focus:#f0a63a;
+  --palette-primary:#f0a63a;
+  --palette-primary-hover:#feb03d;
+  --palette-chart:#f0a63a;
+  --palette-primary-ink:#241600;
+  --palette-nav-icon:#f0a63a;
+}
+@media(prefers-color-scheme:dark){
+:root[data-palette="amber"]:not([data-theme="light"]){
+  --palette-brand-background:#f0a63a;
+  --palette-brand-ink:#241600;
+  --palette-brand-paper:#272b2f;
+  --palette-sidebar:#1f2225;
+  --palette-accent:#f0a63a;
+  --palette-shell-ink:#e5e6e2;
+  --palette-shell-muted:#969ca2;
+  --palette-shell-active:#43361d;
+  --palette-shell-line:#353a3f;
+  --palette-ink:#e5e6e2;
+  --palette-muted:#969ca2;
+  --palette-paper:#16181a;
+  --palette-line:#353a3f;
+  --palette-link:#f0a63a;
+  --palette-surface:#272b2f;
+  --palette-soft:#1f2225;
+  --palette-tint:#43361d;
+  --palette-focus:#f0a63a;
+  --palette-primary:#f0a63a;
+  --palette-primary-hover:#feb03d;
+  --palette-chart:#f0a63a;
+  --palette-primary-ink:#241600;
+  --palette-nav-icon:#f0a63a;
+}
+}

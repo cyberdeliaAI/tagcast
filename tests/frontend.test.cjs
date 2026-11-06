@@ -10,8 +10,8 @@ const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
 // Display-only Now playing lyrics exercise the actual page scripts below.
-async function playbackLyricsPage(mode = "native") {
-  const storage = {"tagcast-now-playing-lyrics": mode};
+async function playbackLyricsPage(mode = "native", preferences = {}) {
+  const storage = {"tagcast-now-playing-lyrics": mode, ...preferences};
   const p = page({storage}); await settle();
   p.run('state.mode="live";state.connection.playback_session="lyrics-session";playTracks(state.details.get("1"));');
   return {p, storage};
@@ -24,20 +24,100 @@ const displayLyricsFixture = {status:"ready",source:"unison",timed:true,lines:[
   {start:3,end:8,text:"Second test line"}]};
 const emptyNativeLyrics = {status:"not_cached",source:"ibroadcast",text:"",native_text:"",can_lookup:false};
 
-test('cover atmosphere is optional, profile-local and clears when artwork is unavailable or player closes',async()=>{
-  const {p,storage}=await playbackLyricsPage();
-  const art=p.nodes.get('#visual-player-art');
-  art.complete=true;art.naturalWidth=300;art.hidden=false;art.src='https://artwork.example/cover.jpg';
-  p.run('visualPlayer.open=true;renderLyricsCoverBackground()');
-  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
-  await p.change({id:'playback-lyrics-cover-background',checked:true,matches:()=>false,closest:()=>null});
-  assert.equal(storage['tagcast-now-playing-cover-background'],'true');
-  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),true);
-  assert.match(p.nodes.get('#visual-player').style['--lyrics-cover-image'],/cover.jpg/);
-  art.hidden=true;p.run('renderLyricsCoverBackground()');
-  assert.equal(p.nodes.get('#visual-player').style['--lyrics-cover-image'],undefined);
-  p.run('hideVisualPlayer()');
-  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
+test('cover atmosphere is always shown with loaded artwork, including previous opt-outs',async()=>{
+  for (const saved of [undefined,'false','true']) {
+    const {p,storage}=await playbackLyricsPage('native',saved===undefined?{}:{'tagcast-now-playing-cover-background':saved});
+    const art=p.nodes.get('#visual-player-art');
+    art.complete=true;art.naturalWidth=300;art.hidden=false;art.src='https://artwork.example/cover.jpg';
+    p.run('visualPlayer.open=true;renderLyricsCoverBackground()');
+    assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),true);
+    assert.match(p.nodes.get('#visual-player').style['--lyrics-cover-image'],/cover.jpg/);
+    assert.doesNotMatch(p.run('playbackLyricsSettings()'),/playback-lyrics-cover-background/);
+    assert.equal(storage['tagcast-now-playing-cover-background'],saved,'No preference migration writes are required');
+    art.hidden=true;p.run('renderLyricsCoverBackground()');
+    assert.equal(p.nodes.get('#visual-player').style['--lyrics-cover-image'],undefined);
+    p.run('hideVisualPlayer()');
+    assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
+  }
+});
+
+test('the listening page always shows the loaded cover and rejects missing or obsolete cover events',async()=>{
+  const {p}=await playbackLyricsPage();
+  const host=p.nodes.get('#now-playing-current'), workspace=p.nodes.get('main');
+  const first={complete:true,naturalWidth:300,hidden:false,src:'https://artwork.example/first.jpg'};
+  let current=first;
+  host.querySelector=selector=>selector==='.now-playing-cover img'?current:null;
+  p.run('showScreen("now-playing")');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),true);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  const requests=p.requests.length;
+  assert.match(workspace.style['--lyrics-cover-image'],/first.jpg/);
+  assert.equal(workspace.classList.contains('listening-atmosphere'),true);
+  current={complete:false,naturalWidth:0,hidden:false,src:'https://artwork.example/second.jpg'};
+  p.run('renderLyricsCoverBackground()');
+  assert.equal(workspace.style['--lyrics-cover-image'],undefined,'Never keep the previous track colour while a new cover loads');
+  await host.emit('load',{target:first});
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  current.complete=true;current.naturalWidth=300;
+  await host.emit('load',{target:current});
+  assert.match(workspace.style['--lyrics-cover-image'],/second.jpg/);
+  current.naturalWidth=0;
+  await host.emit('error',{target:current});
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  current=first;p.run('renderLyricsCoverBackground();visualPlayer.open=true;renderLyricsCoverBackground()');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false,'Expanded playback never tints the hidden workspace');
+  p.run('visualPlayer.open=false;renderLyricsCoverBackground()');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),true);
+  p.run('showScreen("albums")');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  await host.emit('load',{target:first});
+  assert.equal(workspace.style['--lyrics-cover-image'],undefined,'Late events cannot tint another page');
+  assert.equal(p.requests.length,requests,'Cover presentation makes no provider or account requests');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('the listening page shares one timed lyrics view and cache with the expanded player',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.run('$("#listening-lyrics-slot");$(".visual-player-content")');
+  for (const selector of ['#listening-lyrics-slot','.visual-player-content']) {
+    const host=p.nodes.get(selector), append=host.appendChild;
+    host.appendChild=node=>{node.parentElement=host;return append.call(host,node);};
+  }
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  p.run('showScreen("now-playing")');await settle();
+  const region=p.nodes.get('#visual-player-lyrics');
+  assert.equal(region.parentElement,p.nodes.get('#listening-lyrics-slot'));
+  assert.equal(region.hidden,false);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
+  p.run('audio.currentTime=2;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.active'),0);
+  p.run('playbackLyricsView.open=true;openVisualPlayer()');await settle();
+  assert.equal(region.parentElement,p.nodes.get('.visual-player-content'));
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,1);
+  p.run('hideVisualPlayer()');await settle();
+  assert.equal(region.parentElement,p.nodes.get('#listening-lyrics-slot'));
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,1);
+  p.run('showScreen("albums")');
+  assert.equal(region.hidden,true);
+  assert.equal(region.parentElement,p.nodes.get('.visual-player-content'));
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('leaving the listening page cancels public lyrics and rejects a late reply',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');let release,signal;
+  p.setFetch((url,options)=>url==='/api/lyrics/display'?new Promise(resolve=>{release=resolve;signal=options.signal;})
+    :{ok:true,json:async()=>emptyNativeLyrics});
+  p.run('showScreen("now-playing")');await settle();
+  assert.equal(signal.aborted,false);
+  p.run('showScreen("albums")');assert.equal(signal.aborted,true);
+  release({ok:true,json:async()=>displayLyricsFixture});await settle();
+  assert.equal(p.run('playbackLyricsView.data'),null);
+  assert.equal(p.run('playbackLyricsView.cache.size'),0);
+  assert.equal(p.nodes.get('#visual-player-lyrics').hidden,true);
+  const requests=p.requests.length;
+  p.run('setPlaybackLyricsMode("native");showScreen("now-playing")');await settle();
+  assert.equal(p.requests.slice(requests).filter(r=>r.url==='/api/lyrics/display').length,0,'Native-only never opts into public lookups');
 });
 
 test('display lyrics default to native and do not fetch while the large lyrics view is closed', async()=>{
@@ -162,10 +242,13 @@ test('line following uses current-track gapless time, handles seeking and yields
   let stopped=false;
   await p.nodes.get('#visual-lyrics-lines').emit('keydown',{key:'ArrowDown',stopPropagation(){stopped=true;}});
   assert.equal(stopped,true);assert.equal(p.run('playbackLyricsView.following'),false);
-  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,false);
+  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,true);
+  assert.equal(p.nodes.get('.listening-follow').hidden,false);
+  assert.equal(p.nodes.get('#listening-lyrics-follow').checked,false);
   p.run('gaplessPosition=()=>4');await p.nodes.get('#audio').emit('seeked');await settle();
   assert.equal(p.run('playbackLyricsView.active'),1);
-  await p.nodes.get('#visual-lyrics-follow').emit('click');
+  p.nodes.get('#listening-lyrics-follow').checked=true;
+  await p.nodes.get('#listening-lyrics-follow').emit('change');
   assert.equal(p.run('playbackLyricsView.following'),true);
   p.run('gaplessPosition=()=>0;syncPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.active'),-1);
   p.run('gaplessPosition=()=>9;syncPlaybackLyrics()');assert.equal(p.run('playbackLyricsView.active'),-1);
@@ -191,7 +274,7 @@ test('LRCLIB fallback is explicitly requested, attributed and remains display-on
   const request=p.requests.find(r=>r.url==='/api/lyrics/display');
   assert.equal(JSON.parse(request.options.body).fallback_lrclib,true);
   assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/https:\/\/lrclib.net\//);
-  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Temporary display/);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Not stored in iBroadcast/);
   assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
   assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/&lt;script&gt;/);
   p.run('gaplessPosition=()=>4;syncPlaybackLyrics()');
@@ -4654,16 +4737,17 @@ test("compact player choices survive reloads and work when browser storage is un
   assert.equal(bothHidden.run('storedPlayerDisplay("quality")'), true);
 });
 
-test("Now playing escapes metadata and has no route, queue jumping works, and Clear queue stops everything", async () => {
+test("the pinned Now playing page escapes metadata, supports history and shares queue controls", async () => {
   const p = livePage(); await settle();
   p.run('$("#now-playing-panel").hidden = true');
   p.run('state.details.get("1").tracks[0].title = "<script>unsafe</script>"; playTracks(state.details.get("1"), "100")');
   const length = p.history.length;
   await p.nodes.get("#player-queue").emit("click");
   assert.equal(p.nodes.get("#now-playing-panel").hidden, false);
-  assert.match(p.nodes.get("#now-playing-current").innerHTML, /&lt;script&gt;/);
+  assert.match(p.nodes.get("#now-playing-heading-title").textContent, /<script>/);
   assert.doesNotMatch(p.nodes.get("#now-playing-list").innerHTML, /<script>/);
-  assert.equal(p.history.length, length);
+  assert.equal(p.history.length, length + 1);
+  assert.equal(p.location.hash, "#/now-playing");
   await p.click({"[data-queue-index]": {dataset: {queueIndex: "1"}}});
   assert.equal(p.run("player.index"), 1);
   await p.nodes.get("#queue-clear").emit("click");
@@ -5141,7 +5225,12 @@ test("CD view toggles keep the same audio, queue, artwork and lyrics requests", 
   const art = p.nodes.get('#visual-player-art'), writes = [];
   let imageSrc = art.src;
   Object.defineProperty(art, 'src', {configurable:true,get(){return imageSrc;},set(value){imageSrc=value;writes.push(value);}});
-  for (let i=0;i<4;i++) await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  for (const style of ['cd','cd','cover','cover']) {
+    await p.nodes.get(`#visual-player-${style === 'cd' ? 'disc' : 'cover'}-toggle`).emit('click');
+    assert.equal(p.run('visualDisc.style'),style);
+    assert.equal(p.nodes.get('#visual-player-cover-toggle').getAttribute('aria-pressed'),String(style === 'cover'));
+    assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-pressed'),String(style === 'cd'));
+  }
   assert.deepEqual(playbackState(p), before);
   assert.deepEqual(writes, [], 'Both presentations reuse the already loaded cover');
   assert.equal(p.requests.length, requests, 'Changing artwork style does not fetch lyrics or metadata');
@@ -5158,6 +5247,28 @@ test("CD view toggles keep the same audio, queue, artwork and lyrics requests", 
   p.run('hideVisualPlayer()');
   assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
   assert.equal(p.nodes.get('#audio').paused, false, 'Closing the presentation does not pause playback');
+});
+
+test("CD lettering uses bounded loaded metadata as text, updates per track and preserves playback", async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get("1"));audio.currentTime=31;audio.pause();openVisualPlayer();player.queue[0].title="<img onerror=bad>";player.queue[0].artist="  First\\nPerformer  ";player.queue[0].album.name="Album <svg onload=bad>";renderVisualDisc()');
+  const before=playbackState(p), requests=p.requests.length;
+  const title=p.nodes.get('#visual-disc-title'),album=p.nodes.get('#visual-disc-album');
+  assert.equal(title.textContent,'<img onerror=bad> • First Performer');
+  assert.equal(album.textContent,'Album <svg onload=bad>');
+  assert.equal(title.innerHTML,'');assert.equal(album.innerHTML,'');
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.deepEqual(playbackState(p),before);
+  assert.equal(p.requests.length,requests);
+  p.run('player.queue[0].title="🎵".repeat(150);player.queue[0].album.name="長".repeat(80);renderVisualDisc()');
+  assert.equal(Array.from(title.textContent).length,96);
+  assert.equal(Array.from(album.textContent).length,36);
+  assert.ok(title.textContent.endsWith('…'));
+  assert.equal(p.run('player.queue[0].title.length'),300,'Display shortening never edits the original title');
+  p.run('player.index=1;renderVisualDisc()');
+  assert.ok(title.textContent.startsWith(p.run('player.queue[1].title')));
+  p.run('player.queue=[];player.index=-1;renderVisualDisc()');
+  assert.equal(title.textContent,'');assert.equal(album.textContent,'');
 });
 
 test("CD rotation follows readiness, actual playback, seeking, visibility and safe stops", async () => {
@@ -5193,11 +5304,32 @@ test("CD mode preserves missing-artwork initials, translated controls and paused
   assert.ok(p.nodes.get('#visual-player-placeholder').textContent);
   assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
   await p.run('TagcastI18n.use("nl")'); await settle();
-  assert.equal(p.nodes.get('#visual-player-disc-toggle').textContent, 'CD-weergave');
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').textContent, 'CD');
+  assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-label'), 'CD-weergave');
   assert.equal(p.run('visualDisc.style'), 'cd');
   assert.deepEqual(playbackState(p), before);
   assert.equal(p.requests.filter(r=>/\/api\//.test(r.url)).length,
     p.requests.slice(0,requests).filter(r=>/\/api\//.test(r.url)).length);
+});
+
+test("expanded context follows queue position, repeat and language without interpreting track HTML", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"));audio.pause();openVisualPlayer();player.queue[1].title="<img onerror=bad>";renderVisualPlayerLabels()');
+  const context=p.nodes.get('#visual-player-context'),before=playbackState(p),requests=p.requests.length;
+  assert.match(context.textContent,/Queue · 1 of/);
+  assert.match(context.textContent,/Next: <img onerror=bad>/);
+  assert.equal(context.innerHTML,"");
+  await p.nodes.get("#player-repeat").emit("click");
+  await p.nodes.get("#player-repeat").emit("click");
+  assert.ok(context.textContent.endsWith(p.run('player.queue[0].title')));
+  await p.run('TagcastI18n.use("nl")'); await settle();
+  assert.match(context.textContent,/Wachtrij/);
+  assert.deepEqual(playbackState(p),before);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/')).length,p.requests.slice(0,requests).filter(r=>r.url.startsWith('/api/')).length);
+  p.run('player.repeat="none";player.index=player.queue.length-1;renderVisualPlayerLabels()');
+  assert.doesNotMatch(context.textContent,/Hierna:/);
+  p.run('player.repeat="queue";renderVisualPlayerLabels()');
+  assert.ok(context.textContent.endsWith(p.run('player.queue[0].title')));
 });
 
 test("fullscreen Now playing reuses audio and queue, updates metadata safely and restores the library without requests", async () => {
@@ -5670,7 +5802,7 @@ test("cover clicks preserve title and keyboard navigation while a double-click o
 
 test("player covers keep immediate actions without enlargement; the album viewer preserves audio", async () => {
   const p = livePage(); await settle();
-  p.run('const coverAlbum = state.details.get("1"); coverAlbum.artwork = "https://art.example/artwork/9-300"; playTracks(coverAlbum, "100"); setNowPlaying(false)');
+  p.run('const coverAlbum = state.details.get("1"); coverAlbum.artwork = "https://art.example/artwork/9-300"; playTracks(coverAlbum, "100"); nowPlayingPreferences.open = "panel"; setNowPlaying(false)');
   const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), route = p.location.hash;
   await p.nodes.get('#player-cover-button').emit('click', {detail: 1});
   assert.equal(p.nodes.get('#now-playing-panel').hidden, false, 'One click opens Now playing immediately');
@@ -10742,9 +10874,9 @@ test('sidebar icon editing is optional, preview-only and resets to state-depende
  assert.equal(p.requests.length,requests,'Icon presentation never requests server data or changes playback');
 });
 
-test('Apple Music Classic is a fifth built-in palette and icon reset restores its base colour',async()=>{
+test('Apple Music Classic remains a built-in palette and icon reset restores its base colour',async()=>{
  const p=page({storage:{'tagcast-palette':'apple','tagcast-theme':'light'}});await settle();
- assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
+ assert.equal(p.run('TagcastThemes.builtins.includes("apple")'),true);assert.equal(p.nodes.get('#palette-apple').checked,true);
  assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
  p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
  assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette(?:'|&#39;)s icon colour/);
@@ -11281,7 +11413,7 @@ test("interface language: English playback text keeps its exact existing wording
   const count = p.run("player.queue.length");
   assert.equal(p.nodes.get("#now-playing-count").textContent, `${count} tracks`);
   const title = p.run("player.queue[0].title");
-  assert.match(p.nodes.get("#now-playing-list").innerHTML, new RegExp(`aria-label="Remove ${title.replace(/[()]/g, "\\$&")} from play queue, position 1" title="Remove from play queue"`));
+  assert.match(p.nodes.get("#now-playing-list").innerHTML, new RegExp(`aria-label="Actions for ${title.replace(/[()]/g, "\\$&")}"`));
   assert.equal(p.nodes.get("#audio-output-current").textContent, "Current output: System default");
   assert.equal(p.nodes.get("#audio-mute").textContent, "Mute");
   assert.equal(p.nodes.get("#audio-volume-value").textContent, "65%");
@@ -11320,7 +11452,7 @@ test("interface language: switching to Dutch during playback rewrites labels onl
   assert.equal(p.nodes.get("#now-playing-count").textContent, `${before.queue.length} nummers`);
   const list = p.nodes.get("#now-playing-list").innerHTML;
   assert.match(list, /<strong>Now playing<\/strong><small>Sound · Play queue<\/small>/, "metadata that looks like interface text is never translated");
-  assert.match(list, /aria-label="Now playing uit de afspeelwachtrij verwijderen, positie 1"/);
+  assert.match(list, /aria-label="Acties voor Now playing"/);
   p.run('appendToQueue(state.details.get("2"))');
   assert.match(p.nodes.get("#toast").textContent, /^\d+ nummers aan de wachtrij toegevoegd\.$/);
   await p.change({id: "interface-language", value: "en", matches: () => false, closest: () => null}); await settle(); await settle();
@@ -11639,4 +11771,488 @@ test('sidebar fades refresh on resize, shortcut layout changes and translation c
   assert.equal(p.run('document.activeElement === $("#workspace-nav")'),true);
   assert.equal(nav.scrollTop,0);
   assert.equal(observed.filter(node=>node===nav).length,1,'One observer for the existing sidebar, including after language changes');
+});
+
+
+test("Now playing preferences retain the audio element, queued occurrences and metadata drafts", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"))'); await settle();
+  p.run('audio.currentTime = 37; editing = {draft: "untouched"}');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), requests = p.requests.length;
+  for (const [id, value] of [['player-transport-style','spacious'],['now-playing-meter','vu'],['now-playing-open','panel']]) {
+    await p.emitDocument('change', {target: {id, value, matches: () => false, closest: () => null}});
+  }
+  assert.equal(p.run('nowPlayingPreferences.transport'), 'spacious');
+  assert.equal(p.nodes.get('#audio').hidden, true);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 37);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.deepEqual(p.json('editing'), {draft: 'untouched'});
+  assert.equal(p.requests.length, requests);
+  await p.nodes.get('#player-cover-button').emit('click');
+  assert.equal(p.location.hash, '#/artists', 'side panel is still available without routing');
+  await p.nodes.get('#player-queue').emit('click');
+  assert.equal(p.location.hash, '#/now-playing');
+  p.history.back();
+  assert.equal(p.location.hash, '#/artists');
+  assert.equal(p.nodes.get('#listening-page').hidden, true);
+  p.history.forward();
+  assert.equal(p.nodes.get('#listening-page').hidden, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+});
+
+test("stored presentation choices are restored and cannot hide the pinned navigation", async () => {
+  const p = page({storage: {'tagcast-player-transport':'spacious','tagcast-now-playing-meter':'spectrum',
+    'tagcast-now-playing-open':'panel','tagcast-sidebar':JSON.stringify({hidden:['player-queue']})}});
+  await settle();
+  assert.equal(p.run('nowPlayingPreferences.transport'), 'spacious');
+  assert.equal(p.run('nowPlayingPreferences.open'), 'panel');
+  assert.equal(p.run('nowPlayingPreferences.meter'), 'spectrum');
+  assert.equal(p.run('sidebarLayout.hidden.includes("player-queue")'), false);
+  assert.equal(p.run('SIDEBAR_ITEMS.some(([id]) => id === "player-queue")'), false);
+  assert.equal(p.run('player.queue.length'), 0);
+});
+
+test("spacious ordinary playback seeks only the track where the drag started, including Repeat", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"))'); await settle();
+  p.run('nowPlayingPreferences.transport="spacious"; audio.duration=240; audio.currentTime=30; applyNowPlayingPreferences()');
+  assert.equal(p.nodes.get('#gapless-position').disabled, false);
+  await p.nodes.get('#gapless-position').emit('pointerdown');
+  assert.ok(p.run('gaplessControls.draft'));
+  p.nodes.get('#gapless-position').value = '120';
+  await p.nodes.get('#gapless-position').emit('input');
+  assert.equal(p.nodes.get('#audio').currentTime, 30, 'preview does not seek');
+  assert.equal(p.run('transportDraftCurrent(gaplessControls.draft)'), true);
+  await p.nodes.get('#gapless-position').emit('change');
+  assert.equal(p.nodes.get('#audio').currentTime, 120);
+  await p.nodes.get('#gapless-position').emit('pointerdown');
+  p.nodes.get('#gapless-position').value = '210';
+  await p.nodes.get('#gapless-position').emit('input');
+  p.run('player.epoch += 1; audio.currentTime=0');
+  await p.nodes.get('#gapless-position').emit('change');
+  assert.equal(p.nodes.get('#audio').currentTime, 0, 'a repeated copy rejects the previous drag');
+  await p.nodes.get('#gapless-play').emit('click');
+  assert.equal(p.nodes.get('#audio').paused, true);
+  await p.nodes.get('#gapless-play').emit('click');
+  assert.equal(p.nodes.get('#audio').paused, false);
+  p.run('nowPlayingPreferences.transport="compact"; applyNowPlayingPreferences()');
+  assert.equal(p.nodes.get('#audio').hidden, false);
+  assert.equal(p.nodes.get('#gapless-transport').hidden, true);
+});
+
+test("the listening page retains occurrence-bound queue removal and stops on an empty queue", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); appendToQueue(state.details.get("1")); showScreen("now-playing"); audio.currentTime=23');
+  const source = p.nodes.get('#audio').src, before = p.json('player.queue.map(t=>t.id)');
+  const stale = queueRemoveControl(p, 1), revision = p.run('nowPlayingRows.revision');
+  await p.click({'[data-queue-remove]':stale});
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 23);
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), [before[0], ...before.slice(2)]);
+  p.run(`removeQueueEntry(1, ${revision})`);
+  assert.equal(p.run('player.queue.length'), before.length-1, 'stale row cannot remove the new occupant');
+  await p.nodes.get('#queue-clear').emit('click');
+  assert.equal(p.location.hash, '#/now-playing');
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /add an album/);
+  assert.equal(p.nodes.get('#player').hidden, true);
+});
+
+test("spacious controls leave loading on a media error and recover on the next ready track", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); nowPlayingPreferences.transport="spacious"; audio.duration=NaN; applyNowPlayingPreferences()');
+  assert.equal(p.nodes.get('#transport-current').textContent, 'Preparing…');
+  assert.equal(p.nodes.get('#gapless-position').disabled, true);
+  p.run('audio.error={code:2}; gaplessRenderTransport()');
+  assert.equal(p.nodes.get('#gapless-transport').getAttribute('aria-busy'), 'false');
+  assert.equal(p.nodes.get('#transport-current').textContent, '—');
+  assert.match(p.nodes.get('.transport-timeline').title, /Could not play/);
+  p.run('audio.error=null; audio.duration=240; audio.currentTime=15; gaplessRenderTransport()');
+  assert.equal(p.nodes.get('#gapless-position').disabled, false);
+  assert.equal(p.nodes.get('#transport-current').textContent, '0:15');
+  assert.equal(p.nodes.get('#transport-total').textContent, '4:00');
+});
+
+
+test("retro VU needles follow independent RMS channels and settle without touching playback", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); nowPlayingPreferences.meter="vu"; showScreen("now-playing"); visualizerSupported=()=>true; visualizerReducedMotion=()=>false; nowPlayingPresentation.vu=[0,0]');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue');
+  p.run('drawListeningMeter(300,[new Float32Array(2048).fill(.12589254),new Float32Array(2048).fill(.02)],[])');
+  const levels=p.json('nowPlayingPresentation.vu');
+  assert.ok(levels[0]>levels[1] && levels[0]<1);
+  assert.ok(levels[0]>0.4, 'the defined -18 dBFS reference produces a visible response');
+  p.run('for(let i=0;i<25;i++)drawListeningMeter(100,null,[])');
+  assert.ok(p.json('nowPlayingPresentation.vu').every(v=>v<.001));
+  assert.equal(p.nodes.get('#audio').src,source);
+  assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#audio').paused,false);
+});
+
+
+test('the fixed listening workspace follows transport height without changing playback',async()=>{
+  const callbacks=new Map();
+  const p=page({browserResizeObserver:class {
+    constructor(callback){this.callback=callback;}
+    observe(node){callbacks.set(node,this.callback);}
+  }});await settle();
+  const bar=p.nodes.get('#player'),resize=callbacks.get(bar);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,screen:state.screen})');
+  const requests=p.requests.length;
+  bar.hidden=false;bar.getBoundingClientRect=()=>({height:111.4});resize();
+  assert.equal(p.run('document.documentElement.style["--listening-player-height"]'),'112px');
+  bar.hidden=true;resize();
+  assert.equal(p.run('document.documentElement.style["--listening-player-height"]'),'0px');
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,screen:state.screen})'),before);
+});
+
+
+test('Sound stays in the sidebar across listening views without replacing playback or volume',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1")); visualPlayerMode="window"; audio.volume=.43; audio.muted=true; $("#sidebar-sound")');
+  await settle();
+  const host=p.nodes.get('#sidebar-sound'),append=host.appendChild;
+  host.appendChild=node=>{node.parentElement=host;return append.call(host,node);};
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,volume:audio.volume,muted:audio.muted})');
+  for(const action of ['showScreen("now-playing")','openVisualPlayer()','hideVisualPlayer()','showScreen("albums")']){
+    p.run(action);
+    assert.equal(p.nodes.get('#player-output').parentElement,host,action);
+    assert.equal(p.nodes.get('#player-output').disabled,false);
+    assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,volume:audio.volume,muted:audio.muted})'),before);
+  }
+  await p.nodes.get('#player-output').emit('click');await settle();
+  assert.equal(p.nodes.get('#audio-output-dialog').open,true);
+  p.run('closePlaybackOutput()');
+});
+
+
+test('the listening heading holds the current title as text and keeps album artists separate from performers',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1")); player.queue[0].title="<img src=x onerror=alert(1)>";player.queue[0].artist="A different performer";showScreen("now-playing")');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,'<img src=x onerror=alert(1)>');
+  const html=p.nodes.get('#now-playing-current').innerHTML;
+  assert.doesNotMatch(html,/<h3>|<img src=x|now-playing-rating-slot/);
+  assert.match(html,/A different performer/);
+  assert.match(html,/data-artist="Pink Floyd"/);
+  assert.match(html,/data-album="1"/);
+  p.run('setNowPlaying(false);showScreen("albums");setNowPlaying(true)');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,'');
+  assert.match(p.nodes.get('#now-playing-current').innerHTML,/<h3>&lt;img src=x/);
+});
+
+test('queue rows expose one ellipsis action without nested buttons or marking every repeated ID as playing',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));appendToQueue(state.details.get("1"));showScreen("now-playing")');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),requests=p.requests.length;
+  p.run('renderNowPlaying()');
+  const html=p.nodes.get('#now-playing-list').innerHTML,track=p.json('player.queue[0]');
+  assert.equal((html.match(/queue-row queue-editable playing/g)||[]).length,1);
+  assert.equal((html.match(/queue-current/g)||[]).length,1);
+  assert.match(html,/queue-playing-bars/);
+  assert.doesNotMatch(html,/data-favourite=|data-dislike=|data-track-tags=|queue-track-actions/);
+  assert.match(html,/<\/button><button type="button" class="queue-row-more"/);
+  assert.equal((html.match(/class="queue-row-more"/g)||[]).length,p.run('player.queue.length'));
+  assert.match(html,new RegExp('data-queue-track="'+track.id+'"'));
+  assert.equal(p.requests.length,requests,'Rendering actions never reads or writes library data');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+  p.run('audio.pause();renderNowPlaying()');
+  assert.doesNotMatch(p.nodes.get('#now-playing-list').innerHTML,/queue-row queue-editable playing/);
+  assert.equal((p.nodes.get('#now-playing-list').innerHTML.match(/queue-current/g)||[]).length,1,
+    'The current occurrence stays highlighted when paused, including its sibling actions');
+});
+
+test('the listening page omits Close and retains keyboard focus when its last queue entry is removed',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));player.queue=player.queue.slice(0,1);showScreen("now-playing");setNowPlaying(true)');
+  assert.equal(p.nodes.get('#now-playing-close').hidden,true);
+  assert.equal(p.run('document.activeElement === $("#now-playing-heading")'),true);
+  await p.click({'[data-queue-remove]':queueRemoveControl(p,0)});
+  assert.equal(p.run('player.queue.length'),0);
+  assert.equal(p.run('audio.paused'),true);
+  assert.equal(p.run('document.activeElement === $("#now-playing-heading")'),true);
+  assert.equal(p.nodes.get('#now-playing-panel').hidden,false);
+  p.run('showScreen("albums");setNowPlaying(true)');
+  assert.equal(p.nodes.get('#now-playing-close').hidden,false);
+  assert.equal(p.run('document.activeElement === $("#now-playing-close")'),true);
+  await p.nodes.get('#now-playing-close').emit('click');
+  assert.equal(p.nodes.get('#now-playing-panel').hidden,true);
+});
+
+test('expanded artist and album navigation leaves the playback source and queue untouched',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));visualPlayerMode="window";openVisualPlayer()');
+  assert.match(p.nodes.get('#visual-player-artist').innerHTML,/data-visual-artist="Pink Floyd"/);
+  assert.match(p.nodes.get('#visual-player-album').innerHTML,/data-visual-album="1"/);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  await p.click({'[data-visual-artist]':{dataset:{visualArtist:'Pink Floyd'}}});await settle();
+  assert.equal(p.run('visualPlayer.open'),false);
+  assert.equal(p.run('state.artist'),'Pink Floyd');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+  p.run('openVisualPlayer()');
+  await p.click({'[data-visual-album]':{dataset:{visualAlbum:'1'}}});await settle();
+  assert.equal(p.run('visualPlayer.open'),false);
+  assert.equal(p.run('state.screen'),'album');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('ready lyrics can omit the extra notice while loading and errors remain visible',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  openDisplayLyrics(p);await settle();
+  const node=p.nodes.get('#visual-lyrics-message');
+  assert.equal(node.classList.contains('lyrics-ready-notice'),true);
+  p.run('setPlaybackLyricsNotice({errors:[new Error("Unavailable")]})');
+  assert.equal(node.classList.contains('lyrics-ready-notice'),false);
+  assert.match(node.textContent,/Unavailable/);
+  p.run('playbackLyricsView.data=null;setPlaybackLyricsNotice({checking:true})');
+  assert.equal(node.classList.contains('lyrics-ready-notice'),false);
+  assert.match(node.textContent,/Checking/);
+});
+
+function listeningRowControl(p, index) {
+  p.run(`$("#test-listening-row").dataset = {queueAlbum: String(player.queue[${index}].album.id), queueTrack: String(player.queue[${index}].id), queueRow: "${index}", queueRevision: String(nowPlayingRows.revision)}`);
+  return p.nodes.get('#test-listening-row');
+}
+
+test('listening ellipsis opens without requests and preserves keyboard dismissal and playback', async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));showScreen("now-playing");audio.currentTime=23');
+  const trigger=listeningRowControl(p,1), requests=p.requests.length;
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime})');
+  await p.click({'[data-queue-album]':trigger});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,false);
+  assert.equal(p.nodes.get('#queue-action-tags').hidden,false);
+  assert.equal(p.nodes.get('#queue-action-remove').hidden,false);
+  assert.match(p.nodes.get('#queue-action-remove').getAttribute('aria-label'),/Welcome to the Machine.*position 2/);
+  await p.nodes.get('#queue-action-menu').emit('keydown',{key:'End',preventDefault(){}});
+  assert.equal(p.run('document.activeElement === $("#queue-action-remove")'),true);
+  await p.nodes.get('#queue-action-menu').emit('keydown',{key:'Escape',preventDefault(){}});
+  assert.equal(p.run('document.activeElement === $("#test-listening-row")'),true);
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime})'),before);
+});
+
+test('ellipsis actions target the chosen occurrence rather than the playing track',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));showScreen("now-playing");globalThis.rowActions=[];openTrackTags=(...args)=>rowActions.push(["tags",...args]);openTrackPlaylist=(...args)=>rowActions.push(["playlist",...args]);toggleFavourite=(...args)=>rowActions.push(["rating",...args])');
+  const track=p.json('player.queue[1]');
+  for (const action of ['tags','playlist','like','dislike']) {
+    await p.click({'[data-queue-album]':listeningRowControl(p,1)});
+    await p.nodes.get('#queue-action-'+action).emit('click');
+  }
+  const calls=p.json('rowActions');
+  assert.deepEqual(calls.slice(0,2),[['tags',track.album.id,track.id],['playlist',String(track.album.id),track.id]]);
+  assert.equal(calls[2][1],track.id);assert.equal(calls[3][1],track.id);
+  assert.equal(calls[3].at(-1),1);
+  assert.equal(p.run('player.index'),0);
+});
+
+test('ellipsis rejects stale revisions, replaced libraries and detached controls',async()=>{
+  for (const change of ['nowPlayingRows.revision+=1','state.details=new Map(state.details)','$("#test-listening-row").isConnected=false']) {
+    const p=livePage();await settle();
+    p.run('playTracks(state.details.get("1"));showScreen("now-playing");globalThis.rowActions=[];openTrackTags=(...args)=>rowActions.push(args)');
+    await p.click({'[data-queue-album]':listeningRowControl(p,1)});
+    p.run(change);await p.nodes.get('#queue-action-tags').emit('click');
+    assert.deepEqual(p.json('rowActions'),[]);
+    assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+  }
+});
+
+test('ellipsis removal preserves a paused current track and only removes the reviewed duplicate occurrence',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));appendToQueue(state.details.get("1"));audio.pause();audio.currentTime=37;showScreen("now-playing")');
+  const before=p.json('player.queue.map(t=>t.id)'), source=p.nodes.get('#audio').src;
+  const index=before.length/2;
+  await p.click({'[data-queue-album]':listeningRowControl(p,index)});
+  await p.nodes.get('#queue-action-remove').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),before.filter((_,i)=>i!==index));
+  assert.equal(p.nodes.get('#audio').src,source);assert.equal(p.nodes.get('#audio').currentTime,37);assert.equal(p.nodes.get('#audio').paused,true);
+});
+
+test('routine queue rendering closes an obsolete ellipsis before its choice can run',async()=>{
+  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));showScreen("now-playing")');
+  await p.click({'[data-queue-album]':listeningRowControl(p,1)});
+  const before=p.run('player.queue.length');p.run('renderNowPlaying()');
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+  await p.nodes.get('#queue-action-remove').emit('click');assert.equal(p.run('player.queue.length'),before);
+});
+
+test('mock-up title separates only a recognised trailing edition without changing metadata',async()=>{
+  const p=livePage();await settle();
+  p.run('const a=state.details.get("1");a.tracks[0].title="Together In Electric Dreams (Extended; 2003 Remastered Version)";a.tracks[0].composers=["Giorgio Moroder", "Philip Oakey"];a.tracks[0].year=1984;playTracks(a);showScreen("now-playing")');
+  const original=p.run('player.queue[0].title');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,'Together In Electric Dreams');
+  assert.equal(p.nodes.get('#now-playing-edition').textContent,'Extended; 2003 Remastered Version');
+  assert.match(p.nodes.get('#now-playing-current').innerHTML,/1984.*Composers: Giorgio Moroder, Philip Oakey/s);
+  assert.match(p.nodes.get('#now-playing-count').textContent,/Track 1 of/);
+  assert.deepEqual(p.json('listeningTitleParts("Song (Who are you?)")'),{title:'Song (Who are you?)',edition:''});
+  assert.equal(p.run('player.queue[0].title'),original);
+  assert.doesNotMatch(p.nodes.get('#now-playing-current').innerHTML,/save.*lyrics|Save to tags/i);
+});
+
+test('Edit tags opens the existing track editor with no patches or writes',async()=>{
+  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));showScreen("now-playing")');
+  const id=p.run('player.queue[0].id'),before=p.run('JSON.stringify({src:audio.src,queue:player.queue})');
+  p.run('const CSS={escape:value=>String(value)};$("#track-inline").scrollIntoView=()=>{}');
+  await p.run(`editListeningTrack(${JSON.stringify(id)},"1")`);await settle();
+  assert.equal(p.nodes.get('#editor').open,true);assert.equal(p.run('editing.tab'),'tracks');
+  assert.equal(p.nodes.get('#track-inline').dataset.track,id);
+  assert.deepEqual(p.json('editing.trackPatches'),{});
+  assert.equal(p.run('JSON.stringify({src:audio.src,queue:player.queue})'),before);
+  assert.ok(p.requests.every(r=>!r.url.includes('/api/save')));
+});
+
+test('Follow switch shares timed lyrics state, supports manual reading and makes no extra requests',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  p.run('showScreen("now-playing")');await settle();await settle();
+  assert.equal(p.nodes.get('#listening-lyrics-follow').disabled,false);
+  assert.equal(p.nodes.get('#listening-lyrics-follow').checked,true);
+  const requests=p.requests.length, before=p.run('JSON.stringify({src:audio.src,queue:player.queue})');
+  await p.nodes.get('#visual-lyrics-lines').emit('wheel');
+  assert.equal(p.nodes.get('#listening-lyrics-follow').checked,false);
+  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,true,'No duplicate Follow button in the card footer');
+  p.nodes.get('#listening-lyrics-follow').checked=true;
+  await p.nodes.get('#listening-lyrics-follow').emit('change');
+  assert.equal(p.run('playbackLyricsView.following'),true);
+  assert.equal(p.requests.length,requests);assert.equal(p.run('JSON.stringify({src:audio.src,queue:player.queue})'),before);
+  p.run('playbackLyricsView.data={timed:false,lines:[]};syncListeningLyricsFollow()');
+  assert.equal(p.nodes.get('#listening-lyrics-follow').disabled,true);
+});
+
+test('automatic lyrics scrolling leaves the row menu open while scrolling its anchor dismisses it',async()=>{
+  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));showScreen("now-playing")');
+  const trigger=listeningRowControl(p,1);await p.click({'[data-queue-album]':trigger});
+  await p.emitDocument('scroll',{target:{contains:()=>false}});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,false);
+  await p.emitDocument('scroll',{target:{contains:node=>node===trigger}});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+});
+
+function queueMemoryPage(storage = {}, profile = 'a'.repeat(64)) {
+  const p = page({storage, deferReady:true});
+  p.run(`state.mode='live';state.loading=false;state.connection={connected:true,premium:true,playback_session:'session-1'};bindQueueMemory('${profile}');gaplessTrial.enabled=false;`);
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/queue-tracks');
+    const body = JSON.parse(options.body);
+    assert.equal(body.restore, true);
+    return {ok:true,json:async()=>({tracks:body.tracks.map((id,position)=>({id,position,title:'Fresh '+id,artist:'Performer',length:30,album:{id:'1',name:'Album',artist:'Artist'}}))})};
+  });
+  return p;
+}
+
+test('queue survives restart with occurrences, current selection, repeat and ordered album origins, without autoplay', async () => {
+  const storage = {}, p = queueMemoryPage(storage);
+  p.run(`player.queue=queueTracks({id:'1',name:'Album',artist:'Artist',tracks:[]},[{id:'900',title:'Old',length:30},{id:'901',title:'Next',length:30},{id:'900',title:'Repeat',length:30}]);gaplessAlbumQueue(player.queue,true);player.queue[1].upNext=true;player.index=2;player.repeat='queue';saveQueueMemory()`);
+  const saved = JSON.parse(storage['tagcast-queue-'+'a'.repeat(64)]);
+  assert.deepEqual(saved.entries.map(e=>e.id), ['900','901','900']);
+  assert.equal(JSON.stringify(saved).includes('Old'), false);
+  const restored = queueMemoryPage(storage);
+  const audio = restored.nodes.get('#audio');
+  let plays = 0; audio.play = () => { plays++; return Promise.resolve(); };
+  await restored.run('restoreQueueMemory()');
+  assert.deepEqual(restored.json('player.queue.map(t=>[t.id,t.title,t.upNext])'), [['900','Fresh 900',false],['901','Fresh 901',true],['900','Fresh 900',false]]);
+  assert.deepEqual(restored.json('[player.index,player.repeat,player.resumePending]'), [2,'queue',true]);
+  assert.deepEqual(restored.json('[gaplessAlbumEntry(player.queue[0]).index,gaplessAlbumEntry(player.queue[2]).index,gaplessAlbumEntry(player.queue[0]).run===gaplessAlbumEntry(player.queue[2]).run]'), [0,2,true]);
+  assert.equal(audio.src, undefined); assert.equal(plays,0);
+  assert.equal(restored.nodes.get('#gapless-play').disabled,false);
+  assert.equal(restored.nodes.get('#gapless-position').disabled,true);
+  await restored.nodes.get('#gapless-play').emit('click');
+  assert.equal(plays,1); assert.match(audio.src,/\/api\/stream\/900/);
+  assert.equal(restored.run('player.resumePending'),false);
+});
+
+test('queue restore skips deleted entries, retains the next occurrence and never restores another account', async () => {
+  const storage = {}, p = queueMemoryPage(storage);
+  p.run(`player.queue=[{id:'900'},{id:'901'},{id:'900'}];player.index=1;saveQueueMemory()`);
+  const q = queueMemoryPage(storage);
+  q.setFetch(()=>({ok:true,json:async()=>({tracks:[{id:'900',position:0,title:'A',album:{id:'1',name:'Album',artist:'Artist'}},{id:'900',position:2,title:'A',album:{id:'1',name:'Album',artist:'Artist'}}]})}));
+  await q.run('restoreQueueMemory()');
+  assert.equal(q.run('player.index'),1);
+  assert.equal(q.run('gaplessAlbumEntry(player.queue[0])'),undefined);
+  const other = queueMemoryPage(storage,'b'.repeat(64));
+  await other.run('restoreQueueMemory()');
+  assert.equal(other.run('player.queue.length'),0);
+  assert.equal(other.requests.filter(r=>r.url==='/api/queue-tracks').length,0);
+});
+
+test('queue restore cannot overwrite an explicit clear, newer playback, account or library replacement', async () => {
+  for (const change of ['stopPlayer()', "player.epoch++;player.queue=[{id:'999',title:'New'}];player.index=0", "state.connection.playback_session='new-session'", 'state.details=new Map()']) {
+    const storage = {}, p=queueMemoryPage(storage);
+    p.run("player.queue=[{id:'900'}];player.index=0;saveQueueMemory();player.queue=[];queueMemory.attempted=''");
+    let respond;
+    p.setFetch(()=>new Promise(resolve=>{respond=resolve;}));
+    const pending=p.run('restoreQueueMemory()'); await settle();
+    p.run(change);
+    respond({ok:true,json:async()=>({tracks:[{id:'900',position:0,title:'Late',album:{id:'1'}}]})});
+    await pending;
+    assert.equal(p.run("player.queue.some(t=>t.title==='Late')"),false,change);
+  }
+});
+
+test('queue storage failures, invalid snapshots and remote queue ownership leave playback independent', async () => {
+  const storage={},p=queueMemoryPage(storage);
+  for (const value of ['{',JSON.stringify({version:1,entries:[{id:'bad'}],index:0,repeat:'none',shuffle:false})]) {
+    storage['tagcast-queue-'+'a'.repeat(64)]=value;
+    p.run("queueMemory.attempted=''");await p.run('restoreQueueMemory()');
+    assert.equal(p.run('player.queue.length'),0);
+  }
+  p.run("player.queue=[{id:'900'}];player.index=0;saveQueueMemory();detachQueueMemory();stopPlayer()");
+  assert.equal(JSON.parse(storage['tagcast-queue-'+'a'.repeat(64)]).entries.length,1,'Disconnect preserves the live snapshot');
+  p.run("bindQueueMemory('"+'a'.repeat(64)+"');queueSync.active=true;queueMemory.attempted='';player.queue=[]");
+  await p.run('restoreQueueMemory()');assert.equal(p.run('player.queue.length'),0);
+  p.run("queueSync.active=false;localStorage.setItem=()=>{throw Error('Full')};player.queue=[{id:'901'}];player.index=0;saveQueueMemory()");
+  assert.equal(p.run('player.queue[0].id'),'901');
+});
+
+test('sorting survives restart independently per listing and ignores obsolete values', async () => {
+  const storage={},p=page({storage});
+  p.nodes.get('#sort').value='year';await p.nodes.get('#sort').emit('change');
+  p.nodes.get('#artists-sort').value='za';await p.nodes.get('#artists-sort').emit('change');
+  p.nodes.get('#guide-sort').value='year-desc';await p.nodes.get('#guide-sort').emit('change');
+  p.run("browseView.kind='genres';browseView.key=null");p.nodes.get('#browse-sort').value='count';await p.nodes.get('#browse-sort').emit('change',{target:p.nodes.get('#browse-sort')});
+  const q=page({storage});
+  assert.equal(q.nodes.get('#sort').value,'year');assert.equal(q.nodes.get('#artists-sort').value,'za');
+  assert.equal(q.run('albumGuide.sort'),'year-desc');
+  q.run("showBrowse('genres')");assert.equal(q.run('browseView.sort'),'count');
+  q.run("showBrowse('years')");assert.equal(q.run('browseView.sort'),'za');
+  storage['tagcast-browse-sorts']=JSON.stringify({sort:'arbitrary','artists-sort':'invalid'});
+  const r=page({storage});assert.equal(r.nodes.get('#sort').value,'artist');
+});
+
+test('paging scrolls to the listing controls and cancels only pending navigation scroll', async () => {
+  const p=page();p.run("state.page=0;nav.scroll={top:900};window.scrollY=900");
+  const controls={style:{position:''},getBoundingClientRect:()=>({top:controls.style.position==='static'?-700:0})};
+  p.nodes.get('#albums-page').querySelector=()=>controls;
+  await p.click({'[data-page]':{dataset:{page:'1'}}});
+  assert.equal(p.run('window.scrollY'),200);assert.equal(p.run('nav.scroll'),null);
+  assert.equal(controls.style.position,'','The sticky style is restored before painting');
+  p.run('window.scrollY=900');
+  await p.click({'[data-guide-page]':{dataset:{guidePage:'1'}}});
+  assert.equal(p.run('window.scrollY'),0);
+});
+
+test('playlist sticky search contains only the search field, never the track listing', () => {
+  const p=page();
+  const html=p.run("playlistDetailPage({id:'1',name:'Test playlist',description:'',tracks:[],rows:[],total:0})");
+  assert.doesNotMatch(html,/placeholder="[^"]*<\/div>/);
+  assert.match(html,/<div class="sticky-search">.*?<\/span><\/div><table/);
+});
+
+test('expanded source/control text meets contrast over all possible blurred cover pixels', () => {
+  const p=page();
+  for (const base of ['forest','ocean','warm','ibroadcast','apple','amber']) for (const mode of ['light','dark']) {
+    const result=p.json(`(()=>{const c=TagcastThemes.colours({base:'${base}'},'${mode}');return {c,...expandedTextColours(c.link,c.paper,c.accent)}})()`);
+    const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+    const hex=a=>'#'+a.map(n=>Math.round(n).toString(16).padStart(2,'0')).join('');
+    for(const value of [0,64,128,192,255]) {
+      const bg=rgb(result.c.paper).map(n=>n*.7+value*.3);
+      for(const wash of [false,true]) {
+        const background=result.backing!=='transparent'?result.backing:hex(wash?bg.map((n,i)=>n*.84+rgb(result.c.accent)[i]*.16):bg);
+        assert.ok(p.run(`TagcastThemes.contrast('${result.text}','${background}')`)>=4.5,base+' '+mode);
+      }
+    }
+  }
 });

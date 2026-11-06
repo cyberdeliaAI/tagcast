@@ -166,6 +166,7 @@ function settingsContentMarkup() {
     <p class="muted">${TagcastI18n.html("settings.display.note")}</p>
     <label>${TagcastI18n.html("settings.display.view")} <select id="player-view-mode"><option value="fullscreen" ${visualPlayerMode === "fullscreen" ? "selected" : ""}>${TagcastI18n.html("settings.display.fullscreen")}</option><option value="window" ${visualPlayerMode === "window" ? "selected" : ""}>${TagcastI18n.html("settings.display.window")}</option></select></label>
     <p class="muted">${TagcastI18n.html("settings.display.viewNote")}</p>
+    ${typeof nowPlayingSettings === "function" ? nowPlayingSettings() : ""}
     ${typeof visualDiscSettings === "function" ? visualDiscSettings() : ""}</section>`
     + (typeof playbackLyricsSettings === "function" ? playbackLyricsSettings() : "")
     + (typeof visualizerSettings === "function" ? visualizerSettings() : "")

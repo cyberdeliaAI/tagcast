@@ -9,7 +9,7 @@ const playerTrackPosition = () => typeof gaplessPosition === "function" ? gaples
 const playerTrackDuration = () => typeof gaplessDuration === "function" ? gaplessDuration() : audio.duration;
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null, status: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
-const queueActions = {trigger: null, details: null};
+const queueActions = {trigger: null, details: null, row: null};
 const nowPlayingRows = {revision: 0, entries: []};
 const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
 let visualPlayerMode = storedVisualPlayerMode();
@@ -32,6 +32,10 @@ function renderVisualPlayerButton() {
     : visualPlayerMode === "window" ? "player.visual.openWindow" : "player.visual.openFullscreen");
   button.setAttribute("aria-label", label);
   button.setAttribute("title", label);
+  button.setAttribute("aria-pressed", String(visualPlayer.open));
+  button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${visualPlayer.open
+    ? 'M8 3v5H3M16 3v5h5M3 16h5v5M21 16h-5v5'
+    : 'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5'}"/></svg>`;
 }
 
 // The status line of the large view keeps how to render its text, so a language change
@@ -158,8 +162,8 @@ function renderVisualPlayer() {
   const track = player.queue[player.index], album = track?.album;
   if (!track) return;
   $("#visual-player-title").textContent = track.title;
-  $("#visual-player-artist").textContent = albumArtistsText(album);
-  $("#visual-player-album").textContent = album.name;
+  $("#visual-player-artist").innerHTML = albumArtistEntries(album).map(a => `<button type="button" class="text-action" data-visual-artist="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join(' <span aria-hidden="true">·</span> ');
+  $("#visual-player-album").innerHTML = `<button type="button" class="text-action" data-visual-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button>`;
   const performer = $("#visual-player-track-artist");
   renderVisualPlayerLabels();
   performer.hidden = !track.artist || albumHasArtist(album, track.artist);
@@ -183,6 +187,10 @@ function renderVisualPlayerLabels() {
   if (!visualPlayer.open || !track) return;
   $("#player-stage").setAttribute("aria-label", TagcastI18n.text("player.nowPlaying.heading"));
   $("#visual-player-track-artist").textContent = TagcastI18n.text("player.visual.trackArtist", {artist: track.artist});
+  const next = player.repeat === "track" ? track : player.queue[player.index + 1]
+    || (player.repeat === "queue" ? player.queue.find(entry => !entry.upNext) : null);
+  $("#visual-player-context").textContent = TagcastI18n.text(next ? "player.visual.contextNext" : "player.visual.context",
+    {position: player.index + 1, count: player.queue.length, title: next?.title || ""});
 }
 
 function hideVisualPlayer() {
@@ -203,6 +211,8 @@ function hideVisualPlayer() {
   visualPlayer.inert = [];
   $("#player-fullscreen").setAttribute("aria-expanded", "false");
   renderVisualPlayerButton();
+  if (typeof syncNowPlayingPage === "function") syncNowPlayingPage();
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
   const target = $("#player").hidden ? $("#home") : visualPlayer.focus || $("#player-fullscreen");
   target.focus();
 }
@@ -231,7 +241,10 @@ function openVisualPlayer() {
   setVisualPlayerStatus(null);
   $("#player-fullscreen").setAttribute("aria-expanded", "true");
   renderVisualPlayerButton();
-  renderVisualPlayer(); $("#visual-player-close").focus();
+  renderVisualPlayer();
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
+  if (typeof applyVisualizer === "function") applyVisualizer();
+  $("#visual-player-close").focus();
   // Some browsers do not support or permit native fullscreen. The window view still works.
   if (visualPlayerMode === "fullscreen" && stage.requestFullscreen && !document.fullscreenElement) {
     try {
@@ -276,9 +289,9 @@ function performerLinks(track, additionalOnly = false) {
 }
 
 function queueTracks(album, tracks = album.tracks) {
-  const source = {id: album.id, name: album.name, artist: album.artist, artist_id: album.artist_id || 0, album_artists: albumArtistEntries(album), artwork: album.artwork, color: album.color || "#839e8d"};
+  const source = {id: album.id, name: album.name, artist: album.artist, artist_id: album.artist_id || 0, year: album.year || 0, album_artists: albumArtistEntries(album), artwork: album.artwork, color: album.color || "#839e8d"};
   return tracks.map(t => ({id: String(t.id), title: t.title, artist: t.artist, artistId: t.artist_id, performers: t.performers || [],
-    format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source}));
+    composers: [...(t.composers || [])], year: t.year || 0, format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source}));
 }
 
 function playTracks(album, startId, shuffle = false, options = {}) {
@@ -360,6 +373,7 @@ function playCurrent(autoPlay = true) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.devices.playback")); return; }
   const track = player.queue[player.index];
   if (!track) return;
+  player.resumePending = false;
   player.album = track.album;
   if (visualPlayer.open) setVisualPlayerStatus(null);
   player.quality = lookup.streamQuality || "128";
@@ -411,6 +425,7 @@ function renderPlayerTrackLabels() {
 }
 
 function markPlaying() {
+  if (typeof saveQueueMemory === "function") saveQueueMemory();
   if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof syncSystemPlayback === "function") syncSystemPlayback();
   if (typeof scheduleQueuePublish === "function") scheduleQueuePublish();
@@ -425,6 +440,7 @@ function markPlaying() {
   $("#player-queue-count").textContent = String(Math.max(0, player.queue.length - player.index - 1));
   renderNowPlaying();
   renderVisualPlayer();
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
   if (typeof publishMiniPlayer === "function") publishMiniPlayer();
 }
 
@@ -441,35 +457,57 @@ TagcastI18n.subscribe(() => {
   else renderNowPlaying();
 });
 
+function nowPlayingFocusTarget() {
+  return state.screen === "now-playing" ? $("#now-playing-heading") : $("#now-playing-close");
+}
+
 function setNowPlaying(open) {
+  if (!open && queueActions.row) closeQueueActions();
   $("#now-playing-panel").hidden = !open;
-  document.body.classList.toggle("now-playing-open", open);
+  document.body.classList.toggle("now-playing-open", open && state.screen !== "now-playing");
   $("#player-queue").setAttribute("aria-expanded", String(open));
-  if (open) { renderNowPlaying(); $("#now-playing-close").focus(); }
+  if (open) { renderNowPlaying(); nowPlayingFocusTarget().focus(); }
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
 }
 
 function renderNowPlaying() {
   if ($("#now-playing-panel").hidden) return;
-  const list = $("#now-playing-list"), focused = document.activeElement;
-  const focusedIndex = focused?.closest?.("#now-playing-list")
-    ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
+  const list = $("#now-playing-list"), active = document.activeElement;
+  const focused = queueActions.row && $("#queue-action-menu").contains?.(active) ? queueActions.trigger : active;
+  if (queueActions.row) closeQueueActions();
+  const focusedRow = focused?.closest?.("[data-queue-position]");
+  const focusedIndex = focusedRow ? Number(focusedRow.dataset.queuePosition)
+    : focused?.closest?.("#now-playing-list") ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
   const focusedEntry = nowPlayingRows.entries[focusedIndex];
+  const focusedAction = focused?.dataset.queueRow !== undefined ? "queueRow" : null;
+  const lyricsOpen = $("#now-playing-current").querySelector(".listening-lyrics")?.open;
   const removeFocused = focused?.dataset.queueRemove !== undefined;
   const editable = live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
   nowPlayingRows.revision += 1;
   nowPlayingRows.entries = player.queue.slice();
   const track = player.queue[player.index], album = track?.album;
+  $("#now-playing-close").hidden = state.screen === "now-playing";
+  const page = state.screen === "now-playing", title = listeningTitleParts(track?.title || "");
+  $("#now-playing-heading-title").textContent = page ? track ? title.title : TagcastI18n.text("player.nowPlaying.heading") : "";
+  $("#now-playing-edition").textContent = page && track ? title.edition : "";
+  $("#now-playing-edition").hidden = !page || !title.edition;
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
-    <h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
-    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html("player.nowPlaying.addToPlaylist")}</button></p><section id="now-playing-lyrics" class="track-lyrics" hidden></section>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
-  renderLyrics("player", lyricsSelection(track));
-  $("#now-playing-count").textContent = TagcastI18n.text("player.queue.count", {count: player.queue.length});
+    <div class="now-playing-info">${page ? "" : `<h3>${escapeHtml(track.title)}</h3>`}<p class="now-playing-artist">${page && track.artist !== album.artist ? performerLinks(track) : albumArtistLinks(album)}</p>
+    <p class="listening-album"><button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button>${page && album.artist !== track.artist ? ` <span aria-hidden="true"> · </span><span class="listening-album-artist">${albumArtistLinks(album)}</span>` : ""}</p>
+    ${page ? listeningTrackMetadata(track) : ""}<div id="listening-meter" class="listening-meter" hidden role="img" aria-label="${TagcastI18n.html("listening.meter.label")}"></div>
+    <div class="now-playing-track-actions">${page ? `<button class="button small" data-listening-edit="${escapeHtml(track.id)}" data-listening-album="${escapeHtml(album.id)}" ${!live() || state.loading ? "disabled" : ""}>${TagcastI18n.html("listening.track.edit")}</button>` : ""}<button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html(page ? "listening.track.playlist" : "player.nowPlaying.addToPlaylist")}</button></div></div><details class="listening-lyrics" ${!page ? "open" : ""}><summary>${TagcastI18n.html("page.visualPlayer.lyrics")}</summary><section id="now-playing-lyrics" class="track-lyrics" hidden></section></details>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
+  if (lyricsOpen) { const details = $("#now-playing-current").querySelector(".listening-lyrics"); if (details) details.open = true; }
+  if (typeof renderListeningExtras === "function") renderListeningExtras(track, focused);
+  if (state.screen !== "now-playing") renderLyrics("player", lyricsSelection(track));
+  $("#now-playing-count").textContent = page && track ? TagcastI18n.text("listening.queue.position", {position: player.index + 1, count: player.queue.length}) : TagcastI18n.text("player.queue.count", {count: player.queue.length});
   $("#queue-clear").disabled = !player.queue.length;
-  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
-    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : "▶" : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="${TagcastI18n.html("player.queue.remove", {title: t.title, position: index + 1})}" title="${TagcastI18n.html("player.queue.removeTitle")}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
+  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}${index === player.index && !audio.paused ? " playing" : ""}${index === player.index ? " queue-current" : ""}" data-queue-position="${index}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
+    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : '<span class="queue-playing-icon">▶</span><span class="queue-playing-bars"></span>' : index + 1}</span><span class="queue-art" aria-hidden="true">${cover(t.album, true)}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button><button type="button" class="queue-row-more" data-queue-album="${escapeHtml(t.album.id)}" data-queue-track="${escapeHtml(t.id)}" data-queue-row="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-haspopup="menu" aria-controls="queue-action-menu" aria-expanded="false" aria-label="${TagcastI18n.html("player.queueMenu.moreLabel", {title: t.title})}" ${!live() || state.loading ? "disabled" : ""}>⋯</button></li>`).join("");
   if (focusedEntry) {
     const index = player.queue.indexOf(focusedEntry);
-    if (index >= 0) list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`)?.focus({preventScroll: true});
+    const attribute = focusedAction?.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`);
+    if (index >= 0) (attribute ? list.querySelector(`[data-queue-position="${index}"] [data-${attribute}]`)
+      : list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`))?.focus({preventScroll: true});
   }
 }
 
@@ -489,7 +527,7 @@ function removeQueueEntry(index, revision) {
   } else markPlaying();
   const next = Math.min(index, player.queue.length - 1);
   (next >= 0 ? $("#now-playing-list").querySelector(`[data-queue-remove="${next}"]`)
-    : $("#now-playing-close"))?.focus({preventScroll: true});
+    : nowPlayingFocusTarget())?.focus({preventScroll: true});
   toast(TagcastI18n.text("player.queue.removed", {title: removed.title}));
 }
 
@@ -560,7 +598,7 @@ async function playCardAlbum(id) {
 function closeQueueActions(restoreFocus = false) {
   const trigger = queueActions.trigger;
   $("#queue-action-menu").hidden = true;
-  queueActions.trigger = null; queueActions.details = null;
+  queueActions.trigger = null; queueActions.details = null; queueActions.row = null;
   trigger?.setAttribute("aria-expanded", "false");
   if (restoreFocus && trigger?.isConnected) trigger.focus();
 }
@@ -571,9 +609,28 @@ function openQueueActions(trigger, last = false) {
   closeQueueActions();
   if (same || trigger.disabled || !live() || state.loading) return;
   const menu = $("#queue-action-menu");
+  let row = null;
+  if (trigger.dataset.queueRow !== undefined) {
+    const index = Number(trigger.dataset.queueRow), revision = Number(trigger.dataset.queueRevision);
+    if (!Number.isInteger(index) || index < 0 || revision !== nowPlayingRows.revision
+        || !player.queue[index] || player.queue[index] !== nowPlayingRows.entries[index]) return;
+    row = {index, revision, entry: player.queue[index]};
+  }
   queueActions.trigger = trigger; queueActions.details = state.details;
+  queueActions.row = row;
   trigger.setAttribute("aria-expanded", "true");
   $("#queue-action-playlist").hidden = trigger.dataset.queueTrack === undefined;
+  for (const id of ["tags", "like", "dislike", "remove"]) $("#queue-action-" + id).hidden = !row;
+  if (row) {
+    const rating = Number(row.entry.rating) || 0;
+    $("#queue-action-remove").textContent = TagcastI18n.text("player.queue.removeTitle");
+    $("#queue-action-remove").setAttribute("aria-label", TagcastI18n.text("player.queue.remove", {title: row.entry.title, position: row.index + 1}));
+    $("#queue-action-remove").disabled = typeof localPlaybackAllowed === "function" && !localPlaybackAllowed();
+    $("#queue-action-tags").textContent = TagcastI18n.text("tags.track.manageTitle");
+    $("#queue-action-like").textContent = TagcastI18n.text(rating >= 5 ? "player.queueMenu.unlike" : "player.queueMenu.like");
+    $("#queue-action-dislike").textContent = TagcastI18n.text(rating === 1 ? "player.queueMenu.clearDislike" : "player.queueMenu.dislike");
+    for (const id of ["like", "dislike"]) $("#queue-action-" + id).disabled = Boolean(favourites.busy || saving || checking);
+  }
   menu.hidden = false;
   // One fixed menu avoids clipping inside tables, cards and scrolling containers.
   const anchor = trigger.getBoundingClientRect(), size = menu.getBoundingClientRect();
@@ -581,24 +638,48 @@ function openQueueActions(trigger, last = false) {
   menu.style.left = `${Math.max(8, Math.min(anchor.right - size.width, width - size.width - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 6 + size.height <= height - 8
     ? anchor.bottom + 6 : anchor.top - size.height - 6, height - size.height - 8))}px`;
-  $(last ? $("#queue-action-playlist").hidden ? "#queue-action-next" : "#queue-action-playlist" : "#queue-action-append").focus();
+  const items = queueActionItems();
+  items[last ? items.length - 1 : 0]?.focus();
+}
+
+function queueActionItems() {
+  return ["append", "next", "playlist", "tags", "like", "dislike", "remove"]
+    .map(id => $("#queue-action-" + id)).filter(node => !node.hidden && !node.disabled);
+}
+
+function queueActionCurrent(trigger, details, row) {
+  return trigger?.isConnected && !trigger.disabled && details === state.details && live() && !state.loading
+    && (!row || row.revision === nowPlayingRows.revision && player.queue[row.index] === row.entry);
 }
 
 function chooseQueueAction(next) {
-  const trigger = queueActions.trigger, details = queueActions.details;
+  const {trigger, details, row} = queueActions;
   closeQueueActions(true);
-  if (!trigger?.isConnected || trigger.disabled || details !== state.details || !live() || state.loading) return;
+  if (!queueActionCurrent(trigger, details, row)) return;
   return addToQueue(trigger.dataset.queueAlbum, trigger.dataset.queueTrack ?? null, next);
 }
 
 $("#queue-action-append").addEventListener("click", () => chooseQueueAction(false));
 $("#queue-action-next").addEventListener("click", () => chooseQueueAction(true));
 $("#queue-action-playlist").addEventListener("click", () => {
-  const trigger = queueActions.trigger, details = queueActions.details;
+  const {trigger, details, row} = queueActions;
   closeQueueActions(true);
-  if (!trigger?.isConnected || trigger.disabled || details !== state.details || !live() || state.loading) return;
+  if (!queueActionCurrent(trigger, details, row)) return;
   return openTrackPlaylist(trigger.dataset.queueAlbum, trigger.dataset.queueTrack);
 });
+function chooseQueuedTrackAction(action) {
+  const {trigger, details, row} = queueActions;
+  closeQueueActions(true);
+  if (!row || !queueActionCurrent(trigger, details, row)) return;
+  const track = row.entry;
+  if (action === "remove") return removeQueueEntry(row.index, row.revision);
+  if (action === "tags") return openTrackTags(track.album.id, track.id);
+  const rating = Number(track.rating) || 0;
+  return toggleFavourite(String(track.id), rating, track.title, action === "dislike" ? rating === 1 ? 0 : 1 : null);
+}
+for (const action of ["tags", "like", "dislike", "remove"]) {
+  $("#queue-action-" + action).addEventListener("click", () => chooseQueuedTrackAction(action));
+}
 $("#queue-action-menu").addEventListener("keydown", event => {
   if (event.key === "Escape" || event.key === "Tab") {
     closeQueueActions(true);
@@ -607,7 +688,8 @@ $("#queue-action-menu").addEventListener("keydown", event => {
   }
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
-  const items = [$("#queue-action-append"), $("#queue-action-next"), $("#queue-action-playlist")].filter(node => !node.hidden);
+  const items = queueActionItems();
+  if (!items.length) return;
   const index = items.indexOf(document.activeElement), delta = event.key === "ArrowUp" ? -1 : 1;
   items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + delta + items.length) % items.length].focus();
 });
@@ -618,7 +700,11 @@ document.addEventListener("keydown", event => {
   }
 });
 window.addEventListener("resize", () => closeQueueActions());
-document.addEventListener("scroll", () => closeQueueActions(), true);
+document.addEventListener("scroll", event => {
+  // Timed lyrics can scroll independently; only movement of the anchor invalidates this menu.
+  const trigger = queueActions.trigger;
+  if (trigger && (event.target === document || event.target?.contains?.(trigger))) closeQueueActions();
+}, true);
 
 function step(delta) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
@@ -646,11 +732,12 @@ function stopPlayer() {
   closeQueueActions();
   playReporting.watch = null;
   cancelRandomPlay();
-  player.epoch += 1;
+  player.epoch += 1; player.resumePending = false;
   audio.pause(); audio.removeAttribute("src"); audio.load();
   $("#player").hidden = true; document.body.classList.remove("has-player");
   closeVisualPlayer();
   player.queue = []; player.index = -1; player.album = null; markPlaying();
+  if (typeof saveQueueMemory === "function") saveQueueMemory(true);
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
 }
 
@@ -686,12 +773,15 @@ $("#player-prev").addEventListener("click", () => step(-1));
 $("#player-next").addEventListener("click", () => step(1));
 $("#player-close").addEventListener("click", stopPlayer);
 $("#queue-clear").addEventListener("click", stopPlayer);
-$("#player-queue").addEventListener("click", () => setNowPlaying($("#now-playing-panel").hidden));
-$("#player-cover-button").addEventListener("click", () => setNowPlaying($("#now-playing-panel").hidden));
-$("#now-playing-close").addEventListener("click", () => { setNowPlaying(false); $("#player-queue").focus(); });
+$("#player-queue").addEventListener("click", () => showScreen("now-playing"));
+$("#player-cover-button").addEventListener("click", () => {
+  if (typeof nowPlayingPreferences !== "undefined" && nowPlayingPreferences.open === "page") showScreen("now-playing");
+  else setNowPlaying($("#now-playing-panel").hidden);
+});
+$("#now-playing-close").addEventListener("click", () => { closeNowPlayingView(); });
 document.addEventListener("keydown", event => {
   if (!event.defaultPrevented && event.key === "Escape" && !$("#now-playing-panel").hidden && !document.querySelector("dialog[open]")) {
-    setNowPlaying(false); $("#player-queue").focus();
+    closeNowPlayingView();
   }
 });
 $("#player-artist").addEventListener("click", () => {
@@ -709,7 +799,16 @@ $("#player-album").addEventListener("click", () => {
   if (player.album) return openAlbum(player.album.id, player.queue[player.index]?.id);
 });
 
-document.addEventListener("click", event => {
+document.addEventListener("click", async event => {
+  const artistLink = event.target.closest("[data-visual-artist]"), albumLink = event.target.closest("[data-visual-album]");
+  if (artistLink || albumLink) {
+    const artist = artistLink?.dataset.visualArtist, album = albumLink?.dataset.visualAlbum;
+    await closeVisualPlayer();
+    if (visualPlayer.open) return;
+    if (artist !== undefined) setArtist(artist);
+    else openAlbum(album);
+    return;
+  }
   const cardPlay = event.target.closest("[data-card-play]");
   if (cardPlay) return playCardAlbum(cardPlay.dataset.cardPlay);
   const queued = event.target.closest("[data-queue-album]");
@@ -743,7 +842,7 @@ document.addEventListener("click", event => {
   cancelRandomPlay();
   const id = play?.dataset.play;
   if (id && player.queue[player.index]?.id === id && player.album?.id === album.id) {
-    if (audio.paused) audio.play(); else audio.pause();
+    if (audio.paused) playSystemPlayback(); else audio.pause();
     return;
   }
   playTracks(album, id || album.tracks[0]?.id, Boolean(shuffle));
@@ -754,6 +853,7 @@ function renderStreamQuality() {
   $("#player-quality").textContent = streamQualityText(player.queue[player.index]);
   $("#visual-player-quality").textContent = $("#player-quality").textContent;
   renderPlayerDisplay();
+  if (typeof updateListeningFacts === "function") updateListeningFacts();
 }
 
 function streamQualityText(track) {
@@ -779,6 +879,7 @@ function renderRepeatButton() {
   button.setAttribute("aria-label", TagcastI18n.text(labels[1]));
   button.setAttribute("aria-pressed", String(player.repeat !== "none"));
   button.title = TagcastI18n.text("player.repeat.title");
+  renderVisualPlayerLabels();
 }
 renderRepeatButton();
 $("#player-repeat").addEventListener("click", () => {
@@ -786,6 +887,7 @@ $("#player-repeat").addEventListener("click", () => {
   renderRepeatButton();
   if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof publishQueueState === "function") publishQueueState();
+  if (typeof saveQueueMemory === "function") saveQueueMemory();
 });
 
 audio.addEventListener("play", () => {

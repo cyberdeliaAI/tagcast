@@ -263,6 +263,7 @@ function showBrowse(kind, key = null, saved = {}) {
   if (!browseKinds[kind]) return;
   clearTimeout(browseTimer);
   const uploads = ["upload-folders", "uploaded"].includes(kind);
+  if (!saved.sort && typeof rememberedBrowseSort === "function") saved = {...saved, sort: rememberedBrowseSort(browseGroupSortKey(kind, key !== null), key === null ? ["az", "za", "count"] : Object.keys(SORTS), "")};
   Object.assign(browseView, {kind, key, label: saved.label || "", query: kind === "decades" && key === null ? "" : saved.query || "", page: saved.page || 0,
     sort: kind === "decades" && key === null ? "za" : (uploads && key !== null ? ({album:"artist",az:"title",za:"title_za"}[saved.sort] || saved.sort) : saved.sort) || (key !== null ? "artist" : ["years","uploaded"].includes(kind) ? "za" : "az"), rows: [], albumIds: new Set(), details: null, loaded: false, randomIds: Array.isArray(saved.randomIds) ? saved.randomIds.filter(id => typeof id === "string") : []});
   $("#browse-search").value = browseView.query;
@@ -300,7 +301,7 @@ document.addEventListener("click", event => {
   const group = event.target.closest("[data-browse-key]");
   if (group) { showBrowse(browseView.kind, group.dataset.browseKey, {label: group.dataset.browseLabel}); return; }
   const page = event.target.closest("[data-browse-page]");
-  if (page && !browseView.loading) { browseView.page = Math.max(0, browseView.page + Number(page.dataset.browsePage)); refreshBrowseList(); window.scrollTo?.({top: 0}); }
+  if (page && !browseView.loading) { browseView.page = Math.max(0, browseView.page + Number(page.dataset.browsePage)); refreshBrowseList(); scrollListingStart("#browse-page"); }
 });
 
 // A language change repaints the visible overview or group from memory. A page that is still

@@ -6,8 +6,8 @@ const themeEditorView = {draft: null, baseline: null, mode: "dark", invalid: {},
 const themeRoleLabels = {paper: "themeEditor.role.paper", surface: "themeEditor.role.surface", ink: "themeEditor.role.ink", muted: "themeEditor.role.muted", link: "themeEditor.role.link", primary: "themeEditor.role.primary", "primary-ink": "themeEditor.role.primaryInk", "primary-hover": "themeEditor.role.primaryHover", focus: "themeEditor.role.focus", soft: "themeEditor.role.soft", tint: "themeEditor.role.tint", line: "themeEditor.role.line", sidebar: "themeEditor.role.sidebar", "shell-ink": "themeEditor.role.shellInk", "shell-muted": "themeEditor.role.shellMuted", "shell-active": "themeEditor.role.shellActive", "shell-line": "themeEditor.role.shellLine", "nav-icon": "themeEditor.role.navIcon", accent: "themeEditor.role.accent", "brand-background": "themeEditor.role.brandBackground", "brand-ink": "themeEditor.role.brandInk", "brand-paper": "themeEditor.role.brandPaper", chart: "themeEditor.role.chart"};
 const themeBasicRoles = ["paper", "surface", "ink", "muted", "link", "primary", "primary-ink"];
 // Built-in palette names. Generic words follow the interface language; "Apple Music Classic"
-// stays a name. Default theme names are saved with the theme, so they keep the English name.
-const themePaletteNames = {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired", apple: "Apple Music Classic"};
+// and "Amber" stay names. Saved theme names keep their original language.
+const themePaletteNames = {forest: "Forest", ocean: "Ocean", warm: "Warm", ibroadcast: "iBroadcast inspired", apple: "Apple Music Classic", amber: "Amber"};
 const themePaletteKeys = {forest: "themeEditor.palette.forest", ocean: "themeEditor.palette.ocean", warm: "themeEditor.palette.warm", ibroadcast: "themeEditor.palette.ibroadcast"};
 function themePaletteLabel(value) {
   const base = Object.hasOwn(themePaletteNames, value) ? value : "forest";

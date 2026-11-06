@@ -1,8 +1,8 @@
 /* Now playing only; the native audio element and normal lyrics editor are unchanged. */
-.player-stage .visual-player.cover-atmosphere{background:#0b1218;color:#f1f5f9;isolation:isolate}
+.player-stage .visual-player.cover-atmosphere{background:var(--paper);color:var(--ink);isolation:isolate}
 .cover-atmosphere::before{content:"";position:fixed;inset:-80px;z-index:-1;pointer-events:none;background-image:var(--lyrics-cover-image);background-position:center;background-size:cover;filter:blur(70px);opacity:.30}
 .cover-atmosphere .visual-player-header,.cover-atmosphere .visual-player-content{position:relative}
-.cover-atmosphere .visual-lyric-line[aria-current="true"]{background:#ffffff12}
+.cover-atmosphere .visual-lyric-line[aria-current="true"]{background:color-mix(in srgb,var(--ink) 7%,transparent)}
 .visual-player-header>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .player-stage .visual-player-content.lyrics-visible{display:grid;grid-template-columns:clamp(220px,30vw,360px) minmax(0,1fr);grid-template-rows:auto auto 1fr;align-items:start;align-content:center;column-gap:56px;row-gap:18px;max-width:1180px;margin:28px auto 0;text-align:left;min-height:calc(100dvh - 200px)}
 .player-stage .lyrics-visible .visual-player-cover{grid-column:1;grid-row:1;width:100%;min-width:0}

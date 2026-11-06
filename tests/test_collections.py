@@ -44,6 +44,33 @@ class CollectionTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('Read-back did not finish')
 
+    def test_queue_restore_is_account_bound_and_preserves_duplicate_positions_without_remote_reads(self):
+        library = self.studio.library
+        profile = self.studio.load_library()["playback_profile"]
+        self.assertEqual(len(profile), 64)
+        with patch.object(self.studio.client, "fetch_library", side_effect=AssertionError("No download")), \
+                patch.object(self.studio.client, "_jsonrequest", side_effect=AssertionError("No remote request")):
+            result = self.studio.collections.queue_tracks({"tracks": ["900", "999999", "900"],
+                "restore": True, "profile": profile, "session": self.studio.playback_session})
+        self.assertEqual([row["id"] for row in result["tracks"]], ["900", "900"])
+        self.assertEqual([row["position"] for row in result["tracks"]], [0, 2])
+        current = library.track_view(900)
+        self.assertEqual(result["tracks"][0]["year"], current["year"])
+        self.assertEqual(result["tracks"][0]["composers"], current["composers"])
+        self.assertEqual(result["tracks"][0]["album"]["year"], library.albums[int(current["album_id"])].get("year", 0))
+        self.assertIs(self.studio.library, library)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+        with self.assertRaises(LibraryError):
+            self.studio.collections.queue_tracks({"tracks": ["999999"]})
+        for changes in ({"profile": "a" * 64}, {"session": "expired"}, {"session": ""}):
+            with self.assertRaises(ConflictError):
+                self.studio.collections.queue_tracks({"tracks": ["900"], "restore": True,
+                    "profile": profile, "session": self.studio.playback_session, **changes})
+        self.studio.library_user = str(int(self.studio.library_user) + 1)
+        self.assertNotEqual(profile, self.studio.collections.playback_profile(library))
+        with self.assertRaises(ConflictError):
+            self.studio.collections.playback_profile(copy.copy(library))
+
     def test_sidebar_playlist_count_includes_nested_and_empty_lists_once_without_extra_reads(self):
         mock_ibroadcast.STATE['playlists'].update({
             880: {'name': 'Empty', 'tracks': []},
