@@ -3,7 +3,7 @@
 .visual-player-disc{display:none}
 .player-stage .visual-player.cd-view .visual-player-cover{overflow:visible;background:none;box-shadow:none;border:0}
 .cd-view .visual-player-disc{
-  display:block;position:absolute;left:50%;top:2%;width:96%;height:96%;overflow:hidden;border-radius:50%;
+  display:block;position:absolute;left:64%;top:2%;width:96%;height:96%;overflow:hidden;border-radius:50%;
   background:var(--visual-cover,var(--palette-shell-active,#344b3d));border:2px solid #ffffff36;
   box-shadow:0 0 0 4px #11171a,0 12px 30px #0005;
   -webkit-mask-image:radial-gradient(circle,#0000 0 5.5%,#000 5.8%);

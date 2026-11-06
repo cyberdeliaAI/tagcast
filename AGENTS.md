@@ -643,7 +643,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   track details or contacts iBroadcast/external sites. Preserve independent explicit
   analysis/counts semantics and source/license links; cache visited identities only in
   bounded browser memory and reject late results across identity/session/library changes.
-- By default the play queue stays in browser memory. Explicit Play replaces it; Add to queue
+- The browser/profile remembers up to 10,000 queue occurrences, current track, Repeat and
+  shuffle state in an opaque account-scoped localStorage namespace. Store only track IDs,
+  occurrence flags and ordered-album origin positions, never credentials, URLs or metadata.
+  After loading the same account, resolve IDs against the current loaded library through
+  the existing bounded queue-track endpoint; skip removed tracks, preserve duplicates and
+  reject stale responses after new playback, Stop or account/library replacement. Restore
+  paused without loading audio; explicit Play starts the selected track from its beginning.
+  Clearing forgets the saved queue; disconnect/demo must not erase the previous live queue.
+  Remote queue-sync ownership takes precedence. Storage failures never interrupt playback.
+  Explicit Play replaces it; Add to queue
   appends a single track or all discs of an album, preserving click order. Store
   each queued track's album metadata for covers and navigation across albums.
   Clear queue stops audio and cancels pending additions. Guard lazy loads against
@@ -706,6 +715,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   Show queue position/next-track context, the shared Follow switch and readable source attribution;
   fade lyric edges without hiding errors or retry. Hide the stop/close button only while expanded;
   both exit controls restore the existing view without stopping audio.
+- Browsing search/filter toolbars stay at the viewport top during document scrolling;
+  do not introduce a second page scrollbar. Very short windows retain normal scrolling.
+  Explicit pagination scrolls to the toolbar's original document position, including
+  when it is already stuck. Ordinary Back/Forward keeps its existing saved scroll.
+  Persist validated fixed sort codes per listing/group kind, independently of filters,
+  queries and metadata. Ignore obsolete values and tolerate unavailable browser storage.
 - Covers in grids/lists open the album immediately; compact-player covers immediately
   open Now playing. Enlarge covers only from the album detail page: double-click
   its real cover, or use Enter on its cover button, to open a modal lightbox.

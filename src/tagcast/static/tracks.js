@@ -158,7 +158,7 @@ document.addEventListener("click", event => {
   if (page) {
     trackSearch.page += Number(page.dataset.trackPage);
     renderTrackSearch();
-    window.scrollTo?.({top: 0});
+    scrollListingStart("#tracks-page");
   }
 });
 

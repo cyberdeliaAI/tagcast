@@ -3,7 +3,7 @@
 // Presentation only: all buttons and seeking retain the same native audio element.
 const gaplessControls = {draft: null, spacious: false};
 function customTransportEnabled() {
-  return Boolean(gaplessTrial.active) || gaplessControls.spacious;
+  return Boolean(gaplessTrial.active) || gaplessControls.spacious || Boolean(player.resumePending);
 }
 function transportSelection() {
   const g = gaplessTrial.active;
@@ -32,11 +32,11 @@ function gaplessRenderTransport() {
   const failed = Boolean(audio.error);
   const ready = !failed && (g ? Boolean(g.started && g.current && g.ready !== false)
     : Boolean(player.queue[player.index] && Number.isFinite(audio.duration) && audio.duration > 0));
-  const duration = ready ? playerTrackDuration() : Number(g?.first?.length) || 0;
+  const duration = ready ? playerTrackDuration() : Number(player.resumePending ? player.queue[player.index]?.length : g?.first?.length) || 0;
   const draft = gaplessControls.draft || g?.seekIntent;
   const preview = draft && (draft === g?.seekIntent || transportDraftCurrent(draft));
   const position = Math.max(0, Math.min(duration, preview ? draft.position : ready ? playerTrackPosition() : 0));
-  const waiting = !failed && (g ? g.ready === false || Boolean(g.seekIntent) : !ready);
+  const waiting = !player.resumePending && !failed && (g ? g.ready === false || Boolean(g.seekIntent) : !ready);
   transport.setAttribute("aria-busy", String(waiting));
   $("#gapless-time").textContent = waiting ? TagcastI18n.text("gaplessSettings.transport.preparing") : `${gaplessClock(position)} / ${gaplessClock(duration)}`;
   $("#gapless-time").title = waiting && g ? gaplessTrial.message : "";
@@ -49,7 +49,7 @@ function gaplessRenderTransport() {
   slider.setAttribute("aria-label", title ? TagcastI18n.text("gaplessSettings.transport.seekIn", {title}) : TagcastI18n.text("gaplessSettings.transport.seekCurrent"));
   slider.setAttribute("aria-valuetext", TagcastI18n.text(waiting ? "gaplessSettings.transport.preparingAt" : "gaplessSettings.transport.position", times));
   const button = $("#gapless-play"), paused = audio.paused;
-  button.disabled = !ready; button.textContent = paused ? "▶" : "❚❚";
+  button.disabled = !ready && !player.resumePending; button.textContent = paused ? "▶" : "❚❚";
   button.setAttribute("aria-label", TagcastI18n.text(paused ? "gaplessSettings.transport.playTrack" : "gaplessSettings.transport.pauseTrack"));
   button.title = TagcastI18n.text(paused ? "gaplessSettings.transport.play" : "gaplessSettings.transport.pause");
   const muted = audio.muted || audio.volume === 0, label = TagcastI18n.text(muted ? "gaplessSettings.transport.unmute" : "gaplessSettings.transport.mute");

@@ -28,6 +28,28 @@ function renderVisualDiscLabel() {
   $("#visual-disc-album").textContent = name;
 }
 
+// The blurred cover is a 30% image layer over the palette paper. Check its darkest
+// and lightest possible pixels, including the selected-control wash, without reading
+// cross-origin artwork or changing the user's theme accent.
+function expandedTextColours(link, paper, accent) {
+  const rgb = hex => [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
+  const hex = parts => "#" + parts.map(value => Math.round(value).toString(16).padStart(2, "0")).join("");
+  const blend = (a, b, weight) => a.map((value, index) => value * (1 - weight) + b[index] * weight);
+  const base = rgb(paper), ink = rgb(link), colour = rgb(accent);
+  const backgrounds = [0, 255].map(value => blend(base, [value, value, value], .3));
+  backgrounds.push(...backgrounds.map(background => blend(background, colour, .16)));
+  const score = value => Math.min(...backgrounds.map(background => TagcastThemes.contrast(value, hex(background))));
+  const target = score("#000000") >= score("#ffffff") ? [0, 0, 0] : [255, 255, 255];
+  for (let step = 0; step <= 100; step++) {
+    const candidate = hex(blend(ink, target, step / 100));
+    if (score(candidate) >= 4.5) return {text: candidate, backing: "transparent"};
+  }
+  // An unusual custom mid-tone theme may offer no shared contrast across the image.
+  // A tiny opaque backing on the link/selected controls then makes the result bounded.
+  const text = TagcastThemes.contrast(paper, "#000000") >= TagcastThemes.contrast(paper, "#ffffff") ? "#000000" : "#ffffff";
+  return {text, backing: paper};
+}
+
 function renderVisualDisc() {
   const stage = $("#visual-player"), cd = visualDisc.style === "cd";
   renderVisualDiscLabel();
@@ -36,9 +58,10 @@ function renderVisualDisc() {
     && !visualDisc.waiting && !audio.paused && !audio.ended && !audio.seeking
     && audio.readyState >= 3);
   const palette = TagcastThemes.active() || {base: document.documentElement.dataset.palette || "forest"};
-  const accent = TagcastThemes.colours(palette, TagcastThemes.mode()).accent;
-  stage.style.setProperty("--expanded-accent-ink",
-    TagcastThemes.contrast(accent, "#111111") >= TagcastThemes.contrast(accent, "#ffffff") ? "#111111" : "#ffffff");
+  const colours = TagcastThemes.colours(palette, TagcastThemes.mode()), accent = colours.accent;
+  const readable = expandedTextColours(colours.link, colours.paper, accent);
+  stage.style.setProperty("--expanded-link", readable.text);
+  stage.style.setProperty("--expanded-source-backing", readable.backing);
   const button = $("#visual-player-disc-toggle");
   button.setAttribute("aria-pressed", String(cd));
   button.textContent = TagcastI18n.text("player.disc.cdTab");
