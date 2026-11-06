@@ -21,15 +21,17 @@ create separate local copies. Optional music uploads read selected local audio a
 send copies to your own iBroadcast library only after review; see
 [setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [Tagcast 1.4.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.4.0):**
-Use Tagcast in English, Dutch, German, French, Spanish or Japanese, with a compact
-language menu in the header. Expanded Now playing offers an optional rotating CD
-view, alongside the existing cover and lyrics views. Sidebar labels, light-theme
-player contrast and scrollbars are refined without changing playback or save workflows.
+**New in [Tagcast 1.5.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.5.0):**
+A redesigned Now playing workspace brings artwork, track details, optional retro
+stereo meters, a focused lyrics panel and the queue together. Fullscreen offers
+Cover or rotating CD views, with or without lyrics. Search controls stay reachable,
+pagination returns to the listing controls, and sorting and the local queue are
+remembered across restarts without starting playback automatically. Amber joins
+the built-in palettes; all six interface languages remain available.
 
 Experimental Gapless playback remains optional and off by default. Unsupported
 transitions safely use ordinary playback. See the
-[release notes](.github/release-notes/1.4.0.md) and
+[release notes](.github/release-notes/1.5.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
@@ -72,7 +74,7 @@ iBroadcast Premium access.
 - **Lyrics:** follow temporary online text in expanded Now playing, or explicitly find
   ordinary LRCLIB text in the editor and review it before saving. See [lyrics sources
   and privacy](docs/now-playing-lyrics.md).
-- **Personalise:** choose from five built-in palettes, create custom Light/Dark colour themes, preview changes and share
+- **Personalise:** choose from six built-in palettes, create custom Light/Dark colour themes, preview changes and share
   themes through JSON import/export.
 - **Export:** full loaded-library metadata as JSON or linked CSVs in a ZIP.
 - **Keep track:** read-back checks distinguish confirmed saves from uncertain
@@ -87,14 +89,14 @@ tracks, playlists and advanced command-line download options, use ibfetch.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 1.4.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.4.0):
+[Tagcast 1.5.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.5.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.4.0/tagcast-1.4.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.0/tagcast-1.5.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.0/tagcast-1.5.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.0/tagcast-1.5.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.0/tagcast-1.5.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,

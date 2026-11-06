@@ -1,6 +1,6 @@
 # Standalone downloads and builds
 
-Tagcast 1.4.0 packages the shared Python server and editor/player in an Electron
+Tagcast 1.5.0 packages the shared Python server and editor/player in an Electron
 desktop app. No separate browser, Python or Node.js installation is required.
 Python/source installs and the bundled terminal CLI retain browser use. See
 [Electron desktop and Python/browser use](electron.md) for the shared-code design.
@@ -9,10 +9,10 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-1.4.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-1.4.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-1.4.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-1.4.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| macOS, Apple Silicon | `tagcast-1.5.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-1.5.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-1.5.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-1.5.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -23,7 +23,10 @@ stop a browser-based server.
 
 Settings, tokens, cache and local account favourites remain in `~/.tagcast/`, or
 `TAGCAST_HOME`. Electron's Chromium profile is separate from your browser's
-preferences, local Change history and in-memory queue; those are not migrated.
+preferences, local Change history and remembered queue; those are not migrated.
+Within the same profile/origin and account, the selected queue track and sorting
+choices are restored after restart. Playback never starts automatically and elapsed
+playback time is not restored.
 
 Official macOS releases from 1.2.0 are Developer ID signed and notarized.
 Ordinary PR/local test builds use an ad-hoc integrity signature instead. Windows
