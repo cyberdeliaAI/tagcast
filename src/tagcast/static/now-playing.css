@@ -205,6 +205,10 @@ body.listening-page-open .main-footer{display:none}
 #visual-player-album .text-action{font-size:14px;font-weight:400}
 :is(#visual-player-artist,#visual-player-album) .text-action{color:inherit;white-space:normal;text-align:inherit;padding:0;min-height:32px}
 .queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.queue-row:hover,.queue-row:focus-within{background:var(--line);border-radius:7px}
+.queue-row>.queue-track:hover{background:transparent}
+/* The separate action menu no longer replaces the number or playing indicator. */
+.queue-row:has(>.queue-row-more) .queue-number{visibility:visible}
 .queue-row.queue-current{background:var(--line);border-radius:7px}
 .queue-row.queue-current>.queue-track{background:transparent}
 .listening-page .queue-row.queue-current{background:color-mix(in srgb,var(--ink) 8%,transparent)}

@@ -250,3 +250,26 @@ test("a hidden album row releases its levels when the listening queue becomes vi
   assert.equal(Object.keys(queue.style.properties).length,4);
   assert.equal(p.log.captures,1);
 });
+
+test("a retained hidden listening queue cannot steal the visible album spectrum",()=>{
+  const p=page(),original=p.document.querySelector;
+  const row=()=>({isConnected:true,classList:{contains:()=>true},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}});
+  const album=row(),queue=row();let queueHidden=false,albumHidden=true;
+  album.closest=()=>albumHidden?{}:null;queue.closest=()=>queueHidden?{}:null;
+  p.document.playingRow=album;
+  p.document.querySelector=selector=>selector==='#now-playing-list .queue-row.playing'?queue:original(selector);
+  p.stream.tracks.push(p.track('first'));p.audio.paused=false;p.audio.emit('play');p.frames(2);
+  assert.equal(Object.keys(queue.style.properties).length,4);
+  queueHidden=true;albumHidden=false;p.frames(2);
+  assert.deepEqual(queue.style.properties,{},'Hidden queue releases its levels');
+  assert.equal(Object.keys(album.style.properties).length,4,'Visible album receives live levels');
+  assert.ok(Math.max(...Object.values(album.style.properties).map(Number))>0.005);
+  albumHidden=true;p.frames(2);
+  assert.deepEqual(album.style.properties,{});
+  assert.deepEqual(queue.style.properties,{});
+  assert.equal(p.run('visualizer.row'),null,'Neither hidden view retains the indicator');
+  p.run('visualizer.rowSearch=0');queueHidden=false;p.frames(2);
+  assert.equal(Object.keys(queue.style.properties).length,4,'Returning to Now playing recovers');
+  assert.equal(p.log.captures,1,'Navigation never creates a second audio capture');
+  assert.equal(p.audio.paused,false);
+});

@@ -294,8 +294,8 @@ function markVisualizerRow(clear) {
   }
   if (clear) return;
   if (!row && visualizer.rowSearch-- <= 0) {
-    row = visualizer.row = document.querySelector("#now-playing-list .queue-row.playing")
-      || document.querySelector(".album-tracklist tr.playing");
+    row = visualizer.row = [document.querySelector("#now-playing-list .queue-row.playing"),
+      document.querySelector(".album-tracklist tr.playing")].find(candidate => candidate && !candidate.closest?.("[hidden]")) || null;
     visualizer.rowSearch = row ? 0 : 20;
   }
   if (row) for (let i = 0; i < 4; i++) row.style.setProperty(`--player-eq-${i}`, visualizerLevelAt(i / 3).toFixed(3));
