@@ -11896,6 +11896,7 @@ test('queue rows share album actions without nested buttons or marking every rep
   p.run('renderNowPlaying()');
   const html=p.nodes.get('#now-playing-list').innerHTML,track=p.json('player.queue[0]');
   assert.equal((html.match(/queue-row queue-editable playing/g)||[]).length,1);
+  assert.equal((html.match(/queue-current/g)||[]).length,1);
   assert.match(html,/queue-playing-bars/);
   assert.ok(html.includes(p.run('trackTagControls(player.queue[0].album,player.queue[0])')));
   assert.ok(html.includes(p.run('queueButton(player.queue[0].album.id,player.queue[0])')));
@@ -11906,6 +11907,25 @@ test('queue rows share album actions without nested buttons or marking every rep
   assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
   p.run('audio.pause();renderNowPlaying()');
   assert.doesNotMatch(p.nodes.get('#now-playing-list').innerHTML,/queue-row queue-editable playing/);
+  assert.equal((p.nodes.get('#now-playing-list').innerHTML.match(/queue-current/g)||[]).length,1,
+    'The current occurrence stays highlighted when paused, including its sibling actions');
+});
+
+test('the listening page omits Close and retains keyboard focus when its last queue entry is removed',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));player.queue=player.queue.slice(0,1);showScreen("now-playing");setNowPlaying(true)');
+  assert.equal(p.nodes.get('#now-playing-close').hidden,true);
+  assert.equal(p.run('document.activeElement === $("#now-playing-heading")'),true);
+  await p.click({'[data-queue-remove]':queueRemoveControl(p,0)});
+  assert.equal(p.run('player.queue.length'),0);
+  assert.equal(p.run('audio.paused'),true);
+  assert.equal(p.run('document.activeElement === $("#now-playing-heading")'),true);
+  assert.equal(p.nodes.get('#now-playing-panel').hidden,false);
+  p.run('showScreen("albums");setNowPlaying(true)');
+  assert.equal(p.nodes.get('#now-playing-close').hidden,false);
+  assert.equal(p.run('document.activeElement === $("#now-playing-close")'),true);
+  await p.nodes.get('#now-playing-close').emit('click');
+  assert.equal(p.nodes.get('#now-playing-panel').hidden,true);
 });
 
 test('expanded artist and album navigation leaves the playback source and queue untouched',async()=>{
