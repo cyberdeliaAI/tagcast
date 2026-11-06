@@ -1,7 +1,7 @@
 "use strict";
 
 // Presentation only: the native audio element remains the playback authority.
-const visualDisc = {style: storedVisualDiscStyle(), waiting: false};
+const visualDisc = {style: storedVisualDiscStyle(), waiting: false, label: ""};
 
 function storedVisualDiscStyle() {
   try { return localStorage.getItem("tagcast-player-artwork") === "cd" ? "cd" : "cover"; }
@@ -12,8 +12,25 @@ function visualDiscSettings() {
   return `<label>${TagcastI18n.html("player.disc.setting")} <select id="player-artwork-style" aria-describedby="player-artwork-note"><option value="cover" ${visualDisc.style === "cover" ? "selected" : ""}>${TagcastI18n.html("player.disc.cover")}</option><option value="cd" ${visualDisc.style === "cd" ? "selected" : ""}>${TagcastI18n.html("player.disc.cd")}</option></select></label><p class="muted" id="player-artwork-note">${TagcastI18n.html("player.disc.note")}</p>`;
 }
 
+// Bound decorative lettering only; the original metadata remains unchanged.
+function visualDiscLabel(value, limit) {
+  const letters = Array.from(String(value || "").replace(/\s+/g, " ").trim());
+  return letters.length > limit ? letters.slice(0, limit - 1).join("") + "…" : letters.join("");
+}
+
+function renderVisualDiscLabel() {
+  const track = player.queue[player.index], album = track?.album;
+  const title = track ? visualDiscLabel([track.title, track.artist || album?.artist].filter(Boolean).join(" • "), 96) : "";
+  const name = visualDiscLabel(album?.name, 36), key = JSON.stringify([title, name]);
+  if (visualDisc.label === key) return;
+  visualDisc.label = key;
+  $("#visual-disc-title").textContent = title;
+  $("#visual-disc-album").textContent = name;
+}
+
 function renderVisualDisc() {
   const stage = $("#visual-player"), cd = visualDisc.style === "cd";
+  renderVisualDiscLabel();
   stage.classList.toggle("cd-view", cd);
   stage.classList.toggle("disc-spinning", cd && visualPlayer.open && !document.hidden
     && !visualDisc.waiting && !audio.paused && !audio.ended && !audio.seeking

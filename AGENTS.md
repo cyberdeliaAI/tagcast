@@ -699,7 +699,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   never fetch, seek, restart playback or change the queue when toggling. Rotate only
   while the large view is visible and audio is ready/playing; pause during waiting,
   seeking or pause, preserve the angle on resume and respect reduced motion.
-  Keep the sleeve upright and animate only the decorative tinted disc behind it. Expanded
+  Keep the sleeve upright. Animate only the bounded title/artist/album lettering and
+  accent band on the decorative disc at four seconds per turn; keep its reflection and hub
+  stationary. Use loaded metadata as text only, and retain its original values. Expanded
   views share one centred cover/info layout, with lyrics alongside on wide screens.
   Show queue position/next-track context, the shared Follow switch and readable source attribution;
   fade lyric edges without hiding errors or retry. Hide the stop/close button only while expanded;

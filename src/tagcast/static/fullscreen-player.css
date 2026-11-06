@@ -13,6 +13,7 @@
 .visual-window-actions svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 #player-stage .visual-player-content{flex:1;min-height:0;width:100%;max-width:1120px;margin:0 auto;gap:20px;justify-content:center;padding:26px 0;text-align:center}
 #player-stage .visual-player-cover{width:min(392px,60vw,calc(100dvh - var(--listening-player-height,96px) - 270px));min-width:120px;overflow:visible;background:none;border-radius:8px;box-shadow:none;isolation:isolate}
+#player-stage .cd-view .visual-player-cover{max-width:calc((100vw - 2 * var(--expanded-gutter)) / 1.92)}
 #player-stage .visual-player-info{padding:0;min-width:0;max-width:900px}
 #player-stage .visual-player-info h2{font-size:clamp(22px,2.7vw,36px);line-height:1.18;letter-spacing:-.025em;margin:0 0 10px}
 #player-stage #visual-player-artist{opacity:1;margin:0 0 3px}

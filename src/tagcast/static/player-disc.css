@@ -3,17 +3,21 @@
 .visual-player-disc{display:none}
 .player-stage .visual-player.cd-view .visual-player-cover{overflow:visible;background:none;box-shadow:none;border:0}
 .cd-view .visual-player-disc{
-  display:block;position:absolute;left:38%;top:2%;width:96%;height:96%;overflow:hidden;border-radius:50%;
+  display:block;position:absolute;left:50%;top:2%;width:96%;height:96%;overflow:hidden;border-radius:50%;
   background:var(--visual-cover,var(--palette-shell-active,#344b3d));border:2px solid #ffffff36;
   box-shadow:0 0 0 4px #11171a,0 12px 30px #0005;
   -webkit-mask-image:radial-gradient(circle,#0000 0 5.5%,#000 5.8%);
   mask-image:radial-gradient(circle,#0000 0 5.5%,#000 5.8%);
-  animation:visual-disc-turn 20s linear infinite;animation-play-state:paused;
 }
 .cd-view .visual-player-disc::before{
   content:"";position:absolute;inset:-15%;border-radius:50%;pointer-events:none;
   background:linear-gradient(#12181b66,#12181b66),var(--lyrics-cover-image);background-position:center;background-size:cover;filter:blur(20px);
 }
+.visual-disc-print{position:absolute;inset:0;width:100%;height:100%;animation:visual-disc-turn 4s linear infinite;animation-play-state:paused;pointer-events:none}
+.visual-disc-print text{fill:#f3eff0;font:600 3.5px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.3px}
+.visual-disc-print .visual-disc-rim-text{text-transform:uppercase}
+.visual-disc-print #visual-disc-album{font-size:3px;letter-spacing:.15px}
+.visual-disc-band{fill:none;stroke:var(--accent);stroke-width:6;stroke-opacity:.55;stroke-dasharray:132 76;transform:rotate(-85deg);transform-origin:50% 50%}
 .cd-view .visual-player-disc::after{
   content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
   background:radial-gradient(circle,transparent 0 5.5%,#151b1e 5.7% 8%,#b9c3c6 8.2% 11.5%,#ffffff66 11.8% 12%,transparent 12.2%),
@@ -21,6 +25,6 @@
     conic-gradient(from 20deg,transparent 0 12%,#ffffff12 12.1% 20%,transparent 20.1% 65%,#ffffff0b 65.1% 75%,transparent 75.1%);
   box-shadow:inset 0 0 0 2px #ffffff29,inset 0 0 0 6px #0002;
 }
-.cd-view.disc-spinning .visual-player-disc{animation-play-state:running}
+.cd-view.disc-spinning .visual-disc-print{animation-play-state:running}
 @keyframes visual-disc-turn{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.cd-view .visual-player-disc{animation:none}}
+@media(prefers-reduced-motion:reduce){.cd-view .visual-disc-print{animation:none}}
