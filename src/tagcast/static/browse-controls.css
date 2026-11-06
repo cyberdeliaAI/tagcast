@@ -1,5 +1,5 @@
-/* Search stays reachable without introducing a second page scrollbar. */
-main > :is(section,div) > .toolbar,main > :is(section,div) > .sticky-search{position:sticky;top:0;z-index:8;background:var(--paper);padding-block:12px;margin-block:0 20px;box-shadow:0 8px 12px -12px #0007}
+/* Search stays above listings, below header menus, the player and side panel. */
+main > :is(section,div) > .toolbar,main > :is(section,div) > .sticky-search{position:sticky;top:0;z-index:4;background:var(--paper);padding-block:12px;margin-block:0 20px;box-shadow:0 8px 12px -12px #0007}
 main > :is(section,div) > .toolbar[hidden]{display:none}
 main > :is(section,div) > .sticky-search{display:block}
 main > :is(section,div) > .sticky-search .clearable-search{display:block}
