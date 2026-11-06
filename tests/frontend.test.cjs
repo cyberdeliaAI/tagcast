@@ -4741,7 +4741,7 @@ test("the pinned Now playing page escapes metadata, supports history and shares 
   const length = p.history.length;
   await p.nodes.get("#player-queue").emit("click");
   assert.equal(p.nodes.get("#now-playing-panel").hidden, false);
-  assert.match(p.nodes.get("#now-playing-current").innerHTML, /&lt;script&gt;/);
+  assert.match(p.nodes.get("#now-playing-heading-title").textContent, /<script>/);
   assert.doesNotMatch(p.nodes.get("#now-playing-list").innerHTML, /<script>/);
   assert.equal(p.history.length, length + 1);
   assert.equal(p.location.hash, "#/now-playing");
@@ -11873,4 +11873,68 @@ test('Sound stays in the sidebar across listening views without replacing playba
   await p.nodes.get('#player-output').emit('click');await settle();
   assert.equal(p.nodes.get('#audio-output-dialog').open,true);
   p.run('closePlaybackOutput()');
+});
+
+
+test('the listening heading holds the current title as text and keeps album artists separate from performers',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1")); player.queue[0].title="<img src=x onerror=alert(1)>";player.queue[0].artist="A different performer";showScreen("now-playing")');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,' · <img src=x onerror=alert(1)>');
+  const html=p.nodes.get('#now-playing-current').innerHTML;
+  assert.doesNotMatch(html,/<h3>|<img src=x|data-performer-id|now-playing-rating-slot/);
+  assert.match(html,/data-artist="Pink Floyd"/);
+  assert.match(html,/data-album="1"/);
+  p.run('setNowPlaying(false);showScreen("albums");setNowPlaying(true)');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,'');
+  assert.match(p.nodes.get('#now-playing-current').innerHTML,/<h3>&lt;img src=x/);
+});
+
+test('queue rows share album actions without nested buttons or marking every repeated ID as playing',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));appendToQueue(state.details.get("1"));showScreen("now-playing")');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),requests=p.requests.length;
+  p.run('renderNowPlaying()');
+  const html=p.nodes.get('#now-playing-list').innerHTML,track=p.json('player.queue[0]');
+  assert.equal((html.match(/queue-row queue-editable playing/g)||[]).length,1);
+  assert.match(html,/queue-playing-bars/);
+  assert.ok(html.includes(p.run('trackTagControls(player.queue[0].album,player.queue[0])')));
+  assert.ok(html.includes(p.run('queueButton(player.queue[0].album.id,player.queue[0])')));
+  assert.ok(html.includes(p.run('heartButton(player.queue[0])')));
+  assert.match(html,/<\/button><div class="track-row-actions queue-track-actions">/);
+  assert.match(html,new RegExp('data-favourite="'+track.id+'"'));
+  assert.equal(p.requests.length,requests,'Rendering actions never reads or writes library data');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+  p.run('audio.pause();renderNowPlaying()');
+  assert.doesNotMatch(p.nodes.get('#now-playing-list').innerHTML,/queue-row queue-editable playing/);
+});
+
+test('expanded artist and album navigation leaves the playback source and queue untouched',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));visualPlayerMode="window";openVisualPlayer()');
+  assert.match(p.nodes.get('#visual-player-artist').innerHTML,/data-visual-artist="Pink Floyd"/);
+  assert.match(p.nodes.get('#visual-player-album').innerHTML,/data-visual-album="1"/);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  await p.click({'[data-visual-artist]':{dataset:{visualArtist:'Pink Floyd'}}});await settle();
+  assert.equal(p.run('visualPlayer.open'),false);
+  assert.equal(p.run('state.artist'),'Pink Floyd');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+  p.run('openVisualPlayer()');
+  await p.click({'[data-visual-album]':{dataset:{visualAlbum:'1'}}});await settle();
+  assert.equal(p.run('visualPlayer.open'),false);
+  assert.equal(p.run('state.screen'),'album');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('ready lyrics can omit the extra notice while loading and errors remain visible',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  openDisplayLyrics(p);await settle();
+  const node=p.nodes.get('#visual-lyrics-message');
+  assert.equal(node.classList.contains('lyrics-ready-notice'),true);
+  p.run('setPlaybackLyricsNotice({errors:[new Error("Unavailable")]})');
+  assert.equal(node.classList.contains('lyrics-ready-notice'),false);
+  assert.match(node.textContent,/Unavailable/);
+  p.run('playbackLyricsView.data=null;setPlaybackLyricsNotice({checking:true})');
+  assert.equal(node.classList.contains('lyrics-ready-notice'),false);
+  assert.match(node.textContent,/Checking/);
 });

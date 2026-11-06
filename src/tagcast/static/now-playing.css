@@ -160,3 +160,59 @@ body.listening-page-open .main-footer{display:none}
 :is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger:hover:not(:disabled){
   background:#d46b6b26;border-color:#e7a09a99;color:#ffd6d0;
 }
+
+/* Shared ratings stay beside the transport; the compact audio control keeps a quiet width. */
+#player-rating-slot{display:flex;flex:none;align-items:center}
+#player-rating-slot .now-playing-ratings{margin:0;gap:0}
+#player-rating-slot .player-favourite{width:34px;height:40px;padding:6px;color:var(--muted)}
+#player-rating-slot .player-favourite[aria-pressed="true"]{color:var(--accent)}
+.player .player-transport{max-width:600px}
+[data-player-transport="spacious"] .player-transport{grid-template-columns:minmax(76px,1fr) 40px 48px 40px minmax(76px,1fr);gap:3px 6px}
+[data-player-transport="spacious"] #player-rating-slot{grid-column:1;grid-row:1;justify-self:start}
+[data-player-transport="spacious"] #gapless-options{grid-column:5;justify-self:start}
+[data-player-transport="spacious"] #gapless-play{width:44px;height:44px}
+#visual-player-artist .text-action{font-size:18px;font-weight:700;line-height:1.4}
+#visual-player-album .text-action{font-size:14px;font-weight:400}
+:is(#visual-player-artist,#visual-player-album) .text-action{color:inherit;white-space:normal;text-align:inherit;padding:0;min-height:32px}
+.listening-page .now-playing-header h2{font-size:clamp(22px,2.5vw,32px);line-height:1.25;min-width:0;overflow-wrap:anywhere}
+#now-playing-heading-title{font-weight:600}
+.now-playing-artist .text-action{font-size:18px;font-weight:700;white-space:normal;text-align:left}
+.listening-page .now-playing-info .now-playing-artist{margin:0 0 8px}
+/* The region retains its accessible name, loading/errors, retry and source attribution. */
+#listening-lyrics-slot #visual-lyrics-heading,#listening-lyrics-slot .lyrics-ready-notice{display:none}
+#listening-lyrics-slot .visual-lyrics-lines{font-size:clamp(16px,1.4vw,20px);line-height:1.55}
+#listening-lyrics-slot .visual-lyric-line{margin-bottom:14px}
+.listening-page #now-playing-current{overflow:visible}
+.queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.queue-track{min-width:0}
+.queue-track-actions{display:flex;align-items:center;gap:2px;flex:none}
+.queue-track-actions :is(.favourite-button,.track-tag-action,.queue-add){width:32px;min-width:32px;height:40px;padding:5px}
+.queue-track-actions .queue-add{width:40px}
+.queue-playing-bars{display:none;width:15px;height:15px;background:
+  linear-gradient(currentColor,currentColor) 0 100%/3px calc(2px + 13px * var(--player-eq-0,0)) no-repeat,
+  linear-gradient(currentColor,currentColor) 4px 100%/3px calc(2px + 13px * var(--player-eq-1,0)) no-repeat,
+  linear-gradient(currentColor,currentColor) 8px 100%/3px calc(2px + 13px * var(--player-eq-2,0)) no-repeat,
+  linear-gradient(currentColor,currentColor) 12px 100%/3px calc(2px + 13px * var(--player-eq-3,0)) no-repeat}
+html[data-player-visualizer]:not([data-player-visualizer="off"]) .queue-row.playing .queue-playing-bars{display:inline-block}
+html[data-player-visualizer]:not([data-player-visualizer="off"]) .queue-row.playing .queue-playing-icon{display:none}
+body.now-playing-open .queue-track-actions{grid-column:1/-1;justify-content:flex-end}
+@media(min-width:1200px) and (min-height:760px){
+  .listening-page .now-playing-header h2{font-size:clamp(22px,2.5vw,32px)}
+  .listening-page .now-playing-scroll{grid-template-rows:minmax(240px,52%) auto minmax(100px,1fr)}
+  .listening-page #now-playing-current{overflow:visible;padding-bottom:12px;align-content:start}
+  .listening-page .now-playing-info{align-self:start}
+}
+@media(max-width:760px){
+  .queue-row{grid-template-columns:minmax(0,1fr)}
+  .queue-track-actions{justify-content:flex-end;grid-column:1}
+  .queue-remove{top:24px;transform:none}
+  .player .player-transport{gap:3px}
+  #player-rating-slot .player-favourite{width:30px;padding:5px}
+}
+
+@media(hover:hover) and (pointer:fine){
+  .queue-track-actions>button{opacity:0;pointer-events:none}
+  .queue-row:is(:hover,:focus-within) .queue-track-actions>button,
+  .queue-track-actions>.favourite-button:is([aria-pressed="true"],.is-pending),
+  .queue-track-actions>button[aria-expanded="true"]{opacity:1;pointer-events:auto}
+}

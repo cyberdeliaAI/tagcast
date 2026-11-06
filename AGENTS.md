@@ -652,8 +652,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   compact-player cover opens that page by default, or the existing side panel when
   `tagcast-now-playing-open` is `panel`; the panel adds no history entry. Mount the same
   queue panel in either place, preserve the queued occurrences and native lyrics reads,
-  and never create a second playback state. Favourites/dislikes belong to Now playing
-  and the expanded view, not the bottom bar. Reuse the same rating controls and handlers.
+  and never create a second playback state. Favourites/dislikes share the existing bottom-bar controls in normal and expanded views;
+  queue rows reuse the album track actions. Never duplicate the current-track rating controls.
+  The listening-page heading combines Now playing with the current title; album artist
+  and album names link to their existing browsing destinations.
   Now playing offers one Remove from play queue button per stored position, replacing
   its number on hover/focus and always visible on touch. Keep it separate from the
   row's Play button, keyboard accessible and bound to the rendered entry/revision.
