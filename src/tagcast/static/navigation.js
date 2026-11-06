@@ -164,7 +164,7 @@ function currentRoute() {
   if (state.screen === "browse") return `${browseView.kind}${browseView.key === null ? "" : `/${encodeURIComponent(browseView.key)}`}`;
   if (state.screen === "playlists" && collectionsView.playlist) return `playlist/${encodeURIComponent(collectionsView.playlist)}`;
   if (state.screen === "album" && albumView.id) return `album/${encodeURIComponent(albumView.id)}`;
-  if (["uploads", "downloads", "overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
+  if (["now-playing", "uploads", "downloads", "overview", "artists", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "album-guide"].includes(state.screen)) return state.screen;
   return state.artist ? `artist/${encodeURIComponent(state.artist)}` : "albums";
 }
 
@@ -174,7 +174,7 @@ function parseRoute(hash) {
   try { value = decodeURIComponent(rest.join("/")); } catch { return null; }
   if (kind === "settings") return {screen: "settings", category: Object.hasOwn(SETTINGS_CATEGORIES, value) ? value : "interface"};
   if (Object.hasOwn(browseKinds, kind)) return {screen: "browse", kind, key: rest.length ? value : null};
-  if (["uploads", "downloads", "artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
+  if (["now-playing", "uploads", "downloads", "artists", "albums", "tracks", "favourites", "playlists", "album-favourites", "artist-favourites", "recently-played", "overview", "album-guide"].includes(kind)) return {screen: kind};
   if (kind === "playlist" && /^\d+$/.test(value)) return {screen: "playlists", playlist: value};
   if (kind === "artist" && value) return {screen: "albums", artist: value};
   if (kind === "album" && value) return {screen: "album", album: value};
@@ -184,7 +184,7 @@ function parseRoute(hash) {
 // Page names for breadcrumbs and Back buttons, in the current interface language. History entries
 // keep a copy for pages named by library data (an artist, album, playlist or browse group); fixed
 // page names are looked up again whenever they are shown, so they follow a language change.
-const ROUTE_LABELS = {artists: "nav.sidebar.albumArtists", albums: "nav.sidebar.albums", tracks: "nav.sidebar.tracks",
+const ROUTE_LABELS = {"now-playing": "player.nowPlaying.heading", artists: "nav.sidebar.albumArtists", albums: "nav.sidebar.albums", tracks: "nav.sidebar.tracks",
   favourites: "nav.route.favouriteTracks", playlists: "nav.sidebar.playlists", "album-favourites": "nav.route.albumFavourites",
   "artist-favourites": "nav.route.favouriteArtists", "recently-played": "nav.sidebar.recentlyPlayed", overview: "nav.sidebar.overview",
   downloads: "nav.sidebar.downloads", uploads: "nav.sidebar.uploads"};
@@ -389,6 +389,8 @@ function showRoute(route, saved = {}) {
     showCollections(route.screen, route.playlist || null, saved.collections || {});
   } else if (["downloads", "uploads"].includes(route.screen)) {
     showScreen(route.screen);
+  } else if (route.screen === "now-playing") {
+    showScreen("now-playing");
   } else if (route.screen === "overview") {
     showScreen("overview");
   } else if (route.screen === "album" && state.albums.some(a => String(a.id) === route.album)) {

@@ -56,23 +56,24 @@ async function run(id, sourceCase, mode) {
   const until=async(test,ms=20000)=>{const start=performance.now();while(!test()){if(performance.now()-start>ms)throw Error('Condition deadline');await wait(20);}};
   await wait(150);const events=[],observations=[],identity=audio;let result;
   for(const name of ['playing','waiting','seeking','seeked','pause','ended','error']) audio.addEventListener(name,()=>events.push({name,at:performance.now(),index:player.index,time:audio.currentTime,src:audio.currentSrc,active:Boolean(gaplessTrial.active),nativeVisible:!audio.hidden}));
-  const album=${JSON.stringify(album)},mode=${JSON.stringify(mode)};
+  const album=${JSON.stringify(album)},mode=${JSON.stringify(mode)},spacious=${args.includes('--spacious')};
   if(${args.includes('--diagnostics')})gaplessDiagnosticsSet(true);
   try{
    useLocal([album],'live');state.connection={connected:true,premium:true,playback_session:'isolated-app-test'};lookup.streamQuality='orig';gaplessTrial.enabled=mode!=='ordinary';updateChrome();showScreen('albums');render();
+   if(spacious){nowPlayingPreferences.transport='spacious';applyNowPlayingPreferences();}
    if(mode==='startup-fallback'){
     const append=SourceBuffer.prototype.appendBuffer;let injected=false;
     SourceBuffer.prototype.appendBuffer=function(data){if(!injected&&gaplessTrial.active?.started&&!gaplessTrial.active.ready){injected=true;throw new DOMException('Injected test quota failure','QuotaExceededError');}return append.call(this,data);};
    }
    playTracks(album,mode==='evicted-seek'?'2':undefined);await until(()=>!audio.paused&&audio.currentTime>.03);
    if(mode==='ordinary'){
-    if(gaplessTrial.active||audio.hidden||!audio.currentSrc.includes('/api/stream/1'))throw Error('Gapless-off did not use the native stream');
+    if(gaplessTrial.active||audio.hidden!==spacious||!audio.currentSrc.includes('/api/stream/1'))throw Error('Gapless-off did not use the native stream');
     seekSystemPlayback(.15);await until(()=>!audio.seeking&&audio.currentTime>=.1);
     step(1);await until(()=>player.index===1&&!audio.paused&&audio.currentSrc.includes('/api/stream/2'));
     step(-1);await until(()=>player.index===0&&!audio.paused&&audio.currentSrc.includes('/api/stream/1'));
     audio.playbackRate=1.25;if(audio.playbackRate!==1.25)throw Error('Native speed change failed');audio.playbackRate=1;
     audio.currentTime=audio.duration-.05;await until(()=>player.index===1&&!audio.paused);
-    if(gaplessTrial.active||audio.hidden||identity!==audio)throw Error('Ordinary playback/advance changed audio route');
+    if(gaplessTrial.active||audio.hidden!==spacious||identity!==audio)throw Error('Ordinary playback/advance changed audio route');
     observations.push({normalPlayback:true,nextPrevious:true,seekAndAdvance:true,sameNativeAudio:true});
    }else if(mode==='soak'){
     player.repeat='queue';gaplessQueueChanged();
@@ -106,9 +107,19 @@ async function run(id, sourceCase, mode) {
     await until(()=>player.queue[0]?.id==='3'&&!audio.paused&&audio.currentTime>.03);await wait(2300);
     observations.push({lateReplyIgnored:player.queue.length===1&&player.queue[0].id==='3'&&gaplessTrial.active?.current.entry===player.queue[0]});
    }else if(mode==='interaction'){
-    const position=audio.currentTime;audio.pause();await wait(200);observations.push({paused:audio.paused,stable:Math.abs(audio.currentTime-position)<.04});
-    audio.playbackRate=1.25;await audio.play();await until(()=>audio.currentTime>position+.1);observations.push({resumed:!audio.paused,rate:audio.playbackRate});
-    audio.playbackRate=1;gaplessSeek(.05);await until(()=>audio.currentTime<.3);observations.push({seeked:audio.currentTime});
+    const position=audio.currentTime;
+    if(spacious)document.querySelector('#gapless-play').click();else audio.pause();
+    await wait(200);observations.push({paused:audio.paused,stable:Math.abs(audio.currentTime-position)<.04});
+    audio.playbackRate=1.25;
+    if(spacious)document.querySelector('#gapless-play').click();else await audio.play();
+    await until(()=>audio.currentTime>position+.1);observations.push({resumed:!audio.paused,rate:audio.playbackRate});
+    audio.playbackRate=1;
+    if(spacious){
+     await until(()=>gaplessPosition()>.35);
+     const slider=document.querySelector('#gapless-position');slider.value='0';slider.dispatchEvent(new Event('input'));slider.dispatchEvent(new Event('change'));
+    }
+    else gaplessSeek(.05);
+    await until(()=>audio.currentTime<.3);observations.push({seeked:audio.currentTime});
     state.connection.playback_session='replaced-test-session';await wait(250);observations.push({cancelled:!gaplessTrial.active,sourceCleared:!audio.getAttribute('src')});
    }else if(mode==='evicted-seek'){
     await until(()=>audio.currentTime>11,16000);const src=audio.currentSrc;
@@ -122,8 +133,10 @@ async function run(id, sourceCase, mode) {
     player.repeat='queue';gaplessQueueChanged();await until(()=>player.index===1);observations.push({advanced:true});
     const queued=player.queue[2];setNowPlaying(true);renderNowPlaying();removeQueueEntry(2,nowPlayingRows.revision);await wait(100);observations.push({removedNotWanted:gaplessTrial.active?.wanted!==queued});
    }
-   if(observations.some(o=>Object.entries(o).some(([k,v])=>['paused','stable','resumed','cancelled','sourceCleared','repeatTrack','advanced','removedNotWanted','nativeVisible','gaplessHidden','evicted','backwardSeek','mseActive','skippedToPrepared','lateReplyIgnored','startupRecovered'].includes(k)&&v!==true)))throw Error('Application state assertion failed');
-   result={id,pass:true,diagnostics:gaplessDiagnosticsReport(),observations,events,sameElement:identity===audio,queueIds:player.queue.map(t=>t.id),index:player.index,message:gaplessTrial.message};
+   if(['ordinary','startup-fallback','fallback','stall'].includes(mode)
+      && (audio.hidden!==spacious||document.querySelector('#gapless-transport').hidden===spacious))throw Error('Fallback transport presentation failed');
+   if(observations.some(o=>Object.entries(o).some(([k,v])=>['paused','stable','resumed','cancelled','sourceCleared','repeatTrack','advanced','removedNotWanted','evicted','backwardSeek','mseActive','skippedToPrepared','lateReplyIgnored','startupRecovered'].includes(k)&&v!==true)))throw Error('Application state assertion failed');
+   result={id,pass:true,presentation:spacious?'spacious':'compact',diagnostics:gaplessDiagnosticsReport(),observations,events,sameElement:identity===audio,queueIds:player.queue.map(t=>t.id),index:player.index,message:gaplessTrial.message};
   }catch(error){result={id,pass:false,error:error.message,observations,events,index:player.index,message:gaplessTrial.message};}
   return result;
  })()` .replace('result={id,','result={id:'+JSON.stringify(id)+',').replace('result={id,','result={id:'+JSON.stringify(id)+','));

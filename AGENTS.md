@@ -647,7 +647,13 @@ their shared browsing/player state; a fast local response can otherwise race the
   appends a single track or all discs of an album, preserving click order. Store
   each queued track's album metadata for covers and navigation across albums.
   Clear queue stops audio and cancels pending additions. Guard lazy loads against
-  library changes and clears. Now playing opens without a browser history entry.
+  library changes and clears. The pinned Now playing shortcut above the scrolling sidebar
+  opens the normal `#/now-playing` listening page and follows browser history. The
+  compact-player cover opens that page by default, or the existing side panel when
+  `tagcast-now-playing-open` is `panel`; the panel adds no history entry. Mount the same
+  queue panel in either place, preserve the queued occurrences and native lyrics reads,
+  and never create a second playback state. Favourites/dislikes belong to Now playing
+  and the expanded view, not the bottom bar. Reuse the same rating controls and handlers.
   Now playing offers one Remove from play queue button per stored position, replacing
   its number on hover/focus and always visible on touch. Keep it separate from the
   row's Play button, keyboard accessible and bound to the rendered entry/revision.
@@ -708,13 +714,19 @@ their shared browsing/player state; a fast local response can otherwise race the
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.
 - `playback.js` owns optional output selection and Media Session controls for the same
-  audio element. The speaker cabinet icon opens Sound with an accessible volume slider and mute
+  audio element. Sound beside Settings in the sidebar footer opens an accessible volume slider and mute
   button above output selection on every platform. Keep these synchronized through
   volumechange, use the actual audio volume/muted values and acknowledge rejected
   changes with a system/device fallback. Never restart audio, request permissions or
   change the queue for volume; keep native controls available. Tint the native panel from the
-  shell palette where supported, with a dark native fallback; never replace or hide controls
-  for appearance. Do not persist volume
+  shell palette where supported, with a dark native fallback. Native controls remain the default;
+  `tagcast-player-transport=spacious` optionally presents the existing custom controls for ordinary
+  playback too. Keep Previous/Play/Next centred, elapsed time before the seek bar and duration
+  after it, and bind seek previews to the current queue occurrence, playback epoch and Gapless
+  segment. Compact Gapless retains its existing track-relative transport. All presentations
+  use the same native element and system playback handlers, with speed, mute and output options
+  still reachable. Move the same Sound button into the expanded view's header while it is open.
+  Do not persist volume
   or change it on opening. Discover permitted output devices only on explicit dialog opening
   or device changes while open; never request microphone access. Feature-detect the
   output picker, sink selection and native AirPlay picker, with system sound settings
@@ -748,6 +760,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   playing row of album and playlist tracklists; Off keeps the speaker. Feature-detect capture,
   create the audio graph only after playback starts with the spectrum on, and stop the animation
   once paused bars settle or the page is hidden.
+  The listening page adds an independent off-by-default `tagcast-now-playing-meter` choice:
+  Off, Spectrum or Stereo VU meters. Reuse that capture/context; stereo time-domain analysers
+  observe independent channels through a splitter and never connect to the audio destination.
+  VU uses RMS with a visual reference of -18 dBFS for 0 VU and 300 ms smoothing, not calibrated
+  output loudness. Release the stereo tap when hidden/disabled and honour reduced motion.
 - Playback goes through the local server, supports Range requests and does
   report no plays by default. Optional `record_plays` in Settings sends the documented
   `history` payload after more than ten seconds of actual listening, excluding pauses,
