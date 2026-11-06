@@ -102,7 +102,7 @@ const HELP_TOPICS = {
     ["help.settings.find.title", "help.settings.find.body", ["#settings-nav", "#settings-category-description"]],
     ["help.settings.nowPlayingView.title", "help.settings.nowPlayingView.body", ["#player-view-mode"]],
     ["listening.settings.transport", "listening.settings.note", ["#now-playing-open", "#player-transport-style", "#now-playing-meter"]],
-    ["help.settings.nowPlayingLyrics.title", "help.settings.nowPlayingLyrics.body", ["#playback-lyrics-mode", "#playback-lyrics-cover-background"]],
+    ["help.settings.nowPlayingLyrics.title", "help.settings.nowPlayingLyrics.body", ["#playback-lyrics-mode"]],
     ["help.settings.spectrum.title", "help.settings.spectrum.body", ["#player-visualizer-mode"]],
     ["help.settings.interface.title", "help.settings.interface.body", ["#settings .interface-settings"]],
     ["help.settings.sidebar.title", "help.settings.sidebar.body", ["#settings .sidebar-layout-settings"]],

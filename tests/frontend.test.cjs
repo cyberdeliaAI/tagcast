@@ -10,8 +10,8 @@ const root = path.join(__dirname, "..");
 const staticDir = path.join(root, "src/tagcast/static");
 
 // Display-only Now playing lyrics exercise the actual page scripts below.
-async function playbackLyricsPage(mode = "native") {
-  const storage = {"tagcast-now-playing-lyrics": mode};
+async function playbackLyricsPage(mode = "native", preferences = {}) {
+  const storage = {"tagcast-now-playing-lyrics": mode, ...preferences};
   const p = page({storage}); await settle();
   p.run('state.mode="live";state.connection.playback_session="lyrics-session";playTracks(state.details.get("1"));');
   return {p, storage};
@@ -24,33 +24,33 @@ const displayLyricsFixture = {status:"ready",source:"unison",timed:true,lines:[
   {start:3,end:8,text:"Second test line"}]};
 const emptyNativeLyrics = {status:"not_cached",source:"ibroadcast",text:"",native_text:"",can_lookup:false};
 
-test('cover atmosphere is optional, profile-local and clears when artwork is unavailable or player closes',async()=>{
-  const {p,storage}=await playbackLyricsPage();
-  const art=p.nodes.get('#visual-player-art');
-  art.complete=true;art.naturalWidth=300;art.hidden=false;art.src='https://artwork.example/cover.jpg';
-  p.run('visualPlayer.open=true;renderLyricsCoverBackground()');
-  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
-  await p.change({id:'playback-lyrics-cover-background',checked:true,matches:()=>false,closest:()=>null});
-  assert.equal(storage['tagcast-now-playing-cover-background'],'true');
-  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),true);
-  assert.match(p.nodes.get('#visual-player').style['--lyrics-cover-image'],/cover.jpg/);
-  art.hidden=true;p.run('renderLyricsCoverBackground()');
-  assert.equal(p.nodes.get('#visual-player').style['--lyrics-cover-image'],undefined);
-  p.run('hideVisualPlayer()');
-  assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
+test('cover atmosphere is always shown with loaded artwork, including previous opt-outs',async()=>{
+  for (const saved of [undefined,'false','true']) {
+    const {p,storage}=await playbackLyricsPage('native',saved===undefined?{}:{'tagcast-now-playing-cover-background':saved});
+    const art=p.nodes.get('#visual-player-art');
+    art.complete=true;art.naturalWidth=300;art.hidden=false;art.src='https://artwork.example/cover.jpg';
+    p.run('visualPlayer.open=true;renderLyricsCoverBackground()');
+    assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),true);
+    assert.match(p.nodes.get('#visual-player').style['--lyrics-cover-image'],/cover.jpg/);
+    assert.doesNotMatch(p.run('playbackLyricsSettings()'),/playback-lyrics-cover-background/);
+    assert.equal(storage['tagcast-now-playing-cover-background'],saved,'No preference migration writes are required');
+    art.hidden=true;p.run('renderLyricsCoverBackground()');
+    assert.equal(p.nodes.get('#visual-player').style['--lyrics-cover-image'],undefined);
+    p.run('hideVisualPlayer()');
+    assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
+  }
 });
 
-test('the listening page shares the cover preference and rejects missing or obsolete cover events',async()=>{
+test('the listening page always shows the loaded cover and rejects missing or obsolete cover events',async()=>{
   const {p}=await playbackLyricsPage();
   const host=p.nodes.get('#now-playing-current'), workspace=p.nodes.get('main');
   const first={complete:true,naturalWidth:300,hidden:false,src:'https://artwork.example/first.jpg'};
   let current=first;
   host.querySelector=selector=>selector==='.now-playing-cover img'?current:null;
   p.run('showScreen("now-playing")');
-  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  assert.equal(workspace.classList.contains('listening-atmosphere'),true);
   const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
   const requests=p.requests.length;
-  await p.change({id:'playback-lyrics-cover-background',checked:true,matches:()=>false,closest:()=>null});
   assert.match(workspace.style['--lyrics-cover-image'],/first.jpg/);
   assert.equal(workspace.classList.contains('listening-atmosphere'),true);
   current={complete:false,naturalWidth:0,hidden:false,src:'https://artwork.example/second.jpg'};
@@ -74,6 +74,50 @@ test('the listening page shares the cover preference and rejects missing or obso
   assert.equal(workspace.style['--lyrics-cover-image'],undefined,'Late events cannot tint another page');
   assert.equal(p.requests.length,requests,'Cover presentation makes no provider or account requests');
   assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('the listening page shares one timed lyrics view and cache with the expanded player',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.run('$("#listening-lyrics-slot");$(".visual-player-content")');
+  for (const selector of ['#listening-lyrics-slot','.visual-player-content']) {
+    const host=p.nodes.get(selector), append=host.appendChild;
+    host.appendChild=node=>{node.parentElement=host;return append.call(host,node);};
+  }
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  p.run('showScreen("now-playing")');await settle();
+  const region=p.nodes.get('#visual-player-lyrics');
+  assert.equal(region.parentElement,p.nodes.get('#listening-lyrics-slot'));
+  assert.equal(region.hidden,false);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
+  p.run('audio.currentTime=2;syncPlaybackLyrics()');
+  assert.equal(p.run('playbackLyricsView.active'),0);
+  p.run('playbackLyricsView.open=true;openVisualPlayer()');await settle();
+  assert.equal(region.parentElement,p.nodes.get('.visual-player-content'));
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,1);
+  p.run('hideVisualPlayer()');await settle();
+  assert.equal(region.parentElement,p.nodes.get('#listening-lyrics-slot'));
+  assert.equal(p.requests.filter(r=>r.url==='/api/lyrics/display').length,1);
+  p.run('showScreen("albums")');
+  assert.equal(region.hidden,true);
+  assert.equal(region.parentElement,p.nodes.get('.visual-player-content'));
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
+test('leaving the listening page cancels public lyrics and rejects a late reply',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');let release,signal;
+  p.setFetch((url,options)=>url==='/api/lyrics/display'?new Promise(resolve=>{release=resolve;signal=options.signal;})
+    :{ok:true,json:async()=>emptyNativeLyrics});
+  p.run('showScreen("now-playing")');await settle();
+  assert.equal(signal.aborted,false);
+  p.run('showScreen("albums")');assert.equal(signal.aborted,true);
+  release({ok:true,json:async()=>displayLyricsFixture});await settle();
+  assert.equal(p.run('playbackLyricsView.data'),null);
+  assert.equal(p.run('playbackLyricsView.cache.size'),0);
+  assert.equal(p.nodes.get('#visual-player-lyrics').hidden,true);
+  const requests=p.requests.length;
+  p.run('setPlaybackLyricsMode("native");showScreen("now-playing")');await settle();
+  assert.equal(p.requests.slice(requests).filter(r=>r.url==='/api/lyrics/display').length,0,'Native-only never opts into public lookups');
 });
 
 test('display lyrics default to native and do not fetch while the large lyrics view is closed', async()=>{
@@ -11792,4 +11836,22 @@ test("retro VU needles follow independent RMS channels and settle without touchi
   assert.equal(p.nodes.get('#audio').src,source);
   assert.deepEqual(p.json('player.queue'),queue);
   assert.equal(p.nodes.get('#audio').paused,false);
+});
+
+
+test('the fixed listening workspace follows transport height without changing playback',async()=>{
+  const callbacks=new Map();
+  const p=page({browserResizeObserver:class {
+    constructor(callback){this.callback=callback;}
+    observe(node){callbacks.set(node,this.callback);}
+  }});await settle();
+  const bar=p.nodes.get('#player'),resize=callbacks.get(bar);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,screen:state.screen})');
+  const requests=p.requests.length;
+  bar.hidden=false;bar.getBoundingClientRect=()=>({height:111.4});resize();
+  assert.equal(p.run('document.documentElement.style["--listening-player-height"]'),'112px');
+  bar.hidden=true;resize();
+  assert.equal(p.run('document.documentElement.style["--listening-player-height"]'),'0px');
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,screen:state.screen})'),before);
 });

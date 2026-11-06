@@ -25,6 +25,7 @@ function nowPlayingSettings() {
 function syncNowPlayingPage() {
   const page = state.screen === "now-playing", host = $("#listening-page"), panel = $("#now-playing-panel");
   host.hidden = !page;
+  document.body.classList.toggle("listening-page-open", page);
   $("#player-queue").classList.toggle("active", page);
   if (page) {
     if (panel.parentElement !== host) host.appendChild(panel);
@@ -38,6 +39,7 @@ function syncNowPlayingPage() {
   }
   nowPlayingPresentation.page = page;
   if (page) renderNowPlaying();
+  renderPlaybackLyrics();
   renderLyricsCoverBackground();
   placePlayerExtras();
   if (typeof applyVisualizer === "function") applyVisualizer();
@@ -91,6 +93,7 @@ function renderListeningExtras(track, focused) {
 
   placePlayerExtras();
   renderLyricsCoverBackground();
+  renderPlaybackLyrics();
   if (focus) focus.focus({preventScroll: true});
   const host = $("#listening-meter");
   nowPlayingPresentation.needles = []; nowPlayingPresentation.spectrum = null;
@@ -152,3 +155,13 @@ function applyNowPlayingPreferences() {
   applyVisualizer();
 }
 applyNowPlayingPreferences();
+
+// Keep the fixed listening workspace above either transport, including wrapped metadata.
+function updateListeningPlayerSize() {
+  const bar = $("#player");
+  document.documentElement.style.setProperty("--listening-player-height",
+    `${bar.hidden ? 0 : Math.ceil(bar.getBoundingClientRect().height)}px`);
+}
+const listeningPlayerSizeObserver = typeof ResizeObserver === "function"
+  ? new ResizeObserver(updateListeningPlayerSize) : null;
+listeningPlayerSizeObserver?.observe($("#player"));
