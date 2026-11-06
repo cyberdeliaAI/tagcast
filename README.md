@@ -40,13 +40,9 @@ transitions safely use ordinary playback. See the
 
 **Offline guide:** [Download the illustrated Tagcast 1.4.0 manual (PDF)](https://raw.githubusercontent.com/wiki/cyberdeliaAI/tagcast/manuals/Tagcast-1.4.0-User-Manual.pdf) — English, 38 pages, with screenshots and clickable contents.
 
-![Tagcast 1.3.0 showing Billy Joel's Storm Front album in the Apple Music Classic Dark palette, with album actions, tracks and the compact player](docs/screenshots/2026-11-02-readme/album-storm-front.png)
+![Tagcast 1.5.5 Now playing with Federale's All the Colours of the Dark, artwork, retro stereo meters, synchronised LRCLIB lyrics and the play queue](docs/screenshots/2026-11-06-1.5.5/now-playing-federale.jpg)
 
-*Tagcast 1.3.0 — album details and playback in the Apple Music Classic Dark palette, captured on 2 November 2026.*
-
-![Tagcast 1.3.0 showing Big Iron by Marty Robbins with synchronised LRCLIB lyrics, a highlighted active line and a cover-coloured background](docs/screenshots/2026-11-02-readme/now-playing-big-iron.png)
-
-*Tagcast 1.3.0 — lyrics follow the current track in Now playing, against an optional cover-coloured background. Online lyrics are displayed temporarily.*
+*Tagcast 1.5.5 — the Now playing workspace, captured on 6 November 2026. [See fullscreen and album views below](#screenshots).*
 
 ## What you can do
 
@@ -174,14 +170,45 @@ organised into focused pages:
 
 ## Screenshots
 
-The [full gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots) shows
-browsing, tags, editing, cleanup, playback, Settings and mobile views. The latest
-captures show 0.80.0 with a separate sample library, including the
-metadata editor, narrow-window player and lyrics import. Earlier-interface examples
-stay labelled. The [capture inventory](docs/screenshot-checklist.md) records the originals.
+The latest captures show **Tagcast 1.5.5** on macOS. The Now playing workspace
+appears above; expand the gallery below for fullscreen CD and cover views with
+lyrics, and the album page. Online lyrics are displayed temporarily and are not
+saved automatically to iBroadcast.
 
 <details>
-<summary>Current editor and lyrics import, playlists and retained cleanup/fullscreen examples</summary>
+<summary>Tagcast 1.5.5 — fullscreen lyrics, CD view and album details</summary>
+
+![Tagcast 1.5.5 fullscreen CD view showing Federale's album cover, printed disc and synchronised LRCLIB lyrics](docs/screenshots/2026-11-06-1.5.5/fullscreen-cd-lyrics-federale.jpg)
+
+*CD view keeps the cover upright while the disc rotates during playback.*
+
+![Tagcast 1.5.5 fullscreen cover view with synchronised LRCLIB lyrics and a cover-coloured background](docs/screenshots/2026-11-06-1.5.5/fullscreen-cover-lyrics-federale.jpg)
+
+*Cover view with lyrics following the current track against a cover-coloured background.*
+
+![Tagcast 1.5.5 album page for All the Colours of the Dark with album actions, track listing and compact playback controls](docs/screenshots/2026-11-06-1.5.5/album-federale.jpg)
+
+*Album details and the compact player in the Apple Music Classic Dark palette.*
+
+</details>
+
+The [full Wiki gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots)
+also covers browsing, tags, editing, cleanup, Settings and mobile views.
+[This batch's capture notes](docs/screenshots/2026-11-06-1.5.5/README.md) and the
+[earlier capture inventory](docs/screenshot-checklist.md) record the originals.
+
+<details>
+<summary>Earlier interface examples — Tagcast 1.3.0, editor, lyrics import, playlists and cleanup</summary>
+
+![Tagcast 1.3.0 showing Billy Joel's Storm Front album in the Apple Music Classic Dark palette, with album actions, tracks and the compact player](docs/screenshots/2026-11-02-readme/album-storm-front.png)
+
+*Tagcast 1.3.0 — album details and playback in the Apple Music Classic Dark palette, captured on 2 November 2026.*
+
+![Tagcast 1.3.0 showing Big Iron by Marty Robbins with synchronised LRCLIB lyrics, a highlighted active line and a cover-coloured background](docs/screenshots/2026-11-02-readme/now-playing-big-iron.png)
+
+*Tagcast 1.3.0 — lyrics follow the current track in Now playing, against an optional cover-coloured background. Online lyrics are displayed temporarily.*
+
+*The following editor and lyrics-import examples show 0.80.0 with a separate sample library; other retained captures show earlier interface versions.*
 
 ![Edit album tab with metadata fields and online source suggestions](docs/screenshots/2026-10-23/editor-album.jpg)
 
