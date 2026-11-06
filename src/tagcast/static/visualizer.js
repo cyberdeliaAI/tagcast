@@ -288,13 +288,14 @@ function drawVisualizer(mode) {
 // The playing row's speaker becomes four small bars (visualizer.css draws them from these values).
 function markVisualizerRow(clear) {
   let row = visualizer.row;
-  if (row && (clear || !row.isConnected || !row.classList.contains("playing"))) {
+  if (row && (clear || !row.isConnected || row.closest?.("[hidden]") || !row.classList.contains("playing"))) {
     for (let i = 0; i < 4; i++) row.style.removeProperty(`--player-eq-${i}`);
     row = visualizer.row = null;
   }
   if (clear) return;
   if (!row && visualizer.rowSearch-- <= 0) {
-    row = visualizer.row = document.querySelector(".album-tracklist tr.playing");
+    row = visualizer.row = document.querySelector("#now-playing-list .queue-row.playing")
+      || document.querySelector(".album-tracklist tr.playing");
     visualizer.rowSearch = row ? 0 : 20;
   }
   if (row) for (let i = 0; i < 4; i++) row.style.setProperty(`--player-eq-${i}`, visualizerLevelAt(i / 3).toFixed(3));

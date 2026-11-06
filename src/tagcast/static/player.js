@@ -158,8 +158,8 @@ function renderVisualPlayer() {
   const track = player.queue[player.index], album = track?.album;
   if (!track) return;
   $("#visual-player-title").textContent = track.title;
-  $("#visual-player-artist").textContent = albumArtistsText(album);
-  $("#visual-player-album").textContent = album.name;
+  $("#visual-player-artist").innerHTML = albumArtistEntries(album).map(a => `<button type="button" class="text-action" data-visual-artist="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join(' <span aria-hidden="true">·</span> ');
+  $("#visual-player-album").innerHTML = `<button type="button" class="text-action" data-visual-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button>`;
   const performer = $("#visual-player-track-artist");
   renderVisualPlayerLabels();
   performer.hidden = !track.artist || albumHasArtist(album, track.artist);
@@ -458,28 +458,33 @@ function setNowPlaying(open) {
 function renderNowPlaying() {
   if ($("#now-playing-panel").hidden) return;
   const list = $("#now-playing-list"), focused = document.activeElement;
-  const focusedIndex = focused?.closest?.("#now-playing-list")
-    ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
+  const focusedRow = focused?.closest?.("[data-queue-position]");
+  const focusedIndex = focusedRow ? Number(focusedRow.dataset.queuePosition)
+    : focused?.closest?.("#now-playing-list") ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
   const focusedEntry = nowPlayingRows.entries[focusedIndex];
+  const focusedAction = ["trackTags", "queueAlbum", "favourite", "dislike"].find(key => focused?.dataset[key] !== undefined);
   const lyricsOpen = $("#now-playing-current").querySelector(".listening-lyrics")?.open;
   const removeFocused = focused?.dataset.queueRemove !== undefined;
   const editable = live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
   nowPlayingRows.revision += 1;
   nowPlayingRows.entries = player.queue.slice();
   const track = player.queue[player.index], album = track?.album;
+  $("#now-playing-heading-title").textContent = state.screen === "now-playing" && track ? ` · ${track.title}` : "";
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
-    <div class="now-playing-info"><div class="now-playing-title"><h3>${escapeHtml(track.title)}</h3><div id="now-playing-rating-slot"></div></div><p class="muted">${performerLinks(track)}</p>
+    <div class="now-playing-info">${state.screen === "now-playing" ? "" : `<h3>${escapeHtml(track.title)}</h3>`}<p class="now-playing-artist">${albumArtistLinks(album)}</p>
     <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><div id="listening-meter" class="listening-meter" hidden role="img" aria-label="${TagcastI18n.html("listening.meter.label")}"></div></div><p class="now-playing-track-actions"><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html("player.nowPlaying.addToPlaylist")}</button></p><details class="listening-lyrics" ${state.screen !== "now-playing" ? "open" : ""}><summary>${TagcastI18n.html("page.visualPlayer.lyrics")}</summary><section id="now-playing-lyrics" class="track-lyrics" hidden></section></details>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
   if (lyricsOpen) { const details = $("#now-playing-current").querySelector(".listening-lyrics"); if (details) details.open = true; }
   if (typeof renderListeningExtras === "function") renderListeningExtras(track, focused);
   if (state.screen !== "now-playing") renderLyrics("player", lyricsSelection(track));
   $("#now-playing-count").textContent = TagcastI18n.text("player.queue.count", {count: player.queue.length});
   $("#queue-clear").disabled = !player.queue.length;
-  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
-    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : "▶" : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="${TagcastI18n.html("player.queue.remove", {title: t.title, position: index + 1})}" title="${TagcastI18n.html("player.queue.removeTitle")}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
+  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}${index === player.index && !audio.paused ? " playing" : ""}" data-queue-position="${index}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
+    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : '<span class="queue-playing-icon">▶</span><span class="queue-playing-bars"></span>' : index + 1}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button><div class="track-row-actions queue-track-actions">${typeof trackTagControls === "function" ? trackTagControls(t.album, t) : ""}${queueButton(t.album.id, t)}${heartButton(t)}</div>${editable ? `<button type="button" class="queue-remove" data-queue-remove="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-label="${TagcastI18n.html("player.queue.remove", {title: t.title, position: index + 1})}" title="${TagcastI18n.html("player.queue.removeTitle")}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>` : ""}</li>`).join("");
   if (focusedEntry) {
     const index = player.queue.indexOf(focusedEntry);
-    if (index >= 0) list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`)?.focus({preventScroll: true});
+    const attribute = focusedAction?.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`);
+    if (index >= 0) (attribute ? list.querySelector(`[data-queue-position="${index}"] [data-${attribute}]`)
+      : list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`))?.focus({preventScroll: true});
   }
 }
 
@@ -722,7 +727,16 @@ $("#player-album").addEventListener("click", () => {
   if (player.album) return openAlbum(player.album.id, player.queue[player.index]?.id);
 });
 
-document.addEventListener("click", event => {
+document.addEventListener("click", async event => {
+  const artistLink = event.target.closest("[data-visual-artist]"), albumLink = event.target.closest("[data-visual-album]");
+  if (artistLink || albumLink) {
+    const artist = artistLink?.dataset.visualArtist, album = albumLink?.dataset.visualAlbum;
+    await closeVisualPlayer();
+    if (visualPlayer.open) return;
+    if (artist !== undefined) setArtist(artist);
+    else openAlbum(album);
+    return;
+  }
   const cardPlay = event.target.closest("[data-card-play]");
   if (cardPlay) return playCardAlbum(cardPlay.dataset.cardPlay);
   const queued = event.target.closest("[data-queue-album]");

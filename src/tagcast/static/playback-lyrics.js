@@ -167,6 +167,7 @@ async function loadPlaybackLyrics(selection, entry, request, details) {
 function setPlaybackLyricsNotice(notice) {
   playbackLyricsView.notice = notice;
   $("#visual-lyrics-message").textContent = playbackLyricsNoticeText();
+  $("#visual-lyrics-message").classList.toggle("lyrics-ready-notice", Boolean(playbackLyricsView.data && !notice.errors?.length));
 }
 
 function playbackLyricsNoticeText() {

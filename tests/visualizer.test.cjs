@@ -223,3 +223,30 @@ test("leaving the VU page removes stereo analysers but retains a requested compa
   assert.equal(p.log.captures, 1);
   assert.equal(p.log.contexts[0].sources.at(-1).connections.length, 1);
 });
+
+
+test("the queue's active occurrence reuses the analyser levels without another capture",()=>{
+  const p=page(), original=p.document.querySelector;
+  const row={isConnected:true,classList:{contains:c=>c==='playing'},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}};
+  p.document.querySelector=selector=>selector==='#now-playing-list .queue-row.playing'?row:original(selector);
+  p.stream.tracks.push(p.track('first'));p.audio.paused=false;p.audio.emit('play');p.frames(10);
+  assert.equal(Object.keys(row.style.properties).length,4);
+  assert.equal(p.log.captures,1);
+  p.audio.paused=true;p.audio.emit('pause');p.frames(200);
+  assert.deepEqual(row.style.properties,{});
+});
+
+
+test("a hidden album row releases its levels when the listening queue becomes visible",()=>{
+  const p=page(),original=p.document.querySelector;
+  const row=()=>({isConnected:true,classList:{contains:()=>true},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}});
+  const album=row(),queue=row();let hidden=false;
+  album.closest=()=>hidden?{}:null;p.document.playingRow=album;
+  p.stream.tracks.push(p.track('first'));p.audio.paused=false;p.audio.emit('play');p.frames(2);
+  assert.equal(Object.keys(album.style.properties).length,4);
+  hidden=true;p.document.querySelector=selector=>selector==='#now-playing-list .queue-row.playing'?queue:original(selector);
+  p.frames(2);
+  assert.deepEqual(album.style.properties,{});
+  assert.equal(Object.keys(queue.style.properties).length,4);
+  assert.equal(p.log.captures,1);
+});
