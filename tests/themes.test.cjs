@@ -47,7 +47,7 @@ test("theme base colours match existing palette tokens and Mini Player allows ex
  const api=browser().api, {themeRoles,snapshot}=require("../electron/mini-contract.cjs");
  assert.deepEqual([...api.roles],themeRoles);
  const css=fs.readFileSync(path.join(__dirname,"../src/tagcast/static/palettes.css"),"utf8");
- for(const base of ["ocean","warm","ibroadcast"])for(const mode of ["light","dark"]){
+ for(const base of ["ocean","warm","ibroadcast","apple","amber"])for(const mode of ["light","dark"]){
    const selector=mode==="light"?`:root[data-palette="${base}"]`:`:root[data-palette="${base}"][data-theme="dark"]`;
    const block=css.slice(css.indexOf(selector));const tokens=[...block.slice(block.indexOf("{"),block.indexOf("}")).matchAll(/--palette-([a-z-]+):\s*(#[0-9a-f]{6})/g)];
    assert.ok(tokens.length>=12);const colours=api.colours({base,light:{},dark:{}},mode);
@@ -146,4 +146,27 @@ test("native player and vendor logo contrast follow actual palette backgrounds, 
   b.api.builtin('forest');
   assert.equal(b.document.documentElement.dataset.shellTone,'dark');
   assert.equal(b.document.documentElement.dataset.playerTone,'dark');
+});
+
+test("Amber is a built-in choice with both original variants and preserves imported themes",()=>{
+  const b=browser({'tagcast-palette':'amber','tagcast-theme':'auto'},true);
+  assert.equal(b.document.documentElement.dataset.palette,'amber');
+  assert.equal(b.document.documentElement.dataset.shellTone,'dark');
+  assert.equal(b.api.active(),null);
+  const amber={base:'amber',light:{},dark:{}};
+  assert.equal(b.api.colours(amber,'light').paper,'#e2e4df');
+  assert.equal(b.api.colours(amber,'dark').paper,'#16181a');
+  assert.equal(b.api.colours(amber,'dark')['primary-ink'],'#241600');
+  const imported={id:'custom-oldamber1',name:'Amber · Original (ibfetch)',base:'warm',light:{primary:'#e9a23a'},dark:{primary:'#f0a63a'}};
+  b.api.save(imported,true);const before=JSON.stringify(b.api.snapshot().themes);
+  b.api.builtin('amber');
+  assert.equal(JSON.stringify(b.api.snapshot().themes),before);
+  assert.equal(b.storage['tagcast-theme'],'auto');
+  assert.equal(browser(b.storage).document.documentElement.dataset.palette,'amber');
+  assert.equal(browser(b.storage).document.documentElement.dataset.shellTone,'light');
+  const custom={id:'custom-amberbase',name:'My Amber',base:'amber',light:{},dark:{}};
+  b.api.save(custom,true);
+  assert.equal(b.api.importTheme(b.api.exportTheme(custom),'custom-ambercopy').base,'amber');
+  const {snapshot}=require('../electron/mini-contract.cjs');
+  assert.equal(snapshot({document:'d',entry:'e',segment:'s',sequence:1,palette:'amber'}).palette,'amber');
 });

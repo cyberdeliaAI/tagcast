@@ -10743,9 +10743,9 @@ test('sidebar icon editing is optional, preview-only and resets to state-depende
  assert.equal(p.requests.length,requests,'Icon presentation never requests server data or changes playback');
 });
 
-test('Apple Music Classic is a fifth built-in palette and icon reset restores its base colour',async()=>{
+test('Apple Music Classic remains a built-in palette and icon reset restores its base colour',async()=>{
  const p=page({storage:{'tagcast-palette':'apple','tagcast-theme':'light'}});await settle();
- assert.equal(p.run('TagcastThemes.builtins.length'),5);assert.equal(p.nodes.get('#palette-apple').checked,true);
+ assert.equal(p.run('TagcastThemes.builtins.includes("apple")'),true);assert.equal(p.nodes.get('#palette-apple').checked,true);
  assert.match(p.nodes.get('#theme-button').title,/Apple Music Classic/);
  p.run('showSettings("appearance");themeEditorLoad(themeEditorBase("apple"));themeEditorView.mode="light";renderThemeEditor()');
  assert.match(p.run('themeRoleControl("nav-icon")'),/restore this palette(?:'|&#39;)s icon colour/);
