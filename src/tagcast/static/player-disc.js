@@ -18,9 +18,15 @@ function renderVisualDisc() {
   stage.classList.toggle("disc-spinning", cd && visualPlayer.open && !document.hidden
     && !visualDisc.waiting && !audio.paused && !audio.ended && !audio.seeking
     && audio.readyState >= 3);
+  const palette = TagcastThemes.active() || {base: document.documentElement.dataset.palette || "forest"};
+  const accent = TagcastThemes.colours(palette, TagcastThemes.mode()).accent;
+  stage.style.setProperty("--expanded-accent-ink",
+    TagcastThemes.contrast(accent, "#111111") >= TagcastThemes.contrast(accent, "#ffffff") ? "#111111" : "#ffffff");
   const button = $("#visual-player-disc-toggle");
   button.setAttribute("aria-pressed", String(cd));
-  button.textContent = TagcastI18n.text("player.disc.toggle");
+  button.textContent = TagcastI18n.text("player.disc.cdTab");
+  button.setAttribute("aria-label", TagcastI18n.text("player.disc.toggle"));
+  $("#visual-player-cover-toggle").setAttribute("aria-pressed", String(!cd));
   const setting = $("#player-artwork-style");
   if (setting) setting.value = visualDisc.style;
 }
@@ -33,8 +39,9 @@ function setVisualDiscStyle(style) {
 }
 
 $("#visual-player-disc-toggle").addEventListener("click", () => {
-  setVisualDiscStyle(visualDisc.style === "cd" ? "cover" : "cd");
+  setVisualDiscStyle("cd");
 });
+$("#visual-player-cover-toggle").addEventListener("click", () => setVisualDiscStyle("cover"));
 document.addEventListener("change", event => {
   if (event.target.id === "player-artwork-style") setVisualDiscStyle(event.target.value);
 });
@@ -47,5 +54,6 @@ for (const name of ["playing", "canplay", "seeked"]) {
 for (const name of ["play", "pause"]) audio.addEventListener(name, renderVisualDisc);
 // A network 'stalled' event alone does not stop audio already in the buffer.
 document.addEventListener("visibilitychange", renderVisualDisc);
+document.addEventListener("tagcast-theme-change", renderVisualDisc);
 TagcastI18n.subscribe(renderVisualDisc);
 renderVisualDisc();
