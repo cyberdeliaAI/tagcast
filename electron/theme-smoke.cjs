@@ -8,6 +8,7 @@ async function checkThemes({window, miniPlayer}) {
  const capture=async name=>{if(shots){await frame();fs.writeFileSync(path.join(shots,name+'.png'),(await owner.capturePage()).toPNG());}};
  const before=await run(`(()=>{globalThis.themeCheckAudio=audio;globalThis.themeCheckQueue=player.queue;return {storage:localStorage.getItem(TagcastThemes.key),appearance:localStorage.getItem('tagcast-theme'),palette:localStorage.getItem('tagcast-palette')};})()`);
  try {
+  const browseMenus=await require('./browse-smoke.cjs').checkBrowseMenus(window);
   const listeningAppearance=await require('./listening-theme-smoke.cjs').checkListeningThemes(window);
   await run(`openSettings('interface');window.scrollTo(0,0)`);await capture('before-settings-interface');
   await run(`showSettings('appearance');window.scrollTo(0,0);`);
@@ -91,7 +92,7 @@ async function checkThemes({window, miniPlayer}) {
   const saved=await run('TagcastThemes.active().id');
   await owner.reload();await once(owner,'did-finish-load');
   assert.equal(await run('TagcastThemes.active().id'),saved,'Saved theme survives a full reload');
-  return {savedAndReloaded:true,exportedAndImported:true,previewIsolated:true,invalidInputRetained:true,variantsIndependent:true,draftRetained:true,keyboard:true,sameAudioAndQueue:true,miniColours:true,layouts,listeningAppearance};
+  return {savedAndReloaded:true,exportedAndImported:true,previewIsolated:true,invalidInputRetained:true,variantsIndependent:true,draftRetained:true,keyboard:true,sameAudioAndQueue:true,miniColours:true,layouts,listeningAppearance,browseMenus};
  } catch(error) {
   error.message=error.stack||error.message;throw error;
  } finally {
