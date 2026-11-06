@@ -51,11 +51,11 @@ function closeNowPlayingView() {
   $("#player-queue").focus();
 }
 
-// Move the same rating/output controls, preserving their handlers and authoritative state.
+// Move the same ratings; keep Sound in the sidebar with its existing handlers and state.
 function placePlayerExtras() {
   const ratingsHost = visualPlayer.open ? $("#visual-player-ratings")
     : !$("#now-playing-panel").hidden ? $("#now-playing-rating-slot") || $("#player-extras-home") : $("#player-extras-home");
-  const soundHost = visualPlayer.open ? $("#visual-player-sound") : $("#sidebar-sound");
+  const soundHost = $("#sidebar-sound");
   if (ratingsHost && nowPlayingPresentation.ratings.parentElement !== ratingsHost) ratingsHost.appendChild(nowPlayingPresentation.ratings);
   nowPlayingPresentation.sound.disabled = !player.queue[player.index];
   if (soundHost && nowPlayingPresentation.sound.parentElement !== soundHost) soundHost.appendChild(nowPlayingPresentation.sound);

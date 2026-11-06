@@ -11855,3 +11855,22 @@ test('the fixed listening workspace follows transport height without changing pl
   assert.equal(p.requests.length,requests);
   assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,screen:state.screen})'),before);
 });
+
+
+test('Sound stays in the sidebar across listening views without replacing playback or volume',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1")); visualPlayerMode="window"; audio.volume=.43; audio.muted=true; $("#sidebar-sound")');
+  await settle();
+  const host=p.nodes.get('#sidebar-sound'),append=host.appendChild;
+  host.appendChild=node=>{node.parentElement=host;return append.call(host,node);};
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,volume:audio.volume,muted:audio.muted})');
+  for(const action of ['showScreen("now-playing")','openVisualPlayer()','hideVisualPlayer()','showScreen("albums")']){
+    p.run(action);
+    assert.equal(p.nodes.get('#player-output').parentElement,host,action);
+    assert.equal(p.nodes.get('#player-output').disabled,false);
+    assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,volume:audio.volume,muted:audio.muted})'),before);
+  }
+  await p.nodes.get('#player-output').emit('click');await settle();
+  assert.equal(p.nodes.get('#audio-output-dialog').open,true);
+  p.run('closePlaybackOutput()');
+});
