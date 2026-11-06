@@ -2100,7 +2100,7 @@
   "playbackLyrics.settings.timing": "La letra sincronizada resalta la línea actual, con un subrayado que avanza por palabras o sílabas cuando está disponible. El texto normal sigue siendo legible sin sincronización. Los resultados en línea permanecen temporalmente en memoria; nunca se guardan en iBroadcast, en los archivos de música ni en el editor de letras. La letra existente de iBroadcast mantiene su caché y su comportamiento de edición habituales.",
   "playbackLyrics.settings.unisonFirst": "Primero Unison → LRCLIB · iBroadcast como alternativa",
   "playbackLyrics.source.link": "Letra de {{source}} ↗",
-  "playbackLyrics.source.public": "{{link}} · Visualización temporal",
+  "playbackLyrics.source.public": "{{link}} · No se guarda en iBroadcast",
   "playbackLyrics.status.checkAgain": "Puedes volver a comprobarlo.",
   "playbackLyrics.status.missing": "No se encontró ninguna letra coincidente para esta grabación.",
   "playbackLyrics.status.nativeMissing": "No hay ninguna letra guardada en iBroadcast. Activa una opción en línea en Ajustes → Reproducción para obtener letras de Unison y LRCLIB.",

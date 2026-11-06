@@ -2100,7 +2100,7 @@
   "playbackLyrics.settings.timing": "Les paroles synchronisées mettent en évidence la ligne en cours, avec un soulignement mobile pour les mots ou les syllabes lorsque c’est disponible. Le texte ordinaire reste lisible sans synchronisation. Les résultats en ligne restent temporairement en mémoire ; ils ne sont jamais enregistrés dans iBroadcast, dans les fichiers musicaux ni dans l’éditeur de paroles. Les paroles iBroadcast existantes conservent leur comportement habituel de cache et de modification.",
   "playbackLyrics.settings.unisonFirst": "Unison → LRCLIB d’abord · repli iBroadcast",
   "playbackLyrics.source.link": "Paroles fournies par {{source}} ↗",
-  "playbackLyrics.source.public": "{{link}} · Affichage temporaire",
+  "playbackLyrics.source.public": "{{link}} · Non enregistrées dans iBroadcast",
   "playbackLyrics.status.checkAgain": "Vous pouvez relancer la recherche.",
   "playbackLyrics.status.missing": "Aucune parole correspondante trouvée pour cet enregistrement.",
   "playbackLyrics.status.nativeMissing": "Aucune parole enregistrée dans iBroadcast. Activez une option en ligne dans « Réglages → Lecture » pour obtenir les paroles d’Unison et de LRCLIB.",

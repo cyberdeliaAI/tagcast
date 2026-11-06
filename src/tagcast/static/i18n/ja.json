@@ -1948,7 +1948,7 @@
   "playbackLyrics.settings.timing": "タイミング付きの歌詞では現在の行が強調表示され、可能な場合は単語や音節に合わせて下線が動きます。通常のテキストは同期なしでも読めます。オンラインの結果は一時的にメモリに保持されるだけで、iBroadcast、音楽ファイル、歌詞エディタに保存されることはありません。iBroadcastの既存の歌詞は、これまでどおりのキャッシュと編集の動作を保ちます。",
   "playbackLyrics.settings.unisonFirst": "Unison → LRCLIBを優先 · フォールバックはiBroadcast",
   "playbackLyrics.source.link": "{{source}}の歌詞 ↗",
-  "playbackLyrics.source.public": "{{link}} · 一時表示",
+  "playbackLyrics.source.public": "{{link}} · iBroadcastには保存されません",
   "playbackLyrics.status.checkAgain": "もう一度確認できます。",
   "playbackLyrics.status.missing": "この録音に一致する歌詞が見つかりません。",
   "playbackLyrics.status.nativeMissing": "iBroadcastに歌詞が保存されていません。UnisonやLRCLIBの歌詞を使うには、「設定 → 再生」でオンラインのオプションを有効にしてください。",

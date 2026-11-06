@@ -271,7 +271,7 @@ test('LRCLIB fallback is explicitly requested, attributed and remains display-on
   const request=p.requests.find(r=>r.url==='/api/lyrics/display');
   assert.equal(JSON.parse(request.options.body).fallback_lrclib,true);
   assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/https:\/\/lrclib.net\//);
-  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Temporary display/);
+  assert.match(p.nodes.get('#visual-lyrics-source').innerHTML,/Not stored in iBroadcast/);
   assert.doesNotMatch(p.nodes.get('#visual-lyrics-source').innerHTML,/Unison/);
   assert.match(p.nodes.get('#visual-lyrics-lines').innerHTML,/&lt;script&gt;/);
   p.run('gaplessPosition=()=>4;syncPlaybackLyrics()');

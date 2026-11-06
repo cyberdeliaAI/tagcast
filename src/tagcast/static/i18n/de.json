@@ -2024,7 +2024,7 @@
   "playbackLyrics.settings.timing": "Zeitsynchrone Songtexte heben die aktuelle Zeile hervor, wenn verfügbar mit einer mitlaufenden Unterstreichung für Wörter oder Silben. Normaler Text bleibt auch ohne Synchronisierung lesbar. Onlineergebnisse bleiben vorübergehend im Arbeitsspeicher; sie werden nie in iBroadcast, in Musikdateien oder im Songtext-Editor gespeichert. Vorhandene Songtexte in iBroadcast behalten ihr übliches Cache- und Bearbeitungsverhalten.",
   "playbackLyrics.settings.unisonFirst": "Zuerst Unison → LRCLIB · danach iBroadcast",
   "playbackLyrics.source.link": "Songtext von {{source}} ↗",
-  "playbackLyrics.source.public": "{{link}} · Vorübergehende Anzeige",
+  "playbackLyrics.source.public": "{{link}} · Nicht in iBroadcast gespeichert",
   "playbackLyrics.status.checkAgain": "Du kannst erneut prüfen.",
   "playbackLyrics.status.missing": "Kein passender Songtext für diese Aufnahme gefunden.",
   "playbackLyrics.status.nativeMissing": "Kein Songtext in iBroadcast gespeichert. Aktiviere unter „Einstellungen“ → „Wiedergabe“ eine Onlineoption, um Songtexte von Unison und LRCLIB zu erhalten.",

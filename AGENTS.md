@@ -145,7 +145,7 @@ their shared browsing/player state; a fast local response can otherwise race the
 
 ## Behavior to preserve
 
-- Keep document scrolling for the main content; show its native scrollbar on page hover outside the sidebar. Desktop sidebar shortcuts use scroll-aware edge fades without a scrollbar; preserve keyboard focus, mobile overflow and native forced-colour/non-hover fallbacks.
+- Keep document scrolling for the main content. Use thin, translucent native scrollbars throughout the workspace, including the sidebar, queue, lyrics and dialogs; increase visibility on hover/focus and retain native forced-colour fallbacks. Desktop sidebar shortcuts retain scroll-aware edge fades; preserve keyboard focus and mobile overflow.
 
 - The server binds only to `127.0.0.1`, on port 8912 by default.
 - Preserve Host validation, the `X-Tagcast` POST header, Fetch Metadata checks
@@ -663,7 +663,7 @@ their shared browsing/player state; a fast local response can otherwise race the
   Edit tags opens the normal track editor without adopting display lyrics. Keep the lyrics
   card's source, status/errors, retry and shared Follow state; no lyrics-save action here.
   Queue rows show small loaded covers; the header groups queue position/count and existing
-  save/clear controls. Desktop lyrics and queue scroll independently of the current track.
+  save/clear controls. Desktop lyrics and queue scroll independently of the current track. Bound the cover/metadata column and let lyrics fill the remaining width (at least 320px), with their lower edges aligned. Use a neutral current-row wash, keeping the accent on its title/icon; match the player gutter to the workspace.
   The page has no Close control; focus its heading when opening or removing the last
   queued entry. Keep Close in the optional side panel and expanded view. The active
   queue occurrence has one continuous highlight behind its Play button and row actions,
