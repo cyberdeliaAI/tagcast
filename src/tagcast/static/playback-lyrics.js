@@ -54,6 +54,7 @@ function resetPlaybackLyrics() {
   $("#visual-lyrics-lines").innerHTML = "";
   $("#visual-lyrics-source").textContent = "";
   setPlaybackLyricsNotice(null);
+  syncListeningLyricsFollow();
 }
 
 function setPlaybackLyricsMode(mode) {
@@ -178,10 +179,19 @@ function playbackLyricsNoticeText() {
     ...(notice.trail ? [TagcastI18n.text(notice.trail)] : [])].join(" ");
 }
 
+function syncListeningLyricsFollow() {
+  const box = $("#listening-lyrics-follow");
+  box.checked = playbackLyricsView.following;
+  box.disabled = !playbackLyricsView.data?.timed;
+  $(".listening-follow").hidden = state.screen !== "now-playing" || visualPlayer.open;
+  $("#visual-lyrics-follow").hidden = state.screen === "now-playing" && !visualPlayer.open || !playbackLyricsView.data?.timed || playbackLyricsView.following;
+}
+
 function renderPlaybackLyrics() {
   const view = playbackLyricsView;
   renderLyricsCoverBackground();
   placePlaybackLyrics();
+  syncListeningLyricsFollow();
   $("#visual-player-lyrics-toggle").setAttribute("aria-pressed", String(view.open));
   $("#visual-player-lyrics").hidden = !playbackLyricsVisible();
   $(".visual-player-content").classList.toggle("lyrics-visible", visualPlayer.open && view.open);
@@ -200,6 +210,7 @@ function renderPlaybackLyrics() {
   $("#visual-lyrics-source").textContent = "";
   $("#visual-lyrics-follow").hidden = true; $("#visual-lyrics-retry").hidden = true;
   setPlaybackLyricsNotice({checking: true});
+  syncListeningLyricsFollow();
   void loadPlaybackLyrics(selection, entry, view.request, state.details);
 }
 
@@ -217,6 +228,7 @@ function paintPlaybackLyrics() {
   view.lineNodes = Array.from(region.querySelectorAll("[data-lyric-line]"));
   view.wordNodes = view.lineNodes.map(line => Array.from(line.querySelectorAll("[data-lyric-word]")));
   paintPlaybackLyricsSource();
+  syncListeningLyricsFollow();
   syncPlaybackLyrics(true);
 }
 
@@ -307,7 +319,13 @@ $("#visual-player-lyrics-toggle").addEventListener("click", () => {
   renderPlaybackLyrics();
 });
 $("#visual-lyrics-follow").addEventListener("click", () => {
-  playbackLyricsView.following = true; $("#visual-lyrics-follow").hidden = true; syncPlaybackLyrics(true);
+  playbackLyricsView.following = true; syncListeningLyricsFollow(); syncPlaybackLyrics(true);
+});
+$("#listening-lyrics-follow").addEventListener("change", () => {
+  if (!playbackLyricsView.data?.timed) { syncListeningLyricsFollow(); return; }
+  playbackLyricsView.following = $("#listening-lyrics-follow").checked;
+  syncListeningLyricsFollow();
+  if (playbackLyricsView.following) syncPlaybackLyrics(true);
 });
 $("#visual-lyrics-retry").addEventListener("click", () => {
   const selection = lyricsSelection(player.queue[player.index]);
@@ -320,7 +338,7 @@ $("#visual-lyrics-retry").addEventListener("click", () => {
 });
 function pauseLyricsFollowing() {
   if (!playbackLyricsView.data?.timed) return;
-  playbackLyricsView.following = false; $("#visual-lyrics-follow").hidden = false;
+  playbackLyricsView.following = false; syncListeningLyricsFollow();
 }
 for (const name of ["wheel", "touchstart", "pointerdown"]) $("#visual-lyrics-lines").addEventListener(name, pauseLyricsFollowing, {passive: true});
 $("#visual-lyrics-lines").addEventListener("keydown", event => {

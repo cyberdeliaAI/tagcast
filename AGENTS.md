@@ -653,16 +653,24 @@ their shared browsing/player state; a fast local response can otherwise race the
   `tagcast-now-playing-open` is `panel`; the panel adds no history entry. Mount the same
   queue panel in either place, preserve the queued occurrences and native lyrics reads,
   and never create a second playback state. Favourites/dislikes share the existing bottom-bar controls in normal and expanded views;
-  queue rows reuse the album track actions. Never duplicate the current-track rating controls.
-  The listening-page heading combines Now playing with the current title; album artist
-  and album names link to their existing browsing destinations.
+  queue rows offer the existing track actions through one ellipsis menu, using the shared
+  queue menu for appending, Play next and playlists plus tags, like/dislike and removal choices.
+  Opening never reads/writes library data; reject stale queue occurrences and restore
+  focus on dismissal or routine rendering. Never duplicate the current-track rating controls.
+  The listening page groups one song heading, a conservatively separated trailing edition,
+  cover, performer links, album/album-artist links, loaded year/format/composer metadata and
+  the existing meters. Edition separation is visual only; stored titles stay unchanged.
+  Edit tags opens the normal track editor without adopting display lyrics. Keep the lyrics
+  card's source, status/errors, retry and shared Follow state; no lyrics-save action here.
+  Queue rows show small loaded covers; the header groups queue position/count and existing
+  save/clear controls. Desktop lyrics and queue scroll independently of the current track.
   The page has no Close control; focus its heading when opening or removing the last
   queued entry. Keep Close in the optional side panel and expanded view. The active
   queue occurrence has one continuous highlight behind its Play button and row actions,
   including while paused. Desktop lyrics use the space beside the page heading.
-  Now playing offers one Remove from play queue button per stored position, replacing
-  its number on hover/focus and always visible on touch. Keep it separate from the
-  row's Play button, keyboard accessible and bound to the rendered entry/revision.
+  Now playing offers Remove from play queue through each stored position's ellipsis menu.
+  Keep it separate from the row's Play button, keyboard accessible and bound to the rendered
+  entry/revision.
   Removing another position preserves the current audio/time and adjusts its index;
   removing the current position selects the following entry, preserving paused state,
   or pauses on the preceding retained entry if none follows, keeping the queue reachable. Removing one of

@@ -11362,7 +11362,7 @@ test("interface language: English playback text keeps its exact existing wording
   const count = p.run("player.queue.length");
   assert.equal(p.nodes.get("#now-playing-count").textContent, `${count} tracks`);
   const title = p.run("player.queue[0].title");
-  assert.match(p.nodes.get("#now-playing-list").innerHTML, new RegExp(`aria-label="Remove ${title.replace(/[()]/g, "\\$&")} from play queue, position 1" title="Remove from play queue"`));
+  assert.match(p.nodes.get("#now-playing-list").innerHTML, new RegExp(`aria-label="Actions for ${title.replace(/[()]/g, "\\$&")}"`));
   assert.equal(p.nodes.get("#audio-output-current").textContent, "Current output: System default");
   assert.equal(p.nodes.get("#audio-mute").textContent, "Mute");
   assert.equal(p.nodes.get("#audio-volume-value").textContent, "65%");
@@ -11401,7 +11401,7 @@ test("interface language: switching to Dutch during playback rewrites labels onl
   assert.equal(p.nodes.get("#now-playing-count").textContent, `${before.queue.length} nummers`);
   const list = p.nodes.get("#now-playing-list").innerHTML;
   assert.match(list, /<strong>Now playing<\/strong><small>Sound · Play queue<\/small>/, "metadata that looks like interface text is never translated");
-  assert.match(list, /aria-label="Now playing uit de afspeelwachtrij verwijderen, positie 1"/);
+  assert.match(list, /aria-label="Acties voor Now playing"/);
   p.run('appendToQueue(state.details.get("2"))');
   assert.match(p.nodes.get("#toast").textContent, /^\d+ nummers aan de wachtrij toegevoegd\.$/);
   await p.change({id: "interface-language", value: "en", matches: () => false, closest: () => null}); await settle(); await settle();
@@ -11879,9 +11879,10 @@ test('Sound stays in the sidebar across listening views without replacing playba
 test('the listening heading holds the current title as text and keeps album artists separate from performers',async()=>{
   const p=livePage();await settle();
   p.run('playTracks(state.details.get("1")); player.queue[0].title="<img src=x onerror=alert(1)>";player.queue[0].artist="A different performer";showScreen("now-playing")');
-  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,' · <img src=x onerror=alert(1)>');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,'<img src=x onerror=alert(1)>');
   const html=p.nodes.get('#now-playing-current').innerHTML;
-  assert.doesNotMatch(html,/<h3>|<img src=x|data-performer-id|now-playing-rating-slot/);
+  assert.doesNotMatch(html,/<h3>|<img src=x|now-playing-rating-slot/);
+  assert.match(html,/A different performer/);
   assert.match(html,/data-artist="Pink Floyd"/);
   assert.match(html,/data-album="1"/);
   p.run('setNowPlaying(false);showScreen("albums");setNowPlaying(true)');
@@ -11889,7 +11890,7 @@ test('the listening heading holds the current title as text and keeps album arti
   assert.match(p.nodes.get('#now-playing-current').innerHTML,/<h3>&lt;img src=x/);
 });
 
-test('queue rows share album actions without nested buttons or marking every repeated ID as playing',async()=>{
+test('queue rows expose one ellipsis action without nested buttons or marking every repeated ID as playing',async()=>{
   const p=livePage();await settle();
   p.run('playTracks(state.details.get("1"));appendToQueue(state.details.get("1"));showScreen("now-playing")');
   const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),requests=p.requests.length;
@@ -11898,11 +11899,10 @@ test('queue rows share album actions without nested buttons or marking every rep
   assert.equal((html.match(/queue-row queue-editable playing/g)||[]).length,1);
   assert.equal((html.match(/queue-current/g)||[]).length,1);
   assert.match(html,/queue-playing-bars/);
-  assert.ok(html.includes(p.run('trackTagControls(player.queue[0].album,player.queue[0])')));
-  assert.ok(html.includes(p.run('queueButton(player.queue[0].album.id,player.queue[0])')));
-  assert.ok(html.includes(p.run('heartButton(player.queue[0])')));
-  assert.match(html,/<\/button><div class="track-row-actions queue-track-actions">/);
-  assert.match(html,new RegExp('data-favourite="'+track.id+'"'));
+  assert.doesNotMatch(html,/data-favourite=|data-dislike=|data-track-tags=|queue-track-actions/);
+  assert.match(html,/<\/button><button type="button" class="queue-row-more"/);
+  assert.equal((html.match(/class="queue-row-more"/g)||[]).length,p.run('player.queue.length'));
+  assert.match(html,new RegExp('data-queue-track="'+track.id+'"'));
   assert.equal(p.requests.length,requests,'Rendering actions never reads or writes library data');
   assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
   p.run('audio.pause();renderNowPlaying()');
@@ -11957,4 +11957,125 @@ test('ready lyrics can omit the extra notice while loading and errors remain vis
   p.run('playbackLyricsView.data=null;setPlaybackLyricsNotice({checking:true})');
   assert.equal(node.classList.contains('lyrics-ready-notice'),false);
   assert.match(node.textContent,/Checking/);
+});
+
+function listeningRowControl(p, index) {
+  p.run(`$("#test-listening-row").dataset = {queueAlbum: String(player.queue[${index}].album.id), queueTrack: String(player.queue[${index}].id), queueRow: "${index}", queueRevision: String(nowPlayingRows.revision)}`);
+  return p.nodes.get('#test-listening-row');
+}
+
+test('listening ellipsis opens without requests and preserves keyboard dismissal and playback', async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));showScreen("now-playing");audio.currentTime=23');
+  const trigger=listeningRowControl(p,1), requests=p.requests.length;
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime})');
+  await p.click({'[data-queue-album]':trigger});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,false);
+  assert.equal(p.nodes.get('#queue-action-tags').hidden,false);
+  assert.equal(p.nodes.get('#queue-action-remove').hidden,false);
+  assert.match(p.nodes.get('#queue-action-remove').getAttribute('aria-label'),/Welcome to the Machine.*position 2/);
+  await p.nodes.get('#queue-action-menu').emit('keydown',{key:'End',preventDefault(){}});
+  assert.equal(p.run('document.activeElement === $("#queue-action-remove")'),true);
+  await p.nodes.get('#queue-action-menu').emit('keydown',{key:'Escape',preventDefault(){}});
+  assert.equal(p.run('document.activeElement === $("#test-listening-row")'),true);
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime})'),before);
+});
+
+test('ellipsis actions target the chosen occurrence rather than the playing track',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));showScreen("now-playing");globalThis.rowActions=[];openTrackTags=(...args)=>rowActions.push(["tags",...args]);openTrackPlaylist=(...args)=>rowActions.push(["playlist",...args]);toggleFavourite=(...args)=>rowActions.push(["rating",...args])');
+  const track=p.json('player.queue[1]');
+  for (const action of ['tags','playlist','like','dislike']) {
+    await p.click({'[data-queue-album]':listeningRowControl(p,1)});
+    await p.nodes.get('#queue-action-'+action).emit('click');
+  }
+  const calls=p.json('rowActions');
+  assert.deepEqual(calls.slice(0,2),[['tags',track.album.id,track.id],['playlist',String(track.album.id),track.id]]);
+  assert.equal(calls[2][1],track.id);assert.equal(calls[3][1],track.id);
+  assert.equal(calls[3].at(-1),1);
+  assert.equal(p.run('player.index'),0);
+});
+
+test('ellipsis rejects stale revisions, replaced libraries and detached controls',async()=>{
+  for (const change of ['nowPlayingRows.revision+=1','state.details=new Map(state.details)','$("#test-listening-row").isConnected=false']) {
+    const p=livePage();await settle();
+    p.run('playTracks(state.details.get("1"));showScreen("now-playing");globalThis.rowActions=[];openTrackTags=(...args)=>rowActions.push(args)');
+    await p.click({'[data-queue-album]':listeningRowControl(p,1)});
+    p.run(change);await p.nodes.get('#queue-action-tags').emit('click');
+    assert.deepEqual(p.json('rowActions'),[]);
+    assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+  }
+});
+
+test('ellipsis removal preserves a paused current track and only removes the reviewed duplicate occurrence',async()=>{
+  const p=livePage();await settle();
+  p.run('playTracks(state.details.get("1"));appendToQueue(state.details.get("1"));audio.pause();audio.currentTime=37;showScreen("now-playing")');
+  const before=p.json('player.queue.map(t=>t.id)'), source=p.nodes.get('#audio').src;
+  const index=before.length/2;
+  await p.click({'[data-queue-album]':listeningRowControl(p,index)});
+  await p.nodes.get('#queue-action-remove').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),before.filter((_,i)=>i!==index));
+  assert.equal(p.nodes.get('#audio').src,source);assert.equal(p.nodes.get('#audio').currentTime,37);assert.equal(p.nodes.get('#audio').paused,true);
+});
+
+test('routine queue rendering closes an obsolete ellipsis before its choice can run',async()=>{
+  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));showScreen("now-playing")');
+  await p.click({'[data-queue-album]':listeningRowControl(p,1)});
+  const before=p.run('player.queue.length');p.run('renderNowPlaying()');
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
+  await p.nodes.get('#queue-action-remove').emit('click');assert.equal(p.run('player.queue.length'),before);
+});
+
+test('mock-up title separates only a recognised trailing edition without changing metadata',async()=>{
+  const p=livePage();await settle();
+  p.run('const a=state.details.get("1");a.tracks[0].title="Together In Electric Dreams (Extended; 2003 Remastered Version)";a.tracks[0].composers=["Giorgio Moroder", "Philip Oakey"];a.tracks[0].year=1984;playTracks(a);showScreen("now-playing")');
+  const original=p.run('player.queue[0].title');
+  assert.equal(p.nodes.get('#now-playing-heading-title').textContent,'Together In Electric Dreams');
+  assert.equal(p.nodes.get('#now-playing-edition').textContent,'Extended; 2003 Remastered Version');
+  assert.match(p.nodes.get('#now-playing-current').innerHTML,/1984.*Composers: Giorgio Moroder, Philip Oakey/s);
+  assert.match(p.nodes.get('#now-playing-count').textContent,/Track 1 of/);
+  assert.deepEqual(p.json('listeningTitleParts("Song (Who are you?)")'),{title:'Song (Who are you?)',edition:''});
+  assert.equal(p.run('player.queue[0].title'),original);
+  assert.doesNotMatch(p.nodes.get('#now-playing-current').innerHTML,/save.*lyrics|Save to tags/i);
+});
+
+test('Edit tags opens the existing track editor with no patches or writes',async()=>{
+  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));showScreen("now-playing")');
+  const id=p.run('player.queue[0].id'),before=p.run('JSON.stringify({src:audio.src,queue:player.queue})');
+  p.run('const CSS={escape:value=>String(value)};$("#track-inline").scrollIntoView=()=>{}');
+  await p.run(`editListeningTrack(${JSON.stringify(id)},"1")`);await settle();
+  assert.equal(p.nodes.get('#editor').open,true);assert.equal(p.run('editing.tab'),'tracks');
+  assert.equal(p.nodes.get('#track-inline').dataset.track,id);
+  assert.deepEqual(p.json('editing.trackPatches'),{});
+  assert.equal(p.run('JSON.stringify({src:audio.src,queue:player.queue})'),before);
+  assert.ok(p.requests.every(r=>!r.url.includes('/api/save')));
+});
+
+test('Follow switch shares timed lyrics state, supports manual reading and makes no extra requests',async()=>{
+  const {p}=await playbackLyricsPage('unison-first');
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/lyrics/display'?displayLyricsFixture:emptyNativeLyrics}));
+  p.run('showScreen("now-playing")');await settle();await settle();
+  assert.equal(p.nodes.get('#listening-lyrics-follow').disabled,false);
+  assert.equal(p.nodes.get('#listening-lyrics-follow').checked,true);
+  const requests=p.requests.length, before=p.run('JSON.stringify({src:audio.src,queue:player.queue})');
+  await p.nodes.get('#visual-lyrics-lines').emit('wheel');
+  assert.equal(p.nodes.get('#listening-lyrics-follow').checked,false);
+  assert.equal(p.nodes.get('#visual-lyrics-follow').hidden,true,'No duplicate Follow button in the card footer');
+  p.nodes.get('#listening-lyrics-follow').checked=true;
+  await p.nodes.get('#listening-lyrics-follow').emit('change');
+  assert.equal(p.run('playbackLyricsView.following'),true);
+  assert.equal(p.requests.length,requests);assert.equal(p.run('JSON.stringify({src:audio.src,queue:player.queue})'),before);
+  p.run('playbackLyricsView.data={timed:false,lines:[]};syncListeningLyricsFollow()');
+  assert.equal(p.nodes.get('#listening-lyrics-follow').disabled,true);
+});
+
+test('automatic lyrics scrolling leaves the row menu open while scrolling its anchor dismisses it',async()=>{
+  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));showScreen("now-playing")');
+  const trigger=listeningRowControl(p,1);await p.click({'[data-queue-album]':trigger});
+  await p.emitDocument('scroll',{target:{contains:()=>false}});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,false);
+  await p.emitDocument('scroll',{target:{contains:node=>node===trigger}});
+  assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
 });

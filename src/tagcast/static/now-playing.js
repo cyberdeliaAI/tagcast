@@ -22,6 +22,40 @@ function nowPlayingSettings() {
     <p class="muted">${TagcastI18n.html("listening.settings.note")}</p></div>`;
 }
 
+// Only recognised trailing edition labels are separated visually; the stored title is unchanged.
+function listeningTitleParts(title) {
+  const match = title.match(/^(.*?)\s*\(([^()]*(?:remaster|extended|version|edition|mix)[^()]*)\)\s*$/i);
+  return match && match[1].trim() ? {title: match[1].trim(), edition: match[2]} : {title, edition: ""};
+}
+
+function listeningTrackMetadata(track) {
+  const year = track.year || track.album.year;
+  const stream = player.quality !== "orig" ? TagcastI18n.text("player.quality.mp3", {bitrate: player.quality})
+    : TagcastI18n.text(track.format ? "player.quality.originalFormat" : "player.quality.original", {format: track.format});
+  return `<div id="listening-facts" class="listening-facts">${year ? `<span>${escapeHtml(year)}</span>` : ""}${track.format ? `<span>${escapeHtml(track.format)}</span>` : ""}<span>${TagcastI18n.html(player.fallback ? "player.quality.streamFallback" : "player.quality.stream", {stream})}</span></div>${track.composers?.length ? `<p class="listening-composers">${TagcastI18n.html("listening.track.composers", {names: track.composers.join(", ")})}</p>` : ""}`;
+}
+
+function updateListeningFacts() {
+  const track = player.queue[player.index], facts = $("#now-playing-current").querySelector("#listening-facts");
+  if (facts && track) facts.innerHTML = listeningTrackMetadata(track).split('</div>')[0].replace(/^<div[^>]*>/, "");
+}
+
+// Reuse the normal reviewed track editor. Opening it never writes or adopts lyric text.
+async function editListeningTrack(id, albumId) {
+  if (!live() || state.loading || opening || document.querySelector("dialog[open]")) return;
+  const details = state.details, request = libraryLoadRequest;
+  await openEditor(shelfIds(albumId));
+  if (details === state.details && request === libraryLoadRequest && $("#editor").open
+      && editing?.originals.some(album => album.tracks.some(track => String(track.id) === id))) {
+    editTrack(id);
+    $("#track-inline").querySelector("input")?.focus();
+  }
+}
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-listening-edit]");
+  if (button && !button.disabled) void editListeningTrack(button.dataset.listeningEdit, button.dataset.listeningAlbum);
+});
+
 function syncNowPlayingPage() {
   const page = state.screen === "now-playing", host = $("#listening-page"), panel = $("#now-playing-panel");
   host.hidden = !page;
@@ -37,6 +71,9 @@ function syncNowPlayingPage() {
     panel.hidden = true;
     $("#player-queue").setAttribute("aria-expanded", "false");
   }
+  const footer = $(".now-playing-footer"), actions = $("#queue-heading-actions");
+  if (page && footer.parentElement !== actions) actions.appendChild(footer);
+  else if (!page && footer.parentElement !== panel) panel.appendChild(footer);
   nowPlayingPresentation.page = page;
   if (page) renderNowPlaying();
   renderPlaybackLyrics();
