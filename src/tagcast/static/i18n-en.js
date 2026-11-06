@@ -138,6 +138,7 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "albumMerge.selection.review": "Review merge →",
   "albumMerge.title.merge": "Merge albums",
   "albumMerge.title.review": "Review album merge",
+  "app.theme.amber": "Amber",
   "app.theme.apple": "Apple Music Classic",
   "app.theme.applyFailed": "The theme could not be applied. Check that browser storage is available.",
   "app.theme.auto": "Auto",

@@ -1829,7 +1829,7 @@ function showTheme() {
   const theme = document.documentElement.dataset.theme || "auto";
   const palette = document.documentElement.dataset.palette || "forest";
   const label = TagcastI18n.text({auto: "app.theme.auto", light: "app.theme.light", dark: "app.theme.dark"}[theme]);
-  const palettes = {forest: "app.theme.forest", ocean: "app.theme.ocean", warm: "app.theme.warm", ibroadcast: "app.theme.ibroadcast", apple: "app.theme.apple"};
+  const palettes = {forest: "app.theme.forest", ocean: "app.theme.ocean", warm: "app.theme.warm", ibroadcast: "app.theme.ibroadcast", apple: "app.theme.apple", amber: "app.theme.amber"};
   // A custom theme's name is the user's own text; built-in palette names follow the interface language.
   const colour = TagcastThemes.active()?.name || (Object.hasOwn(palettes, palette) ? TagcastI18n.text(palettes[palette]) : undefined);
   $("#theme-button").textContent = TagcastI18n.text("app.theme.button", {icon: {auto: "◐", light: "☀", dark: "☾"}[theme]});

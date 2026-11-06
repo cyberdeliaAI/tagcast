@@ -132,7 +132,7 @@ their shared browsing/player state; a fast local response can otherwise race the
   unless the user approves that architecture change.
 - Do not edit `dark.css` by hand. Regenerate it after changes to
   `style.css`.
-- `palettes.css` defines Ocean, Warm and iBroadcast inspired through named colour
+- `palettes.css` defines Ocean, Warm, iBroadcast inspired, Apple Music Classic and Amber through named colour
   roles. Forest uses the original fallback colours. Keep palette selection
   (`tagcast-palette`) independent of Light/Dark/Auto (`tagcast-theme`), local to
   the browser, and restore before painting. The Theme disclosure contains both choices; opening it changes
