@@ -203,6 +203,8 @@ function hideVisualPlayer() {
   visualPlayer.inert = [];
   $("#player-fullscreen").setAttribute("aria-expanded", "false");
   renderVisualPlayerButton();
+  if (typeof syncNowPlayingPage === "function") syncNowPlayingPage();
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
   const target = $("#player").hidden ? $("#home") : visualPlayer.focus || $("#player-fullscreen");
   target.focus();
 }
@@ -231,7 +233,10 @@ function openVisualPlayer() {
   setVisualPlayerStatus(null);
   $("#player-fullscreen").setAttribute("aria-expanded", "true");
   renderVisualPlayerButton();
-  renderVisualPlayer(); $("#visual-player-close").focus();
+  renderVisualPlayer();
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
+  if (typeof applyVisualizer === "function") applyVisualizer();
+  $("#visual-player-close").focus();
   // Some browsers do not support or permit native fullscreen. The window view still works.
   if (visualPlayerMode === "fullscreen" && stage.requestFullscreen && !document.fullscreenElement) {
     try {
@@ -425,6 +430,7 @@ function markPlaying() {
   $("#player-queue-count").textContent = String(Math.max(0, player.queue.length - player.index - 1));
   renderNowPlaying();
   renderVisualPlayer();
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
   if (typeof publishMiniPlayer === "function") publishMiniPlayer();
 }
 
@@ -443,9 +449,10 @@ TagcastI18n.subscribe(() => {
 
 function setNowPlaying(open) {
   $("#now-playing-panel").hidden = !open;
-  document.body.classList.toggle("now-playing-open", open);
+  document.body.classList.toggle("now-playing-open", open && state.screen !== "now-playing");
   $("#player-queue").setAttribute("aria-expanded", String(open));
   if (open) { renderNowPlaying(); $("#now-playing-close").focus(); }
+  if (typeof placePlayerExtras === "function") placePlayerExtras();
 }
 
 function renderNowPlaying() {
@@ -454,14 +461,17 @@ function renderNowPlaying() {
   const focusedIndex = focused?.closest?.("#now-playing-list")
     ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
   const focusedEntry = nowPlayingRows.entries[focusedIndex];
+  const lyricsOpen = $("#now-playing-current").querySelector(".listening-lyrics")?.open;
   const removeFocused = focused?.dataset.queueRemove !== undefined;
   const editable = live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
   nowPlayingRows.revision += 1;
   nowPlayingRows.entries = player.queue.slice();
   const track = player.queue[player.index], album = track?.album;
   $("#now-playing-current").innerHTML = track ? `<div class="now-playing-cover">${cover(album)}</div>
-    <h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
-    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html("player.nowPlaying.addToPlaylist")}</button></p><section id="now-playing-lyrics" class="track-lyrics" hidden></section>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
+    <div class="now-playing-info"><h3>${escapeHtml(track.title)}</h3><p class="muted">${performerLinks(track)}</p>
+    <button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button><p><button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html("player.nowPlaying.addToPlaylist")}</button></p><div id="now-playing-rating-slot"></div><div id="listening-meter" class="listening-meter" hidden role="img" aria-label="${TagcastI18n.html("listening.meter.label")}"></div></div><details class="listening-lyrics" ${state.screen !== "now-playing" ? "open" : ""}><summary>${TagcastI18n.html("page.visualPlayer.lyrics")}</summary><section id="now-playing-lyrics" class="track-lyrics" hidden></section></details>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
+  if (lyricsOpen) { const details = $("#now-playing-current").querySelector(".listening-lyrics"); if (details) details.open = true; }
+  if (typeof renderListeningExtras === "function") renderListeningExtras(track, focused);
   renderLyrics("player", lyricsSelection(track));
   $("#now-playing-count").textContent = TagcastI18n.text("player.queue.count", {count: player.queue.length});
   $("#queue-clear").disabled = !player.queue.length;
@@ -686,12 +696,15 @@ $("#player-prev").addEventListener("click", () => step(-1));
 $("#player-next").addEventListener("click", () => step(1));
 $("#player-close").addEventListener("click", stopPlayer);
 $("#queue-clear").addEventListener("click", stopPlayer);
-$("#player-queue").addEventListener("click", () => setNowPlaying($("#now-playing-panel").hidden));
-$("#player-cover-button").addEventListener("click", () => setNowPlaying($("#now-playing-panel").hidden));
-$("#now-playing-close").addEventListener("click", () => { setNowPlaying(false); $("#player-queue").focus(); });
+$("#player-queue").addEventListener("click", () => showScreen("now-playing"));
+$("#player-cover-button").addEventListener("click", () => {
+  if (typeof nowPlayingPreferences !== "undefined" && nowPlayingPreferences.open === "page") showScreen("now-playing");
+  else setNowPlaying($("#now-playing-panel").hidden);
+});
+$("#now-playing-close").addEventListener("click", () => { closeNowPlayingView(); });
 document.addEventListener("keydown", event => {
   if (!event.defaultPrevented && event.key === "Escape" && !$("#now-playing-panel").hidden && !document.querySelector("dialog[open]")) {
-    setNowPlaying(false); $("#player-queue").focus();
+    closeNowPlayingView();
   }
 });
 $("#player-artist").addEventListener("click", () => {

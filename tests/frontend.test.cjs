@@ -4654,7 +4654,7 @@ test("compact player choices survive reloads and work when browser storage is un
   assert.equal(bothHidden.run('storedPlayerDisplay("quality")'), true);
 });
 
-test("Now playing escapes metadata and has no route, queue jumping works, and Clear queue stops everything", async () => {
+test("the pinned Now playing page escapes metadata, supports history and shares queue controls", async () => {
   const p = livePage(); await settle();
   p.run('$("#now-playing-panel").hidden = true');
   p.run('state.details.get("1").tracks[0].title = "<script>unsafe</script>"; playTracks(state.details.get("1"), "100")');
@@ -4663,7 +4663,8 @@ test("Now playing escapes metadata and has no route, queue jumping works, and Cl
   assert.equal(p.nodes.get("#now-playing-panel").hidden, false);
   assert.match(p.nodes.get("#now-playing-current").innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(p.nodes.get("#now-playing-list").innerHTML, /<script>/);
-  assert.equal(p.history.length, length);
+  assert.equal(p.history.length, length + 1);
+  assert.equal(p.location.hash, "#/now-playing");
   await p.click({"[data-queue-index]": {dataset: {queueIndex: "1"}}});
   assert.equal(p.run("player.index"), 1);
   await p.nodes.get("#queue-clear").emit("click");
@@ -5670,7 +5671,7 @@ test("cover clicks preserve title and keyboard navigation while a double-click o
 
 test("player covers keep immediate actions without enlargement; the album viewer preserves audio", async () => {
   const p = livePage(); await settle();
-  p.run('const coverAlbum = state.details.get("1"); coverAlbum.artwork = "https://art.example/artwork/9-300"; playTracks(coverAlbum, "100"); setNowPlaying(false)');
+  p.run('const coverAlbum = state.details.get("1"); coverAlbum.artwork = "https://art.example/artwork/9-300"; playTracks(coverAlbum, "100"); nowPlayingPreferences.open = "panel"; setNowPlaying(false)');
   const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), route = p.location.hash;
   await p.nodes.get('#player-cover-button').emit('click', {detail: 1});
   assert.equal(p.nodes.get('#now-playing-panel').hidden, false, 'One click opens Now playing immediately');
@@ -11639,4 +11640,120 @@ test('sidebar fades refresh on resize, shortcut layout changes and translation c
   assert.equal(p.run('document.activeElement === $("#workspace-nav")'),true);
   assert.equal(nav.scrollTop,0);
   assert.equal(observed.filter(node=>node===nav).length,1,'One observer for the existing sidebar, including after language changes');
+});
+
+
+test("Now playing preferences retain the audio element, queued occurrences and metadata drafts", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"))'); await settle();
+  p.run('audio.currentTime = 37; editing = {draft: "untouched"}');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue'), requests = p.requests.length;
+  for (const [id, value] of [['player-transport-style','spacious'],['now-playing-meter','vu'],['now-playing-open','panel']]) {
+    await p.emitDocument('change', {target: {id, value, matches: () => false, closest: () => null}});
+  }
+  assert.equal(p.run('nowPlayingPreferences.transport'), 'spacious');
+  assert.equal(p.nodes.get('#audio').hidden, true);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 37);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.deepEqual(p.json('editing'), {draft: 'untouched'});
+  assert.equal(p.requests.length, requests);
+  await p.nodes.get('#player-cover-button').emit('click');
+  assert.equal(p.location.hash, '#/artists', 'side panel is still available without routing');
+  await p.nodes.get('#player-queue').emit('click');
+  assert.equal(p.location.hash, '#/now-playing');
+  p.history.back();
+  assert.equal(p.location.hash, '#/artists');
+  assert.equal(p.nodes.get('#listening-page').hidden, true);
+  p.history.forward();
+  assert.equal(p.nodes.get('#listening-page').hidden, false);
+  assert.deepEqual(p.json('player.queue'), queue);
+});
+
+test("stored presentation choices are restored and cannot hide the pinned navigation", async () => {
+  const p = page({storage: {'tagcast-player-transport':'spacious','tagcast-now-playing-meter':'spectrum',
+    'tagcast-now-playing-open':'panel','tagcast-sidebar':JSON.stringify({hidden:['player-queue']})}});
+  await settle();
+  assert.equal(p.run('nowPlayingPreferences.transport'), 'spacious');
+  assert.equal(p.run('nowPlayingPreferences.open'), 'panel');
+  assert.equal(p.run('nowPlayingPreferences.meter'), 'spectrum');
+  assert.equal(p.run('sidebarLayout.hidden.includes("player-queue")'), false);
+  assert.equal(p.run('SIDEBAR_ITEMS.some(([id]) => id === "player-queue")'), false);
+  assert.equal(p.run('player.queue.length'), 0);
+});
+
+test("spacious ordinary playback seeks only the track where the drag started, including Repeat", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1"))'); await settle();
+  p.run('nowPlayingPreferences.transport="spacious"; audio.duration=240; audio.currentTime=30; applyNowPlayingPreferences()');
+  assert.equal(p.nodes.get('#gapless-position').disabled, false);
+  await p.nodes.get('#gapless-position').emit('pointerdown');
+  assert.ok(p.run('gaplessControls.draft'));
+  p.nodes.get('#gapless-position').value = '120';
+  await p.nodes.get('#gapless-position').emit('input');
+  assert.equal(p.nodes.get('#audio').currentTime, 30, 'preview does not seek');
+  assert.equal(p.run('transportDraftCurrent(gaplessControls.draft)'), true);
+  await p.nodes.get('#gapless-position').emit('change');
+  assert.equal(p.nodes.get('#audio').currentTime, 120);
+  await p.nodes.get('#gapless-position').emit('pointerdown');
+  p.nodes.get('#gapless-position').value = '210';
+  await p.nodes.get('#gapless-position').emit('input');
+  p.run('player.epoch += 1; audio.currentTime=0');
+  await p.nodes.get('#gapless-position').emit('change');
+  assert.equal(p.nodes.get('#audio').currentTime, 0, 'a repeated copy rejects the previous drag');
+  await p.nodes.get('#gapless-play').emit('click');
+  assert.equal(p.nodes.get('#audio').paused, true);
+  await p.nodes.get('#gapless-play').emit('click');
+  assert.equal(p.nodes.get('#audio').paused, false);
+  p.run('nowPlayingPreferences.transport="compact"; applyNowPlayingPreferences()');
+  assert.equal(p.nodes.get('#audio').hidden, false);
+  assert.equal(p.nodes.get('#gapless-transport').hidden, true);
+});
+
+test("the listening page retains occurrence-bound queue removal and stops on an empty queue", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); appendToQueue(state.details.get("1")); showScreen("now-playing"); audio.currentTime=23');
+  const source = p.nodes.get('#audio').src, before = p.json('player.queue.map(t=>t.id)');
+  const stale = queueRemoveControl(p, 1), revision = p.run('nowPlayingRows.revision');
+  await p.click({'[data-queue-remove]':stale});
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').currentTime, 23);
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), [before[0], ...before.slice(2)]);
+  p.run(`removeQueueEntry(1, ${revision})`);
+  assert.equal(p.run('player.queue.length'), before.length-1, 'stale row cannot remove the new occupant');
+  await p.nodes.get('#queue-clear').emit('click');
+  assert.equal(p.location.hash, '#/now-playing');
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /add an album/);
+  assert.equal(p.nodes.get('#player').hidden, true);
+});
+
+test("spacious controls leave loading on a media error and recover on the next ready track", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); nowPlayingPreferences.transport="spacious"; audio.duration=NaN; applyNowPlayingPreferences()');
+  assert.equal(p.nodes.get('#transport-current').textContent, 'Preparing…');
+  assert.equal(p.nodes.get('#gapless-position').disabled, true);
+  p.run('audio.error={code:2}; gaplessRenderTransport()');
+  assert.equal(p.nodes.get('#gapless-transport').getAttribute('aria-busy'), 'false');
+  assert.equal(p.nodes.get('#transport-current').textContent, '—');
+  assert.match(p.nodes.get('.transport-timeline').title, /Could not play/);
+  p.run('audio.error=null; audio.duration=240; audio.currentTime=15; gaplessRenderTransport()');
+  assert.equal(p.nodes.get('#gapless-position').disabled, false);
+  assert.equal(p.nodes.get('#transport-current').textContent, '0:15');
+  assert.equal(p.nodes.get('#transport-total').textContent, '4:00');
+});
+
+
+test("retro VU needles follow independent RMS channels and settle without touching playback", async () => {
+  const p = livePage(); await settle();
+  p.run('playTracks(state.details.get("1")); nowPlayingPreferences.meter="vu"; showScreen("now-playing"); visualizerSupported=()=>true; visualizerReducedMotion=()=>false; nowPlayingPresentation.vu=[0,0]');
+  const source = p.nodes.get('#audio').src, queue = p.json('player.queue');
+  p.run('drawListeningMeter(300,[new Float32Array(2048).fill(.12589254),new Float32Array(2048).fill(.02)],[])');
+  const levels=p.json('nowPlayingPresentation.vu');
+  assert.ok(levels[0]>levels[1] && levels[0]<1);
+  assert.ok(levels[0]>0.4, 'the defined -18 dBFS reference produces a visible response');
+  p.run('for(let i=0;i<25;i++)drawListeningMeter(100,null,[])');
+  assert.ok(p.json('nowPlayingPresentation.vu').every(v=>v<.001));
+  assert.equal(p.nodes.get('#audio').src,source);
+  assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#audio').paused,false);
 });
