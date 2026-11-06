@@ -4,12 +4,7 @@
 const playbackLyricsView = {mode: storedPlaybackLyricsMode(), open: false, key: "", request: 0,
   details: null, controller: null, timeout: null, cache: new Map(), data: null, active: -1,
   following: true, loading: false, frame: 0, lineNodes: [], wordNodes: [], highlighted: new Set(),
-  hasWords: false, coverBackground: storedCoverLyricsBackground(), notice: null};
-
-function storedCoverLyricsBackground() {
-  try { return localStorage.getItem("tagcast-now-playing-cover-background") === "true"; }
-  catch { return false; }
-}
+  hasWords: false, notice: null};
 
 function storedPlaybackLyricsMode() {
   try {
@@ -25,13 +20,12 @@ function playbackLyricsSettings() {
     <label class="field"><span>${TagcastI18n.html("playbackLyrics.settings.source")}</span><select id="playback-lyrics-mode">${options.map(([key, label]) => `<option value="${key}" ${playbackLyricsView.mode === key ? "selected" : ""}>${TagcastI18n.html(label)}</option>`).join("")}</select></label>
     <p class="muted">${TagcastI18n.html("playbackLyrics.settings.online")}</p>
     <p class="muted">${TagcastI18n.html("playbackLyrics.settings.timing")}</p>
-    <label class="checkline"><input type="checkbox" id="playback-lyrics-cover-background" ${playbackLyricsView.coverBackground ? "checked" : ""}> ${TagcastI18n.html("playbackLyrics.settings.coverBackground")}</label>
     <p class="muted">${TagcastI18n.html("playbackLyrics.settings.coverNote")}</p></section>`;
 }
 
 function renderLyricsCoverBackground() {
   const paint = (stage, art, visible, name) => {
-    const active = playbackLyricsView.coverBackground && visible && art && !art.hidden
+    const active = visible && art && !art.hidden
       && art.complete && art.naturalWidth > 0;
     stage.classList.toggle(name, Boolean(active));
     if (active) stage.style.setProperty("--lyrics-cover-image", `url(${JSON.stringify(art.currentSrc || art.src)})`);
@@ -69,9 +63,22 @@ function setPlaybackLyricsMode(mode) {
   resetPlaybackLyrics(); renderPlaybackLyrics();
 }
 
+// The page and expanded player share one lyrics region, request and timed clock.
+function playbackLyricsVisible() {
+  return !document.hidden && (visualPlayer.open ? playbackLyricsView.open
+    : state.screen === "now-playing" && !$("#now-playing-panel").hidden);
+}
+
+function placePlaybackLyrics() {
+  const region = $("#visual-player-lyrics");
+  const host = !visualPlayer.open && state.screen === "now-playing"
+    ? $("#listening-lyrics-slot") : $(".visual-player-content");
+  if (region.parentElement !== host) host.appendChild(region);
+}
+
 function playbackLyricsCurrent(selection, request, details) {
   return request === playbackLyricsView.request && details === state.details
-    && playbackLyricsView.open && visualPlayer.open && !document.hidden
+    && playbackLyricsVisible()
     && lyricsKey(lyricsSelection(player.queue[player.index])) === lyricsKey(selection);
 }
 
@@ -173,10 +180,11 @@ function playbackLyricsNoticeText() {
 function renderPlaybackLyrics() {
   const view = playbackLyricsView;
   renderLyricsCoverBackground();
+  placePlaybackLyrics();
   $("#visual-player-lyrics-toggle").setAttribute("aria-pressed", String(view.open));
-  $("#visual-player-lyrics").hidden = !view.open;
-  $(".visual-player-content").classList.toggle("lyrics-visible", view.open);
-  if (!view.open || !visualPlayer.open || document.hidden) return;
+  $("#visual-player-lyrics").hidden = !playbackLyricsVisible();
+  $(".visual-player-content").classList.toggle("lyrics-visible", visualPlayer.open && view.open);
+  if (!playbackLyricsVisible()) { suspendPlaybackLyrics(); return; }
   const selection = lyricsSelection(player.queue[player.index]);
   if (!selection) { resetPlaybackLyrics(); return; }
   // Initialise the shared native cache before capturing this display request's revision.
@@ -258,7 +266,7 @@ function playbackLyricIndex(lines, position) {
 
 function syncPlaybackLyrics(force = false) {
   const view = playbackLyricsView;
-  if (!view.open || !visualPlayer.open || document.hidden || !view.data?.timed) {
+  if (!playbackLyricsVisible() || !view.data?.timed) {
     stopPlaybackLyricsFrame(); return;
   }
   const position = playerTrackPosition(), lines = view.data.lines;
@@ -321,11 +329,6 @@ $("#visual-lyrics-lines").addEventListener("keydown", event => {
 });
 document.addEventListener("change", event => {
   if (event.target.id === "playback-lyrics-mode") setPlaybackLyricsMode(event.target.value);
-  if (event.target.id === "playback-lyrics-cover-background") {
-    playbackLyricsView.coverBackground = event.target.checked;
-    try { localStorage.setItem("tagcast-now-playing-cover-background", String(event.target.checked)); } catch { /* private window */ }
-    renderLyricsCoverBackground();
-  }
 });
 for (const name of ["load", "error"]) $("#visual-player-art").addEventListener(name, () => {
   // Artwork's existing fallback handler runs first; retain the theme on missing covers.
