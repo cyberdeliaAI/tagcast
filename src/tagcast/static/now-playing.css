@@ -5,14 +5,14 @@
 #player-queue-count[hidden]{display:none}
 .sidebar-settings-control{flex-wrap:wrap;white-space:normal;gap:5px}
 #sidebar-sound .player-output{padding:0;font-size:11px}
-#visual-player-sound .player-output{font-size:13px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;color:inherit}
 .now-playing-ratings{display:flex;align-items:center;gap:12px;margin:14px 0}
 .now-playing-ratings .player-favourite{width:40px;height:40px;color:var(--muted)}
 .now-playing-ratings button[aria-pressed="true"]{color:var(--accent)}
 .listening-settings{display:grid;gap:14px;margin-top:22px}
 .listening-settings label{display:grid;gap:8px;max-width:440px}
 .listening-page{min-width:0}
-.listening-page .now-playing-panel{position:static;inset:auto;width:auto;max-width:none;background:none;border:0;box-shadow:none;z-index:auto}
+/* Outrank dark.css: the former side-panel shadow must not divide the page backdrop. */
+#listening-page .now-playing-panel{position:static;inset:auto;width:auto;max-width:none;background:none;border:0;box-shadow:none;z-index:auto}
 .listening-page .now-playing-header{padding:28px 0 26px;border:0}
 .listening-page .now-playing-header h2{font-size:clamp(28px,3.5vw,44px);letter-spacing:-.04em}
 .listening-page .now-playing-scroll{overflow:visible;padding:0;flex:none}
@@ -133,4 +133,30 @@ body.listening-page-open .main-footer{display:none}
 }
 @media(max-width:760px){
   .listening-page .now-playing-track-actions{grid-column:1;grid-row:auto;max-width:360px;width:100%;justify-self:center;margin-top:0!important}
+}
+
+/* Translucent listening actions sit on the cover backdrop instead of opaque theme cards. */
+:is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button:not(.danger):not(.primary){
+  background:color-mix(in srgb,var(--accent) 7%,transparent);border-color:#ffffff26;
+  color:#e2e7ec;box-shadow:none;font-weight:500;
+}
+:is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button:not(.danger):not(.primary):hover:not(:disabled){
+  background:color-mix(in srgb,var(--accent) 14%,transparent);
+  border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:#fff;
+}
+.visual-player.cover-atmosphere .visual-player-header .button[aria-pressed="true"]{
+  background:color-mix(in srgb,var(--accent) 17%,transparent);
+  border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:#fff;
+}
+.visual-player.cover-atmosphere #visual-player-disc-toggle[aria-pressed="true"]{
+  border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:none;
+}
+:is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button:focus-visible{
+  outline:2px solid var(--accent);outline-offset:3px;
+}
+:is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger{
+  background:#d46b6b0a;border-color:#e7a09a66;color:#f2b8b3;
+}
+:is(.listening-atmosphere .listening-page,.visual-player.cover-atmosphere) .button.danger:hover:not(:disabled){
+  background:#d46b6b26;border-color:#e7a09a99;color:#ffd6d0;
 }

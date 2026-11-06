@@ -731,7 +731,8 @@ their shared browsing/player state; a fast local response can otherwise race the
   after it, and bind seek previews to the current queue occurrence, playback epoch and Gapless
   segment. Compact Gapless retains its existing track-relative transport. All presentations
   use the same native element and system playback handlers, with speed, mute and output options
-  still reachable. Move the same Sound button into the expanded view's header while it is open.
+  still reachable. Keep Sound in the sidebar footer; the expanded view uses its existing
+  native/custom volume and options controls without an extra Sound button.
   Do not persist volume
   or change it on opening. Discover permitted output devices only on explicit dialog opening
   or device changes while open; never request microphone access. Feature-detect the
