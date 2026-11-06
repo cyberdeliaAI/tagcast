@@ -12130,3 +12130,129 @@ test('automatic lyrics scrolling leaves the row menu open while scrolling its an
   await p.emitDocument('scroll',{target:{contains:node=>node===trigger}});
   assert.equal(p.nodes.get('#queue-action-menu').hidden,true);
 });
+
+function queueMemoryPage(storage = {}, profile = 'a'.repeat(64)) {
+  const p = page({storage, deferReady:true});
+  p.run(`state.mode='live';state.loading=false;state.connection={connected:true,premium:true,playback_session:'session-1'};bindQueueMemory('${profile}');gaplessTrial.enabled=false;`);
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/queue-tracks');
+    const body = JSON.parse(options.body);
+    assert.equal(body.restore, true);
+    return {ok:true,json:async()=>({tracks:body.tracks.map((id,position)=>({id,position,title:'Fresh '+id,artist:'Performer',length:30,album:{id:'1',name:'Album',artist:'Artist'}}))})};
+  });
+  return p;
+}
+
+test('queue survives restart with occurrences, current selection, repeat and ordered album origins, without autoplay', async () => {
+  const storage = {}, p = queueMemoryPage(storage);
+  p.run(`player.queue=queueTracks({id:'1',name:'Album',artist:'Artist',tracks:[]},[{id:'900',title:'Old',length:30},{id:'901',title:'Next',length:30},{id:'900',title:'Repeat',length:30}]);gaplessAlbumQueue(player.queue,true);player.queue[1].upNext=true;player.index=2;player.repeat='queue';saveQueueMemory()`);
+  const saved = JSON.parse(storage['tagcast-queue-'+'a'.repeat(64)]);
+  assert.deepEqual(saved.entries.map(e=>e.id), ['900','901','900']);
+  assert.equal(JSON.stringify(saved).includes('Old'), false);
+  const restored = queueMemoryPage(storage);
+  const audio = restored.nodes.get('#audio');
+  let plays = 0; audio.play = () => { plays++; return Promise.resolve(); };
+  await restored.run('restoreQueueMemory()');
+  assert.deepEqual(restored.json('player.queue.map(t=>[t.id,t.title,t.upNext])'), [['900','Fresh 900',false],['901','Fresh 901',true],['900','Fresh 900',false]]);
+  assert.deepEqual(restored.json('[player.index,player.repeat,player.resumePending]'), [2,'queue',true]);
+  assert.deepEqual(restored.json('[gaplessAlbumEntry(player.queue[0]).index,gaplessAlbumEntry(player.queue[2]).index,gaplessAlbumEntry(player.queue[0]).run===gaplessAlbumEntry(player.queue[2]).run]'), [0,2,true]);
+  assert.equal(audio.src, undefined); assert.equal(plays,0);
+  assert.equal(restored.nodes.get('#gapless-play').disabled,false);
+  assert.equal(restored.nodes.get('#gapless-position').disabled,true);
+  await restored.nodes.get('#gapless-play').emit('click');
+  assert.equal(plays,1); assert.match(audio.src,/\/api\/stream\/900/);
+  assert.equal(restored.run('player.resumePending'),false);
+});
+
+test('queue restore skips deleted entries, retains the next occurrence and never restores another account', async () => {
+  const storage = {}, p = queueMemoryPage(storage);
+  p.run(`player.queue=[{id:'900'},{id:'901'},{id:'900'}];player.index=1;saveQueueMemory()`);
+  const q = queueMemoryPage(storage);
+  q.setFetch(()=>({ok:true,json:async()=>({tracks:[{id:'900',position:0,title:'A',album:{id:'1',name:'Album',artist:'Artist'}},{id:'900',position:2,title:'A',album:{id:'1',name:'Album',artist:'Artist'}}]})}));
+  await q.run('restoreQueueMemory()');
+  assert.equal(q.run('player.index'),1);
+  assert.equal(q.run('gaplessAlbumEntry(player.queue[0])'),undefined);
+  const other = queueMemoryPage(storage,'b'.repeat(64));
+  await other.run('restoreQueueMemory()');
+  assert.equal(other.run('player.queue.length'),0);
+  assert.equal(other.requests.filter(r=>r.url==='/api/queue-tracks').length,0);
+});
+
+test('queue restore cannot overwrite an explicit clear, newer playback, account or library replacement', async () => {
+  for (const change of ['stopPlayer()', "player.epoch++;player.queue=[{id:'999',title:'New'}];player.index=0", "state.connection.playback_session='new-session'", 'state.details=new Map()']) {
+    const storage = {}, p=queueMemoryPage(storage);
+    p.run("player.queue=[{id:'900'}];player.index=0;saveQueueMemory();player.queue=[];queueMemory.attempted=''");
+    let respond;
+    p.setFetch(()=>new Promise(resolve=>{respond=resolve;}));
+    const pending=p.run('restoreQueueMemory()'); await settle();
+    p.run(change);
+    respond({ok:true,json:async()=>({tracks:[{id:'900',position:0,title:'Late',album:{id:'1'}}]})});
+    await pending;
+    assert.equal(p.run("player.queue.some(t=>t.title==='Late')"),false,change);
+  }
+});
+
+test('queue storage failures, invalid snapshots and remote queue ownership leave playback independent', async () => {
+  const storage={},p=queueMemoryPage(storage);
+  for (const value of ['{',JSON.stringify({version:1,entries:[{id:'bad'}],index:0,repeat:'none',shuffle:false})]) {
+    storage['tagcast-queue-'+'a'.repeat(64)]=value;
+    p.run("queueMemory.attempted=''");await p.run('restoreQueueMemory()');
+    assert.equal(p.run('player.queue.length'),0);
+  }
+  p.run("player.queue=[{id:'900'}];player.index=0;saveQueueMemory();detachQueueMemory();stopPlayer()");
+  assert.equal(JSON.parse(storage['tagcast-queue-'+'a'.repeat(64)]).entries.length,1,'Disconnect preserves the live snapshot');
+  p.run("bindQueueMemory('"+'a'.repeat(64)+"');queueSync.active=true;queueMemory.attempted='';player.queue=[]");
+  await p.run('restoreQueueMemory()');assert.equal(p.run('player.queue.length'),0);
+  p.run("queueSync.active=false;localStorage.setItem=()=>{throw Error('Full')};player.queue=[{id:'901'}];player.index=0;saveQueueMemory()");
+  assert.equal(p.run('player.queue[0].id'),'901');
+});
+
+test('sorting survives restart independently per listing and ignores obsolete values', async () => {
+  const storage={},p=page({storage});
+  p.nodes.get('#sort').value='year';await p.nodes.get('#sort').emit('change');
+  p.nodes.get('#artists-sort').value='za';await p.nodes.get('#artists-sort').emit('change');
+  p.nodes.get('#guide-sort').value='year-desc';await p.nodes.get('#guide-sort').emit('change');
+  p.run("browseView.kind='genres';browseView.key=null");p.nodes.get('#browse-sort').value='count';await p.nodes.get('#browse-sort').emit('change',{target:p.nodes.get('#browse-sort')});
+  const q=page({storage});
+  assert.equal(q.nodes.get('#sort').value,'year');assert.equal(q.nodes.get('#artists-sort').value,'za');
+  assert.equal(q.run('albumGuide.sort'),'year-desc');
+  q.run("showBrowse('genres')");assert.equal(q.run('browseView.sort'),'count');
+  q.run("showBrowse('years')");assert.equal(q.run('browseView.sort'),'za');
+  storage['tagcast-browse-sorts']=JSON.stringify({sort:'arbitrary','artists-sort':'invalid'});
+  const r=page({storage});assert.equal(r.nodes.get('#sort').value,'artist');
+});
+
+test('paging scrolls to the listing controls and cancels only pending navigation scroll', async () => {
+  const p=page();p.run("state.page=0;nav.scroll={top:900};window.scrollY=900");
+  const controls={style:{position:''},getBoundingClientRect:()=>({top:controls.style.position==='static'?-700:0})};
+  p.nodes.get('#albums-page').querySelector=()=>controls;
+  await p.click({'[data-page]':{dataset:{page:'1'}}});
+  assert.equal(p.run('window.scrollY'),200);assert.equal(p.run('nav.scroll'),null);
+  assert.equal(controls.style.position,'','The sticky style is restored before painting');
+  p.run('window.scrollY=900');
+  await p.click({'[data-guide-page]':{dataset:{guidePage:'1'}}});
+  assert.equal(p.run('window.scrollY'),0);
+});
+
+test('playlist sticky search contains only the search field, never the track listing', () => {
+  const p=page();
+  const html=p.run("playlistDetailPage({id:'1',name:'Test playlist',description:'',tracks:[],rows:[],total:0})");
+  assert.doesNotMatch(html,/placeholder="[^"]*<\/div>/);
+  assert.match(html,/<div class="sticky-search">.*?<\/span><\/div><table/);
+});
+
+test('expanded source/control text meets contrast over all possible blurred cover pixels', () => {
+  const p=page();
+  for (const base of ['forest','ocean','warm','ibroadcast','apple','amber']) for (const mode of ['light','dark']) {
+    const result=p.json(`(()=>{const c=TagcastThemes.colours({base:'${base}'},'${mode}');return {c,...expandedTextColours(c.link,c.paper,c.accent)}})()`);
+    const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+    const hex=a=>'#'+a.map(n=>Math.round(n).toString(16).padStart(2,'0')).join('');
+    for(const value of [0,64,128,192,255]) {
+      const bg=rgb(result.c.paper).map(n=>n*.7+value*.3);
+      for(const wash of [false,true]) {
+        const background=result.backing!=='transparent'?result.backing:hex(wash?bg.map((n,i)=>n*.84+rgb(result.c.accent)[i]*.16):bg);
+        assert.ok(p.run(`TagcastThemes.contrast('${result.text}','${background}')`)>=4.5,base+' '+mode);
+      }
+    }
+  }
+});

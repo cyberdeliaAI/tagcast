@@ -373,6 +373,7 @@ function playCurrent(autoPlay = true) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.devices.playback")); return; }
   const track = player.queue[player.index];
   if (!track) return;
+  player.resumePending = false;
   player.album = track.album;
   if (visualPlayer.open) setVisualPlayerStatus(null);
   player.quality = lookup.streamQuality || "128";
@@ -424,6 +425,7 @@ function renderPlayerTrackLabels() {
 }
 
 function markPlaying() {
+  if (typeof saveQueueMemory === "function") saveQueueMemory();
   if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof syncSystemPlayback === "function") syncSystemPlayback();
   if (typeof scheduleQueuePublish === "function") scheduleQueuePublish();
@@ -730,11 +732,12 @@ function stopPlayer() {
   closeQueueActions();
   playReporting.watch = null;
   cancelRandomPlay();
-  player.epoch += 1;
+  player.epoch += 1; player.resumePending = false;
   audio.pause(); audio.removeAttribute("src"); audio.load();
   $("#player").hidden = true; document.body.classList.remove("has-player");
   closeVisualPlayer();
   player.queue = []; player.index = -1; player.album = null; markPlaying();
+  if (typeof saveQueueMemory === "function") saveQueueMemory(true);
   if (typeof updateFavouriteControls === "function") updateFavouriteControls();
 }
 
@@ -839,7 +842,7 @@ document.addEventListener("click", async event => {
   cancelRandomPlay();
   const id = play?.dataset.play;
   if (id && player.queue[player.index]?.id === id && player.album?.id === album.id) {
-    if (audio.paused) audio.play(); else audio.pause();
+    if (audio.paused) playSystemPlayback(); else audio.pause();
     return;
   }
   playTracks(album, id || album.tracks[0]?.id, Boolean(shuffle));
@@ -884,6 +887,7 @@ $("#player-repeat").addEventListener("click", () => {
   renderRepeatButton();
   if (typeof gaplessQueueChanged === "function") gaplessQueueChanged();
   if (typeof publishQueueState === "function") publishQueueState();
+  if (typeof saveQueueMemory === "function") saveQueueMemory();
 });
 
 audio.addEventListener("play", () => {

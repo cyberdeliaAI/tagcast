@@ -366,7 +366,7 @@ document.addEventListener("click", event => {
   if (artistRating) { rateArtist(Number(artistRating.dataset.artistRating)); return; }
   const favouritePage = event.target.closest("[data-favourite-artist-page]");
   if (favouritePage && state.screen === "artist-favourites") {
-    favouriteArtists.page += Number(favouritePage.dataset.favouriteArtistPage); renderFavouriteArtists(); return;
+    favouriteArtists.page += Number(favouritePage.dataset.favouriteArtistPage); renderFavouriteArtists(); scrollListingStart("#artist-favourites-page"); return;
   }
   const favourite = event.target.closest("[data-artist-favourite]");
   if (favourite) { toggleArtistFavourite(favourite.dataset.artistFavourite); return; }
@@ -394,7 +394,7 @@ document.addEventListener("click", event => {
   if (page) {
     artistBrowse.page += Number(page.dataset.artistPage);
     renderArtistBrowse();
-    window.scrollTo?.({top: 0});
+    scrollListingStart("#artists-page");
   }
 });
 
