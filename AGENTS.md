@@ -669,7 +669,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   Escape, stopping and library replacement close it; restore focus and inert state.
   Settings offers Fullscreen (existing default) or In app window, remembered locally
   in `tagcast-player-view`. Apply on the next opening without requests or audio/queue
-  changes. In app window never requests native fullscreen or exits another element's
+  changes. The existing optional cover-colour background also covers the listening page,
+  using its already loaded current cover; clear it on navigation, missing artwork or disable.
+  In app window never requests native fullscreen or exits another element's
   fullscreen session. Keep button labels and the Settings Help explanation aligned.
   Optional CD artwork (`player-disc.js` / `player-disc.css`) is presentation only;
   album covers remain the default. The header toggle and Playback setting share the

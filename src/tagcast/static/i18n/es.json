@@ -2086,7 +2086,7 @@
   "playback.volume.value": "{{percent}} %",
   "playback.volume.valueMuted": "{{percent}} %, silenciado",
   "playbackLyrics.settings.coverBackground": "Usar los colores de la portada como fondo de la vista Reproduciendo",
-  "playbackLyrics.settings.coverNote": "Añade un fondo suavizado con la portada a la vista Reproduciendo ampliada. Desactivado de forma predeterminada. Tu tema no cambia en el resto de la app.",
+  "playbackLyrics.settings.coverNote": "Añade un fondo suavizado con la portada a la página de escucha y a la vista Reproduciendo ampliada. Desactivado de forma predeterminada. Tu tema no cambia en el resto de la app.",
   "playbackLyrics.settings.heading": "Letras en Reproduciendo",
   "playbackLyrics.settings.mode": "Inmediato · este navegador",
   "playbackLyrics.settings.native": "Solo iBroadcast · sin búsqueda en línea",

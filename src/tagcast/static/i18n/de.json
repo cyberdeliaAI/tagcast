@@ -2010,7 +2010,7 @@
   "playback.volume.value": "{{percent}} %",
   "playback.volume.valueMuted": "{{percent}} %, stummgeschaltet",
   "playbackLyrics.settings.coverBackground": "Coverfarben hinter „Läuft gerade“ verwenden",
-  "playbackLyrics.settings.coverNote": "Fügt der großen Ansicht „Läuft gerade“ einen abgeschwächten Cover-Hintergrund hinzu. Standardmäßig aus. Dein Design bleibt an allen anderen Stellen unverändert.",
+  "playbackLyrics.settings.coverNote": "Fügt der Hörseite und der großen Ansicht „Läuft gerade“ einen abgeschwächten Cover-Hintergrund hinzu. Standardmäßig aus. Dein Design bleibt an allen anderen Stellen unverändert.",
   "playbackLyrics.settings.heading": "Songtexte bei „Läuft gerade“",
   "playbackLyrics.settings.mode": "Sofort · dieser Browser",
   "playbackLyrics.settings.native": "Nur iBroadcast · keine Onlinesuche",

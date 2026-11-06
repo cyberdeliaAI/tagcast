@@ -1934,7 +1934,7 @@
   "playback.volume.value": "{{percent}}%",
   "playback.volume.valueMuted": "{{percent}}%、ミュート中",
   "playbackLyrics.settings.coverBackground": "「再生中」の背景にアートワークの色を使用",
-  "playbackLyrics.settings.coverNote": "大きな「再生中」画面に、やわらかくぼかしたアートワークの背景を追加します。初期設定はオフです。他の場所のテーマは変わりません。",
+  "playbackLyrics.settings.coverNote": "リスニングページと大きな「再生中」画面に、やわらかくぼかしたアートワークの背景を追加します。初期設定はオフです。他の場所のテーマは変わりません。",
   "playbackLyrics.settings.heading": "再生中の歌詞",
   "playbackLyrics.settings.mode": "即時 · このブラウザ",
   "playbackLyrics.settings.native": "iBroadcastのみ · オンライン検索なし",

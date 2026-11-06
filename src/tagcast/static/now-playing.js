@@ -38,6 +38,7 @@ function syncNowPlayingPage() {
   }
   nowPlayingPresentation.page = page;
   if (page) renderNowPlaying();
+  renderLyricsCoverBackground();
   placePlayerExtras();
   if (typeof applyVisualizer === "function") applyVisualizer();
 }
@@ -89,6 +90,7 @@ function renderListeningExtras(track, focused) {
   // Never replace the rating controls themselves when the current-track markup is refreshed.
 
   placePlayerExtras();
+  renderLyricsCoverBackground();
   if (focus) focus.focus({preventScroll: true});
   const host = $("#listening-meter");
   nowPlayingPresentation.needles = []; nowPlayingPresentation.spectrum = null;
