@@ -2060,7 +2060,7 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "playback.volume.value": "{{percent}}%",
   "playback.volume.valueMuted": "{{percent}}%, muted",
   "playbackLyrics.settings.coverBackground": "Use cover colours behind Now playing",
-  "playbackLyrics.settings.coverNote": "Adds a softened cover background to the large Now playing view. Off by default. Your theme stays unchanged elsewhere.",
+  "playbackLyrics.settings.coverNote": "Adds a softened cover background to the listening page and large Now playing view. Off by default. Your theme stays unchanged elsewhere.",
   "playbackLyrics.settings.heading": "Now playing lyrics",
   "playbackLyrics.settings.mode": "Immediate · this browser",
   "playbackLyrics.settings.native": "iBroadcast only · no online lookup",

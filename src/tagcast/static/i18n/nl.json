@@ -2010,7 +2010,7 @@
   "playback.volume.value": "{{percent}}%",
   "playback.volume.valueMuted": "{{percent}}%, gedempt",
   "playbackLyrics.settings.coverBackground": "Hoeskleuren achter Nu aan het afspelen gebruiken",
-  "playbackLyrics.settings.coverNote": "Voegt een zachte achtergrond van de hoes toe aan de grote weergave Nu aan het afspelen. Standaard uit. Elders blijft je thema ongewijzigd.",
+  "playbackLyrics.settings.coverNote": "Voegt een zachte hoesachtergrond toe aan de luisterpagina en de grote afspeelweergave. Standaard uit. Elders blijft je thema ongewijzigd.",
   "playbackLyrics.settings.heading": "Songteksten bij Nu aan het afspelen",
   "playbackLyrics.settings.mode": "Direct · deze browser",
   "playbackLyrics.settings.native": "Alleen iBroadcast · niet online zoeken",

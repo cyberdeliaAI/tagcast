@@ -40,6 +40,42 @@ test('cover atmosphere is optional, profile-local and clears when artwork is una
   assert.equal(p.nodes.get('#visual-player').classList.contains('cover-atmosphere'),false);
 });
 
+test('the listening page shares the cover preference and rejects missing or obsolete cover events',async()=>{
+  const {p}=await playbackLyricsPage();
+  const host=p.nodes.get('#now-playing-current'), workspace=p.nodes.get('main');
+  const first={complete:true,naturalWidth:300,hidden:false,src:'https://artwork.example/first.jpg'};
+  let current=first;
+  host.querySelector=selector=>selector==='.now-playing-cover img'?current:null;
+  p.run('showScreen("now-playing")');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})');
+  const requests=p.requests.length;
+  await p.change({id:'playback-lyrics-cover-background',checked:true,matches:()=>false,closest:()=>null});
+  assert.match(workspace.style['--lyrics-cover-image'],/first.jpg/);
+  assert.equal(workspace.classList.contains('listening-atmosphere'),true);
+  current={complete:false,naturalWidth:0,hidden:false,src:'https://artwork.example/second.jpg'};
+  p.run('renderLyricsCoverBackground()');
+  assert.equal(workspace.style['--lyrics-cover-image'],undefined,'Never keep the previous track colour while a new cover loads');
+  await host.emit('load',{target:first});
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  current.complete=true;current.naturalWidth=300;
+  await host.emit('load',{target:current});
+  assert.match(workspace.style['--lyrics-cover-image'],/second.jpg/);
+  current.naturalWidth=0;
+  await host.emit('error',{target:current});
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  current=first;p.run('renderLyricsCoverBackground();visualPlayer.open=true;renderLyricsCoverBackground()');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false,'Expanded playback never tints the hidden workspace');
+  p.run('visualPlayer.open=false;renderLyricsCoverBackground()');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),true);
+  p.run('showScreen("albums")');
+  assert.equal(workspace.classList.contains('listening-atmosphere'),false);
+  await host.emit('load',{target:first});
+  assert.equal(workspace.style['--lyrics-cover-image'],undefined,'Late events cannot tint another page');
+  assert.equal(p.requests.length,requests,'Cover presentation makes no provider or account requests');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index})'),before);
+});
+
 test('display lyrics default to native and do not fetch while the large lyrics view is closed', async()=>{
   const {p,storage}=await playbackLyricsPage();
   p.setFetch(()=>({ok:true,json:async()=>({...emptyNativeLyrics,text:'Cached public LRCLIB text'})}));

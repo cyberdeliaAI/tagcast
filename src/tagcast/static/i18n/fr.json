@@ -2086,7 +2086,7 @@
   "playback.volume.value": "{{percent}} %",
   "playback.volume.valueMuted": "{{percent}} %, son coupé",
   "playbackLyrics.settings.coverBackground": "Utiliser les couleurs de la pochette derrière la vue À l’écoute",
-  "playbackLyrics.settings.coverNote": "Ajoute un arrière-plan adouci tiré de la pochette à la grande vue À l’écoute. Désactivé par défaut. Votre thème reste inchangé ailleurs.",
+  "playbackLyrics.settings.coverNote": "Ajoute un arrière-plan adouci tiré de la pochette à la page d’écoute et à la grande vue À l’écoute. Désactivé par défaut. Votre thème reste inchangé ailleurs.",
   "playbackLyrics.settings.heading": "Paroles dans la vue À l’écoute",
   "playbackLyrics.settings.mode": "Immédiat · ce navigateur",
   "playbackLyrics.settings.native": "iBroadcast uniquement · aucune recherche en ligne",

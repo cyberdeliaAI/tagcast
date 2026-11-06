@@ -30,12 +30,17 @@ function playbackLyricsSettings() {
 }
 
 function renderLyricsCoverBackground() {
-  const stage = $("#visual-player"), art = $("#visual-player-art");
-  const active = playbackLyricsView.coverBackground && visualPlayer.open && !art.hidden
-    && art.complete && art.naturalWidth > 0;
-  stage.classList.toggle("cover-atmosphere", Boolean(active));
-  if (active) stage.style.setProperty("--lyrics-cover-image", `url(${JSON.stringify(art.currentSrc || art.src)})`);
-  else stage.style.removeProperty("--lyrics-cover-image");
+  const paint = (stage, art, visible, name) => {
+    const active = playbackLyricsView.coverBackground && visible && art && !art.hidden
+      && art.complete && art.naturalWidth > 0;
+    stage.classList.toggle(name, Boolean(active));
+    if (active) stage.style.setProperty("--lyrics-cover-image", `url(${JSON.stringify(art.currentSrc || art.src)})`);
+    else stage.style.removeProperty("--lyrics-cover-image");
+  };
+  paint($("#visual-player"), $("#visual-player-art"), visualPlayer.open, "cover-atmosphere");
+  paint($("main"), $("#now-playing-current").querySelector(".now-playing-cover img"),
+    state.screen === "now-playing" && !visualPlayer.open && !$("#now-playing-panel").hidden,
+    "listening-atmosphere");
 }
 
 function suspendPlaybackLyrics() {
@@ -326,6 +331,10 @@ for (const name of ["load", "error"]) $("#visual-player-art").addEventListener(n
   // Artwork's existing fallback handler runs first; retain the theme on missing covers.
   Promise.resolve().then(renderLyricsCoverBackground);
 });
+for (const name of ["load", "error"]) $("#now-playing-current").addEventListener(name, event => {
+  // Capture events on the stable host; removed covers cannot restore an old background.
+  if (event.target === $("#now-playing-current").querySelector(".now-playing-cover img")) renderLyricsCoverBackground();
+}, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) suspendPlaybackLyrics(); else renderPlaybackLyrics();
 });
