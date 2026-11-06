@@ -5249,6 +5249,28 @@ test("CD view toggles keep the same audio, queue, artwork and lyrics requests", 
   assert.equal(p.nodes.get('#audio').paused, false, 'Closing the presentation does not pause playback');
 });
 
+test("CD lettering uses bounded loaded metadata as text, updates per track and preserves playback", async () => {
+  const p=livePage(); await settle();
+  p.run('playTracks(state.details.get("1"));audio.currentTime=31;audio.pause();openVisualPlayer();player.queue[0].title="<img onerror=bad>";player.queue[0].artist="  First\\nPerformer  ";player.queue[0].album.name="Album <svg onload=bad>";renderVisualDisc()');
+  const before=playbackState(p), requests=p.requests.length;
+  const title=p.nodes.get('#visual-disc-title'),album=p.nodes.get('#visual-disc-album');
+  assert.equal(title.textContent,'<img onerror=bad> • First Performer');
+  assert.equal(album.textContent,'Album <svg onload=bad>');
+  assert.equal(title.innerHTML,'');assert.equal(album.innerHTML,'');
+  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  assert.deepEqual(playbackState(p),before);
+  assert.equal(p.requests.length,requests);
+  p.run('player.queue[0].title="🎵".repeat(150);player.queue[0].album.name="長".repeat(80);renderVisualDisc()');
+  assert.equal(Array.from(title.textContent).length,96);
+  assert.equal(Array.from(album.textContent).length,36);
+  assert.ok(title.textContent.endsWith('…'));
+  assert.equal(p.run('player.queue[0].title.length'),300,'Display shortening never edits the original title');
+  p.run('player.index=1;renderVisualDisc()');
+  assert.ok(title.textContent.startsWith(p.run('player.queue[1].title')));
+  p.run('player.queue=[];player.index=-1;renderVisualDisc()');
+  assert.equal(title.textContent,'');assert.equal(album.textContent,'');
+});
+
 test("CD rotation follows readiness, actual playback, seeking, visibility and safe stops", async () => {
   const p = livePage({storage:{'tagcast-player-artwork':'cd'}}); await settle();
   p.run('playTracks(state.details.get("1"));audio.readyState=2;openVisualPlayer()');
