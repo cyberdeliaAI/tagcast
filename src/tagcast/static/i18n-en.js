@@ -2074,7 +2074,7 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "playbackLyrics.settings.timing": "Timed lyrics highlight the current line, with a moving underline for words or syllables when available. Ordinary text remains readable without synchronisation. Online results stay temporarily in memory; they are never saved to iBroadcast, music files or the lyrics editor. Existing iBroadcast lyrics keep their usual cache and editing behaviour.",
   "playbackLyrics.settings.unisonFirst": "Unison → LRCLIB first · iBroadcast fallback",
   "playbackLyrics.source.link": "Lyrics from {{source}} ↗",
-  "playbackLyrics.source.public": "{{link}} · Temporary display",
+  "playbackLyrics.source.public": "{{link}} · Not stored in iBroadcast",
   "playbackLyrics.status.checkAgain": "You can check again.",
   "playbackLyrics.status.missing": "No matching lyrics found for this recording.",
   "playbackLyrics.status.nativeMissing": "No lyrics stored in iBroadcast. Enable an online option in Settings → Playback for Unison and LRCLIB lyrics.",

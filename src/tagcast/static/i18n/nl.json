@@ -2024,7 +2024,7 @@
   "playbackLyrics.settings.timing": "Getimede songteksten markeren de huidige regel, met een meelopende onderstreping voor woorden of lettergrepen als die beschikbaar zijn. Gewone tekst blijft leesbaar zonder synchronisatie. Online resultaten blijven tijdelijk in het geheugen en worden nooit opgeslagen in iBroadcast, muziekbestanden of de songteksteditor. Bestaande songteksten in iBroadcast houden hun gebruikelijke cache en bewerkingsgedrag.",
   "playbackLyrics.settings.unisonFirst": "Eerst Unison → LRCLIB · daarna iBroadcast",
   "playbackLyrics.source.link": "Songtekst van {{source}} ↗",
-  "playbackLyrics.source.public": "{{link}} · Tijdelijke weergave",
+  "playbackLyrics.source.public": "{{link}} · Niet opgeslagen in iBroadcast",
   "playbackLyrics.status.checkAgain": "Je kunt opnieuw controleren.",
   "playbackLyrics.status.missing": "Geen passende songtekst gevonden voor deze opname.",
   "playbackLyrics.status.nativeMissing": "Er is geen songtekst opgeslagen in iBroadcast. Zet een online optie aan in Instellingen → Afspelen voor songteksten van Unison en LRCLIB.",
