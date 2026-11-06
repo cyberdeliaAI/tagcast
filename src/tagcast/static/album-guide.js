@@ -307,7 +307,7 @@ $("#guide-show-matching").addEventListener("change", async () => {
 document.addEventListener("click", event => {
   if (event.target.closest("[data-guide-open]")) { showAlbumGuide(); }
   const page = event.target.closest("[data-guide-page]");
-  if (page && !albumGuide.loading) { albumGuide.page += Number(page.dataset.guidePage); renderAlbumGuide(); }
+  if (page && !albumGuide.loading) { albumGuide.page += Number(page.dataset.guidePage); renderAlbumGuide(); scrollListingStart("#album-guide-page"); }
   const decade = event.target.closest("[data-guide-decade]");
   if (decade && (decade.dataset.guideDecade === "all" || /^\d{3}0$/.test(decade.dataset.guideDecade))) {
     albumGuide.decade = decade.dataset.guideDecade; albumGuide.page = 0; renderAlbumGuide();

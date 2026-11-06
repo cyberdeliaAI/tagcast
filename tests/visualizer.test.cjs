@@ -8,7 +8,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const source = readFileSync(path.join(__dirname, "../src/tagcast/static/visualizer.js"), "utf8");
 
-function page({storage = {}, reducedMotion = false, narrow = false, capture = true} = {}) {
+function page({storage = {}, reducedMotion = false, narrow = false, capture = true, listening = false} = {}) {
   const log = {contexts: [], captures: 0, frames: [], stopped: []};
   const listeners = new Map(), documentListeners = new Map();
   function node(extra = {}) {
@@ -39,11 +39,13 @@ function page({storage = {}, reducedMotion = false, narrow = false, capture = tr
   class AudioContext {
     constructor() { this.state = "running"; this.sampleRate = 48000; this.sources = []; log.contexts.push(this); }
     createAnalyser() {
-      const analyser = {fftSize: 2048, connections: [], connect(target) { this.connections.push(target); },
+      const analyser = {fftSize: 2048, connections: [], connect(target) { this.connections.push(target); }, disconnect() { this.disconnected = true; },
+        getFloatTimeDomainData(samples) { samples.fill(this.level || 0); },
         get frequencyBinCount() { return this.fftSize / 2; },
         getFloatFrequencyData(bins) { bins.fill(-100); bins[Math.round(1000 / (48000 / 2 / bins.length))] = -20; }};
       this.analyser = analyser; return analyser;
     }
+    createChannelSplitter() { return {connections: [], connect(target, output) { this.connections.push([target, output]); }, disconnect() { this.disconnected = true; }}; }
     createMediaStreamSource(media) {
       const node = {track: media.tracks[0], connections: [], disconnected: false,
         connect(target) { this.connections.push(target); }, disconnect() { this.disconnected = true; }};
@@ -67,6 +69,7 @@ function page({storage = {}, reducedMotion = false, narrow = false, capture = tr
     requestAnimationFrame(callback) { log.frames.push(callback); return log.frames.length; }, cancelAnimationFrame() {},
     getComputedStyle: () => ({color: "rgb(1, 2, 3)"}), AudioContext,
     MediaStream: class { constructor(tracks) { this.tracks = tracks; } }, Float32Array, Math, Number});
+  if (listening) vm.runInContext("const nowPlayingPreferences={meter: 'vu'};const nowPlayingPresentation={vu:[0,0]};let pageVisible=true;function listeningMeterActive(){return pageVisible;}let meterFrames=0;function drawListeningMeter(){meterFrames++;}", context);
   vm.runInContext(source, context);
   const run = code => vm.runInContext(code, context);
   // Runs the pending animation frames, advancing the clock by 16 ms each.
@@ -190,4 +193,60 @@ test("failed capture setup closes its partially created context", () => {
   assert.equal(p.run("visualizer.context"), null);
   assert.equal(p.run("visualizer.analyser"), null);
   assert.equal(p.audio.paused, false);
+});
+
+
+test("a listening-page VU tap uses the existing capture and separate channels without an audio output", () => {
+  const p = page({storage: {'tagcast-player-visualizer':'off'}, listening: true});
+  p.audio.paused = false; p.audio.emit('play'); p.stream.add(p.track('stereo')); p.frames(2);
+  assert.equal(p.log.captures, 1);
+  assert.equal(p.log.contexts.length, 1);
+  const source = p.log.contexts[0].sources[0], stereo = p.run('visualizer.stereo');
+  assert.deepEqual(source.connections, [p.run('visualizer.analyser'), stereo.splitter]);
+  assert.deepEqual(stereo.splitter.connections.map(c=>c[1]), [0,1]);
+  assert.ok(stereo.analysers.every(a=>a.connections.length===0), 'analysis graph never reaches a destination');
+  assert.ok(p.run('meterFrames') > 0);
+  p.run('pageVisible=false;applyVisualizer()');
+  assert.equal(stereo.splitter.disconnected, true);
+  assert.equal(p.log.contexts[0].state, 'closed');
+  assert.equal(p.audio.paused, false);
+});
+
+test("leaving the VU page removes stereo analysers but retains a requested compact spectrum", () => {
+  const p = page({listening: true}); p.audio.paused = false; p.audio.emit('play'); p.stream.add(p.track('first'));p.frames(2);
+  const stereo = p.run('visualizer.stereo');
+  p.run('pageVisible=false;applyVisualizer()');
+  assert.equal(stereo.splitter.disconnected, true);
+  assert.equal(p.run('visualizer.stereo'), null);
+  assert.equal(p.log.contexts[0].state, 'running');
+  p.stream.add(p.track('second'));p.frames(2);
+  assert.equal(p.log.captures, 1);
+  assert.equal(p.log.contexts[0].sources.at(-1).connections.length, 1);
+});
+
+
+test("the queue's active occurrence reuses the analyser levels without another capture",()=>{
+  const p=page(), original=p.document.querySelector;
+  const row={isConnected:true,classList:{contains:c=>c==='playing'},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}};
+  p.document.querySelector=selector=>selector==='#now-playing-list .queue-row.playing'?row:original(selector);
+  p.stream.tracks.push(p.track('first'));p.audio.paused=false;p.audio.emit('play');p.frames(10);
+  assert.equal(Object.keys(row.style.properties).length,4);
+  assert.equal(p.log.captures,1);
+  p.audio.paused=true;p.audio.emit('pause');p.frames(200);
+  assert.deepEqual(row.style.properties,{});
+});
+
+
+test("a hidden album row releases its levels when the listening queue becomes visible",()=>{
+  const p=page(),original=p.document.querySelector;
+  const row=()=>({isConnected:true,classList:{contains:()=>true},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}});
+  const album=row(),queue=row();let hidden=false;
+  album.closest=()=>hidden?{}:null;p.document.playingRow=album;
+  p.stream.tracks.push(p.track('first'));p.audio.paused=false;p.audio.emit('play');p.frames(2);
+  assert.equal(Object.keys(album.style.properties).length,4);
+  hidden=true;p.document.querySelector=selector=>selector==='#now-playing-list .queue-row.playing'?queue:original(selector);
+  p.frames(2);
+  assert.deepEqual(album.style.properties,{});
+  assert.equal(Object.keys(queue.style.properties).length,4);
+  assert.equal(p.log.captures,1);
 });

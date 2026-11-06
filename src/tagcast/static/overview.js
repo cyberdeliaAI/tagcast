@@ -22,11 +22,11 @@ function duration(seconds) {
 }
 
 // Page names in the top bar; translated when shown, never stored.
-const SCREEN_BREADCRUMBS = {settings: "overview.route.settings", uploads: "overview.route.uploads",
+const SCREEN_BREADCRUMBS = {"now-playing": "player.nowPlaying.heading", settings: "overview.route.settings", uploads: "overview.route.uploads",
   downloads: "overview.route.downloads", overview: "overview.route.overview", artists: "overview.route.artists",
   tracks: "overview.route.tracks", favourites: "overview.route.favourites", "recently-played": "overview.route.recentlyPlayed"};
 // Screens whose top bar text showScreen sets on its own; other screens render their own trail.
-const SCREEN_BREADCRUMB_OWNED = ["settings", "uploads", "downloads", "overview", "artists", "tracks", "recently-played"];
+const SCREEN_BREADCRUMB_OWNED = ["settings", "uploads", "downloads", "overview", "artists", "tracks", "recently-played", "now-playing"];
 
 function screenBreadcrumb(name) {
   if (name === "album-guide") return "1001 Albums";
@@ -55,6 +55,7 @@ function showScreen(name) {
   }
   if (name !== "album") { albumView.request += 1; albumView.loading = false; }
   state.screen = name;
+  if (typeof syncNowPlayingPage === "function") syncNowPlayingPage();
   $("#settings").hidden = name !== "settings";
   $("#settings-button").classList.toggle("active", name === "settings");
   if (wasSettings && name !== "settings") settingsPageLeft();

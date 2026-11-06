@@ -31,7 +31,7 @@ function snapshot(value) {
     previous: value.previous === true, next: value.next === true,
     colours: Object.fromEntries(themeRoles.filter(role => typeof value.colours?.[role] === "string" && /^#[0-9a-f]{6}$/i.test(value.colours[role])).map(role => [role, value.colours[role].toLowerCase()])),
     theme: value.theme === "dark" ? "dark" : "light",
-    palette: ["ocean", "warm", "ibroadcast", "apple"].includes(value.palette) ? value.palette : "forest"};
+    palette: ["ocean", "warm", "ibroadcast", "apple", "amber"].includes(value.palette) ? value.palette : "forest"};
 }
 function bounds(value, area) {
   const width = Math.max(420, Math.min(area.width, Number.isFinite(value?.width) ? value.width : 500));

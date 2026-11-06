@@ -4,12 +4,7 @@
 const playbackLyricsView = {mode: storedPlaybackLyricsMode(), open: false, key: "", request: 0,
   details: null, controller: null, timeout: null, cache: new Map(), data: null, active: -1,
   following: true, loading: false, frame: 0, lineNodes: [], wordNodes: [], highlighted: new Set(),
-  hasWords: false, coverBackground: storedCoverLyricsBackground(), notice: null};
-
-function storedCoverLyricsBackground() {
-  try { return localStorage.getItem("tagcast-now-playing-cover-background") === "true"; }
-  catch { return false; }
-}
+  hasWords: false, notice: null};
 
 function storedPlaybackLyricsMode() {
   try {
@@ -25,17 +20,21 @@ function playbackLyricsSettings() {
     <label class="field"><span>${TagcastI18n.html("playbackLyrics.settings.source")}</span><select id="playback-lyrics-mode">${options.map(([key, label]) => `<option value="${key}" ${playbackLyricsView.mode === key ? "selected" : ""}>${TagcastI18n.html(label)}</option>`).join("")}</select></label>
     <p class="muted">${TagcastI18n.html("playbackLyrics.settings.online")}</p>
     <p class="muted">${TagcastI18n.html("playbackLyrics.settings.timing")}</p>
-    <label class="checkline"><input type="checkbox" id="playback-lyrics-cover-background" ${playbackLyricsView.coverBackground ? "checked" : ""}> ${TagcastI18n.html("playbackLyrics.settings.coverBackground")}</label>
     <p class="muted">${TagcastI18n.html("playbackLyrics.settings.coverNote")}</p></section>`;
 }
 
 function renderLyricsCoverBackground() {
-  const stage = $("#visual-player"), art = $("#visual-player-art");
-  const active = playbackLyricsView.coverBackground && visualPlayer.open && !art.hidden
-    && art.complete && art.naturalWidth > 0;
-  stage.classList.toggle("cover-atmosphere", Boolean(active));
-  if (active) stage.style.setProperty("--lyrics-cover-image", `url(${JSON.stringify(art.currentSrc || art.src)})`);
-  else stage.style.removeProperty("--lyrics-cover-image");
+  const paint = (stage, art, visible, name) => {
+    const active = visible && art && !art.hidden
+      && art.complete && art.naturalWidth > 0;
+    stage.classList.toggle(name, Boolean(active));
+    if (active) stage.style.setProperty("--lyrics-cover-image", `url(${JSON.stringify(art.currentSrc || art.src)})`);
+    else stage.style.removeProperty("--lyrics-cover-image");
+  };
+  paint($("#visual-player"), $("#visual-player-art"), visualPlayer.open, "cover-atmosphere");
+  paint($("main"), $("#now-playing-current").querySelector(".now-playing-cover img"),
+    state.screen === "now-playing" && !visualPlayer.open && !$("#now-playing-panel").hidden,
+    "listening-atmosphere");
 }
 
 function suspendPlaybackLyrics() {
@@ -55,6 +54,7 @@ function resetPlaybackLyrics() {
   $("#visual-lyrics-lines").innerHTML = "";
   $("#visual-lyrics-source").textContent = "";
   setPlaybackLyricsNotice(null);
+  syncListeningLyricsFollow();
 }
 
 function setPlaybackLyricsMode(mode) {
@@ -64,9 +64,22 @@ function setPlaybackLyricsMode(mode) {
   resetPlaybackLyrics(); renderPlaybackLyrics();
 }
 
+// The page and expanded player share one lyrics region, request and timed clock.
+function playbackLyricsVisible() {
+  return !document.hidden && (visualPlayer.open ? playbackLyricsView.open
+    : state.screen === "now-playing" && !$("#now-playing-panel").hidden);
+}
+
+function placePlaybackLyrics() {
+  const region = $("#visual-player-lyrics");
+  const host = !visualPlayer.open && state.screen === "now-playing"
+    ? $("#listening-lyrics-slot") : $(".visual-player-content");
+  if (region.parentElement !== host) host.appendChild(region);
+}
+
 function playbackLyricsCurrent(selection, request, details) {
   return request === playbackLyricsView.request && details === state.details
-    && playbackLyricsView.open && visualPlayer.open && !document.hidden
+    && playbackLyricsVisible()
     && lyricsKey(lyricsSelection(player.queue[player.index])) === lyricsKey(selection);
 }
 
@@ -155,6 +168,7 @@ async function loadPlaybackLyrics(selection, entry, request, details) {
 function setPlaybackLyricsNotice(notice) {
   playbackLyricsView.notice = notice;
   $("#visual-lyrics-message").textContent = playbackLyricsNoticeText();
+  $("#visual-lyrics-message").classList.toggle("lyrics-ready-notice", Boolean(playbackLyricsView.data && !notice.errors?.length));
 }
 
 function playbackLyricsNoticeText() {
@@ -165,13 +179,23 @@ function playbackLyricsNoticeText() {
     ...(notice.trail ? [TagcastI18n.text(notice.trail)] : [])].join(" ");
 }
 
+function syncListeningLyricsFollow() {
+  const box = $("#listening-lyrics-follow");
+  box.checked = playbackLyricsView.following;
+  box.disabled = !playbackLyricsView.data?.timed;
+  $(".listening-follow").hidden = !playbackLyricsVisible();
+  $("#visual-lyrics-follow").hidden = true;
+}
+
 function renderPlaybackLyrics() {
   const view = playbackLyricsView;
   renderLyricsCoverBackground();
+  placePlaybackLyrics();
+  syncListeningLyricsFollow();
   $("#visual-player-lyrics-toggle").setAttribute("aria-pressed", String(view.open));
-  $("#visual-player-lyrics").hidden = !view.open;
-  $(".visual-player-content").classList.toggle("lyrics-visible", view.open);
-  if (!view.open || !visualPlayer.open || document.hidden) return;
+  $("#visual-player-lyrics").hidden = !playbackLyricsVisible();
+  $(".visual-player-content").classList.toggle("lyrics-visible", visualPlayer.open && view.open);
+  if (!playbackLyricsVisible()) { suspendPlaybackLyrics(); return; }
   const selection = lyricsSelection(player.queue[player.index]);
   if (!selection) { resetPlaybackLyrics(); return; }
   // Initialise the shared native cache before capturing this display request's revision.
@@ -186,6 +210,7 @@ function renderPlaybackLyrics() {
   $("#visual-lyrics-source").textContent = "";
   $("#visual-lyrics-follow").hidden = true; $("#visual-lyrics-retry").hidden = true;
   setPlaybackLyricsNotice({checking: true});
+  syncListeningLyricsFollow();
   void loadPlaybackLyrics(selection, entry, view.request, state.details);
 }
 
@@ -203,6 +228,7 @@ function paintPlaybackLyrics() {
   view.lineNodes = Array.from(region.querySelectorAll("[data-lyric-line]"));
   view.wordNodes = view.lineNodes.map(line => Array.from(line.querySelectorAll("[data-lyric-word]")));
   paintPlaybackLyricsSource();
+  syncListeningLyricsFollow();
   syncPlaybackLyrics(true);
 }
 
@@ -253,7 +279,7 @@ function playbackLyricIndex(lines, position) {
 
 function syncPlaybackLyrics(force = false) {
   const view = playbackLyricsView;
-  if (!view.open || !visualPlayer.open || document.hidden || !view.data?.timed) {
+  if (!playbackLyricsVisible() || !view.data?.timed) {
     stopPlaybackLyricsFrame(); return;
   }
   const position = playerTrackPosition(), lines = view.data.lines;
@@ -293,7 +319,13 @@ $("#visual-player-lyrics-toggle").addEventListener("click", () => {
   renderPlaybackLyrics();
 });
 $("#visual-lyrics-follow").addEventListener("click", () => {
-  playbackLyricsView.following = true; $("#visual-lyrics-follow").hidden = true; syncPlaybackLyrics(true);
+  playbackLyricsView.following = true; syncListeningLyricsFollow(); syncPlaybackLyrics(true);
+});
+$("#listening-lyrics-follow").addEventListener("change", () => {
+  if (!playbackLyricsView.data?.timed) { syncListeningLyricsFollow(); return; }
+  playbackLyricsView.following = $("#listening-lyrics-follow").checked;
+  syncListeningLyricsFollow();
+  if (playbackLyricsView.following) syncPlaybackLyrics(true);
 });
 $("#visual-lyrics-retry").addEventListener("click", () => {
   const selection = lyricsSelection(player.queue[player.index]);
@@ -306,7 +338,7 @@ $("#visual-lyrics-retry").addEventListener("click", () => {
 });
 function pauseLyricsFollowing() {
   if (!playbackLyricsView.data?.timed) return;
-  playbackLyricsView.following = false; $("#visual-lyrics-follow").hidden = false;
+  playbackLyricsView.following = false; syncListeningLyricsFollow();
 }
 for (const name of ["wheel", "touchstart", "pointerdown"]) $("#visual-lyrics-lines").addEventListener(name, pauseLyricsFollowing, {passive: true});
 $("#visual-lyrics-lines").addEventListener("keydown", event => {
@@ -316,16 +348,15 @@ $("#visual-lyrics-lines").addEventListener("keydown", event => {
 });
 document.addEventListener("change", event => {
   if (event.target.id === "playback-lyrics-mode") setPlaybackLyricsMode(event.target.value);
-  if (event.target.id === "playback-lyrics-cover-background") {
-    playbackLyricsView.coverBackground = event.target.checked;
-    try { localStorage.setItem("tagcast-now-playing-cover-background", String(event.target.checked)); } catch { /* private window */ }
-    renderLyricsCoverBackground();
-  }
 });
 for (const name of ["load", "error"]) $("#visual-player-art").addEventListener(name, () => {
   // Artwork's existing fallback handler runs first; retain the theme on missing covers.
   Promise.resolve().then(renderLyricsCoverBackground);
 });
+for (const name of ["load", "error"]) $("#now-playing-current").addEventListener(name, event => {
+  // Capture events on the stable host; removed covers cannot restore an old background.
+  if (event.target === $("#now-playing-current").querySelector(".now-playing-cover img")) renderLyricsCoverBackground();
+}, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) suspendPlaybackLyrics(); else renderPlaybackLyrics();
 });

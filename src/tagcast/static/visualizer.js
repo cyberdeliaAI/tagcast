@@ -35,6 +35,25 @@ function visualizerSupported() {
 }
 
 // Along the top edge needs the wide player; narrow windows show it next to the title.
+function visualizerListeningPage() {
+  return typeof listeningMeterActive === "function" && listeningMeterActive();
+}
+function visualizerNeeded() { return visualizerActiveMode() !== "off" || visualizerListeningPage(); }
+function visualizerStereo() {
+  if (!visualizerListeningPage() || nowPlayingPreferences.meter !== "vu" || visualizer.stereo || !visualizer.context) return;
+  const context = visualizer.context, splitter = context.createChannelSplitter(2);
+  const analysers = [context.createAnalyser(), context.createAnalyser()];
+  analysers.forEach((a, i) => { a.fftSize = 2048; splitter.connect(a, i); });
+  visualizer.stereo = {splitter, analysers, samples: analysers.map(a => new Float32Array(a.fftSize))};
+  visualizer.source?.connect(splitter);
+}
+function releaseVisualizerStereo() {
+  if (!visualizer.stereo) return;
+  try { visualizer.source?.disconnect(visualizer.stereo.splitter); } catch { /* track already ended */ }
+  visualizer.stereo.splitter.disconnect();
+  visualizer.stereo.analysers.forEach(a => a.disconnect());
+  visualizer.stereo = null;
+}
 function visualizerActiveMode() {
   if (!visualizerSupported()) return "off";
   return visualizer.mode === "edge" && visualizerNarrowQuery?.matches ? "title" : visualizer.mode;
@@ -109,6 +128,7 @@ function connectVisualizerTrack(track) {
   try {
     const source = visualizer.context.createMediaStreamSource(new MediaStream([track]));
     source.connect(visualizer.analyser);
+    if (visualizer.stereo) source.connect(visualizer.stereo.splitter);
     visualizer.source?.disconnect();
     if (visualizer.track && visualizer.track.readyState !== "ended") visualizer.track.stop();
     visualizer.source = source; visualizer.track = track;
@@ -119,6 +139,7 @@ function visualizerCaptureTrack(event) { connectVisualizerTrack(event.track); }
 
 // Off releases the listening copy as well as the animation; the audio element keeps playing.
 function releaseVisualizerGraph() {
+  releaseVisualizerStereo();
   const context = visualizer.context, stream = visualizer.stream;
   visualizer.context = null; visualizer.analyser = null; visualizer.bins = null;
   stream?.removeEventListener?.("addtrack", visualizerCaptureTrack);
@@ -129,7 +150,7 @@ function releaseVisualizerGraph() {
 }
 
 function ensureVisualizerGraph() {
-  if (visualizer.context || visualizerActiveMode() === "off") return;
+  if (visualizer.context || !visualizerNeeded()) return;
   try {
     const context = new AudioContext();
     visualizer.context = context;
@@ -173,13 +194,15 @@ function applyVisualizer() {
   const mode = visualizerActiveMode();
   document.documentElement.dataset.playerVisualizer = mode;
   placeVisualizer(mode);
-  if (mode === "off") { stopVisualizer(); releaseVisualizerGraph(); return; }
+  if (!visualizerNeeded()) { stopVisualizer(); releaseVisualizerGraph(); return; }
+  if (!visualizerListeningPage() || nowPlayingPreferences.meter !== "vu") releaseVisualizerStereo();
   if (!audio.paused) { ensureVisualizerGraph(); visualizer.context?.resume?.().catch(() => {}); }
+  visualizerStereo();
   startVisualizer();
 }
 
 function startVisualizer() {
-  if (visualizer.frame || typeof requestAnimationFrame !== "function" || visualizerActiveMode() === "off") return;
+  if (visualizer.frame || typeof requestAnimationFrame !== "function" || !visualizerNeeded()) return;
   visualizer.last = 0;
   visualizer.frame = requestAnimationFrame(visualizerFrame);
 }
@@ -195,7 +218,7 @@ function stopVisualizer() {
 function visualizerFrame(time) {
   visualizer.frame = 0;
   const mode = visualizerActiveMode();
-  if (mode === "off" || document.hidden) return;
+  if (!visualizerNeeded() || document.hidden) return;
   const dt = visualizer.last ? Math.min(100, time - visualizer.last) : 16;
   visualizer.last = time;
   const listening = visualizer.analyser && !audio.paused && visualizer.context?.state === "running";
@@ -205,10 +228,16 @@ function visualizerFrame(time) {
     fresh = visualizerBands(visualizer.bins, visualizer.context.sampleRate);
   }
   visualizerSmooth(fresh, dt);
+  if (visualizerListeningPage()) {
+    visualizerStereo();
+    const stereo = visualizer.stereo;
+    if (listening && stereo) stereo.analysers.forEach((a, i) => a.getFloatTimeDomainData(stereo.samples[i]));
+    drawListeningMeter(dt, listening ? stereo?.samples : null, visualizer.levels);
+  }
   drawVisualizer(mode);
   markVisualizerRow(false);
   // Once paused bars have settled, the loop stops until playback resumes.
-  if (listening || visualizer.levels.some(level => level > 0.004)) visualizer.frame = requestAnimationFrame(visualizerFrame);
+  if (listening || visualizer.levels.some(level => level > 0.004) || visualizerListeningPage() && nowPlayingPresentation.vu.some(level => level > 0.004)) visualizer.frame = requestAnimationFrame(visualizerFrame);
   else markVisualizerRow(true);
 }
 
@@ -259,20 +288,21 @@ function drawVisualizer(mode) {
 // The playing row's speaker becomes four small bars (visualizer.css draws them from these values).
 function markVisualizerRow(clear) {
   let row = visualizer.row;
-  if (row && (clear || !row.isConnected || !row.classList.contains("playing"))) {
+  if (row && (clear || !row.isConnected || row.closest?.("[hidden]") || !row.classList.contains("playing"))) {
     for (let i = 0; i < 4; i++) row.style.removeProperty(`--player-eq-${i}`);
     row = visualizer.row = null;
   }
   if (clear) return;
   if (!row && visualizer.rowSearch-- <= 0) {
-    row = visualizer.row = document.querySelector(".album-tracklist tr.playing");
+    row = visualizer.row = document.querySelector("#now-playing-list .queue-row.playing")
+      || document.querySelector(".album-tracklist tr.playing");
     visualizer.rowSearch = row ? 0 : 20;
   }
   if (row) for (let i = 0; i < 4; i++) row.style.setProperty(`--player-eq-${i}`, visualizerLevelAt(i / 3).toFixed(3));
 }
 
 audio.addEventListener("play", () => {
-  if (visualizerActiveMode() === "off") return;
+  if (!visualizerNeeded()) return;
   ensureVisualizerGraph();
   visualizer.context?.resume?.().catch(() => {});
   startVisualizer();

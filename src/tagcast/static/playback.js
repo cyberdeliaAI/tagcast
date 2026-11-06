@@ -5,7 +5,7 @@ const playbackOutput = {devices: [], names: new Map(), read: 0, opened: 0, busy:
 const systemPlayback = {session: null, installed: false, metadata: "", positionAt: -Infinity};
 
 function systemPlaybackTrack() {
-  return live() && !state.loading && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) && audio.getAttribute("src") && !audio.error
+  return live() && !state.loading && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) && (player.resumePending || audio.getAttribute("src") && !audio.error)
     ? player.queue[player.index] : null;
 }
 
@@ -190,6 +190,7 @@ function seekSystemPlayback(position, fast = false) {
 function playSystemPlayback() {
   const track = systemPlaybackTrack(), details = state.details;
   if (!track) return;
+  if (player.resumePending) { playCurrent(); gaplessRenderTransport(); return; }
   if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) { gaplessTrial.active.autoPlay = true; return; }
   if (audio.ended) audio.currentTime = 0;
   audio.play().catch(() => {

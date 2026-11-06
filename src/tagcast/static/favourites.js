@@ -257,7 +257,7 @@ document.addEventListener("click", event => {
   const heart = event.target.closest("[data-favourite]");
   if (heart) return toggleFavourite(heart.dataset.favourite, Number(heart.dataset.rating), heart.dataset.favouriteTitle);
   const page = event.target.closest("[data-favourite-page]");
-  if (page && !favourites.loading) { favourites.page = Math.max(0, favourites.page + Number(page.dataset.favouritePage)); loadFavourites(); }
+  if (page && !favourites.loading) { favourites.page = Math.max(0, favourites.page + Number(page.dataset.favouritePage)); loadFavourites(); scrollListingStart("#favourites-page"); }
 });
 
 // Read the native iBroadcast playlist only when this page is opened or refreshed.
@@ -347,7 +347,7 @@ $("#recently-played-per-page").addEventListener("change", () => {
 });
 document.addEventListener("click", event => {
   const page = event.target.closest("[data-recent-page]");
-  if (page && !recentlyPlayed.loading) { recentlyPlayed.page = Math.max(0, recentlyPlayed.page + Number(page.dataset.recentPage)); loadRecentlyPlayed(); }
+  if (page && !recentlyPlayed.loading) { recentlyPlayed.page = Math.max(0, recentlyPlayed.page + Number(page.dataset.recentPage)); loadRecentlyPlayed(); scrollListingStart("#recently-played-page"); }
 });
 
 // A language change rewrites the player's rating buttons and the Favourites tabs, and repaints a

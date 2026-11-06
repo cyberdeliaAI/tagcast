@@ -562,12 +562,33 @@ class Collections:
         finally:
             studio.save_lock.release()
 
+    def playback_profile(self, library):
+        """Stable opaque browser-storage namespace, bound to the active loaded account."""
+        studio = self.studio
+        with studio.lock:
+            if library is None or library is not studio.library or not studio.client or not studio.library_user:
+                raise ConflictError("The account or library changed. Reload the library.")
+            return hashlib.sha256(f"tagcast-play-queue:{studio.library_user}".encode()).hexdigest()
+
     def queue_tracks(self, body):
         ids = track_ids(body.get("tracks"), 1000)
         library, _ = self.studio._library()
+        with self.studio.lock:
+            if body.get("restore") is True:
+                if body.get("session") != self.studio.playback_session or not body.get("session") \
+                        or body.get("profile") != self.playback_profile(library):
+                    raise ConflictError("The account or library changed. Reload the library.")
+            return self._queue_track_rows(library, ids, body.get("restore") is True)
+
+    def _queue_track_rows(self, library, ids, restore):
         rows = []
-        for i in ids:
-            album_id = library.active_track_album(i)
+        for position, i in enumerate(ids):
+            try:
+                album_id = library.active_track_album(i)
+            except LibraryError:
+                if restore:
+                    continue  # A removed track never prevents recovery of the other occurrences.
+                raise
             t = library.track_view(i)
             a = library.albums[album_id]
             rows.append({"id": str(i), "title": t["title"], "artist": t["artist"],
@@ -577,6 +598,9 @@ class Collections:
                                    "artist": library.artist_name(a.get("artist_id")),
                                    "artist_id": number(a.get("artist_id")), "album_artists": library.album_artist_view(a),
                                    "artwork": library.art_url(t["artwork_id"])}})
+            if restore:
+                rows[-1].update(position=position, year=t["year"], composers=t["composers"])
+                rows[-1]["album"]["year"] = number(a.get("year"))
         return {"tracks": rows}
 
     def rate_album(self, body):

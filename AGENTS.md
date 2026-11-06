@@ -132,7 +132,7 @@ their shared browsing/player state; a fast local response can otherwise race the
   unless the user approves that architecture change.
 - Do not edit `dark.css` by hand. Regenerate it after changes to
   `style.css`.
-- `palettes.css` defines Ocean, Warm and iBroadcast inspired through named colour
+- `palettes.css` defines Ocean, Warm, iBroadcast inspired, Apple Music Classic and Amber through named colour
   roles. Forest uses the original fallback colours. Keep palette selection
   (`tagcast-palette`) independent of Light/Dark/Auto (`tagcast-theme`), local to
   the browser, and restore before painting. The Theme disclosure contains both choices; opening it changes
@@ -145,7 +145,7 @@ their shared browsing/player state; a fast local response can otherwise race the
 
 ## Behavior to preserve
 
-- Keep document scrolling for the main content; show its native scrollbar on page hover outside the sidebar. Desktop sidebar shortcuts use scroll-aware edge fades without a scrollbar; preserve keyboard focus, mobile overflow and native forced-colour/non-hover fallbacks.
+- Keep document scrolling for the main content. Use thin, translucent native scrollbars throughout the workspace, including the sidebar, queue, lyrics and dialogs; increase visibility on hover/focus and retain native forced-colour fallbacks. Desktop sidebar shortcuts retain scroll-aware edge fades; preserve keyboard focus and mobile overflow.
 
 - The server binds only to `127.0.0.1`, on port 8912 by default.
 - Preserve Host validation, the `X-Tagcast` POST header, Fetch Metadata checks
@@ -643,14 +643,43 @@ their shared browsing/player state; a fast local response can otherwise race the
   track details or contacts iBroadcast/external sites. Preserve independent explicit
   analysis/counts semantics and source/license links; cache visited identities only in
   bounded browser memory and reject late results across identity/session/library changes.
-- By default the play queue stays in browser memory. Explicit Play replaces it; Add to queue
+- The browser/profile remembers up to 10,000 queue occurrences, current track, Repeat and
+  shuffle state in an opaque account-scoped localStorage namespace. Store only track IDs,
+  occurrence flags and ordered-album origin positions, never credentials, URLs or metadata.
+  After loading the same account, resolve IDs against the current loaded library through
+  the existing bounded queue-track endpoint; skip removed tracks, preserve duplicates and
+  reject stale responses after new playback, Stop or account/library replacement. Restore
+  paused without loading audio; explicit Play starts the selected track from its beginning.
+  Clearing forgets the saved queue; disconnect/demo must not erase the previous live queue.
+  Remote queue-sync ownership takes precedence. Storage failures never interrupt playback.
+  Explicit Play replaces it; Add to queue
   appends a single track or all discs of an album, preserving click order. Store
   each queued track's album metadata for covers and navigation across albums.
   Clear queue stops audio and cancels pending additions. Guard lazy loads against
-  library changes and clears. Now playing opens without a browser history entry.
-  Now playing offers one Remove from play queue button per stored position, replacing
-  its number on hover/focus and always visible on touch. Keep it separate from the
-  row's Play button, keyboard accessible and bound to the rendered entry/revision.
+  library changes and clears. The pinned Now playing shortcut above the scrolling sidebar
+  opens the normal `#/now-playing` listening page and follows browser history. The
+  compact-player cover opens that page by default, or the existing side panel when
+  `tagcast-now-playing-open` is `panel`; the panel adds no history entry. Mount the same
+  queue panel in either place, preserve the queued occurrences and native lyrics reads,
+  and never create a second playback state. Favourites/dislikes share the existing bottom-bar controls in normal and expanded views;
+  queue rows offer the existing track actions through one ellipsis menu, using the shared
+  queue menu for appending, Play next and playlists plus tags, like/dislike and removal choices.
+  Opening never reads/writes library data; reject stale queue occurrences and restore
+  focus on dismissal or routine rendering. Never duplicate the current-track rating controls.
+  The listening page groups one song heading, a conservatively separated trailing edition,
+  cover, performer links, album/album-artist links, loaded year/format/composer metadata and
+  the existing meters. Edition separation is visual only; stored titles stay unchanged.
+  Edit tags opens the normal track editor without adopting display lyrics. Keep the lyrics
+  card's source, status/errors, retry and shared Follow state; no lyrics-save action here.
+  Queue rows show small loaded covers; the header groups queue position/count and existing
+  save/clear controls. Desktop lyrics and queue scroll independently of the current track. Bound the cover/metadata column and let lyrics fill the remaining width (at least 320px), with their lower edges aligned. Use a neutral current-row wash, keeping the accent on its title/icon; match the player gutter to the workspace.
+  The page has no Close control; focus its heading when opening or removing the last
+  queued entry. Keep Close in the optional side panel and expanded view. The active
+  queue occurrence has one continuous highlight behind its Play button and row actions,
+  including while paused. Desktop lyrics use the space beside the page heading.
+  Now playing offers Remove from play queue through each stored position's ellipsis menu.
+  Keep it separate from the row's Play button, keyboard accessible and bound to the rendered
+  entry/revision.
   Removing another position preserves the current audio/time and adjusts its index;
   removing the current position selects the following entry, preserving paused state,
   or pauses on the preceding retained entry if none follows, keeping the queue reachable. Removing one of
@@ -663,14 +692,35 @@ their shared browsing/player state; a fast local response can otherwise race the
   Escape, stopping and library replacement close it; restore focus and inert state.
   Settings offers Fullscreen (existing default) or In app window, remembered locally
   in `tagcast-player-view`. Apply on the next opening without requests or audio/queue
-  changes. In app window never requests native fullscreen or exits another element's
+  changes. The softened cover-colour background is always shown in both listening views,
+  using the already loaded current cover; clear it on navigation or missing artwork.
+  Cover tint inherits the active Light/Dark/Auto palette; never force local dark
+  palette roles onto the listening page, its menus or the expanded player.
+  The listening page shares the expanded view’s timed lyrics region and consented source
+  selection; move the same region between views and cancel hidden or obsolete reads.
+  On sufficiently large windows only the queue and lyrics scroll; keep current-track
+  information visible. Narrow or short windows retain normal page scrolling.
+  In app window never requests native fullscreen or exits another element's
   fullscreen session. Keep button labels and the Settings Help explanation aligned.
   Optional CD artwork (`player-disc.js` / `player-disc.css`) is presentation only;
-  album covers remain the default. The header toggle and Playback setting share the
+  album covers remain the default. The Cover/CD segmented control and Playback setting share the
   profile-local `tagcast-player-artwork` choice. Reuse the same artwork and audio;
   never fetch, seek, restart playback or change the queue when toggling. Rotate only
   while the large view is visible and audio is ready/playing; pause during waiting,
   seeking or pause, preserve the angle on resume and respect reduced motion.
+  Keep the sleeve upright. Animate only the bounded title/artist/album lettering and
+  accent band on the decorative disc at four seconds per turn; keep its reflection and hub
+  stationary. Use loaded metadata as text only, and retain its original values. Expanded
+  views share one centred cover/info layout, with lyrics alongside on wide screens.
+  Show queue position/next-track context, the shared Follow switch and readable source attribution;
+  fade lyric edges without hiding errors or retry. Hide the stop/close button only while expanded;
+  both exit controls restore the existing view without stopping audio.
+- Browsing search/filter toolbars stay at the viewport top during document scrolling;
+  do not introduce a second page scrollbar. Very short windows retain normal scrolling.
+  Explicit pagination scrolls to the toolbar's original document position, including
+  when it is already stuck. Ordinary Back/Forward keeps its existing saved scroll.
+  Persist validated fixed sort codes per listing/group kind, independently of filters,
+  queries and metadata. Ignore obsolete values and tolerate unavailable browser storage.
 - Covers in grids/lists open the album immediately; compact-player covers immediately
   open Now playing. Enlarge covers only from the album detail page: double-click
   its real cover, or use Enter on its cover button, to open a modal lightbox.
@@ -708,13 +758,20 @@ their shared browsing/player state; a fast local response can otherwise race the
   third line only for a different track artist; its ID links to matching albums.
   Keep track artist in MediaSession metadata.
 - `playback.js` owns optional output selection and Media Session controls for the same
-  audio element. The speaker cabinet icon opens Sound with an accessible volume slider and mute
+  audio element. Sound beside Settings in the sidebar footer opens an accessible volume slider and mute
   button above output selection on every platform. Keep these synchronized through
   volumechange, use the actual audio volume/muted values and acknowledge rejected
   changes with a system/device fallback. Never restart audio, request permissions or
   change the queue for volume; keep native controls available. Tint the native panel from the
-  shell palette where supported, with a dark native fallback; never replace or hide controls
-  for appearance. Do not persist volume
+  shell palette where supported, with a dark native fallback. Native controls remain the default;
+  `tagcast-player-transport=spacious` optionally presents the existing custom controls for ordinary
+  playback too. Keep Previous/Play/Next centred, elapsed time before the seek bar and duration
+  after it, and bind seek previews to the current queue occurrence, playback epoch and Gapless
+  segment. Compact Gapless retains its existing track-relative transport. All presentations
+  use the same native element and system playback handlers, with speed, mute and output options
+  still reachable. Keep Sound in the sidebar footer; the expanded view uses its existing
+  native/custom volume and options controls without an extra Sound button.
+  Do not persist volume
   or change it on opening. Discover permitted output devices only on explicit dialog opening
   or device changes while open; never request microphone access. Feature-detect the
   output picker, sink selection and native AirPlay picker, with system sound settings
@@ -748,6 +805,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   playing row of album and playlist tracklists; Off keeps the speaker. Feature-detect capture,
   create the audio graph only after playback starts with the spectrum on, and stop the animation
   once paused bars settle or the page is hidden.
+  The listening page adds an independent off-by-default `tagcast-now-playing-meter` choice:
+  Off, Spectrum or Stereo VU meters. Reuse that capture/context; stereo time-domain analysers
+  observe independent channels through a splitter and never connect to the audio destination.
+  VU uses RMS with a visual reference of -18 dBFS for 0 VU and 300 ms smoothing, not calibrated
+  output loudness. Release the stereo tap when hidden/disabled and honour reduced motion.
 - Playback goes through the local server, supports Range requests and does
   report no plays by default. Optional `record_plays` in Settings sends the documented
   `history` payload after more than ten seconds of actual listening, excluding pauses,

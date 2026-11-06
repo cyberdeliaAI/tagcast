@@ -819,6 +819,7 @@ class Studio:
         except LibraryError as error:
             artist_favourites = {"artists": None, "error": str(error)}
         return {"albums": albums, "artists": library.artist_names(),
+                "playback_profile": self.collections.playback_profile(library),
                 "editor_names": library.editor_names(),
                 "album_favourites": favourites,
                 "artist_favourites": artist_favourites,
