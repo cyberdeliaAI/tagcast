@@ -21,19 +21,17 @@ create separate local copies. Optional music uploads read selected local audio a
 send copies to your own iBroadcast library only after review; see
 [setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [Tagcast 1.5.5](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.5.5):**
-A redesigned Now playing workspace brings artwork, track details, optional retro
-stereo meters, a focused lyrics panel and the queue together. Fullscreen offers
-Cover or rotating CD views, with or without lyrics. Search controls stay reachable,
-pagination returns to the listing controls, and sorting and the local queue are
-remembered across restarts without starting playback automatically. Amber joins
-the built-in palettes; all six interface languages remain available.
-This update also fixes header menus behind search controls, intermittent playing
-indicators and partial queue-row hover highlights from the withdrawn 1.5.0 release.
+**New in [Tagcast 1.6.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.0):**
+Manually split tracks from one album into a new album after selection and review.
+Optional upload-group suggestions help identify possible editions without choosing
+for you. Track IDs, metadata, artwork and playlist references are preserved;
+Tagcast checks both albums afterwards. An empty Now playing workspace now offers
+one clear **Browse albums** action instead of empty lyrics and queue controls.
+All new controls are translated into the six interface languages.
 
 Experimental Gapless playback remains optional and off by default. Unsupported
 transitions safely use ordinary playback. See the
-[release notes](.github/release-notes/1.5.5.md) and
+[release notes](.github/release-notes/1.6.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
@@ -64,7 +62,8 @@ iBroadcast Premium access.
 - **Organise:** native iBroadcast tags, independent local album and artist favourites,
   native star ratings, private playlists, folders, covers, CSV and public playlist URL import.
 - **Clean up:** find missing metadata, review duplicate suggestions or select
-  complete albums for iBroadcast's trash. Nothing is permanently deleted.
+  complete albums for iBroadcast's trash. Merge album fragments or manually split
+  selected tracks into a new album after review. Nothing is permanently deleted.
 - **Download albums:** reviewed local audio copies using the existing account connection,
   with quality choices, resumable streaming transfers and existing-file protection.
 - **Upload music:** optional, reviewed uploads of selected local files or folders,
@@ -82,23 +81,22 @@ iBroadcast Premium access.
 [ibfetch](https://github.com/cyberdeliaAI/ibfetch)'s transfer engine. For individual
 tracks, playlists and advanced command-line download options, use ibfetch.
 
-**Upcoming, not yet released:** [Manually split an album](docs/album-splitting.md),
-with reviewed track selection and an illustrated real-library example. The current
-1.5.5 downloads do not include this action.
+[Manually split an album](docs/album-splitting.md) includes an illustrated
+real-library example and explains the review, limits and failure handling.
 
 ## Install
 
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 1.5.5](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.5.5):
+[Tagcast 1.6.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.5/tagcast-1.5.5-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.5/tagcast-1.5.5-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.5/tagcast-1.5.5-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.5.5/tagcast-1.5.5-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
