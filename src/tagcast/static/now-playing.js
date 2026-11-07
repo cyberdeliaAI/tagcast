@@ -22,6 +22,15 @@ function nowPlayingSettings() {
     <p class="muted">${TagcastI18n.html("listening.settings.note")}</p></div>`;
 }
 
+function listeningEmptyState() {
+  return `<div class="listening-empty-state">
+    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><circle cx="32" cy="32" r="25"/><circle cx="32" cy="32" r="9"/><circle cx="32" cy="32" r="2"/></svg>
+    <h3>${TagcastI18n.html("listening.empty.title")}</h3>
+    <p>${TagcastI18n.html("listening.empty.description")}</p>
+    <a class="button primary" href="#/albums">${TagcastI18n.html("listening.empty.browse")}</a>
+  </div>`;
+}
+
 // Only recognised trailing edition labels are separated visually; the stored title is unchanged.
 function listeningTitleParts(title) {
   const match = title.match(/^(.*?)\s*\(([^()]*(?:remaster|extended|version|edition|mix)[^()]*)\)\s*$/i);

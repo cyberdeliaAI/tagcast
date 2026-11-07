@@ -1,7 +1,6 @@
 # Manual album splitting
 
-Status: tested local implementation, prepared for GitHub review; not released.
-The public 1.5.5 downloads do not include album splitting.
+Available from Tagcast 1.6.0.
 
 An iBroadcast album can contain tracks from different uploads or editions. A
 different track year does not establish that a track belongs to a different
@@ -34,7 +33,7 @@ favourite are not transferred to the new album. Local music files are untouched.
 
 The project owner tested the corrected Apple Silicon build with **Comment ça Va**
 by **The Shorts** on 7 November 2026 and confirmed that splitting worked.
-The local build still displays a 1.5.5 badge; this feature is not in that public release.
+The screenshots show the pre-release test build, which still displays a 1.5.5 badge.
 
 ![Before: Comment ça Va contains 24 tracks with overlapping numbers](screenshots/2026-11-07-album-split/mixed-album.png)
 

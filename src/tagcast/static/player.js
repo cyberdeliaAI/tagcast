@@ -488,6 +488,12 @@ function renderNowPlaying() {
   const track = player.queue[player.index], album = track?.album;
   $("#now-playing-close").hidden = state.screen === "now-playing";
   const page = state.screen === "now-playing", title = listeningTitleParts(track?.title || "");
+  const emptyPage = page && !player.queue.length;
+  $("#now-playing-panel").classList.toggle("listening-empty", emptyPage);
+  $("#listening-lyrics-slot").hidden = page && !track;
+  $(".queue-heading").hidden = emptyPage;
+  $(".now-playing-footer").hidden = emptyPage;
+  list.hidden = emptyPage;
   $("#now-playing-heading-title").textContent = page ? track ? title.title : TagcastI18n.text("player.nowPlaying.heading") : "";
   $("#now-playing-edition").textContent = page && track ? title.edition : "";
   $("#now-playing-edition").hidden = !page || !title.edition;
@@ -495,7 +501,7 @@ function renderNowPlaying() {
     <div class="now-playing-info">${page ? "" : `<h3>${escapeHtml(track.title)}</h3>`}<p class="now-playing-artist">${page && track.artist !== album.artist ? performerLinks(track) : albumArtistLinks(album)}</p>
     <p class="listening-album"><button class="text-action" data-album="${escapeHtml(album.id)}">${escapeHtml(album.name)}</button>${page && album.artist !== track.artist ? ` <span aria-hidden="true"> · </span><span class="listening-album-artist">${albumArtistLinks(album)}</span>` : ""}</p>
     ${page ? listeningTrackMetadata(track) : ""}<div id="listening-meter" class="listening-meter" hidden role="img" aria-label="${TagcastI18n.html("listening.meter.label")}"></div>
-    <div class="now-playing-track-actions">${page ? `<button class="button small" data-listening-edit="${escapeHtml(track.id)}" data-listening-album="${escapeHtml(album.id)}" ${!live() || state.loading ? "disabled" : ""}>${TagcastI18n.html("listening.track.edit")}</button>` : ""}<button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html(page ? "listening.track.playlist" : "player.nowPlaying.addToPlaylist")}</button></div></div><details class="listening-lyrics" ${!page ? "open" : ""}><summary>${TagcastI18n.html("page.visualPlayer.lyrics")}</summary><section id="now-playing-lyrics" class="track-lyrics" hidden></section></details>` : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
+    <div class="now-playing-track-actions">${page ? `<button class="button small" data-listening-edit="${escapeHtml(track.id)}" data-listening-album="${escapeHtml(album.id)}" ${!live() || state.loading ? "disabled" : ""}>${TagcastI18n.html("listening.track.edit")}</button>` : ""}<button class="button small" data-playlist-track="${escapeHtml(track.id)}" data-playlist-source="${escapeHtml(album.id)}">${TagcastI18n.html(page ? "listening.track.playlist" : "player.nowPlaying.addToPlaylist")}</button></div></div><details class="listening-lyrics" ${!page ? "open" : ""}><summary>${TagcastI18n.html("page.visualPlayer.lyrics")}</summary><section id="now-playing-lyrics" class="track-lyrics" hidden></section></details>` : emptyPage ? listeningEmptyState() : `<p class="empty">${TagcastI18n.html(player.queue.length ? "player.nowPlaying.chooseQueued" : "player.nowPlaying.empty")}</p>`;
   if (lyricsOpen) { const details = $("#now-playing-current").querySelector(".listening-lyrics"); if (details) details.open = true; }
   if (typeof renderListeningExtras === "function") renderListeningExtras(track, focused);
   if (state.screen !== "now-playing") renderLyrics("player", lyricsSelection(track));

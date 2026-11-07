@@ -4754,7 +4754,7 @@ test("the pinned Now playing page escapes metadata, supports history and shares 
   assert.equal(p.run("player.queue.length"), 0);
   assert.equal(p.nodes.get("#audio").paused, true);
   assert.equal(p.nodes.get("#audio").src, undefined);
-  assert.match(p.nodes.get("#now-playing-current").innerHTML, /add an album/);
+  assert.match(p.nodes.get("#now-playing-current").innerHTML, /Your queue is empty/);
   assert.equal(p.nodes.get("#queue-clear").disabled, true);
   await p.keydown("Escape");
   assert.equal(p.nodes.get("#now-playing-panel").hidden, true);
@@ -11803,6 +11803,57 @@ test("Now playing preferences retain the audio element, queued occurrences and m
   assert.deepEqual(p.json('player.queue'), queue);
 });
 
+test("an empty listening page offers browsing without empty lyrics or queue controls", async () => {
+  const p = livePage(); await settle();
+  const before = p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,editing})');
+  const requests = p.requests.length;
+  p.run('showScreen("now-playing"); setNowPlaying(true)'); await settle();
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /Your queue is empty/);
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /href="#\/albums"/);
+  assert.equal(p.nodes.get('#now-playing-panel').classList.contains('listening-empty'), true);
+  for (const selector of ['#listening-lyrics-slot', '.queue-heading', '#now-playing-list', '.now-playing-footer']) {
+    assert.equal(p.nodes.get(selector).hidden, true, selector);
+  }
+  assert.equal(p.run('document.activeElement === $("#now-playing-heading")'), true);
+  assert.equal(p.requests.length, requests, 'The empty state does not fetch lyrics, audio or library data');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,editing})'), before);
+});
+
+test("the empty listening view restores queue controls and lyrics when a track is selected", async () => {
+  const p = livePage(); await settle();
+  p.run('showScreen("now-playing"); setNowPlaying(true)'); await settle();
+  assert.equal(p.nodes.get('#now-playing-panel').classList.contains('listening-empty'), true);
+  p.run('playTracks(state.details.get("1"))'); await settle();
+  assert.equal(p.nodes.get('#now-playing-panel').classList.contains('listening-empty'), false);
+  for (const selector of ['#listening-lyrics-slot', '.queue-heading', '#now-playing-list', '.now-playing-footer']) {
+    assert.equal(p.nodes.get(selector).hidden, false, selector);
+  }
+  // A retained queue without a selected occurrence must remain selectable.
+  p.run('audio.pause(); player.index=-1; renderNowPlaying()');
+  assert.equal(p.nodes.get('#listening-lyrics-slot').hidden, true);
+  assert.equal(p.nodes.get('#now-playing-list').hidden, false);
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /Choose a queued track/);
+  assert.match(p.nodes.get('#now-playing-list').innerHTML, /data-queue-index="0"/);
+  p.run('stopPlayer(); showScreen("albums"); setNowPlaying(true)');
+  assert.equal(p.nodes.get('.now-playing-footer').hidden, false, 'The optional side panel keeps its existing controls');
+  assert.equal(p.nodes.get('#now-playing-panel').classList.contains('listening-empty'), false);
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /Play a track or add an album/);
+});
+
+test("the empty listening state follows all six languages without changing playback or drafts", async () => {
+  const p = livePage(); await settle();
+  p.run('showScreen("now-playing"); editing={draft:"untouched"}');
+  const before = p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,editing})');
+  const titles = {en:'Your queue is empty',nl:'Je wachtrij is leeg',de:'Deine Warteschlange ist leer',
+    fr:'Votre file d’attente est vide',es:'Tu cola está vacía',ja:'キューは空です'};
+  for (const [language, title] of Object.entries(titles)) {
+    await p.run(`TagcastI18n.use(${JSON.stringify(language)})`);
+    assert.ok(p.nodes.get('#now-playing-current').innerHTML.includes(title), language);
+    assert.equal(p.nodes.get('#listening-lyrics-slot').hidden, true);
+    assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,editing})'), before);
+  }
+});
+
 test("stored presentation choices are restored and cannot hide the pinned navigation", async () => {
   const p = page({storage: {'tagcast-player-transport':'spacious','tagcast-now-playing-meter':'spectrum',
     'tagcast-now-playing-open':'panel','tagcast-sidebar':JSON.stringify({hidden:['player-queue']})}});
@@ -11856,7 +11907,7 @@ test("the listening page retains occurrence-bound queue removal and stops on an 
   assert.equal(p.run('player.queue.length'), before.length-1, 'stale row cannot remove the new occupant');
   await p.nodes.get('#queue-clear').emit('click');
   assert.equal(p.location.hash, '#/now-playing');
-  assert.match(p.nodes.get('#now-playing-current').innerHTML, /add an album/);
+  assert.match(p.nodes.get('#now-playing-current').innerHTML, /Your queue is empty/);
   assert.equal(p.nodes.get('#player').hidden, true);
 });
 
