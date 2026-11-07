@@ -82,6 +82,10 @@ iBroadcast Premium access.
 [ibfetch](https://github.com/cyberdeliaAI/ibfetch)'s transfer engine. For individual
 tracks, playlists and advanced command-line download options, use ibfetch.
 
+**Upcoming, not yet released:** [Manually split an album](docs/album-splitting.md),
+with reviewed track selection and an illustrated real-library example. The current
+1.5.5 downloads do not include this action.
+
 ## Install
 
 ### Desktop app — no Python required

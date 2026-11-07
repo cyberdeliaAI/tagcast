@@ -174,6 +174,9 @@ class StartTests(unittest.TestCase):
         studio.album_merge.selection.return_value = {"selection": "token", "albums": []}
         studio.album_merge.review.return_value = {"review": "token"}
         studio.album_merge.save.return_value = {"job": "check"}
+        studio.album_split.selection.return_value = {"selection": "token", "album": {}, "suggestions": []}
+        studio.album_split.review.return_value = {"review": "token"}
+        studio.album_split.save.return_value = {"job": "check"}
         studio.album_guide.view.return_value = {"enabled": True, "state": "empty"}
         studio.album_guide.notes_for_album.return_value = {"entries": []}
         studio.album_guide.analyse.return_value = {"enabled": True, "state": "ready"}
@@ -218,6 +221,9 @@ class StartTests(unittest.TestCase):
                                  ("/api/albums/merge/selection", studio.album_merge.selection),
                                  ("/api/albums/merge/review", studio.album_merge.review),
                                  ("/api/albums/merge/save", studio.album_merge.save),
+                                 ("/api/albums/split/selection", studio.album_split.selection),
+                                 ("/api/albums/split/review", studio.album_split.review),
+                                 ("/api/albums/split/save", studio.album_split.save),
                                  ("/api/album-rating", studio.collections.rate_album),
                                  ("/api/artist-rating", studio.collections.rate_artist),
                                  ("/api/album-favourite", studio.collections.favourite_album),
