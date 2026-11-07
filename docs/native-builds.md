@@ -114,6 +114,12 @@ retains the `Publish Tagcast X.Y.Z beta N` convention, Python version `X.Y.ZbN`,
 release tag `vX.Y.Z-beta.N` and matching `X.Y.Z-beta.N.md` notes. Beta releases do
 not replace the latest stable release.
 
+The release marker must be the entire commit message, with no body or appended
+pull-request number. For a squash merge, set the commit title explicitly and leave
+the commit body empty. Keep the release explanation in the pull request and the
+versioned release-notes file instead; the publication check compares the complete
+commit message with the package version.
+
 `Builds` requires its final verification gate, all four archives/checksums and
 archive-bound signing/notarization reports for both macOS architectures. It uploads
 to the draft, checks the resulting asset set and only then makes the release public.
