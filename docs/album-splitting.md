@@ -1,6 +1,7 @@
 # Manual album splitting
 
-Status: local implementation for testing; not released.
+Status: tested local implementation, prepared for GitHub review; not released.
+The public 1.5.5 downloads do not include album splitting.
 
 An iBroadcast album can contain tracks from different uploads or editions. A
 different track year does not establish that a track belongs to a different
@@ -28,6 +29,32 @@ Track IDs, titles, numbers, years, performers, additional credits, genres and
 artwork are not changed. Playlists continue to reference the same track IDs.
 The new album's cover follows its tracks. The original album's rating and local
 favourite are not transferred to the new album. Local music files are untouched.
+
+## Illustrated real-library example
+
+The project owner tested the corrected Apple Silicon build with **Comment ça Va**
+by **The Shorts** on 7 November 2026 and confirmed that splitting worked.
+The local build still displays a 1.5.5 badge; this feature is not in that public release.
+
+![Before: Comment ça Va contains 24 tracks with overlapping numbers](screenshots/2026-11-07-album-split/mixed-album.png)
+
+*Before: the 1983 and 1991 uploads appear together as one 24-track album. A
+Duplicated badge indicates overlapping track positions; it does not prove that
+the audio is identical.*
+
+![Split selection with thirteen 1983 tracks selected and eleven remaining](screenshots/2026-11-07-album-split/split-selection.png)
+
+*Select the thirteen 1983 tracks, check the new album details and review before
+confirming. The upload-group buttons are optional selection aids, not automatic fixes.*
+
+![After: separate Comment ça Va albums for 1983 and 1991, with thirteen and eleven tracks](screenshots/2026-11-07-album-split/split-result.png)
+
+*Result reported by the user: two album entries, with thirteen tracks for 1983 and
+eleven for 1991. Matching artist and title do not force them back together.*
+
+The [five-image inventory](screenshots/2026-11-07-album-split/README.md) preserves
+all supplied captures, original filenames and checksums. The screenshots establish
+this real-library example; they do not demonstrate every album or platform.
 
 ## Optional selection proposals
 
@@ -91,8 +118,9 @@ Automated tests cover proposals, manual overrides, stale membership, invalid
 targets, account/session replacement, single-use reviews, ambiguous replies,
 partial moves, preservation checks, and real local HTTP request/read-back
 integration against the existing mock iBroadcast server. Browser checks use
-invented albums only. No real account mutation has been performed during
-development. Acceptance by the live service still needs an explicit user test.
+invented albums only. Automated development checks do not mutate a real account.
+The project owner's separate live acceptance test of the corrected build succeeded;
+see the illustrated example above.
 
 Local validation on macOS Apple Silicon, 2026-11-07:
 
@@ -115,9 +143,10 @@ the specific server failure instead of masking it with a generic warning.
 
 Regression coverage reproduces the omission, rejects orphaned/reused destination
 IDs and any fresh track references, and keeps ignored/failed moves unconfirmed.
-The local HTTP integration test also omits empty albums. Live acceptance of the
-corrected move still requires a fresh, explicit user review. No other operating
-system has been tested for this feature.
+The local HTTP integration test also omits empty albums. The project owner then
+confirmed the corrected move in a fresh, explicit live review. No other operating
+system has yet been tested locally for this feature; remote CI results are recorded
+on the pull request.
 
 Correction validation, 2026-11-07:
 
