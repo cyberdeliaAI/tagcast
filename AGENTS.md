@@ -351,6 +351,22 @@ their shared browsing/player state; a fast local response can otherwise race the
   or analysing. The page-local modal preserves playback, history, focus and scroll.
 - A normal editor metadata save remains limited to one album or one album artist.
   Only changed, supported fields are sent.
+- Album splitting is a separate, explicitly reviewed membership operation in
+  `album_split.py` / `album-split.js`, not a normal metadata patch. Select a proper
+  subset of one native disc (2–500 active tracks), create one new album and move
+  only those track IDs, preserving track metadata and numbers. Bind expiring,
+  single-use reviews to the account/session and complete source snapshot. Check
+  fresh source membership after creation and read back both albums. The library
+  can omit a newly created empty destination: accept only a confirmed new ID
+  absent from previous albums and track references, with no fresh track references.
+  If returned, validate its empty stored membership and exact reviewed metadata.
+  Final read-back still requires both albums and all reviewed memberships.
+  Creation/movement are non-transactional and never retried after ambiguity; an
+  empty/partial album can remain. Keep History without metadata Undo/retry.
+  Require combine_sets off and block additional album credits until preservation
+  is supported. Optional upload-day/year/restarting-number proposals select
+  nothing automatically; year alone never determines a split. See
+  `docs/album-splitting.md` for the native payload and current limits.
 - A single-album/set editor has Edit album / Edit tracks tabs in the existing dialog.
   Keep both panels in the same metadata form, preserve DOM inputs and drafts on tab
   changes, and include both in the existing review. Tabs make no requests/history or

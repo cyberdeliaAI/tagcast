@@ -1159,3 +1159,20 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
   .workspace-nav[data-more~="end"]{--nav-fade-bottom:44px}
 }
 @media (forced-colors:active){*{scrollbar-width:auto;scrollbar-color:auto}.workspace-nav{-webkit-mask-image:none;mask-image:none}}
+
+/* Manual album splits keep the track comparison beside a small destination form. */
+#album-split { width: min(1120px, calc(100vw - 32px)); }
+.album-split-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 24px; }
+.album-split-tracks { max-height: 50vh; overflow: auto; }
+.album-split-tracks table { width: 100%; min-width: 660px; }
+.album-split-tracks th { white-space: nowrap; }
+.album-split-tracks td { vertical-align: top; }
+.album-split-tracks td:nth-child(3) { min-width: 180px; }
+.album-split-tracks td:nth-child(5) { white-space: nowrap; }
+.album-split-tracks small { display: block; color: var(--muted); margin-top: 4px; }
+.album-split-tracks input[type="checkbox"] { width: 20px; height: 20px; }
+.album-split-fields .field { display: grid; gap: 6px; margin-block: 16px; }
+@media (max-width: 760px) {
+  .album-split-layout { grid-template-columns: minmax(0, 1fr); }
+  .album-split-tracks { max-height: 40vh; }
+}

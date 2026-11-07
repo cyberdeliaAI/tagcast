@@ -68,6 +68,8 @@ def library():
                           t.get("uploaded_time", ""), t.get("length", 0)]
     albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6, "artists_additional": 7, "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}}}
     for i, a in STATE["albums"].items():
+        if STATE.get("omit_empty_albums") and not a["tracks"]:
+            continue
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0), a.get("additional", [])]
     artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3, "rating": 4}}
     for i, name in STATE["artists"].items():
@@ -202,7 +204,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode == "gettrackuserdata":
                 return self.send(200, {"result": True, "userdata": STATE["tracks"][int(body["track_id"])].get("userdata", [])})
-            if mode in ("update_album", "update_track", "create_artist", "set_artwork",
+            if mode in ("update_album", "update_track", "create_album", "create_artist", "set_artwork",
                         "set_artist_artwork", "trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "updateplaylist", "deleteplaylist",
                         "createtag", "updatetag", "deletetags", "tagtracks"):
                 if STATE["busy"]:
@@ -274,6 +276,11 @@ class H(BaseHTTPRequestHandler):
                 STATE["next_artist"] += 1
                 STATE["artists"][STATE["next_artist"]] = body["name"]
                 return self.send(200, {"result": True, "artist_id": STATE["next_artist"]})
+            if mode == "create_album":
+                i = max(STATE["albums"]) + 1
+                STATE["albums"][i] = {k: body[k] for k in ("name", "artist_id", "year", "disc")}
+                STATE["albums"][i].update(tracks=[], rating=0)
+                return self.send(200, {"result": True, "album_id": i})
             if mode == "update_album":
                 for row in body["albums"]:
                     a = STATE["albums"][row["album_id"]]

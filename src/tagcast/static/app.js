@@ -197,6 +197,7 @@ function useLocal(albums, mode) {
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
+  if (typeof resetAlbumSplit === "function") resetAlbumSplit();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
@@ -1133,6 +1134,7 @@ function showReview(changes) {
 
 // Put the changes of a save that didn't (fully) go through back in review.
 function reviewRest(entry) {
+  if (entry.albumSplit) return;
   const changes = entry.changes.filter(c => ["failed", "not_sent", "blocked"].includes(c.status)).map(({status, ...change}) => change);
   if (!changes.length) return;
   pending = {scope: entry.scope || "album", selection: entry.selection, changes};
@@ -1226,7 +1228,7 @@ function historyDate(value) {
 }
 
 function renderHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
     : `<p class="empty">${TagcastI18n.html(historyView.cleared ? "history.cleared" : "history.empty")}</p>`;
 }
 
@@ -1471,6 +1473,7 @@ async function loadLive(refresh = false) {
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
+  if (typeof resetAlbumSplit === "function") resetAlbumSplit();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
@@ -1744,7 +1747,7 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   onDone?.(job);
   const done = job.results.filter(r => r.status === "saved").length;
   if (entry.status === "saved") toast(TagcastI18n.text("review.confirmed", {count: done}));
-  else showResults({results: job.results, error: entry.error}, entry.status, entry);
+  else if (!entry.albumSplit) showResults({results: job.results, error: entry.error}, entry.status, entry);
   return job;
 }
 
@@ -1766,7 +1769,7 @@ function showResults(result, overall, entry) {
   if (overall === "unverified") notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.unverified")}</div>`);
   if (result.readBackFailed) notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.readBackFailed")}</div>`);
   const index = entry ? state.history.indexOf(entry) : -1;
-  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
+  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
     notes.push(`<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button> <span class="muted">${TagcastI18n.html("review.results.restNote")}</span></p>`);
   }
   $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${TagcastI18n.html(r.kind === "album" ? "review.results.album" : "review.results.track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(resultFieldName).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");

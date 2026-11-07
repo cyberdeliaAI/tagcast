@@ -26,6 +26,7 @@ from . import __version__, artwork, auth
 from .album_guide import AlbumGuide
 from .album_info import AlbumInformation
 from .album_merge import AlbumMerge
+from .album_split import AlbumSplit
 from .artist_bios import ArtistBiographies
 from .cleanup import Cleanup
 from .collections import Collections
@@ -421,6 +422,7 @@ class Studio:
         self.lyrics = Lyrics(self)
         self.tags = Tags(self)
         self.album_merge = AlbumMerge(self)
+        self.album_split = AlbumSplit(self)
         self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
         self.downloads = 0  # library downloads started so far; numbers each one
