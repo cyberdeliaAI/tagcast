@@ -12355,6 +12355,23 @@ test('uncertain split saves are single-use, terminal and have no metadata retry 
   p.run('showHistory()');assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-review-rest|data-undo=/);
 });
 
+test('split failures display the specific server reason without offering a retry',async()=>{
+  const p=livePage();await settle();const fixture=splitFrontendFixture(p);let saves=0;
+  const error='The original album changed <elsewhere>. No tracks were sent.';
+  const results=fixture.review.tracks.map(t=>({kind:'track',id:t.id,fields:['album'],status:'not_sent'}));
+  p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:url.endsWith('/review')?fixture.review:
+    url.endsWith('/save')?(saves++,{job:'split',target:'44',error}):{state:'done',results}}));
+  await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');
+  splitTargetInputs(p);await p.run('reviewAlbumSplit()');
+  const pending=p.run('saveAlbumSplit()');await settle();p.flushTimers(2000);await settle();await pending;
+  const html=p.nodes.get('#album-split-content').innerHTML;
+  assert.match(html,/changed &lt;elsewhere&gt;\. No tracks were sent/);
+  assert.doesNotMatch(html,/The complete split could not be confirmed|id="album-split-save"/);
+  assert.equal(p.run('state.history[0].error'),error);
+  await p.run('saveAlbumSplit()');assert.equal(saves,1);
+  assert.equal(p.run('saving || checking || albumSplitDraft.busy'),false);
+});
+
 test('confirmed split read-back updates summaries without changing the audio queue, even after close',async()=>{
   for(const close of [false,true]) {
     const p=livePage();await settle();const fixture=splitFrontendFixture(p);

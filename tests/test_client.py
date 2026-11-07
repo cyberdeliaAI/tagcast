@@ -68,6 +68,8 @@ class ClientTests(unittest.TestCase):
     def test_album_split_creates_and_reads_back_new_membership_over_http(self):
         original = copy.deepcopy(mock_ibroadcast.STATE)
         try:
+            # The live service does not include newly created empty albums.
+            mock_ibroadcast.STATE["omit_empty_albums"] = True
             studio = self.connect()
             album = studio.album_details(["72"])[0]
             session = studio.playback_session

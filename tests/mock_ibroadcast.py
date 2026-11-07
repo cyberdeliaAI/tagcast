@@ -68,6 +68,8 @@ def library():
                           t.get("uploaded_time", ""), t.get("length", 0)]
     albums = {"map": {"name": 0, "tracks": 1, "artist_id": 2, "trashed": 3, "year": 4, "disc": 5, "rating": 6, "artists_additional": 7, "artists_additional_map": {"artist_id": 0, "phrase": 1, "type": 2}}}
     for i, a in STATE["albums"].items():
+        if STATE.get("omit_empty_albums") and not a["tracks"]:
+            continue
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0), a.get("additional", [])]
     artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3, "rating": 4}}
     for i, name in STATE["artists"].items():

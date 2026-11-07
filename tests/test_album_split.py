@@ -16,6 +16,14 @@ class SplitStudio(MergeStudio):
         self.create_response = {"result": True, "album_id": 44}
         self.create_fail = self.create_lost = False
         self.after_create = None
+        self.omit_empty_albums = False
+
+    def _current(self, client, **kwargs):
+        library, source = super()._current(client, **kwargs)
+        if self.omit_empty_albums:
+            library.albums.rows = {i: row for i, row in library.albums.rows.items()
+                                   if library.albums[i].get("tracks")}
+        return library, source
 
     def _jsonrequest(self, mode, **body):
         if mode != "create_album":
@@ -83,6 +91,42 @@ class AlbumSplitTests(unittest.TestCase):
             with self.subTest(tracks=tracks), self.assertRaises(LibraryError):
                 self.review(tracks)
         self.assertEqual(self.studio.writes, [])
+
+    def test_created_empty_album_can_be_absent_from_library_until_tracks_move(self):
+        self.studio.omit_empty_albums = True
+        result = self.save()
+        self.assertEqual(result["error"], "")
+        self.assertEqual([mode for mode, _ in self.studio.writes], ["create_album", "update_track"])
+        self.assertEqual(self.studio.jobs[result["job"]]["results"][0]["status"], "saved")
+
+    def test_omitted_destination_with_any_track_reference_never_moves(self):
+        for trashed in (False, True):
+            with self.subTest(trashed=trashed):
+                self.setUp()
+                def conflict():
+                    del self.studio.raw["library"]["albums"]["44"]
+                    self.studio.raw["library"]["tracks"]["201"].update(album_id=44, trashed=trashed)
+                self.studio.after_create = conflict
+                result = self.save()
+                self.assertIn("No tracks were sent", result["error"])
+                self.assertEqual(len(self.studio.writes), 1)
+                self.assertEqual(self.studio.jobs[result["job"]]["results"][0]["status"], "not_sent")
+
+    def test_creation_receipt_cannot_reuse_an_orphaned_album_id(self):
+        self.studio.raw["library"]["tracks"]["201"]["album_id"] = 44
+        result = self.save()
+        self.assertIn("could not be confirmed", result["error"])
+        self.assertEqual(len(self.studio.writes), 1)
+
+    def test_omitted_empty_target_never_confirms_a_failed_or_ignored_move(self):
+        for flag in ("ignore", "fail"):
+            with self.subTest(flag=flag):
+                self.setUp()
+                self.studio.omit_empty_albums = True
+                setattr(self.studio, flag, True)
+                result = self.save()
+                self.assertEqual(len(self.studio.writes), 2)
+                self.assertEqual(self.studio.jobs[result["job"]]["results"][0]["status"], "unverified")
 
     def test_target_validation_and_existing_album_collision(self):
         for target in ({"name": ""}, {"name": "x" * 1001}, {"year": True}, {"year": 1700},

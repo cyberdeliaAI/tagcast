@@ -64,8 +64,15 @@ on 2026-11-07:
 These are two separate, non-transactional operations. Tagcast consumes a
 session/account-bound review, checks the original membership and metadata, then
 creates the album once. A successful reply must identify a new album ID. A fresh
-library read must confirm the expected empty destination and unchanged source
-before any tracks are moved. Membership movement is sent once, without retries.
+library read must confirm the unchanged source before any tracks are moved.
+The live service omits newly created empty albums from the library response, as
+observed during the user's first test. The official web editor likewise retains
+the creation receipt locally. Tagcast accepts only the confirmed new ID, absent
+from both the previous album table and all previous track references. It checks
+that no fresh track (including trashed/orphaned records) references it. If the
+album is returned, its reviewed metadata and empty stored membership must match.
+It never injects a synthetic album into the library or persistent cache.
+Membership movement is sent once, without retries.
 
 Final read-back checks both albums, exact active membership and the known track
 metadata. An accepted move with a lost reply can be confirmed by read-back.
@@ -98,4 +105,44 @@ Local validation on macOS Apple Silicon, 2026-11-07:
 - Browser: English/Dutch, Light/Dark, 1280 × 800 and 420 × 800. Escape cancels;
   the mock split confirmed thirteen moved tracks and eleven remaining tracks.
 
-No packaged application or other operating system was tested for this change.
+The first isolated Apple Silicon package was tested locally with temporary
+settings, restart and packaged-asset checks. The user's live test exposed the
+empty-album omission: creation succeeded but the guard stopped before sending
+any tracks. History confirmed three attempts with `not_sent` track results;
+the retained library still contained all 24 source tracks. No retry, deletion or
+other live-account write was performed during diagnosis. The dialog now displays
+the specific server failure instead of masking it with a generic warning.
+
+Regression coverage reproduces the omission, rejects orphaned/reused destination
+IDs and any fresh track references, and keeps ignored/failed moves unconfirmed.
+The local HTTP integration test also omits empty albums. Live acceptance of the
+corrected move still requires a fresh, explicit user review. No other operating
+system has been tested for this feature.
+
+Correction validation, 2026-11-07:
+
+- The omitted-empty-album regression failed with the original guard, before the
+  correction; it now passes. Four focused Python regressions cover the omission,
+  orphaned/reused IDs, fresh active/trashed references, and ignored/failed moves.
+- Full Python suite: 904 tests and 2,483 subtests passed.
+- Full frontend suite: 646 tests passed. The new failure-message regression checks
+  escaping, terminal state, History preservation and absence of a retry.
+- Electron: 47 tests passed; i18n: 26 tests passed. Ruff, JavaScript syntax,
+  generated i18n and 1.5.5 version consistency passed.
+- The normal packaged Apple Silicon application passed the existing Electron,
+  bundled CLI, sandbox and owned-server shutdown checks.
+- A separately named, locally packaged **Tagcast Album Split Test** was archived,
+  extracted and its signature verified. The extracted app was started against
+  the loopback mock service, using temporary settings and an invented 24-track
+  fixture. Empty destinations were omitted from library responses. Review made
+  no writes; confirmation made exactly one creation and one move, confirmed 13
+  moved tracks / 11 remaining, and preserved all track metadata and playlists.
+  Restart preserved mock login, settings and album membership without resending.
+  All six served language bundles matched source; the app stopped its own server.
+
+The corrected test archive is `build/album-split-fix/tagcast-album-split-fixed-macos-arm64.zip`.
+It uses the earlier isolated test profile, not the production Tagcast profile.
+Quit the earlier test app completely before opening the corrected copy, because
+the unchanged 1.5.5 version alone cannot distinguish a running older test backend.
+This is a local ad-hoc-signed test package, not a notarized public release. No
+installed application was replaced and no live split was repeated.

@@ -145,7 +145,9 @@ async function saveAlbumSplit() {
     if (!job || request !== view.request || view.session !== state.connection.playback_session) return;
     view.details = state.details;
     if (!$("#album-split").open) return;
-    if (entry.status !== "saved") { albumSplitError(Error(TagcastI18n.text("albumSplit.unconfirmed")), true); return; }
+    if (entry.status !== "saved") {
+      albumSplitError(Error(entry.error || TagcastI18n.text("albumSplit.unconfirmed")), true); return;
+    }
     albumSplitStatus(TagcastI18n.text("albumSplit.done"));
     $("#album-split-content").innerHTML = `<p>${TagcastI18n.html("albumSplit.confirmed", {album: review.target.name})}</p><div class="dialog-footer"><button type="button" class="button" data-close="album-split">${TagcastI18n.html("common.close")}</button><button type="button" class="button primary" id="album-split-open" data-target="${escapeHtml(result.target)}">${TagcastI18n.html("albumSplit.open")}</button></div>`;
     $("#album-split-open").focus();

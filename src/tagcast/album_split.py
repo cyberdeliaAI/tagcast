@@ -136,6 +136,18 @@ class AlbumSplit(AlbumMerge):
                     and text(album.get("name")) == target["name"]
                     and all(number(album.get(k)) == target[k] for k in ("artist_id", "year", "disc")))
 
+    @classmethod
+    def _created_target_empty(cls, library, target_id, target):
+        # The live library omits newly created empty albums. The official editor
+        # retains create_album's receipt locally until tracks are moved into it.
+        # Only a confirmed new ID may reach here; never synthesize a cached album.
+        # If returned, its metadata and stored membership must still match. Check
+        # all track references as well, including orphaned and trashed records.
+        album = library.albums.get(target_id)
+        return (album is None or cls._target_matches(library, target_id, target)
+                and album.get("tracks") == []) and not any(
+                    number(track.get("album_id")) == target_id for track in library.tracks.values())
+
     def save(self, body):
         if body.get("approved") is not True:
             raise LibraryError("Review and confirm the album split first.")
@@ -150,7 +162,8 @@ class AlbumSplit(AlbumMerge):
                 raise ConflictError("The album changed. Review a new split before saving.")
             target, chosen = review["target"], set(review["chosen"])
             self._no_existing_target(library, target)
-            old_ids = set(library.albums)
+            old_ids = set(library.albums) | {
+                number(track.get("album_id")) for track in library.tracks.values()}
             self._owner(body, owner)
             with self.studio.lock:
                 self.selections.clear()
@@ -163,14 +176,15 @@ class AlbumSplit(AlbumMerge):
                         or not str(raw_id).isdigit() or int(raw_id) <= 0 or int(raw_id) in old_ids:
                     raise LibraryError("The new album could not be confirmed. No tracks were sent.")
                 target_id = int(raw_id)
-                # A successful creation alone never authorizes movement into an existing,
-                # populated or differently configured album. Recheck both sides first.
+                # Recheck the source and any returned destination. Empty albums can
+                # be omitted by the library server; the confirmed creation receipt
+                # identifies that destination, not an invented library record.
                 after_create, _ = self.studio._current(client, refresh=True)
                 self._owner(body, owner)
-                if self._split_snapshot(after_create, source) != snapshot \
-                        or not self._target_matches(after_create, target_id, target) \
-                        or after_create.active_track_ids(target_id):
-                    raise ConflictError("The album changed after creation. No tracks were sent.")
+                if self._split_snapshot(after_create, source) != snapshot:
+                    raise ConflictError("The original album changed after creation. No tracks were sent.")
+                if not self._created_target_empty(after_create, target_id, target):
+                    raise ConflictError("The new album is not empty or its details changed. No tracks were sent.")
                 self._owner(body, owner)
                 attempted_move = True
                 client._jsonrequest("update_track", _retry=False, tracks=[

@@ -356,7 +356,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   subset of one native disc (2–500 active tracks), create one new album and move
   only those track IDs, preserving track metadata and numbers. Bind expiring,
   single-use reviews to the account/session and complete source snapshot. Check
-  fresh empty destination membership after creation and read back both albums.
+  fresh source membership after creation and read back both albums. The library
+  can omit a newly created empty destination: accept only a confirmed new ID
+  absent from previous albums and track references, with no fresh track references.
+  If returned, validate its empty stored membership and exact reviewed metadata.
+  Final read-back still requires both albums and all reviewed memberships.
   Creation/movement are non-transactional and never retried after ambiguity; an
   empty/partial album can remain. Keep History without metadata Undo/retry.
   Require combine_sets off and block additional album credits until preservation
