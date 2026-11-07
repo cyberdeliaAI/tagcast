@@ -202,7 +202,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, {"result": False, "message": "You currently have 'Combine Multi-Disc Album Sets' on."})
             if mode == "gettrackuserdata":
                 return self.send(200, {"result": True, "userdata": STATE["tracks"][int(body["track_id"])].get("userdata", [])})
-            if mode in ("update_album", "update_track", "create_artist", "set_artwork",
+            if mode in ("update_album", "update_track", "create_album", "create_artist", "set_artwork",
                         "set_artist_artwork", "trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "updateplaylist", "deleteplaylist",
                         "createtag", "updatetag", "deletetags", "tagtracks"):
                 if STATE["busy"]:
@@ -274,6 +274,11 @@ class H(BaseHTTPRequestHandler):
                 STATE["next_artist"] += 1
                 STATE["artists"][STATE["next_artist"]] = body["name"]
                 return self.send(200, {"result": True, "artist_id": STATE["next_artist"]})
+            if mode == "create_album":
+                i = max(STATE["albums"]) + 1
+                STATE["albums"][i] = {k: body[k] for k in ("name", "artist_id", "year", "disc")}
+                STATE["albums"][i].update(tracks=[], rating=0)
+                return self.send(200, {"result": True, "album_id": i})
             if mode == "update_album":
                 for row in body["albums"]:
                     a = STATE["albums"][row["album_id"]]

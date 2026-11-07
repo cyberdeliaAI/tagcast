@@ -65,6 +65,32 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"device login did not finish: {studio.device}")
 
+    def test_album_split_creates_and_reads_back_new_membership_over_http(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            studio = self.connect()
+            album = studio.album_details(["72"])[0]
+            session = studio.playback_session
+            selected = studio.album_split.selection({"session": session, "album": {
+                **{k: album[k] for k in ("id", "name", "artist", "year", "disc")},
+                "tracks": [t["id"] for t in album["tracks"]]}})
+            reviewed = studio.album_split.review({"session": session, "selection": selected["selection"],
+                "tracks": [900], "target": {"name": "Separate edition", "year": 1985, "disc": 2}})
+            self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+            result = studio.album_split.save({"session": session, "review": reviewed["review"], "approved": True})
+            job = self.wait_job(studio, result["job"])
+            self.assertEqual([r["status"] for r in job["results"]], ["saved"])
+            writes = mock_ibroadcast.STATE["writes"]
+            self.assertEqual([w["mode"] for w in writes], ["create_album", "update_track"])
+            self.assertEqual(writes[1]["tracks"], [{"file_id": 900, "album_id": int(result["target"]), "album": "Separate edition"}])
+            self.assertEqual(mock_ibroadcast.STATE["albums"][72]["tracks"], [901, 902])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][900], {**original["tracks"][900], "album_id": int(result["target"])})
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][901], original["tracks"][901])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][902], original["tracks"][902])
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
     def test_sign_in_window_cancel_is_bound_to_one_attempt(self):
         studio = client.Studio(self.home)
         code = {"device_code": "private-device-code", "user_code": "PUBLIC-CODE"}

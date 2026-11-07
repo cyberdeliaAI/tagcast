@@ -9205,6 +9205,8 @@ test('album lyrics check starts explicitly, runs serially and keeps results unti
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-download'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-split'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-trash'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'Home',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
@@ -12254,5 +12256,121 @@ test('expanded source/control text meets contrast over all possible blurred cove
         assert.ok(p.run(`TagcastThemes.contrast('${result.text}','${background}')`)>=4.5,base+' '+mode);
       }
     }
+  }
+});
+
+// Album splitting uses the production dialog scripts and HTTP routes, with invented metadata.
+function splitFrontendFixture(p) {
+  const album={id:'11',name:'Fragments <demo>',artist:'Artist',year:1991,disc:1,tracks:
+    [101,102,103,104].map((id,i)=>({id:String(id),title:`Track ${id}`,artist:'Performer',track:i%2+1,
+      year:i<2?1991:1983,uploaded_at:i<2?'2022-04-06T12:00:00':'2026-11-07T13:00:00',length:180}))};
+  p.run(`useLocal(${JSON.stringify([album])},'demo');state.mode='live';state.connection.playback_session='split-session';state.screen='album';albumView.id='11';render()`);
+  const selection={selection:'split-selection',album,suggestions:[
+    {uploaded_on:'2022-04-06',year:1991,tracks:['101','102']},
+    {uploaded_on:'2026-11-07',year:1983,tracks:['103','104']}]};
+  const review={review:'split-review',source:album,target:{name:album.name,artist:album.artist,year:1983,disc:1},
+    tracks:album.tracks.slice(2),remaining:2};
+  return {selection,review};
+}
+function splitTargetInputs(p,name='Fragments <demo>') {
+  p.run('$("#album-split-name");$("#album-split-year");$("#album-split-disc")');
+  p.nodes.get('#album-split-name').value=name;
+  p.nodes.get('#album-split-year').value='1983';p.nodes.get('#album-split-disc').value='1';
+}
+
+test('Back preserves an open split selection and its album page',async()=>{
+  const p=livePage();await settle();const fixture=splitFrontendFixture(p);
+  p.run('syncHistory()');
+  p.setFetch(()=>({ok:true,json:async()=>fixture.selection}));
+  await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');
+  const before=p.run('JSON.stringify([...albumSplitDraft.chosen])');
+  p.history.back();
+  assert.equal(p.run('state.screen'),'album');assert.equal(p.run('albumView.id'),'11');
+  assert.equal(p.nodes.get('#album-split').open,true);
+  assert.equal(p.run('JSON.stringify([...albumSplitDraft.chosen])'),before);
+  assert.match(p.nodes.get('#toast').textContent,/Close the editor first/);
+});
+
+test('album split suggests groups without selecting them or changing playback and drafts',async()=>{
+  const p=livePage();await settle();const fixture=splitFrontendFixture(p),posts=[];
+  p.run('playTracks(state.details.get("11"));editing={marker:"keep draft"};');
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,editing,history:history.length})');
+  p.setFetch((url,options)=>{posts.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>fixture.selection};});
+  await p.run('openAlbumSplit()');
+  assert.equal(p.run('albumSplitDraft.chosen.size'),0);
+  assert.equal(p.nodes.get('#album-split-review').disabled,true);
+  assert.match(p.nodes.get('#album-split-content').innerHTML,/Fragments &lt;demo&gt;/);
+  assert.equal(posts.length,1);assert.equal(posts[0].url,'/api/albums/split/selection');
+  splitTargetInputs(p,'My title');p.run('applyAlbumSplitSuggestion(1)');
+  assert.deepEqual(p.json('[...albumSplitDraft.chosen]'),['103','104']);
+  assert.equal(p.run('albumSplitDraft.target.name'),'My title');
+  assert.equal(p.run('albumSplitDraft.target.year'),1983);
+  await p.nodes.get('#album-split').emit('change',{target:{dataset:{splitTrack:'104'},checked:false}});
+  assert.deepEqual(p.json('[...albumSplitDraft.chosen]'),['103']);
+  assert.equal(posts.length,1,'Choosing proposals and adjusting them do not write or fetch');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,editing,history:history.length})'),before);
+});
+
+test('album split review freezes choices in flight, preserves form errors and never sends audio',async()=>{
+  const p=livePage();await settle();const fixture=splitFrontendFixture(p),posts=[];let release;
+  p.setFetch((url,options)=>{posts.push({url,body:JSON.parse(options.body)});return url.endsWith('/selection')
+    ?{ok:true,json:async()=>fixture.selection}:new Promise(resolve=>{release=resolve;});});
+  await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');splitTargetInputs(p,'Custom');
+  const pending=p.run('reviewAlbumSplit()');await settle();
+  p.run('applyAlbumSplitSuggestion(0)');await p.run('reviewAlbumSplit()');
+  await p.nodes.get('#album-split').emit('change',{target:{dataset:{splitTrack:'101'},checked:true}});
+  assert.deepEqual(posts[1].body.tracks,['103','104']);assert.equal(posts[1].body.target.name,'Custom');
+  assert.deepEqual(p.json('[...albumSplitDraft.chosen]'),['103','104']);assert.equal(posts.length,2);
+  release({ok:false,status:400,json:async()=>({error:'Choose another title'})});await pending;
+  assert.equal(p.run('albumSplitDraft.target.name'),'Custom');
+  assert.equal(p.run('albumSplitDraft.reading'),false);assert.equal(p.nodes.get('#album-split-review').disabled,false);
+  assert.match(p.nodes.get('#album-split-status').textContent,/Choose another title/);
+  p.setFetch(()=>({ok:true,json:async()=>fixture.review}));splitTargetInputs(p);await p.run('reviewAlbumSplit()');
+  assert.match(p.nodes.get('#album-split-content').innerHTML,/cannot be undone/);
+  assert.equal(p.run('document.activeElement === $("#album-split-title")'),true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/albums/split/save').length,0);
+});
+
+test('late split reads cannot reopen a closed dialog or restore a replaced library',async()=>{
+  for(const replaced of [false,true]) {
+    const p=livePage();await settle();const fixture=splitFrontendFixture(p);let release;
+    p.setFetch(()=>new Promise(resolve=>{release=resolve;}));
+    const pending=p.run('openAlbumSplit()');await settle();
+    if(replaced)p.run('useLocal(demoLibrary(),"demo")');
+    else {p.run('$("#album-split").close()');await p.nodes.get('#album-split').emit('close');}
+    release({ok:true,json:async()=>fixture.selection});await pending;
+    assert.equal(p.nodes.get('#album-split').open,false);assert.equal(p.run('albumSplitDraft.selection'),null);
+  }
+});
+
+test('uncertain split saves are single-use, terminal and have no metadata retry or undo',async()=>{
+  const p=livePage();await settle();const fixture=splitFrontendFixture(p);let saves=0;
+  p.setFetch(url=>{if(url.endsWith('/save')){saves++;return {ok:false,status:503,json:async()=>({error:'Lost reply'})};}
+    return {ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:fixture.review};});
+  await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');splitTargetInputs(p);await p.run('reviewAlbumSplit()');
+  await p.run('saveAlbumSplit()');await p.run('saveAlbumSplit()');
+  assert.equal(saves,1);assert.equal(p.run('saving || albumSplitDraft.busy'),false);
+  assert.equal(p.run('state.history[0].status'),'unverified');
+  assert.match(p.nodes.get('#album-split-content').innerHTML,/No automatic retry/);
+  p.run('showHistory()');assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-review-rest|data-undo=/);
+});
+
+test('confirmed split read-back updates summaries without changing the audio queue, even after close',async()=>{
+  for(const close of [false,true]) {
+    const p=livePage();await settle();const fixture=splitFrontendFixture(p);
+    p.run('playTracks(state.details.get("11"));');const audio=p.nodes.get('#audio'),before=p.json('player.queue');
+    const results=fixture.review.tracks.map(t=>({kind:'track',id:t.id,label:t.title,fields:['album'],status:'saved'}));
+    const albums=p.json('state.albums');
+    p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:url.endsWith('/review')?fixture.review:
+      url.endsWith('/save')?{job:'split',target:'44'}:{state:'done',results,albums}}));
+    await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');splitTargetInputs(p);await p.run('reviewAlbumSplit()');
+    const pending=p.run('saveAlbumSplit()');await settle();
+    if(close){p.run('$("#album-split").close();$("#search").focus()');await p.nodes.get('#album-split').emit('close');p.run('$("#search").focus()');}
+    p.flushTimers(2000);await settle();await pending;
+    assert.equal(p.run('state.history[0].status'),'saved');
+    assert.equal(p.run('saving || albumSplitDraft.busy'),false);
+    assert.equal(p.nodes.get('#audio'),audio);assert.deepEqual(p.json('player.queue'),before);
+    if(close)assert.equal(p.run('document.activeElement === $("#search")'),true,'Completion does not steal focus');
+    else assert.match(p.nodes.get('#album-split-status').textContent,/confirmed/);
   }
 });
