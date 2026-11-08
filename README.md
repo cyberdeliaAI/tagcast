@@ -295,8 +295,8 @@ describe the architecture, test commands and packaging. See
 The [media kit](media/README.md) contains logos, icons, wordmarks, screenshots and
 the GitHub social preview. [Download the media ZIP](https://github.com/cyberdeliaAI/tagcast/raw/refs/heads/main/media/tagcast-media-kit.zip).
 
-Developed by Cyberdelia, with AI-assisted development using Claude (Anthropic)
-and ChatGPT / Codex (OpenAI).
+Developed by Cyberdelia, with AI-assisted development using Claude (Anthropic),
+ChatGPT / Codex (OpenAI) and Mistral (Mistral AI).
 
 [MIT](LICENSE) for Tagcast code. The original Powered by iBroadcast logos belong
 to iBroadcast and are displayed under its
