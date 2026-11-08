@@ -42,6 +42,14 @@ transitions safely use ordinary playback. See the
 
 *Tagcast 1.5.5 — the Now playing workspace, captured on 6 November 2026. [See fullscreen and album views below](#screenshots).*
 
+## Watch the walkthrough
+
+[![Watch the Tagcast feature walkthrough: fullscreen CD playback and synchronised lyrics](docs/screenshots/2026-11-08-walkthrough/feature-tour.jpg)](https://tagcast.app/#walkthrough)
+
+**[Watch the Tagcast walkthrough](https://tagcast.app/#walkthrough)** — 2 minutes 42 seconds,
+with short English captions and no sound. A tour of playback, lyrics, themes,
+browsing, cleanup, album downloads and playlist import, recorded in November 2026.
+
 ## What you can do
 
 iBroadcast controls account limits, available tracks and Premium entitlements.
