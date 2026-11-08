@@ -9,7 +9,7 @@ from pathlib import Path
 from release_info import release_info
 
 TARGETS = {'macos-arm64': '.zip', 'macos-x64': '.zip',
-           'windows-x64': '.zip', 'linux-x64': '.tar.gz'}
+           'windows-x64': '.zip', 'linux-x64': '.tar.gz', 'linux-amd64': '.deb'}
 SIGNING = ('developer_id', 'hardened_runtime', 'notarization_ticket', 'gatekeeper')
 
 
@@ -18,7 +18,7 @@ def checked_assets(downloads, reports, version):
     expected |= {name + '.sha256' for name in tuple(expected)}
     paths = {path.name: path for path in downloads.iterdir()}
     if set(paths) != expected:
-        raise ValueError('The complete four-platform distribution and checksum set is required.')
+        raise ValueError('All four-platform archives, the Debian package and their checksums are required.')
     for name, path in paths.items():
         if path.is_symlink() or not path.is_file() or not path.stat().st_size:
             raise ValueError('Release assets must be nonempty regular files.')
@@ -28,6 +28,14 @@ def checked_assets(downloads, reports, version):
             digest = hashlib.file_digest(source, 'sha256').hexdigest()
         if paths[name + '.sha256'].read_text('ascii').strip() != f'{digest}  {name}':
             raise ValueError('A release checksum does not match its archive.')
+        if name.endswith('.deb'):
+            for distribution in ('ubuntu-22.04', 'ubuntu-24.04'):
+                data = json.loads((reports / f'deb-reports-{distribution}' / 'linux-deb.json').read_text())
+                if (any(data.get(key) is not True for key in
+                        ('installed_startup', 'sandbox', 'desktop_launcher', 'cli', 'removed'))
+                        or data.get('package') != name or data.get('sha256') != digest
+                        or data.get('version') != version or data.get('distribution') != distribution):
+                    raise ValueError('Debian installation evidence is missing or does not match the package.')
         for target in ('macos-arm64', 'macos-x64'):
             if name == f'tagcast-{version}-{target}.zip':
                 data = json.loads((reports / f'smoke-reports-{target}' / 'macos-signing.json').read_text())

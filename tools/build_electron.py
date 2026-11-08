@@ -15,6 +15,7 @@ from pathlib import Path
 
 from build_binary import prepare_assets, system_name
 from check_electron import check_app
+from linux_deb import build_deb
 from release_info import release_info
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -175,6 +176,8 @@ def main():
         print(f"Verified app: {directory}")
     else:
         archive_app(directory, info, team_id)
+        if sys.platform == "linux":
+            build_deb(directory, info, node, plain_env)
 
 
 if __name__ == "__main__":
