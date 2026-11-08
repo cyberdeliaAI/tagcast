@@ -294,11 +294,12 @@ function albumDiscs() {
   return shelfIds(albumView.id).map(id => state.details.get(id)).filter(Boolean);
 }
 
-function trashBar(discs) {
+function trashBar(discs, years = trashYearAdvice(discs)) {
   const count = albumView.trash.size, all = discs.reduce((n, d) => n + d.tracks.length, 0);
   const suggestion = trashSuggestion(discs);
   return `<section class="trash-suggestion"><p><strong>${TagcastI18n.html("trash.suggest.heading")}</strong> · ${TagcastI18n.html("trash.suggest.prefer")} ${TagcastI18n.html("trash.suggest.manual")} ${TagcastI18n.html("trash.suggest.metadataOnly")}</p>
     <p>${suggestion.remove.length ? TagcastI18n.html("trash.suggest.count", {count: suggestion.remove.length}) : TagcastI18n.html("trash.suggest.none")} ${TagcastI18n.html("trash.suggest.howTo")}</p>
+    ${years.size ? `<p><strong>${TagcastI18n.html("trash.year.heading")}</strong> · ${TagcastI18n.html("trash.year.help")}</p><p><button type="button" class="button small" data-trash-other-years>${TagcastI18n.html("trash.year.select", {count: years.size})}</button></p>` : ""}
     ${uploadGroups(discs)}</section>
     <div class="selection-bar trash-bar"><strong>${TagcastI18n.html("trash.bar.selected", {selected: count, count: all})}</strong>${suggestion.remove.length ? `<button class="button small" data-trash-suggested>${TagcastI18n.html("trash.bar.selectSuggested")}</button>` : ""}${extraCopies(discs).length ? `<button class="button small" data-trash-duplicates title="${TagcastI18n.html("trash.bar.selectExtraTitle")}">${TagcastI18n.html("trash.bar.selectExtra")}</button>` : ""}<button class="button small" data-trash-all>${TagcastI18n.html(count === all ? "trash.bar.selectNone" : "trash.bar.selectAll")}</button><button class="button small" data-trash-cancel>${TagcastI18n.html("common.cancel")}</button><button class="button small primary" data-trash-review ${count ? "" : "disabled"}>${TagcastI18n.html("trash.bar.review")}</button></div>`;
 }
@@ -375,6 +376,34 @@ function trashSuggestion(discs) {
   return {choices, notes, remove};
 }
 
+// A year difference is a comparison aid, never evidence that a recording is a duplicate.
+// Count original native discs separately, including tracks whose year is unknown.
+function trashYearAdvice(discs) {
+  const marked = new Map();
+  for (const disc of discs) {
+    const groups = new Map();
+    for (const track of disc.tracks) {
+      const key = String(track.album_id || disc.id);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(track);
+    }
+    for (const tracks of groups.values()) {
+      const counts = new Map();
+      for (const track of tracks) {
+        const year = trashKnownTrackYear(track);
+        if (year) counts.set(year, (counts.get(year) || 0) + 1);
+      }
+      const majority = [...counts].find(([, count]) => count > tracks.length / 2)?.[0];
+      if (!majority || counts.size < 2) continue;
+      for (const track of tracks) {
+        const year = trashKnownTrackYear(track);
+        if (year && year !== majority) marked.set(String(track.id), majority);
+      }
+    }
+  }
+  return marked;
+}
+
 function uploadGroups(discs) {
   const open = $("#album-page .trash-upload-groups")?.open;
   const rows = [];
@@ -398,12 +427,23 @@ function uploadGroups(discs) {
 const trashChoices = {keep: "trash.choice.keep", trash: "trash.choice.trash", manual: "trash.choice.manual"};
 const trashChoiceLabel = choice => Object.hasOwn(trashChoices, choice) ? TagcastI18n.html(trashChoices[choice]) : "";
 const trashUploadLabel = stamp => stamp ? TagcastI18n.html("trash.upload.uploadedAt", {date: stamp.replace("T", " ")}) : TagcastI18n.html("trash.upload.uploadedUnknown");
+const trashKnownTrackYear = track => {
+  if (!["number", "string"].includes(typeof track.year)) return 0;
+  const year = Number(track.year);
+  return Number.isInteger(year) && year > 0 ? year : 0;
+};
+const trashYearLabel = track => {
+  const year = trashKnownTrackYear(track);
+  return year ? TagcastI18n.html("trash.track.year", {year: String(year)}) : TagcastI18n.html("trash.track.yearUnknown");
+};
 
-function trashTrackNote(track, suggestion) {
+function trashTrackNote(track, suggestion, years) {
   const stamp = trashUploadedAt(track), result = suggestion.choices.get(String(track.id));
   const reasons = suggestion.notes?.get(String(track.id));
   const reason = reasons ? reasons.map(key => TagcastI18n.html(key)).join(" ") : escapeHtml(result?.reason);
-  return `<small class="trash-track-info">${trashUploadLabel(stamp)}${result ? ` · <span class="pill${result.choice === "keep" ? "" : " missing"}">${trashChoiceLabel(result.choice)}</span> ${reason}` : ""}</small>`;
+  const majority = years?.get(String(track.id));
+  const yearNote = majority ? ` · <span class="pill missing" title="${TagcastI18n.html("trash.year.reason", {year: String(majority)})}">${TagcastI18n.html("trash.year.badge")}</span>` : "";
+  return `<small class="trash-track-info">${trashYearLabel(track)}${yearNote} · ${trashUploadLabel(stamp)}${result ? ` · <span class="pill${result.choice === "keep" ? "" : " missing"}">${trashChoiceLabel(result.choice)}</span> ${reason}` : ""}</small>`;
 }
 
 // Every matching numbered title after the first one on its disc; review before sending.
@@ -431,7 +471,7 @@ function showTrashReview() {
   const album = discs[0].name, count = rows.length;
   $("#trash-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${TagcastI18n.html("trash.review.eyebrow")}</div><h2>${whole ? TagcastI18n.html("trash.review.wholeAlbum", {album}) : TagcastI18n.html("trash.review.partOf", {count, album})}</h2></div><button class="close" data-close="trash-review" aria-label="${TagcastI18n.html("common.close")}">×</button></div>
     <div class="warn-box">${TagcastI18n.html("trash.review.warning")}${whole ? ` ${TagcastI18n.html("trash.review.albumGone")}` : ""}</div>
-    <section class="diff-group"><h3>${TagcastI18n.html("common.count.tracks", {count})}</h3>${rows.map(({disc, track: t}) => `<p class="trash-row">${several ? `${TagcastI18n.html("common.disc", {disc: disc.disc || "?"})} · ` : ""}${t.track || "–"}. ${escapeHtml(t.title)} <span class="muted">· ${escapeHtml(t.artist)} · ${trackDuration(t.length)}${t.format ? ` · ${escapeHtml(t.format)}` : ""} · ${trashUploadLabel(trashUploadedAt(t))}</span></p>`).join("")}</section>
+    <section class="diff-group"><h3>${TagcastI18n.html("common.count.tracks", {count})}</h3>${rows.map(({disc, track: t}) => `<p class="trash-row">${several ? `${TagcastI18n.html("common.disc", {disc: disc.disc || "?"})} · ` : ""}${t.track || "–"}. ${escapeHtml(t.title)} <span class="muted">· ${escapeHtml(t.artist)} · ${trackDuration(t.length)}${t.format ? ` · ${escapeHtml(t.format)}` : ""} · ${trashYearLabel(t)} · ${trashUploadLabel(trashUploadedAt(t))}</span></p>`).join("")}</section>
     <div class="dialog-footer"><span class="muted" id="trash-status"></span><button class="button" data-close="trash-review">${TagcastI18n.html("trash.review.keep")}</button><button class="button danger primary" id="trash-confirm">${trashIcon}${TagcastI18n.html("trash.review.move", {count})}</button></div>`;
   $("#trash-review").showModal();
 }
@@ -483,6 +523,10 @@ document.addEventListener("click", event => {
   if (event.target.closest("[data-trash-suggested]")) {
     albumView.trash = new Set(trashSuggestion(albumDiscs()).remove); renderAlbumView();
     $("[data-trash-suggested]")?.focus(); return;
+  }
+  if (event.target.closest("[data-trash-other-years]")) {
+    albumView.trash = new Set(trashYearAdvice(albumDiscs()).keys()); renderAlbumView();
+    $("[data-trash-other-years]")?.focus(); return;
   }
   if (event.target.closest("[data-trash-review]")) { showTrashReview(); return; }
   const go = event.target.closest("#trash-confirm");

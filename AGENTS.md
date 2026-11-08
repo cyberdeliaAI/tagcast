@@ -335,6 +335,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   Show stored upload dates/times and day/format groups only from loaded album details;
   do not scan audio or fetch tracks to build suggestions. Keep uploaded_on day precision
   for set grouping; uploaded_at preserves validated date/time without inventing a timezone.
+  Trash selection also marks known track years that differ from a strict majority of all
+  tracks on the same original native disc. Unknown years never establish a majority or
+  get marked. This is a separate comparison aid, not a duplicate/removal recommendation;
+  it never changes format/date suggestions or selects automatically. Selecting these
+  years is explicit and adjustable, followed by the normal trash review and confirmation.
 - The cross-album duplicate workflow is a narrow reviewed exception to album-only trash.
   Opening only reads the saved account-scoped `duplicate-cleanup.json`; explicit analysis
   compares the server's library metadata using the same rules as `trashSuggestion`
