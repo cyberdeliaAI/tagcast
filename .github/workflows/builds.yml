@@ -151,9 +151,81 @@ jobs:
           path: build/reports/*.json
           if-no-files-found: ignore
 
+  deb-install:
+    name: Debian install · ${{ matrix.os }}
+    needs: [scope, build]
+    runs-on: ${{ needs.scope.outputs.full == 'true' && matrix.os || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - name: Select verification for this target
+        env:
+          CI_FULL: ${{ needs.scope.outputs.full }}
+        shell: python
+        run: |
+          import os
+          if os.environ['CI_FULL'] not in {'true', 'false'}:
+              raise SystemExit('CI scope is missing or invalid.')
+          print('Install and launch the Debian package.' if os.environ['CI_FULL'] == 'true'
+                else 'Documentation checks passed; no Debian installation needed.')
+      - uses: actions/checkout@v4
+        if: needs.scope.outputs.full == 'true'
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        if: needs.scope.outputs.full == 'true'
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+        if: needs.scope.outputs.full == 'true'
+      - uses: actions/download-artifact@v4
+        if: needs.scope.outputs.full == 'true'
+        with:
+          name: tagcast-linux-x64
+          path: downloads
+      - name: Install and start the Debian package with its sandbox
+        if: needs.scope.outputs.full == 'true'
+        env:
+          DISTRIBUTION: ${{ matrix.os }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb ./downloads/*.deb
+          VERSION=$(python tools/release_info.py | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+          xvfb-run -a uv run --frozen --python python python tools/linux_deb.py downloads/*.deb "$VERSION" "$DISTRIBUTION"
+      - name: Verify removal preserves user settings
+        if: needs.scope.outputs.full == 'true'
+        shell: python
+        run: |
+          import json, pathlib, subprocess
+          home = pathlib.Path.home() / '.tagcast'
+          home.mkdir(exist_ok=True)
+          marker = home / 'deb-removal-check'
+          marker.write_text('preserve settings')
+          try:
+              subprocess.run(['sudo', 'apt-get', 'remove', '-y', 'tagcast'], check=True)
+              if (pathlib.Path('/opt/Tagcast/Tagcast').exists() or
+                      pathlib.Path('/usr/bin/tagcast-cli').exists() or
+                      marker.read_text() != 'preserve settings'):
+                  raise SystemExit('Debian removal left executables or removed user settings.')
+              report = pathlib.Path('build/reports/linux-deb.json')
+              data = json.loads(report.read_text())
+              data['removed'] = True
+              report.write_text(json.dumps(data, indent=2) + '\n')
+          finally:
+              marker.unlink(missing_ok=True)
+      - uses: actions/upload-artifact@v4
+        if: always() && needs.scope.outputs.full == 'true'
+        with:
+          name: deb-reports-${{ matrix.os }}
+          path: build/reports/*.json
+          if-no-files-found: error
+
   release:
     name: Add the downloads to the release
-    needs: [scope, build, verified]
+    needs: [scope, build, deb-install, verified]
     if: >-
       needs.scope.outputs.full == 'true' &&
       (github.event_name == 'release' || github.event_name == 'workflow_run' ||
@@ -171,6 +243,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: smoke-reports-*
+          path: reports
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: deb-reports-*
           path: reports
       - uses: actions/download-artifact@v4
         with:
@@ -200,7 +276,7 @@ jobs:
     # Tests completions for ordinary commits deliberately skip this release follow-up.
     # Failed scope checks, and unexpected skips on PR/push/manual runs, still fail closed.
     if: ${{ !cancelled() && (github.event_name != 'workflow_run' || needs.scope.result != 'skipped') }}
-    needs: [scope, build]
+    needs: [scope, build, deb-install]
     runs-on: ubuntu-latest
     steps:
       - name: Require complete successful validation
@@ -210,7 +286,7 @@ jobs:
         run: |
           import json, os
           jobs = json.loads(os.environ["CI_NEEDS"])
-          expected = {'build', 'scope'}
+          expected = {'build', 'scope', 'deb-install'}
           if set(jobs) != expected or any(job.get("result") != "success" for job in jobs.values()):
               raise SystemExit("Required validation failed or did not run.")
           if jobs["scope"].get("outputs", {}).get("full") not in {"true", "false"}:

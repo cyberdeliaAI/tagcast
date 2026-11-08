@@ -133,7 +133,7 @@ class CIScopeTests(unittest.TestCase):
 
     def test_final_gates_reject_failed_missing_and_skipped_dependencies(self):
         for filename, expected in (("tests.yml", ["scope", "tests", "start-scripts", "gapless-measured-media"]),
-                                   ("builds.yml", ["scope", "build"])):
+                                   ("builds.yml", ["scope", "build", "deb-install"])):
             source = (ROOT / ".github/workflows" / filename).read_text()
             gate = source.split("\n  verified:\n", 1)[1]
             self.assertIn("!cancelled()", gate)
@@ -176,7 +176,7 @@ class CIScopeTests(unittest.TestCase):
                             event == "workflow_run" and result == "skipped"))
                         if run:
                             jobs = {"scope": {"result": result, "outputs": {"full": "true"}},
-                                    "build": {"result": "success"}}
+                                    "build": {"result": "success"}, "deb-install": {"result": "success"}}
                             with patch.dict(os.environ, {"CI_NEEDS": json.dumps(jobs)}):
                                 if result == "success":
                                     exec(compile(script, "distribution-gate", "exec"), {})
