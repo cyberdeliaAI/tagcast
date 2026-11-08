@@ -21,17 +21,20 @@ create separate local copies. Optional music uploads read selected local audio a
 send copies to your own iBroadcast library only after review; see
 [setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [Tagcast 1.6.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.0):**
-Manually split tracks from one album into a new album after selection and review.
-Optional upload-group suggestions help identify possible editions without choosing
-for you. Track IDs, metadata, artwork and playlist references are preserved;
-Tagcast checks both albums afterwards. An empty Now playing workspace now offers
-one clear **Browse albums** action instead of empty lyrics and queue controls.
-All new controls are translated into the six interface languages.
+**New in [Tagcast 1.6.5](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.5):**
+Track years are now visible when selecting and reviewing tracks for the trash.
+A **Less common year** label highlights known years that differ from a strict
+majority on the same original disc. **Select different years** is an optional,
+reviewed selection aid: bonus tracks, live recordings and reissues may legitimately
+differ, so nothing is selected or removed automatically. All new texts are
+translated into the six interface languages.
+
+Album splitting from 1.6.0 remains available: select tracks, review the new album,
+and keep track metadata, artwork, IDs and playlist references intact.
 
 Experimental Gapless playback remains optional and off by default. Unsupported
 transitions safely use ordinary playback. See the
-[release notes](.github/release-notes/1.6.0.md) and
+[release notes](.github/release-notes/1.6.5.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
@@ -97,14 +100,14 @@ real-library example and explains the review, limits and failure handling.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 1.6.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.0):
+[Tagcast 1.6.5](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.5):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.0/tagcast-1.6.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
