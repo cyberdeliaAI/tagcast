@@ -4117,6 +4117,66 @@ test('Trash selection and review show each track year without inheriting the alb
   }
 });
 
+test('Trash year markings require a strict majority on each original disc and never guess missing years', () => {
+  const p = page();
+  const advice = discs => p.json(`[...trashYearAdvice(${JSON.stringify(discs)})]`);
+  const track = (id, year, album_id = '91') => ({id, year, album_id});
+  assert.deepEqual(advice([{id: '91', tracks: [track('a',1978),track('b',1978),track('c',2015)]}]), [['c',1978]]);
+  assert.deepEqual(advice([{id: '91', year: 2015, tracks: [track('a',1978),track('b',1978),track('c',2015)]}]), [['c',1978]],
+    'The stored album year does not establish the correct track year');
+  assert.deepEqual(advice([{tracks: [track('a',1978),track('b',2015)]}]), [], 'Tied years stay manual');
+  assert.deepEqual(advice([{tracks: [track('a',1978),track('b',1978),track('c',2015),track('d',0),track('e',null)]}]), [],
+    'Unknown years cannot manufacture a majority');
+  for (const year of [undefined,null,'',0,-1,1978.5,true,false,[],{},'<img src=x onerror=alert(1)>']) {
+    assert.deepEqual(advice([{tracks: [track('a',1978),track('b',1978),track('c',year)]}]), [], 'Unknown/invalid years are never marked');
+  }
+  assert.deepEqual(advice([{id:'combined', tracks: [track('a',1978),track('b',1978),track('c',2015),
+    track('d',2015,'92'),track('e',2015,'92'),track('f',1978,'92')]}]), [['c',1978],['f',2015]],
+    'Combined native discs are compared independently');
+  assert.deepEqual(advice([{id:'91',tracks:[{id:'a',year:1978},{id:'b',year:1978}]},
+    {id:'92',tracks:[{id:'c',year:2015},{id:'d',year:2015}]}]), [], 'A different disc year is not an outlier');
+  assert.deepEqual(advice([{tracks:[track('a','1978'),track('b',1978),track('c','2015')]}]),[['c',1978]],
+    'Numeric and string years represent the same stored year');
+});
+
+test('Trash marks minority track years separately from copy suggestions and selects them only on request', async () => {
+  const p = page(); await settle();
+  const tracks = Array.from({length: 8}, (_,i) => ({id:`original-${i}`,track:i+1,title:`Song ${i+1}`,year:1978}));
+  tracks.push({id:'live-3',track:3,title:'Song 3 (Live at the theatre)',year:2015},
+    {id:'live-6',track:6,title:'Song 6 (Live at the theatre)',year:2015},
+    {id:'bonus',track:9,title:'Bonus recording',year:2015});
+  for (const track of tracks) Object.assign(track,{album_id:'91',artist:'Artist',length:180,format:'FLAC',uploaded_at:'2022-04-05T19:29:04'});
+  p.run(`useLocal([{id:91,name:"Mixed recordings",artist:"Artist",year:2015,disc:1,
+    tracks:${JSON.stringify(tracks)}}],"live");playTracks(state.details.get("91"));render()`);
+  await p.run('openAlbum("91")');await settle();
+  const requests = p.requests.length, original = p.json('state.details.get("91").tracks');
+  const queue = p.json('player.queue'), source = p.nodes.get('#audio').src;
+  const suggestions = p.json('[...trashSuggestion(albumDiscs()).choices]');
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/Less common year|data-trash-other-years/);
+  await p.click({'[data-trash-start]':{}});
+  const html = p.nodes.get('#album-page').innerHTML;
+  assert.equal((html.match(/>Less common year</g)||[]).length,3,'Mark unique positions too, without calling them duplicates');
+  assert.match(html,/Most tracks on this original disc have track year 1978/);
+  assert.match(html,/Live versions, bonus tracks and reissues may legitimately differ/);
+  assert.match(html,/Select different years \(3\)/);
+  assert.deepEqual(p.json('[...albumView.trash]'),[],'Opening never ticks a track');
+  assert.deepEqual(p.json('[...trashSuggestion(albumDiscs()).choices]'),suggestions,'Years never override the copy safety rules');
+  await p.click({'[data-trash-other-years]':{}});
+  assert.deepEqual(p.json('[...albumView.trash]'),['live-3','live-6','bonus']);
+  assert.equal(p.run('document.activeElement === $("[data-trash-other-years]")'),true);
+  await p.change({matches:s=>s==='[data-trash-track]',checked:false,dataset:{trashTrack:'bonus'}});
+  await p.click({'[data-trash-review]':{}});
+  const review = p.nodes.get('#trash-content').innerHTML;
+  assert.match(review,/Song 3 \(Live at the theatre\)/);
+  assert.match(review,/Song 6 \(Live at the theatre\)/);
+  assert.doesNotMatch(review,/Bonus recording|Track year: 1978/);
+  assert.equal(p.requests.length,requests,'Marking, selecting and reviewing never fetch or write');
+  assert.deepEqual(p.json('state.details.get("91").tracks'),original);
+  assert.deepEqual(p.json('player.queue'),queue);
+  assert.equal(p.nodes.get('#audio').src,source);
+  assert.equal(p.nodes.get('#audio').paused,false);
+});
+
 test('Trash suggestions group two complete uploads and prefer older FLAC over newer MP3 without selecting or writing', async () => {
   const p = page(); await settle();
   const tracks = Array.from({length: 10}, (_, i) => [

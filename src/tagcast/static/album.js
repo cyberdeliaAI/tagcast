@@ -296,6 +296,7 @@ function renderAlbumView() {
   const doubled = new Map(discs.map(d => [d, twice(d)]));
   const repeated = new Map(discs.map(d => [d, repeatedTrackPositions(d)]));
   const trashAdvice = albumView.trash ? trashSuggestion(discs) : null;
+  const trashYears = albumView.trash ? trashYearAdvice(discs) : null;
   closeAlbumActions();
   $("#breadcrumb").textContent = album.name;
   $("#album-page").innerHTML = `
@@ -311,9 +312,9 @@ function renderAlbumView() {
     <section id="album-information" class="album-information artist-biography" aria-label="${TagcastI18n.html("album.information.label")}" hidden></section>
     <div class="tracks-heading"><h2>${TagcastI18n.html("album.tracks.heading")}</h2><span class="muted track-list-summary">${TagcastI18n.html("common.count.tracks", {count: album.tracks.length})}${total}${formats.label ? ` · ${escapeHtml(formats.label)}` : ""}${canPlay ? "" : ` · ${TagcastI18n.html("album.tracks.localPreview")}`}</span></div>
     <div id="album-lyrics-check" class="lyrics-actions" hidden><span id="album-lyrics-status" class="muted" role="status" aria-live="polite"></span><button type="button" class="text-action" id="album-lyrics-stop" hidden>${TagcastI18n.html("album.lyrics.stop")}</button></div>
-    ${albumView.trash ? trashBar(discs) : ""}<table class="album-tracks album-tracklist ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>${TagcastI18n.html("album.table.title")}</th><th class="track-time">${TagcastI18n.html("tracks.table.time")}</th><th class="track-heart" aria-label="${TagcastI18n.html("album.table.actions")}"></th></tr></thead><tbody>
+    ${albumView.trash ? trashBar(discs, trashYears) : ""}<table class="album-tracks album-tracklist ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>${TagcastI18n.html("album.table.title")}</th><th class="track-time">${TagcastI18n.html("tracks.table.time")}</th><th class="track-heart" aria-label="${TagcastI18n.html("album.table.actions")}"></th></tr></thead><tbody>
       ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>${TagcastI18n.html("common.disc", {disc: d.disc || "?"})}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">${TagcastI18n.html("album.disc.edit", {disc: d.disc || "?"})}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}${albumTrackNumber(t, album.id, canPlay)}</td>
-        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(d), repeated.get(d))}</strong>${albumLyricsLabel(t)}${albumTrackMetadata(album, t, formats)}${trashAdvice ? trashTrackNote(t, trashAdvice) : ""}</td><td class="track-time">${trackDuration(t.length)}${albumView.trash ? trackFormatLabel(t) : ""}</td><td class="track-heart"><div class="track-row-actions">${typeof trackTagControls === "function" ? trackTagControls(album, t) : ""}${queueButton(album.id, t)}${heartButton(t)}</div></td></tr>`).join("")).join("")}
+        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(d), repeated.get(d))}</strong>${albumLyricsLabel(t)}${albumTrackMetadata(album, t, formats)}${trashAdvice ? trashTrackNote(t, trashAdvice, trashYears) : ""}</td><td class="track-time">${trackDuration(t.length)}${albumView.trash ? trackFormatLabel(t) : ""}</td><td class="track-heart"><div class="track-row-actions">${typeof trackTagControls === "function" ? trackTagControls(album, t) : ""}${queueButton(album.id, t)}${heartButton(t)}</div></td></tr>`).join("")).join("")}
     </tbody></table>`;
   if (typeof syncHistory === "function") syncHistory();
   markPlaying();
