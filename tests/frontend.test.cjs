@@ -4075,6 +4075,48 @@ test("tracks go to the trash only after a review, and duplicates can be picked f
   assert.doesNotMatch(p.nodes.get("#album-page").innerHTML, /data-trash-track/);
 });
 
+test('Trash selection and review show each track year without inheriting the album year or changing selection', async () => {
+  const p = page(); await settle();
+  const tracks = [
+    {id: 'year-1983', track: 1, title: 'Original', year: 1983},
+    {id: 'year-1991', track: 1, title: 'Other edition', year: 1991},
+    {id: 'year-zero', track: 2, title: 'Unknown year', year: 0},
+    {id: 'year-missing', track: 3, title: 'Missing year'},
+  ].map(track => ({album_id: '91', artist: 'Artist', length: 180, format: 'FLAC',
+    uploaded_at: '2022-04-05T09:45:47', ...track}));
+  p.run(`useLocal([{id:91,name:"Mixed years",artist:"Artist",year:2004,disc:1,
+    tracks:${JSON.stringify(tracks)}}],"live"); playTracks(state.details.get("91")); render()`);
+  await p.run('openAlbum("91")'); await settle();
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML, /Track year:/);
+  const original = p.json('state.details.get("91").tracks'), queue = p.json('player.queue');
+  const source = p.nodes.get('#audio').src, requests = p.requests.length;
+  const suggestion = p.json('trashSuggestion(albumDiscs()).remove');
+  await p.click({'[data-trash-start]': {}});
+  const html = p.nodes.get('#album-page').innerHTML;
+  assert.match(html, /Original[\s\S]*?Track year: 1983 · Uploaded 2022-04-05 09:45:47/);
+  assert.match(html, /Other edition[\s\S]*?Track year: 1991 · Uploaded 2022-04-05 09:45:47/);
+  assert.equal((html.match(/Track year unknown/g) || []).length, 2);
+  assert.doesNotMatch(html, /Track year: 2004/);
+  assert.deepEqual(p.json('[...albumView.trash]'), []);
+  assert.deepEqual(p.json('trashSuggestion(albumDiscs()).remove'), suggestion);
+  for (const id of ['year-1983', 'year-zero']) {
+    await p.change({matches: s => s === '[data-trash-track]', checked: true, dataset: {trashTrack: id}});
+  }
+  await p.click({'[data-trash-review]': {}});
+  const review = p.nodes.get('#trash-content').innerHTML;
+  assert.match(review, /Track year: 1983 · Uploaded 2022-04-05 09:45:47/);
+  assert.match(review, /Track year unknown/);
+  assert.doesNotMatch(review, /1991|2004|Other edition|Missing year/);
+  assert.equal(p.requests.length, requests, 'Displaying years and reviewing never fetch or write');
+  assert.deepEqual(p.json('state.details.get("91").tracks'), original);
+  assert.deepEqual(p.json('player.queue'), queue);
+  assert.equal(p.nodes.get('#audio').src, source);
+  assert.equal(p.nodes.get('#audio').paused, false);
+  for (const year of [null, '', -1, 1983.5, '<img src=x onerror=alert(1)>']) {
+    assert.equal(p.run(`trashYearLabel({year:${JSON.stringify(year)}})`), 'Track year unknown');
+  }
+});
+
 test('Trash suggestions group two complete uploads and prefer older FLAC over newer MP3 without selecting or writing', async () => {
   const p = page(); await settle();
   const tracks = Array.from({length: 10}, (_, i) => [

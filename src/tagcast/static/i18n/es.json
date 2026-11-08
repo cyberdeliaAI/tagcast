@@ -3230,6 +3230,8 @@
   "trash.suggest.metadataOnly": "Esto compara metadatos, no audio.",
   "trash.suggest.none": "No hay una preferencia clara entre las canciones repetidas.",
   "trash.suggest.prefer": "Se prefiere FLAC sobre MP3 y, después, la subida más reciente en el mismo formato.",
+  "trash.track.year": "Año de la canción: {{year}}",
+  "trash.track.yearUnknown": "Año de la canción desconocido",
   "trash.upload.dateUnknown": "Fecha de subida desconocida",
   "trash.upload.disc": "Disco",
   "trash.upload.format": "Formato",

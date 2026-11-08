@@ -2904,6 +2904,8 @@
   "trash.suggest.metadataOnly": "比較するのはメタデータで、オーディオではありません。",
   "trash.suggest.none": "重複する曲の間に明確な優先順位はありません。",
   "trash.suggest.prefer": "MP3よりFLACを優先し、同じ形式の中では最も新しいアップロードを優先します。",
+  "trash.track.year": "曲の年：{{year}}",
+  "trash.track.yearUnknown": "曲の年不明",
   "trash.upload.dateUnknown": "アップロード日不明",
   "trash.upload.disc": "ディスク",
   "trash.upload.format": "形式",

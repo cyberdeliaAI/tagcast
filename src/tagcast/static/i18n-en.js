@@ -3117,6 +3117,8 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "trash.suggest.metadataOnly": "This compares metadata, not audio.",
   "trash.suggest.none": "No clear preference between the repeated tracks.",
   "trash.suggest.prefer": "Prefer FLAC over MP3, then the newest upload in the same format.",
+  "trash.track.year": "Track year: {{year}}",
+  "trash.track.yearUnknown": "Track year unknown",
   "trash.upload.dateUnknown": "Upload date unknown",
   "trash.upload.disc": "Disc",
   "trash.upload.format": "Format",

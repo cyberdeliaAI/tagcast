@@ -3067,6 +3067,8 @@
   "trash.suggest.metadataOnly": "Hier werden Metadaten verglichen, nicht Audio.",
   "trash.suggest.none": "Keine klare Präferenz zwischen den wiederholten Titeln.",
   "trash.suggest.prefer": "Bevorzugt wird FLAC vor MP3, danach der neueste Upload im selben Format.",
+  "trash.track.year": "Titeljahr: {{year}}",
+  "trash.track.yearUnknown": "Titeljahr unbekannt",
   "trash.upload.dateUnknown": "Upload-Datum unbekannt",
   "trash.upload.disc": "Disc",
   "trash.upload.format": "Format",

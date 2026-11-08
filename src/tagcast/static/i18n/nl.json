@@ -3067,6 +3067,8 @@
   "trash.suggest.metadataOnly": "Dit vergelijkt metadata, geen audio.",
   "trash.suggest.none": "Geen duidelijke voorkeur tussen de herhaalde nummers.",
   "trash.suggest.prefer": "Voorkeur voor FLAC boven MP3, daarna voor de nieuwste upload in hetzelfde formaat.",
+  "trash.track.year": "Trackjaar: {{year}}",
+  "trash.track.yearUnknown": "Trackjaar onbekend",
   "trash.upload.dateUnknown": "Uploaddatum onbekend",
   "trash.upload.disc": "Schijf",
   "trash.upload.format": "Formaat",
