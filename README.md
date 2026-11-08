@@ -108,6 +108,7 @@ Download the archive for your computer from
 | macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
 | Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
 | Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | [DEB](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-linux-amd64.deb) | Install with `sudo apt install ./tagcast-1.6.5-linux-amd64.deb`; open Tagcast from the app menu. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,

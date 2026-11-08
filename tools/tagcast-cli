@@ -1,0 +1,3 @@
+#!/bin/sh
+# The installed desktop package and CLI share the same frozen backend.
+exec /opt/Tagcast/resources/backend/tagcast-cli "$@"

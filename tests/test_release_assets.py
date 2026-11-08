@@ -32,6 +32,35 @@ class ReleaseAssetsTests(unittest.TestCase):
                 report.write_text(json.dumps({**dict.fromkeys(assets.SIGNING, True),
                                               'archive': path.name, 'sha256': digest}))
 
+            if suffix == '.deb':
+                for distribution in ('ubuntu-22.04', 'ubuntu-24.04'):
+                    report = self.reports / f'deb-reports-{distribution}' / 'linux-deb.json'
+                    report.parent.mkdir(parents=True)
+                    report.write_text(json.dumps({
+                        **dict.fromkeys(('installed_startup', 'sandbox', 'desktop_launcher', 'cli', 'removed'), True),
+                        'package': path.name, 'sha256': digest, 'version': '1.2.1',
+                        'distribution': distribution}))
+
+    def test_debian_package_requires_matching_installation_evidence_on_both_distributions(self):
+        for distribution in ('ubuntu-22.04', 'ubuntu-24.04'):
+            report = self.reports / f'deb-reports-{distribution}' / 'linux-deb.json'
+            saved = report.read_text()
+            for key in ('installed_startup', 'sandbox', 'desktop_launcher', 'cli', 'removed',
+                        'package', 'sha256', 'version', 'distribution', 'missing'):
+                with self.subTest(distribution=distribution, key=key):
+                    data = json.loads(saved)
+                    if key == 'missing':
+                        report.unlink()
+                    else:
+                        data[key] = False
+                        report.write_text(json.dumps(data))
+                    with patch.object(assets, 'gh') as gh, patch.object(assets.subprocess, 'run') as run:
+                        with self.assertRaises((ValueError, FileNotFoundError)):
+                            self.invoke()
+                        gh.assert_not_called()
+                        run.assert_not_called()
+                    report.write_text(saved)
+
     def invoke(self):
         assets.publish('v1.2.1', 'tested-commit', self.downloads, self.reports, self.info)
 
@@ -45,7 +74,7 @@ class ReleaseAssetsTests(unittest.TestCase):
             self.invoke()
         self.assertEqual(len(run.call_args_list), 2)
         self.assertEqual(run.call_args_list[0].args[0][:3], ['gh', 'release', 'upload'])
-        self.assertEqual(len(run.call_args_list[0].args[0][4:]), 8)
+        self.assertEqual(len(run.call_args_list[0].args[0][4:]), 10)
         self.assertIn('--draft=false', run.call_args_list[1].args[0])
         self.assertNotIn('--clobber', str(run.call_args_list))
 

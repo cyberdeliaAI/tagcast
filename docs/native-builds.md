@@ -13,6 +13,7 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 | macOS, Intel | `tagcast-1.6.5-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
 | Windows, x64 | `tagcast-1.6.5-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
 | Linux, x64 | `tagcast-1.6.5-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | `tagcast-1.6.5-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.6.5-linux-amd64.deb`; open Tagcast from the app menu. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -41,13 +42,15 @@ and Ubuntu 22.04. Linux needs a graphical desktop and compatible system librarie
 (glibc 2.35 or newer); the download is not a universal Linux executable. Audio
 outputs and codecs depend on Chromium and the operating system.
 
-Ubuntu 24.04's AppArmor/user-namespace policy can prevent Electron from starting
-before the backend appears. The current packaged startup check runs on Ubuntu
-22.04; successful Ubuntu Python/media CI does not verify the extracted package on
-24.04. Test the official extracted archive there before declaring support. Keep
-the bundled Chromium sandbox enabled: do not use `--no-sandbox` or globally
-disable AppArmor/user-namespace restrictions as a workaround. A distribution-
-specific sandbox integration should be reviewed separately on an actual host.
+The Debian package is installed, started with Chromium's sandbox enabled and
+removed on Ubuntu 22.04 and 24.04 in CI. It installs the app in `/opt/Tagcast`,
+a desktop-menu entry, and `tagcast-cli` in `/usr/bin`. Remove with
+`sudo apt remove tagcast`; user settings and sign-in data are retained.
+The package uses electron-builder's standard per-application AppArmor/sandbox
+installation hooks. Do not use `--no-sandbox` or globally disable AppArmor.
+The portable TAR.GZ does not install these hooks: Ubuntu 24.04 can require
+additional sandbox integration for that archive. Other Linux distributions are
+not covered by these Debian installation checks.
 
 ## CLI and Python/browser use
 
@@ -81,6 +84,10 @@ Use `--dir` for an unpacked local test app. Linux checks require a display; CI u
 and reports are under ignored `build/`; verified archives are in `dist/packages/`.
 The app includes Electron/Chromium notices and project/Python/dependency licenses.
 The backend and terminal CLI share one bundled Python runtime, without Tk.
+
+Linux builds also repackage that same hardened app as a `.deb`; no second frontend
+or backend is built. Debian installation/removal reports are tied to the exact
+package checksum and required on both Ubuntu versions before publication.
 
 Every extracted application check starts the actual app with temporary Tagcast
 settings and an isolated Chromium profile, outside the checkout in a path with
@@ -120,7 +127,7 @@ the commit body empty. Keep the release explanation in the pull request and the
 versioned release-notes file instead; the publication check compares the complete
 commit message with the package version.
 
-`Builds` requires its final verification gate, all four archives/checksums and
+`Builds` requires its final verification gate, all four archives/checksums, the Debian package/checksum, installation reports and
 archive-bound signing/notarization reports for both macOS architectures. It uploads
 to the draft, checks the resulting asset set and only then makes the release public.
 Failures leave the draft unpublished. An interrupted partial upload needs explicit
