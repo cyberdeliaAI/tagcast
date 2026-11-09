@@ -12,7 +12,7 @@ function fixture(total = 1200, storage = {}) {
   const document = {activeElement: null, documentElement: {clientHeight: 500}, addEventListener() {}};
   const window = {innerHeight: 500, scrollY: 0, addEventListener(name, fn) { (handlers[name] ||= []).push(fn); },
     scrollTo({top}) { this.scrollY = top; }};
-  let width = 1000, columns = 4, footerHTML = "", button;
+  let width = 1000, columns = 4, footerHTML = "", hostHTML = "", button;
   const makeNode = index => ({index, style: {}, className: "", innerHTML: "", hidden: true,
     setAttribute() { this.hidden = true; }, removeAttribute() { this.hidden = false; },
     contains(value) { return value?.owner === this; },
@@ -24,8 +24,9 @@ function fixture(total = 1200, storage = {}) {
     }});
   const host = {className: "", getBoundingClientRect: () => ({width}),
     querySelector(selector) { return nodes.get(Number(selector.match(/"(\d+)"/)[1])); },
-    set innerHTML(value) { nodes.clear(); this.insertAdjacentHTML("beforeend", value); },
+    set innerHTML(value) { nodes.clear(); hostHTML = ""; this.insertAdjacentHTML("beforeend", value); },
     insertAdjacentHTML(_, value) {
+      hostHTML += value;
       for (const match of value.matchAll(/data-continuous-chunk="(\d+)"[^>]*height:([\d.]+)px/g)) {
         const node = makeNode(Number(match[1])); node.style.height = `${match[2]}px`; nodes.set(node.index, node);
       }
@@ -50,7 +51,7 @@ function fixture(total = 1200, storage = {}) {
   controller.setEnabled(true); update();
   return {controller, context, nodes, window, document, footer, storage, update,
     append(size) { items = Array.from({length: size}, (_, id) => ({id})); controller.restore(size); update(); },
-    get footerHTML() { return footerHTML; }, get button() { return button; },
+    get hostHTML() { return hostHTML; }, get footerHTML() { return footerHTML; }, get button() { return button; },
     cards: () => [...nodes.values()].map(node => node.innerHTML).join("").match(/card:\d+/g) || [],
     query(value) { key = value; update(); }, replace() { scope = {}; update(); },
     flush(delay) { for (const timer of timers.splice(0)) { if (timer.delay === delay) timer.fn(); else timers.push(timer); } },
@@ -152,4 +153,13 @@ test("a previously scheduled reveal stops when its loader disables automatic rec
   assert.equal(f.controller.count, 60);
   f.controller.more();
   assert.equal(f.controller.count, 120, "Manual recovery remains available");
+});
+
+test("first results replace the empty/loading placeholder instead of appending beneath it", () => {
+  const f = fixture(0);
+  assert.equal(f.hostHTML, "empty");
+  f.append(60);
+  assert.doesNotMatch(f.hostHTML, /empty/);
+  assert.equal(f.cards().length, 60);
+  assert.equal(f.nodes.size, 1);
 });
