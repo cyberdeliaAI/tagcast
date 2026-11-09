@@ -31,7 +31,7 @@ class ContinuousBrowse {
   update({items, key, scope, host, footer, layout, render, empty, changed, total = items.length, loadMore = null, auto = true, message = ""}) {
     const identity = `${key}\n${items.map(item => String(this.name === "artists" ? item[0] : item.id ?? item.key)).join("\n")}`;
     const id = item => String(this.name === "artists" ? item[0] : item.id ?? item.key);
-    const grows = this.contextKey === key && this.scope === scope && items.length > this.items.length
+    const grows = this.items.length > 0 && this.contextKey === key && this.scope === scope && items.length > this.items.length
       && this.items.every((item, index) => id(item) === id(items[index]));
     const reset = this.scope !== scope || this.key !== identity && !grows;
     const append = (this.revealing || grows) && !reset && this.host === host && this.layout === layout && host.insertAdjacentHTML;

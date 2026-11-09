@@ -167,3 +167,24 @@ Delivered app: `build/continuous-browsing-expanded-2026-11-09/Tagcast.app` in th
 original checkout. The build log, copied-app validation log, Electron JSON report,
 asset comparison, browser evidence and automated test logs accompany it. No push,
 merge, tag or release was performed.
+
+## Follow-up: loading placeholder on startup
+
+A saved continuous Album artists preference exposed an initial-loading regression:
+transitioning from zero results to the first populated prefix was treated as an
+append, leaving the old loading message above the cards. Navigating away and back
+replaced that markup, explaining the user's workaround.
+
+Appending now requires an existing nonempty result window. The first results replace
+empty/loading markup. A focused regression was run before the change and failed on
+`empty<div data-continuous-chunk=...`; after the fix it passes. The full JavaScript
+suite passes **755 tests**, no failures/skips.
+
+A real Chromium check uses the production `loadLive()` lifecycle, a saved continuous
+preference and a deliberately delayed synthetic library response of 2,623 artists.
+Both initial loading and reload remove the loading message without navigation and
+render exactly 60 cards in one chunk; no runtime errors. No real account is used.
+The Apple Silicon test app is rebuilt with this fix, retaining version 1.6.5 and the
+normal Tagcast name/profile. Package verification and restart evidence are stored
+with `build/continuous-browsing-startup-fix-2026-11-09/Tagcast.app` in the original
+checkout. This is a local ad-hoc signed test copy, not a public release.
