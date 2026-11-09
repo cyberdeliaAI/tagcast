@@ -70,9 +70,30 @@ also failed identically. Upload code/tests were not changed for this feature.
 The cause is not established here; this result must not be reported as an entirely
 green Python suite.
 
-No native package was built, no Windows/Linux/Intel run was performed, and no
-live-account playback or metadata operation was attempted. The new feature does
+No Windows/Linux/Intel run was performed, and no live-account playback or metadata
+operation was attempted. A local Apple Silicon app was subsequently built and checked
+as described below. The new feature does
 not modify the playback engine; no new PCM/media measurement is claimed.
 Browser Find and accessibility navigation only see currently mounted cards;
 the existing library search covers all loaded summaries. Very different card
 heights can refine placeholder estimates as chunks become visible.
+
+## Local Apple Silicon test app
+
+Built from `2669841` on 9 November 2026 with the frozen lockfile, Python 3.14.10,
+PyInstaller 6.22.3 and Electron 44.9.3. The output remains **Tagcast.app 1.6.5**,
+bundle identifier `nl.cyberdelia.tagcast`, with the existing production profile and
+settings paths. The installed app and real user data were not replaced or opened.
+
+- Verified the actual copied arm64 app with `tools/check_electron.py --restart`: initial
+  launch, restart, saved preferences, bundled CLI, same local origin, owned-server
+  shutdown, sandbox/context isolation, mini player and presentation checks passed.
+- All 13 changed frontend/catalogue files in the frozen backend match the source
+  byte for byte, including `continuous-browse.js` and all six language bundles.
+- `codesign --verify --deep --strict` passed. This local test build has an ad-hoc
+  integrity signature; it is not a Developer ID signed/notarized public release.
+- Bundled certifi 2026.10.23 and its CA bundle passed the existing package check.
+- No release, tag, remote push or installation was performed.
+
+Test app: `build/continuous-browsing-2026-11-09/Tagcast.app` in the original checkout.
+The build log and complete bounded Electron validation report accompany it.
