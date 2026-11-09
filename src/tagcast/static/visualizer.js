@@ -38,7 +38,8 @@ function visualizerSupported() {
 function visualizerListeningPage() {
   return typeof listeningMeterActive === "function" && listeningMeterActive();
 }
-function visualizerNeeded() { return visualizerActiveMode() !== "off" || visualizerListeningPage(); }
+function visualizerNeeded() { return visualizerActiveMode() !== "off" || visualizerListeningPage()
+  || typeof musicVisualizationActive === "function" && musicVisualizationActive(); }
 function visualizerStereo() {
   if (!visualizerListeningPage() || nowPlayingPreferences.meter !== "vu" || visualizer.stereo || !visualizer.context) return;
   const context = visualizer.context, splitter = context.createChannelSplitter(2);
@@ -80,7 +81,7 @@ function visualizerSettings() {
     : visualizerHtml("visualizer.settings.unsupported", "This browser cannot share the playing audio with the page, so the spectrum is unavailable. Playback is unaffected.");
   return `<section class="player-visualizer-settings" data-settings-category="playback"><h3>${visualizerHtml("visualizer.settings.heading", "Player spectrum")} <span class="settings-mode">${visualizerHtml("settings.mode.immediate", "Immediate · this browser")}</span></h3>
     <label>${visualizerHtml("visualizer.settings.label", "Spectrum in the compact player")} <select id="player-visualizer-mode" ${supported ? "" : "disabled"}>${options}</select></label>
-    <p class="muted">${note}</p></section>`;
+    <p class="muted">${note}</p></section>${typeof musicVisualizationSettings === "function" ? musicVisualizationSettings() : ""}`;
 }
 
 /**
@@ -234,6 +235,7 @@ function visualizerFrame(time) {
     if (listening && stereo) stereo.analysers.forEach((a, i) => a.getFloatTimeDomainData(stereo.samples[i]));
     drawListeningMeter(dt, listening ? stereo?.samples : null, visualizer.levels);
   }
+  if (typeof drawMusicVisualization === "function") drawMusicVisualization(time, listening);
   drawVisualizer(mode);
   markVisualizerRow(false);
   // Once paused bars have settled, the loop stops until playback resumes.

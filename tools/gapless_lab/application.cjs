@@ -66,6 +66,14 @@ async function run(id, sourceCase, mode) {
     SourceBuffer.prototype.appendBuffer=function(data){if(!injected&&gaplessTrial.active?.started&&!gaplessTrial.active.ready){injected=true;throw new DOMException('Injected test quota failure','QuotaExceededError');}return append.call(this,data);};
    }
    playTracks(album,mode==='evicted-seek'?'2':undefined);await until(()=>!audio.paused&&audio.currentTime>.03);
+   const effect=${JSON.stringify(option('--music-visualization','off'))};
+   if(effect!=='off'){
+    if(!MUSIC_VISUAL_MODES.includes(effect))throw Error('Unknown test visualization');
+    visualPlayerMode='window';openVisualPlayer();setMusicVisualization(effect);
+    await until(()=>Boolean(musicVisualization.canvas)&&musicVisualization.last>0);
+    if(identity!==audio||document.querySelectorAll('audio').length!==1)throw Error('Visualization changed the audio element');
+    observations.push({visualization:effect,sameNativeAudio:true});
+   }
    if(mode==='ordinary'){
     if(gaplessTrial.active||audio.hidden!==spacious||!audio.currentSrc.includes('/api/stream/1'))throw Error('Gapless-off did not use the native stream');
     seekSystemPlayback(.15);await until(()=>!audio.seeking&&audio.currentTime>=.1);
