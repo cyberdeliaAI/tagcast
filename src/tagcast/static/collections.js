@@ -3,6 +3,7 @@
 // Local album favourites and native collections stay separate from metadata drafts and History.
 const collectionsView = {request: 0, query: "", offset: 0, playlist: null, data: null, error: null, loading: false, busy: false, rating: null, favourite: null};
 try { collectionsView.view = localStorage.getItem("tagcast-playlists-view") === "list" ? "list" : "grid"; } catch { collectionsView.view = "grid"; }
+const favouriteAlbumContinuous = new ContinuousBrowse("favourite-albums", "album-favourites");
 const playlistDraft = {body: null, details: null, session: "", selected: null, request: 0};
 
 // Tagcast's own playlist failures keep an English message for logs and carry a code, so
@@ -164,7 +165,13 @@ function renderAlbumFavourites(page) {
   if (state.albumFavouriteError) { page.innerHTML = `<p class="error-box">${escapeHtml(state.albumFavouriteError)}</p>`; return false; }
   collectionsView.offset = Math.min(collectionsView.offset, Math.max(0, Math.ceil(filtered.length / 50) - 1) * 50);
   const search = TagcastI18n.html("playlists.favourites.search");
-  replaceCollections(`<p class="muted">${TagcastI18n.html("playlists.favourites.intro")}</p><div class="sticky-search">${clearableSearchInput("collection-search", `class="collection-search" placeholder="${search}" aria-label="${search}"`, collectionsView.query)}</div><p>${TagcastI18n.html("common.count.albums", {count: filtered.length})}</p><div class="album-grid">${gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50)) || `<div class="empty">${TagcastI18n.html("playlists.favourites.empty")}</div>`}</div>${collectionPages(filtered.length, 50)}`);
+  const continuous = favouriteAlbumContinuous.enabled;
+  if (!continuous || !favouriteAlbumContinuous.revealing) replaceCollections(`<p class="muted">${TagcastI18n.html("playlists.favourites.intro")}</p><div class="sticky-search">${clearableSearchInput("collection-search", `class="collection-search" placeholder="${search}" aria-label="${search}"`, collectionsView.query)}<select id="favourite-albums-display" aria-label="${TagcastI18n.html("continuous.display")}"><option value="50">${TagcastI18n.html("page.perPage.size50")}</option><option value="continuous">${TagcastI18n.html("continuous.mode")}</option></select></div><p id="favourite-album-count"></p><div id="favourite-album-list" class="album-grid">${continuous ? "" : gridView(filtered.slice(collectionsView.offset, collectionsView.offset + 50)) || `<div class="empty">${TagcastI18n.html("playlists.favourites.empty")}</div>`}</div><div id="favourite-album-pagination" class="pagination">${continuous ? "" : collectionPages(filtered.length, 50)}</div>`);
+  $("#favourite-album-count").textContent = TagcastI18n.text("common.count.albums", {count: filtered.length});
+  $("#favourite-albums-display").value = continuous ? "continuous" : "50";
+  if (continuous) favouriteAlbumContinuous.update({items: filtered, key: collectionsView.query, scope: state.details,
+    host: $("#favourite-album-list"), footer: $("#favourite-album-pagination"), layout: "album-grid", render: gridView,
+    empty: `<div class="empty">${TagcastI18n.html("playlists.favourites.empty")}</div>`, changed: () => {renderAlbumFavourites(page); syncHistory();}});
   return true;
 }
 
@@ -181,6 +188,7 @@ function renderPlaylistPage(data) {
 }
 
 async function renderCollections() {
+  favouriteAlbumContinuous.discardStale(state.details);
   if (!["playlists", "album-favourites"].includes(state.screen)) return;
   const page = $("#collections-page");
   if (state.screen === "playlists") $("#breadcrumb").textContent = TagcastI18n.text("playlists.breadcrumb");
@@ -219,6 +227,7 @@ function showCollections(screen, id = null, saved = {}) {
   rememberFavouriteView();
   collectionsView.request += 1; collectionsView.query = saved.query || ""; collectionsView.offset = saved.offset || 0; collectionsView.playlist = id;
   collectionsView.data = null; collectionsView.error = null;
+  if (screen === "album-favourites") favouriteAlbumContinuous.restore(saved.continuousCount);
   showScreen(screen);
 }
 
@@ -380,6 +389,13 @@ async function savePlaylistDraft() {
 
 $("#show-playlists").addEventListener("click", () => showCollections("playlists"));
 $("#queue-save").addEventListener("click", () => openPlaylistSave(player.queue));
+document.addEventListener("change", event => {
+  if (event.target.id !== "favourite-albums-display" || state.screen !== "album-favourites") return;
+  favouriteAlbumContinuous.setEnabled(event.target.value === "continuous");
+  collectionsView.offset = 0; $("#collections-page").innerHTML = "";
+  renderCollections(); $("#favourite-albums-display").focus({preventScroll: true});
+  scrollListingStart("#collections-page");
+});
 document.addEventListener("input", event => {
   if (event.target.id === "collection-search") {
     collectionsView.query = event.target.value; collectionsView.offset = 0; collectionsView.request += 1;

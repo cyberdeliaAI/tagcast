@@ -215,11 +215,11 @@ function viewState(index, from, fromHash = "") {
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
     artistsRandomNames: $("#artists-sort").value === "random" ? artistBrowse.randomNames : [], artistsLibrary: artistBrowse.library,
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
-    collections: {query: collectionsView.query, offset: collectionsView.offset},
+    collections: {query: collectionsView.query, offset: collectionsView.offset, continuousCount: favouriteAlbumContinuous.count},
     favouriteArtists: {query: $("#favourite-artists-search").value, sort: $("#favourite-artists-sort").value, page: favouriteArtists.page},
     recentSearch: $("#recently-played-search").value, recentPage: recentlyPlayed.page,
     guide: {query: albumGuide.query, filter: albumGuide.filter, decade: albumGuide.decade, sort: albumGuide.sort, page: albumGuide.page},
-    browse: {query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
+    browse: {continuousCount: browseContinuous().count, query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
 }
 
 // Remember browsing context only within this loaded library.

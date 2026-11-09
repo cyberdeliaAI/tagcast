@@ -44,11 +44,12 @@ function fixture(total = 1200, storage = {}) {
   vm.runInContext(readFileSync(path.join(__dirname, "../src/tagcast/static/continuous-browse.js"), "utf8"), context);
   const controller = vm.runInContext("albumContinuous", context);
   let key = "query", scope = {};
-  const items = Array.from({length: total}, (_, id) => ({id}));
+  let items = Array.from({length: total}, (_, id) => ({id}));
   const render = rows => rows.map(row => `card:${row.id};`).join("");
   const update = () => controller.update({items, key, scope, host, footer, layout: "album-grid", render, empty: "empty", changed: update});
   controller.setEnabled(true); update();
   return {controller, context, nodes, window, document, footer, storage, update,
+    append(size) { items = Array.from({length: size}, (_, id) => ({id})); controller.restore(size); update(); },
     get footerHTML() { return footerHTML; }, get button() { return button; },
     cards: () => [...nodes.values()].map(node => node.innerHTML).join("").match(/card:\d+/g) || [],
     query(value) { key = value; update(); }, replace() { scope = {}; update(); },
@@ -127,4 +128,28 @@ test("empty and small lists terminate; preferences remain optional and storage f
   small.controller.discardStale({});
   assert.equal(small.controller.items.length, 0, "An inactive page releases the previous library");
   assert.equal(small.controller.scope, null);
+});
+
+
+test("growing server prefixes preserve mounted cards and keep the DOM bounded", () => {
+  const f = fixture(60), first = f.nodes.get(0);
+  for (let count = 120; count <= 600; count += 60) f.append(count);
+  assert.equal(f.controller.count, 600);
+  assert.equal(f.nodes.get(0), first);
+  assert.equal(f.cards().length, 60);
+  f.window.scrollY = 12000; f.controller.refresh();
+  assert.ok(f.cards().length <= 120);
+  assert.equal(new Set(f.cards()).size, f.cards().length);
+  f.window.scrollY = 0; f.controller.refresh();
+  assert.equal(f.cards()[0], "card:0");
+});
+
+test("a previously scheduled reveal stops when its loader disables automatic recovery", () => {
+  const f = fixture(180);
+  f.window.scrollY = 1400; f.controller.refresh();
+  f.controller.auto = false;
+  f.flush(80);
+  assert.equal(f.controller.count, 60);
+  f.controller.more();
+  assert.equal(f.controller.count, 120, "Manual recovery remains available");
 });

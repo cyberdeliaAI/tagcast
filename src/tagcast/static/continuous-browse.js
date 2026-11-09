@@ -1,9 +1,11 @@
 "use strict";
 
-// Read-only windows over the compact summaries already held by the page. No library requests.
+// Read-only windows over compact summaries. Group overviews may explicitly supply a bounded loader.
+const continuousBrowsers = new Map();
 // Sixty cards form complete rows at every existing grid breakpoint (2, 3, 4 or 5 columns).
 class ContinuousBrowse {
   constructor(name, screen) {
+    continuousBrowsers.set(name, this);
     this.name = name; this.screen = screen; this.batch = 60; this.count = 60;
     this.items = []; this.key = null; this.scope = null; this.heights = new Map();
     this.mounted = new Set(); this.pendingCount = null; this.scheduled = false;
@@ -17,7 +19,7 @@ class ContinuousBrowse {
     try { localStorage.setItem(`tagcast-${this.name}-continuous`, String(enabled)); } catch { /* Memory-only fallback. */ }
   }
   clear() {
-    this.key = null; this.scope = null; this.pendingCount = null; this.count = this.batch;
+    this.key = null; this.contextKey = null; this.scope = null; this.pendingCount = null; this.count = this.batch;
     this.items = []; this.heights.clear(); this.mounted.clear(); this.estimate = 0;
   }
   discardStale(scope) { if (this.scope && this.scope !== scope) this.clear(); }
@@ -25,17 +27,22 @@ class ContinuousBrowse {
     this.pendingCount = Number.isSafeInteger(count) && count > 0 ? Math.min(count, 100000) : this.batch;
   }
   selection(items) { return items.slice(0, this.count); }
-  update({items, key, scope, host, footer, layout, render, empty, changed}) {
-    const identity = `${key}\n${items.map(item => String(this.name === "artists" ? item[0] : item.id)).join("\n")}`;
-    const reset = this.key !== identity || this.scope !== scope;
-    const append = this.revealing && !reset && this.host === host && this.layout === layout && host.insertAdjacentHTML;
+  active() { return state.screen === this.screen && (!this.isActive || this.isActive()); }
+  update({items, key, scope, host, footer, layout, render, empty, changed, total = items.length, loadMore = null, auto = true, message = ""}) {
+    const identity = `${key}\n${items.map(item => String(this.name === "artists" ? item[0] : item.id ?? item.key)).join("\n")}`;
+    const id = item => String(this.name === "artists" ? item[0] : item.id ?? item.key);
+    const grows = this.contextKey === key && this.scope === scope && items.length > this.items.length
+      && this.items.every((item, index) => id(item) === id(items[index]));
+    const reset = this.scope !== scope || this.key !== identity && !grows;
+    const append = (this.revealing || grows) && !reset && this.host === host && this.layout === layout && host.insertAdjacentHTML;
     if (reset) {
       this.count = this.batch; this.heights.clear(); this.estimate = 0;
       this.key = identity; this.scope = scope;
     }
+    this.contextKey = key; this.key = identity;
     if (this.pendingCount !== null) { this.count = this.pendingCount; this.pendingCount = null; }
     this.count = Math.min(items.length, Math.max(this.batch, this.count));
-    Object.assign(this, {items, host, footer, layout, render, changed});
+    Object.assign(this, {items, host, footer, layout, render, changed, total, loadMore, auto, message});
     host.className = "continuous-browse";
     this.width = host.getBoundingClientRect().width;
     const chunks = Math.ceil(this.count / this.batch);
@@ -63,11 +70,21 @@ class ContinuousBrowse {
     if (height > 0) { this.heights.set(index, height); if (!index) this.estimate = height; }
   }
   renderFooter() {
-    this.footer.innerHTML = `<span role="status">${TagcastI18n.html("continuous.progress", {shown: this.count, total: this.items.length})}</span>`
-      + (this.count < this.items.length ? `<button type="button" class="button small" data-continuous-more="${this.name}">${TagcastI18n.html("continuous.more")}</button>` : "");
+    this.footer.innerHTML = `<span role="status">${TagcastI18n.html("continuous.progress", {shown: this.count, total: this.total})}</span>`
+      + (this.count < this.total ? `<button type="button" class="button small" data-continuous-more="${this.name}">${TagcastI18n.html("continuous.more")}</button>` : "") + this.message;
   }
   more() {
-    if (!this.enabled || this.count >= this.items.length) return;
+    if (!this.enabled || !this.active() || this.count >= this.total) return;
+    if (this.count >= this.items.length && this.loadMore) {
+      const focused = document.activeElement?.dataset?.continuousMore === this.name;
+      return this.loadMore().then(() => {
+        if (focused && this.active()) {
+          const target = this.footer.querySelector("[data-continuous-more]") || this.footer;
+          if (target === this.footer) target.setAttribute("tabindex", "-1");
+          target.focus({preventScroll: true});
+        }
+      });
+    }
     const focused = document.activeElement?.dataset?.continuousMore === this.name;
     // Reuse the ordinary render so selection labels/history reflect the exact revealed scope.
     this.count = Math.min(this.items.length, this.count + this.batch);
@@ -80,7 +97,7 @@ class ContinuousBrowse {
     }
   }
   resize() {
-    if (!this.enabled || state.screen !== this.screen || !this.host) return;
+    if (!this.enabled || !this.active() || !this.host) return;
     // Placeholder heights depend on the column count and wrapped titles. Re-measure
     // after a width change, retaining the visible chunk's relative scroll position.
     const width = this.host.getBoundingClientRect().width;
@@ -101,13 +118,13 @@ class ContinuousBrowse {
     this.schedule();
   }
   schedule() {
-    if (this.scheduled || !this.enabled || state.screen !== this.screen) return;
+    if (this.scheduled || !this.enabled || !this.active()) return;
     this.scheduled = true;
     // A frame-sized timeout also works in browser/desktop environments without an observer.
     setTimeout(() => { this.scheduled = false; this.refresh(); }, 16);
   }
   refresh() {
-    if (!this.enabled || state.screen !== this.screen || !this.host || !this.items.length) return;
+    if (!this.enabled || !this.active() || !this.host || !this.items.length) return;
     const height = window.innerHeight || document.documentElement.clientHeight;
     const chunks = Math.ceil(this.count / this.batch), wanted = new Set();
     for (let index = 0; index < chunks; index++) {
@@ -131,12 +148,12 @@ class ContinuousBrowse {
     if (this.footer.getBoundingClientRect().top < height + 500 && this.footer.getBoundingClientRect().bottom > 0) this.scheduleMore();
   }
   scheduleMore() {
-    if (this.moreScheduled || this.count >= this.items.length) return;
+    if (this.moreScheduled || !this.auto || this.count >= this.total) return;
     this.moreScheduled = true;
     const key = this.key, scope = this.scope;
     setTimeout(() => {
       this.moreScheduled = false;
-      if (this.key === key && this.scope === scope && this.enabled && state.screen === this.screen && this.footer.getBoundingClientRect().top < (window.innerHeight || document.documentElement.clientHeight) + 500) this.more();
+      if (this.key === key && this.scope === scope && this.enabled && this.auto && this.active() && this.footer.getBoundingClientRect().top < (window.innerHeight || document.documentElement.clientHeight) + 500) this.more();
     }, 80);
   }
 }
@@ -144,5 +161,5 @@ const albumContinuous = new ContinuousBrowse("albums", "albums");
 const artistContinuous = new ContinuousBrowse("artists", "artists");
 document.addEventListener("click", event => {
   const button = event.target.closest("[data-continuous-more]");
-  if (button) (button.dataset.continuousMore === "artists" ? artistContinuous : albumContinuous).more();
+  if (button) continuousBrowsers.get(button.dataset.continuousMore)?.more();
 });

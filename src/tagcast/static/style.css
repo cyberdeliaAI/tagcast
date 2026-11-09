@@ -659,7 +659,7 @@ body.visual-player-open{overflow:hidden}
 #playlist-dialog,#devices-dialog{width:min(760px,calc(100vw - 32px));max-height:90vh;overflow:auto}
 #playlist-dialog-content form>label,#playlist-dialog-content form>.clearable-field,#remote-controls>label{display:flex;flex-direction:column;gap:8px;margin:16px 0}.playlist-review-tracks{max-height:42vh;overflow:auto;margin:18px 0}.playlist-review-tracks .checkline{margin-bottom:10px}
 #player-repeat{min-width:36px;font-size:13px}.now-playing-footer{gap:8px;flex-wrap:wrap}
-.collection-search,#playlist-form input:not([type=checkbox]),#playlist-form textarea,#playlist-form select,#remote-controls input:not([type=range]),#remote-controls select,.playback-settings select{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
+.collection-search,#favourite-albums-display,#playlist-form input:not([type=checkbox]),#playlist-form textarea,#playlist-form select,#remote-controls input:not([type=range]),#remote-controls select,.playback-settings select{font:inherit;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--palette-line,#d7dfd0);border-radius:6px;padding:11px 13px;min-height:40px}
 #collections-page>.clearable-search+.track-results{margin-top:16px}
 .collection-search{width:min(560px,100%)}#playlist-form textarea{min-height:80px;resize:vertical}.playback-settings>label:has(select){display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .page-intro p.decade-intro{max-width:75ch;margin-bottom:12px;color:var(--ink)}
@@ -1185,3 +1185,9 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 .continuous-browse > [data-continuous-chunk] {margin-bottom:27px}
 .continuous-browse-chunk.artists-grid {padding-bottom:0}
 .continuous-browse-chunk .album-table {margin:0}
+
+/* Group shelves and favourite albums share the optional windowed browse display. */
+#browse-toolbar { flex-wrap: wrap; }
+#browse-toolbar select { max-width: 100%; }
+#collections-page .sticky-search:has(#favourite-albums-display) { display: flex; gap: 12px; flex-wrap: wrap; }
+#collections-page .sticky-search:has(#favourite-albums-display) > .clearable-search { flex: 1; min-width: min(100%, 220px); }

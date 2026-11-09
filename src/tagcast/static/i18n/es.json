@@ -1881,7 +1881,6 @@
   "page.artists.search": "Buscar artistas del álbum",
   "page.browse.deleteTag": "Eliminar etiqueta…",
   "page.browse.newTag": "Nueva etiqueta…",
-  "page.browse.perPage": "Elementos por página",
   "page.browse.randomTitle": "Reproducir un álbum completo elegido al azar entre todos los álbumes que coinciden en este grupo; reemplaza la cola",
   "page.browse.region": "Explorar biblioteca",
   "page.browse.renameTag": "Cambiar nombre de la etiqueta…",
