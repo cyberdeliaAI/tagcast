@@ -632,17 +632,25 @@ function renderLibrary(relabel = false) {
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
-  $("#per-page").value = String(size);
+  $("#per-page").value = albumContinuous.enabled ? "continuous" : String(size);
   state.page = Math.min(state.page, maxPage);
   $("#results-count").textContent = state.artist ? TagcastI18n.text("library.results.byArtist", {count: items.length, artist: state.artist})
     : TagcastI18n.text("library.results.collection", {count: items.length});
-  const page = items.slice(state.page * size, (state.page + 1) * size);
-  $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
-  $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || (state.loading ? `<div class="empty"><span class="spinner"></span>${TagcastI18n.html("library.empty.loading")}</div>` : `<div class="empty">${TagcastI18n.html("library.empty.noMatch")}</div>`);
+  const empty = state.loading ? `<div class="empty"><span class="spinner"></span>${TagcastI18n.html("library.empty.loading")}</div>` : `<div class="empty">${TagcastI18n.html("library.empty.noMatch")}</div>`;
+  if (albumContinuous.enabled) {
+    albumContinuous.update({items, key: JSON.stringify([state.artist, state.view, $("#search").value, $("#filter").value, $("#sort").value]),
+      scope: state.details, host: $("#albums"), footer: $("#pagination"), layout: state.view === "list" ? "album-list" : "album-grid",
+      render: state.view === "list" ? listView : gridView, empty, changed: render});
+  } else {
+    $("#albums").className = state.view === "list" ? "album-list" : "album-grid";
+    const page = items.slice(state.page * size, (state.page + 1) * size);
+    $("#albums").innerHTML = (page.length ? (state.view === "list" ? listView(page) : gridView(page)) : "") || empty;
+  }
+  const page = albumContinuous.enabled ? albumContinuous.selection(items) : items.slice(state.page * size, (state.page + 1) * size);
   $("#select-page").checked = page.length > 0 && page.every(isSelected);
   $("#select-page").indeterminate = page.some(isSelected) && !page.every(isSelected);
   $("#select-page").disabled = !page.length || saving || checking > 0;
-  $("#select-page-label").textContent = TagcastI18n.text(page.length && page.every(isSelected) ? "library.selectPage.deselect" : "library.selectPage.select", {count: page.length});
+  $("#select-page-label").textContent = TagcastI18n.text(albumContinuous.enabled ? (page.length && page.every(isSelected) ? "continuous.deselectLoaded" : "continuous.selectLoaded") : (page.length && page.every(isSelected) ? "library.selectPage.deselect" : "library.selectPage.select"), {count: page.length});
   $("#selection-bar").hidden = !state.selected.size;
   if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
@@ -655,7 +663,7 @@ function renderLibrary(relabel = false) {
   const visible = new Set(items), outside = chosen.filter(a => !visible.has(a)).length;
   $("#selection-count").textContent = [TagcastI18n.text("library.selection.count", {count: chosen.length}), state.artist,
     outside ? TagcastI18n.text("library.selection.outside", {count: outside}) : ""].filter(Boolean).join(" · ");
-  $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: state.page + 1, pages: maxPage + 1})}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
+  if (!albumContinuous.enabled) $("#pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-page="-1" ${state.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: state.page + 1, pages: maxPage + 1})}</span><button class="button small" data-page="1" ${state.page === maxPage ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
 }
 
 // On an artist's page the artist image takes the place of the library total.
@@ -1268,7 +1276,8 @@ document.addEventListener("keydown", event => {
 document.addEventListener("change", event => {
   if (event.target.id === "apply-track-year-default") setTrackYearDefault(event.target.checked);
   if (event.target.id === "select-page") {
-    const page = filteredAlbums().slice(state.page * pageSize(), (state.page + 1) * pageSize());
+    const items = filteredAlbums();
+    const page = albumContinuous.enabled ? albumContinuous.selection(items) : items.slice(state.page * pageSize(), (state.page + 1) * pageSize());
     for (const album of page) for (const id of itemIds(album)) {
       if (event.target.checked) state.selected.add(id); else state.selected.delete(id);
     }
@@ -1308,9 +1317,14 @@ for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
 });
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {
+  if (event.target.value === "continuous") { albumContinuous.setEnabled(true); state.page = 0; render(); scrollListingStart("#albums-page"); return; }
   const size = Number(event.target.value);
+  if (![24, 50, 100, 200].includes(size)) return;
+  const wasContinuous = albumContinuous.enabled;
+  albumContinuous.setEnabled(false);
   state.page = Math.floor(state.page * pageSize() / size); state.perPage = size;
   rememberPageSize("tagcast-per-page", size); render();
+  if (wasContinuous) scrollListingStart("#albums-page");
 });
 $("#search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.page = 0; render(); }, 150); });
 $("#clear-selection").addEventListener("click", () => { state.selected.clear(); render(); });

@@ -1176,3 +1176,12 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
   .album-split-layout { grid-template-columns: minmax(0, 1fr); }
   .album-split-tracks { max-height: 40vh; }
 }
+
+/* Windowed browsing shares document scrolling and the normal card/list renderers. */
+#artists-page .toolbar, #albums-page .toolbar {flex-wrap:wrap}
+#artists-page .toolbar select, #albums-page .toolbar select {max-width:100%}
+#albums-page .page-intro > div:first-child {min-width:0}
+.continuous-browse {display:block; overflow-anchor:auto}
+.continuous-browse > [data-continuous-chunk] {margin-bottom:27px}
+.continuous-browse-chunk.artists-grid {padding-bottom:0}
+.continuous-browse-chunk .album-table {margin:0}

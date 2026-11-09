@@ -12544,3 +12544,65 @@ test('confirmed split read-back updates summaries without changing the audio que
     else assert.match(p.nodes.get('#album-split-status').textContent,/confirmed/);
   }
 });
+
+test("continuous album/artist browsing is optional, independently persisted and keeps numeric paging choices", async () => {
+  const storage = {"tagcast-per-page":"50", "tagcast-artists-per-page":"100"};
+  const p = page({storage}); await settle();
+  p.run(`state.albums=Array.from({length:230},(_,i)=>({...state.albums[0],id:String(i+1000),artist:"Artist "+String(i).padStart(3,"0")})); setArtist(null)`);
+  assert.equal(p.run("albumContinuous.enabled"), false);
+  assert.equal(p.nodes.get("#per-page").value, "50");
+  p.nodes.get("#per-page").value = "continuous";
+  await p.nodes.get("#per-page").emit("change", {target:p.nodes.get("#per-page")});
+  assert.equal(p.run("albumContinuous.count"), 60);
+  p.run("albumContinuous.more(); albumContinuous.more()");
+  assert.equal(p.run("albumContinuous.count"), 180);
+  assert.match(p.nodes.get("#pagination").innerHTML, /Showing 180 of 230/);
+  assert.equal(storage["tagcast-per-page"], "50");
+  p.run("showArtistBrowse()");
+  assert.equal(p.nodes.get("#artists-per-page").value, "100");
+  p.nodes.get("#artists-per-page").value="continuous";
+  await p.nodes.get("#artists-per-page").emit("change", {target:p.nodes.get("#artists-per-page")});
+  assert.equal(p.run("artistContinuous.count"), 60);
+  const again=page({storage}); await settle();
+  assert.equal(again.run("albumContinuous.enabled && artistContinuous.enabled"), true);
+  assert.equal(again.run("pageSize()"), 50);
+  assert.equal(again.run("artistBrowse.pageSize"), 100);
+  p.nodes.get("#per-page").value="50";
+  await p.nodes.get("#per-page").emit("change", {target:p.nodes.get("#per-page")});
+  assert.equal(p.run("albumContinuous.enabled"),false);
+  assert.equal(p.run("artistContinuous.enabled"),true);
+  assert.match(p.nodes.get("#pagination").innerHTML,/Page 1 of 5/);
+});
+
+test("select loaded albums never implicitly selects later results or changes playback or requests", async () => {
+  const p=page(); await settle();
+  p.run(`state.albums=Array.from({length:230},(_,i)=>({...state.albums[0],id:String(i+1000),artist:"Artist "+String(i).padStart(3,"0")}));
+    albumContinuous.setEnabled(true);setArtist(null)`);
+  const requests=p.requests.length, audio=p.nodes.get("#audio");
+  await p.change({id:"select-page",checked:true,matches:()=>false});
+  assert.equal(p.run("state.selected.size"),60);
+  p.run("albumContinuous.more()");
+  assert.equal(p.run("state.selected.size"),60);
+  assert.equal(p.nodes.get("#select-page").indeterminate,true);
+  assert.match(p.nodes.get("#select-page-label").textContent,/Select loaded albums \(120\)/);
+  p.nodes.get("#search").value="Artist 229"; p.run("render()");
+  assert.equal(p.run("albumContinuous.count"),1);
+  assert.equal(p.run("state.selected.size"),60,"Filtered-out selections remain available for review");
+  assert.equal(p.requests.length,requests,"Scrolling and filtering only use the loaded summaries");
+  assert.equal(p.nodes.get("#audio"),audio);
+  assert.equal(p.run("player.queue.length"),0);
+});
+
+test("continuous browsing restores revealed scope and scroll on Back from a cached album", async () => {
+  const p=page(); await settle();
+  p.run(`const first=state.albums[0]; state.albums=Array.from({length:230},(_,i)=>({...first,id:i?String(i+1000):first.id,artist:"Artist "+String(i).padStart(3,"0")}));
+    albumContinuous.setEnabled(true);setArtist(null);albumContinuous.more();albumContinuous.more();window.scrollY=3200;rememberNavigationScroll()`);
+  const id=p.run("state.albums[0].id");
+  await p.run(`openAlbum(${JSON.stringify(id)})`);
+  assert.equal(p.run("state.screen"),"album");
+  p.history.back(); await settle(); p.flushTimers(0);
+  assert.equal(p.run("state.screen"),"albums");
+  assert.equal(p.run("albumContinuous.count"),180);
+  assert.equal(p.run("window.scrollY"),3200);
+  assert.equal(p.nodes.get("#per-page").value,"continuous");
+});
