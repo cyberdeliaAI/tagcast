@@ -42,7 +42,8 @@ Electron permission changes or sandbox changes are introduced.
 ## Validation — 10 November 2026
 
 All execution below was on macOS Apple Silicon. No Windows, Linux or macOS Intel
-execution, real-account music test or packaged Electron app build is claimed.
+execution or real-account music test is claimed. A local Apple Silicon packaged
+app was subsequently built and checked as described below.
 
 - Frontend: `node --test tests/*.test.cjs` — **768 passed**.
 - Electron: `node --test electron/tests/*.test.cjs` — **47 passed**.
@@ -70,9 +71,28 @@ execution, real-account music test or packaged Electron app build is claimed.
   high-rate startup. These are state/compatibility checks, not PCM capture tests.
   Electron 44.9.0 / Chromium 152.0.7977.167 was used for these media runs.
 - A wheel was built and inspected: both visualization assets, renderer/license and
-  all six language catalogues are included. The existing Electron backend spec
-  includes the same static tree; an actual packaged desktop check remains to do
-  before release.
+  all six language catalogues are included.
+
+### Local Apple Silicon test application
+
+A production-named **Tagcast.app 1.6.5** was built with the frozen runtime lockfile,
+PyInstaller 6.22.3 and Electron 44.9.3. The delivered copy is at
+`build/music-visualizations-2026-11-10/Tagcast.app` in the original checkout.
+The installed application was not replaced. Its production bundle identifier
+`nl.cyberdelia.tagcast` and ordinary profile/settings locations are preserved, so
+quit another Tagcast instance before opening this test copy.
+
+The delivered app passed `tools/check_electron.py ... 1.6.5 --restart` using
+throwaway settings/profile directories: bundled CLI help/version, initial launch,
+restart with saved preferences and the same local origin, Mini Player operations,
+shared audio/queue, theme checks, sandbox/context isolation and owned-server shutdown.
+All 89 bundled static files match their source bytes, including the visualization
+renderer, license and six language catalogues. The executable is arm64 and passes
+`codesign --verify --deep --strict`. The local test build is ad-hoc signed and is
+not notarized; no Developer ID signing or public release is claimed.
+Bundled certifi 2026.10.23 and its CA bundle passed the extracted-app checks
+(118 roots; the removed compromised root is absent). Real-account visualizer
+listening remains a user test, distinct from synthetic browser/media checks.
 
 ### Existing unrelated Python failure
 
