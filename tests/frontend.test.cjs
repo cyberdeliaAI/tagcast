@@ -3291,6 +3291,53 @@ test("Random album order spans every page, preserves filtered subsets and leaves
   assert.match(p.nodes.get('#albums-browse-options').innerHTML, /Random album order/);
 });
 
+
+test("Random order shortcut reshuffles the filtered shelf and preserves playback and selections", async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"), "100");
+    state.albums=Array.from({length:150},(_,i)=>({...state.albums[0],id:String(i),
+      name:"Album "+String(i).padStart(3,"0"),artist:i%2?"Other":"Test artist",disc:1}));
+    state.artist="Test artist"; state.selected.add("1");
+    $("#search").value="Album"; $("#filter").value="all"; $("#sort").value="title";
+    Math.random=()=>0; showScreen("albums"); state.page=2; render()`);
+  const queue=p.json("player.queue"), audio=p.nodes.get("#audio"), requests=p.requests.length;
+  assert.equal(p.nodes.get("#albums-random-order").disabled,false);
+  await p.nodes.get("#albums-random-order").emit("click");
+  const first=p.json("filteredAlbums().map(a=>a.id)");
+  assert.equal(first.length,75);
+  assert.equal(p.nodes.get("#sort").value,"random");
+  assert.equal(p.run("state.page"),0);
+  assert.match(p.nodes.get("#albums-browse-options").innerHTML,/Random album order/);
+  p.run("Math.random=()=>0.999");
+  await p.nodes.get("#albums-random-order").emit("click");
+  assert.notDeepEqual(p.json("filteredAlbums().map(a=>a.id)"),first,"Clicking again reshuffles immediately");
+  assert.deepEqual(p.json("[state.artist,$('#search').value,$('#filter').value,[...state.selected]]"),["Test artist","Album","all",["1"]]);
+  assert.deepEqual(p.json("player.queue"),queue);
+  assert.equal(p.nodes.get("#audio"),audio);
+  assert.equal(audio.src,"/api/stream/100?quality=128");
+  assert.equal(audio.paused,false);
+  assert.equal(p.requests.length,requests,"The shortcut only sorts loaded summaries");
+  p.nodes.get("#per-page").value="continuous";
+  await p.nodes.get("#per-page").emit("change",{target:p.nodes.get("#per-page")});
+  p.run("albumContinuous.more();Math.random=()=>0");
+  assert.equal(p.run("albumContinuous.count"),75);
+  await p.nodes.get("#albums-random-order").emit("click");
+  assert.equal(p.run("albumContinuous.count"),60,"Reshuffling resets continuous browsing to its first chunk");
+  assert.equal(p.nodes.get("#per-page").value,"continuous");
+});
+
+test("Random order shortcut is unavailable for loading, empty and single-album results", async () => {
+  const p=page(); await settle();
+  p.run("const shortcutAlbums=[...state.albums]");
+  for(const setup of ['state.albums=[]','state.albums=shortcutAlbums.slice(0,1)','state.albums=shortcutAlbums;state.loading=true']) {
+    p.run(`${setup};render()`);
+    assert.equal(p.nodes.get("#albums-random-order").disabled,true,setup);
+    const before=p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])");
+    await p.nodes.get("#albums-random-order").emit("click");
+    assert.equal(p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])"),before);
+  }
+});
+
 test("Random album order restores each history shuffle, follows metadata read-backs and resets across libraries", async () => {
   const p = page(); await settle();
   await p.nodes.get("#all-albums").emit("click");
