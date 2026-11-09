@@ -273,3 +273,22 @@ test("a retained hidden listening queue cannot steal the visible album spectrum"
   assert.equal(p.log.captures,1,'Navigation never creates a second audio capture');
   assert.equal(p.audio.paused,false);
 });
+
+
+test("expanded effects share the compact analyser and clock without another audio output", () => {
+  const p = page({storage: {"tagcast-player-visualizer": "off"}});
+  p.run("let effectOpen=true;let effectFrames=0;function musicVisualizationActive(){return effectOpen;}function drawMusicVisualization(time,listening){if(listening)effectFrames++;}");
+  p.stream.tracks.push(p.track("one"));
+  p.audio.paused = false; p.audio.emit("play"); p.frames(5);
+  assert.equal(p.log.captures, 1);
+  assert.equal(p.log.contexts.length, 1);
+  assert.ok(p.run("effectFrames") > 0);
+  assert.deepEqual(p.log.contexts[0].analyser.connections, []);
+  p.run('setVisualizerMode("title")'); p.frames(2);
+  assert.equal(p.log.captures, 1, "compact and fullscreen use the same capture");
+  p.run('effectOpen=false;applyVisualizer()');
+  assert.equal(p.log.contexts[0].state, "running", "compact spectrum retains its shared graph");
+  p.run('setVisualizerMode("off")');
+  assert.equal(p.log.contexts[0].state, "closed");
+  assert.equal(p.audio.paused, false);
+});

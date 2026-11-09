@@ -1,0 +1,2914 @@
+{
+  "date": "2026-11-10",
+  "baseline": "136e178",
+  "platform": "darwin",
+  "arch": "arm64",
+  "frontend": {
+    "passed": 768
+  },
+  "electron": {
+    "passed": 47
+  },
+  "python": {
+    "passed": 909,
+    "failed": 1,
+    "subtests": 2512,
+    "baseline_reproduces_failure": true,
+    "failure": "TransferTests.test_file_changed_while_sending_is_cut_off_and_uncertain"
+  },
+  "media": {
+    "smoke": {
+      "complete": true,
+      "expected": [
+        "same-44100-16-reference",
+        "same-44100-16",
+        "same-44100-24-reference",
+        "same-44100-24",
+        "same-48000-16-reference",
+        "same-48000-16",
+        "same-48000-24-reference",
+        "same-48000-24",
+        "same-96000-24-reference",
+        "same-96000-24",
+        "same-192000-24-reference",
+        "same-192000-24",
+        "same-small-block-reference",
+        "same-small-block",
+        "mono-reference",
+        "mono",
+        "short-delayed-third-reference",
+        "short-delayed-third",
+        "startup-long-reference",
+        "startup-long",
+        "repeat-track-reference",
+        "repeat-track",
+        "repeat-queue-reference",
+        "repeat-queue"
+      ],
+      "versions": {
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167",
+        "node": "24.22.0"
+      },
+      "results": [
+        {
+          "id": "same-44100-16-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 105344,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-44100-16",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 105472,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-44100-24-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 0,
+            "frames": 105344,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-44100-24",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 256,
+            "frames": 105472,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-48000-16-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 114688,
+            "extraSignalFrames": 0,
+            "expectedFrames": 102341,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 35057,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 63408,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 35057,
+                "observed": 35057,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 63408,
+                "observed": 63408,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-48000-16",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 114944,
+            "extraSignalFrames": 0,
+            "expectedFrames": 102341,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 35057,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 63408,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 35057,
+                "observed": 35057,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 63408,
+                "observed": 63408,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-48000-24-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 256,
+            "frames": 114944,
+            "extraSignalFrames": 0,
+            "expectedFrames": 102341,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 35057,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 63408,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 35057,
+                "observed": 35057,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 63408,
+                "observed": 63408,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-48000-24",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 256,
+            "frames": 114944,
+            "extraSignalFrames": 0,
+            "expectedFrames": 102341,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 35057,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 63408,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 35057,
+                "observed": 35057,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 63408,
+                "observed": 63408,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-96000-24-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 0,
+            "frames": 228864,
+            "extraSignalFrames": 0,
+            "expectedFrames": 204581,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 70097,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 126768,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 70097,
+                "observed": 70097,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 126768,
+                "observed": 126768,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-96000-24",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 512,
+            "frames": 229376,
+            "extraSignalFrames": 0,
+            "expectedFrames": 204581,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 70097,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 126768,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 70097,
+                "observed": 70097,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 126768,
+                "observed": 126768,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-192000-24-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 0,
+            "frames": 457728,
+            "extraSignalFrames": 0,
+            "expectedFrames": 409061,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 140177,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 253488,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 140177,
+                "observed": 140177,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 253488,
+                "observed": 253488,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-192000-24",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 1024,
+            "frames": 458752,
+            "extraSignalFrames": 0,
+            "expectedFrames": 409061,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 140177,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 253488,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 140177,
+                "observed": 140177,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 253488,
+                "observed": 253488,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-small-block-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 105344,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "same-small-block",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 105472,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "mono-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 82176,
+            "extraSignalFrames": 0,
+            "expectedFrames": 71003,
+            "channels": 1,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 33000,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 33000,
+                "observed": 33000,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "mono",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 82432,
+            "extraSignalFrames": 0,
+            "expectedFrames": 71003,
+            "channels": 1,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 33000,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 33000,
+                "observed": 33000,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "short-delayed-third-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 121600,
+            "extraSignalFrames": 0,
+            "expectedFrames": 110331,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 44117,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 66178,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 44117,
+                "observed": 44117,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 66178,
+                "observed": 66178,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "short-delayed-third",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 78592,
+            "frames": 200192,
+            "extraSignalFrames": 0,
+            "expectedFrames": 110331,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 44117,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 66178,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 44117,
+                "observed": 44117,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 66178,
+                "observed": 66178,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "startup-long-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 0,
+            "frames": 643584,
+            "extraSignalFrames": 0,
+            "expectedFrames": 631301,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 576017,
+                "from": 4,
+                "to": 5,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 604848,
+                "from": 5,
+                "to": 6,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 4,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 5,
+                "expected": 576017,
+                "observed": 576017,
+                "displacement": 0
+              },
+              {
+                "track": 6,
+                "expected": 604848,
+                "observed": 604848,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "startup-long",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 15360,
+            "frames": 658944,
+            "extraSignalFrames": 0,
+            "expectedFrames": 631301,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 576017,
+                "from": 4,
+                "to": 5,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 604848,
+                "from": 5,
+                "to": 6,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 4,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 5,
+                "expected": 576017,
+                "observed": 576017,
+                "displacement": 0
+              },
+              {
+                "track": 6,
+                "expected": 604848,
+                "observed": 604848,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "repeat-track-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 75776,
+            "extraSignalFrames": 0,
+            "expectedFrames": 64420,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 1,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 1,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "repeat-track",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 76032,
+            "extraSignalFrames": 0,
+            "expectedFrames": 64420,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 1,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 1,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "repeat-queue-reference",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 199424,
+            "extraSignalFrames": 0,
+            "expectedFrames": 188068,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 94034,
+                "from": 3,
+                "to": 1,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 126244,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 152294,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              },
+              {
+                "track": 1,
+                "expected": 94034,
+                "observed": 94034,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 126244,
+                "observed": 126244,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 152294,
+                "observed": 152294,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "repeat-queue",
+          "pass": true,
+          "gating": true,
+          "required": false,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 199680,
+            "extraSignalFrames": 0,
+            "expectedFrames": 188068,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 94034,
+                "from": 3,
+                "to": 1,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 126244,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 152294,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              },
+              {
+                "track": 1,
+                "expected": 94034,
+                "observed": 94034,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 126244,
+                "observed": 126244,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 152294,
+                "observed": 152294,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        }
+      ]
+    },
+    "diagnostics": {
+      "complete": true,
+      "expected": [
+        "block-small-to-large",
+        "block-large-to-small",
+        "startup-sequential",
+        "seek-early",
+        "seek-near-end",
+        "memory-96000",
+        "memory-192000"
+      ],
+      "versions": {
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167",
+        "node": "24.22.0"
+      },
+      "results": [
+        {
+          "id": "block-small-to-large",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 0,
+            "frames": 43520,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 61824,
+            "firstMismatch": 32210,
+            "leadingMismatch": 0,
+            "trailingMissing": 50514,
+            "maxZeroRun": 11310,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 4097,
+                "firstMismatch": 32210
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 8193,
+                "firstMismatch": 54164
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": null,
+                "displacement": null
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": null,
+                "displacement": null
+              }
+            ],
+            "examples": [
+              {
+                "sample": 32210,
+                "captured": 32210,
+                "expected": [
+                  -0.029754638671875,
+                  -0.413055419921875
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32211,
+                "captured": 32211,
+                "expected": [
+                  -0.326507568359375,
+                  -0.677154541015625
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32212,
+                "captured": 32212,
+                "expected": [
+                  -0.674713134765625,
+                  0.2698974609375
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32213,
+                "captured": 32213,
+                "expected": [
+                  0.234222412109375,
+                  0.714874267578125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32214,
+                "captured": 32214,
+                "expected": [
+                  -0.038665771484375,
+                  -0.950836181640625
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32215,
+                "captured": 32215,
+                "expected": [
+                  -0.3939208984375,
+                  -0.51593017578125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32216,
+                "captured": 32216,
+                "expected": [
+                  0.62274169921875,
+                  0.378692626953125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32217,
+                "captured": 32217,
+                "expected": [
+                  -0.93658447265625,
+                  0.8955078125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32218,
+                "captured": 32218,
+                "expected": [
+                  0.6412353515625,
+                  -0.77947998046875
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32219,
+                "captured": 32219,
+                "expected": [
+                  0.208984375,
+                  -0.426788330078125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32220,
+                "captured": 32220,
+                "expected": [
+                  0.07208251953125,
+                  0.820404052734375
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 32221,
+                "captured": 32221,
+                "expected": [
+                  -0.5482177734375,
+                  0.653289794921875
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              }
+            ],
+            "exact": false
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "expectedBoundaryFallback": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "block-large-to-small",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 256,
+            "frames": 105472,
+            "extraSignalFrames": 0,
+            "expectedFrames": 94034,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              },
+              {
+                "at": 58260,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 58260,
+                "observed": 58260,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "startup-sequential",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 43904,
+            "frames": 113536,
+            "extraSignalFrames": 0,
+            "expectedFrames": 58260,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "seek-early",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "asymmetric",
+            "start": 1024,
+            "frames": 47488,
+            "extraSignalFrames": 0,
+            "expectedFrames": 1832001,
+            "channels": 2,
+            "mismatches": 1796673,
+            "firstMismatch": 35328,
+            "leadingMismatch": 0,
+            "trailingMissing": 1785537,
+            "maxZeroRun": 11136,
+            "boundaries": [
+              {
+                "at": 32210,
+                "from": 1,
+                "to": 2,
+                "mismatches": 979,
+                "firstMismatch": 35328
+              },
+              {
+                "at": 1796227,
+                "from": 2,
+                "to": 3,
+                "mismatches": 8193,
+                "firstMismatch": 1792131
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 32210,
+                "observed": 32210,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 1796227,
+                "observed": null,
+                "displacement": null
+              }
+            ],
+            "examples": [
+              {
+                "sample": 35328,
+                "captured": 36352,
+                "expected": [
+                  -0.345947265625,
+                  -0.160888671875
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35329,
+                "captured": 36353,
+                "expected": [
+                  0.750396728515625,
+                  0.67767333984375
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35330,
+                "captured": 36354,
+                "expected": [
+                  0.839111328125,
+                  0.229522705078125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35331,
+                "captured": 36355,
+                "expected": [
+                  0.12152099609375,
+                  0.263214111328125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35332,
+                "captured": 36356,
+                "expected": [
+                  -0.460296630859375,
+                  0.431243896484375
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35333,
+                "captured": 36357,
+                "expected": [
+                  0.137115478515625,
+                  0.551544189453125
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35334,
+                "captured": 36358,
+                "expected": [
+                  -0.120849609375,
+                  -0.22381591796875
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35335,
+                "captured": 36359,
+                "expected": [
+                  -0.908721923828125,
+                  -0.907867431640625
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35336,
+                "captured": 36360,
+                "expected": [
+                  0.8985595703125,
+                  -0.694000244140625
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35337,
+                "captured": 36361,
+                "expected": [
+                  0.003692626953125,
+                  0.771881103515625
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35338,
+                "captured": 36362,
+                "expected": [
+                  -0.799285888671875,
+                  0.18621826171875
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "sample": 35339,
+                "captured": 36363,
+                "expected": [
+                  -0.394989013671875,
+                  0.898101806640625
+                ],
+                "actual": [
+                  0,
+                  0
+                ]
+              }
+            ],
+            "exact": null
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "seek-near-end",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 143616,
+            "frames": 195072,
+            "extraSignalFrames": 0,
+            "expectedFrames": 39189,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 256,
+                "from": 2,
+                "to": 3,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 2,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 3,
+                "expected": 256,
+                "observed": 256,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "memory-96000",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 8704,
+            "frames": 6177280,
+            "extraSignalFrames": 0,
+            "expectedFrames": 6144043,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 3072020,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 3072020,
+                "observed": 3072020,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        },
+        {
+          "id": "memory-192000",
+          "pass": true,
+          "gating": false,
+          "required": true,
+          "signal": {
+            "measurable": true,
+            "normalization": "power2",
+            "start": 34816,
+            "frames": 12371968,
+            "extraSignalFrames": 0,
+            "expectedFrames": 12288043,
+            "channels": 2,
+            "mismatches": 0,
+            "firstMismatch": null,
+            "leadingMismatch": 0,
+            "trailingMissing": 0,
+            "maxZeroRun": 0,
+            "boundaries": [
+              {
+                "at": 6144020,
+                "from": 1,
+                "to": 2,
+                "mismatches": 0,
+                "firstMismatch": null
+              }
+            ],
+            "observedTrackStarts": [
+              {
+                "track": 1,
+                "expected": 0,
+                "observed": 0,
+                "displacement": 0
+              },
+              {
+                "track": 2,
+                "expected": 6144020,
+                "observed": 6144020,
+                "displacement": 0
+              }
+            ],
+            "examples": [],
+            "exact": true
+          },
+          "channelMismatch": false,
+          "boundaryWaiting": [],
+          "consoleErrors": []
+        }
+      ]
+    },
+    "application": {
+      "complete": true,
+      "expected": [
+        "normal-disabled",
+        "startup-error-fallback",
+        "mixed-block-fallback",
+        "stalled-playback-fallback",
+        "pause-seek-session",
+        "repeat-queue-edit",
+        "evicted-backward-seek",
+        "skip-prepared-next",
+        "pending-queue-replacement",
+        "high-rate-start"
+      ],
+      "versions": {
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167",
+        "node": "24.22.0"
+      },
+      "results": [
+        {
+          "id": "normal-disabled",
+          "pass": true,
+          "observations": [
+            {
+              "normalPlayback": true,
+              "nextPrevious": true,
+              "seekAndAdvance": true,
+              "sameNativeAudio": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "startup-error-fallback",
+          "pass": true,
+          "observations": [
+            {
+              "startupRecovered": true,
+              "nativeVisible": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "mixed-block-fallback",
+          "pass": true,
+          "observations": [
+            {
+              "normalTrack": "2",
+              "position": 0.042644,
+              "nativeVisible": true,
+              "gaplessHidden": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "stalled-playback-fallback",
+          "pass": true,
+          "observations": [
+            {
+              "normalTrack": "1",
+              "position": 0.384137,
+              "message": "Standard playback: Continuous playback stopped progressing; continuing with standard playback.",
+              "nativeVisible": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "pause-seek-session",
+          "pass": true,
+          "observations": [
+            {
+              "paused": true,
+              "stable": true
+            },
+            {
+              "resumed": true,
+              "rate": 1.25
+            },
+            {
+              "seeked": 0.05
+            },
+            {
+              "cancelled": true,
+              "sourceCleared": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "repeat-queue-edit",
+          "pass": true,
+          "observations": [
+            {
+              "repeatTrack": true,
+              "relative": 0.04929551247165531
+            },
+            {
+              "advanced": true
+            },
+            {
+              "removedNotWanted": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "evicted-backward-seek",
+          "pass": true,
+          "observations": [
+            {
+              "evicted": true
+            },
+            {
+              "backwardSeek": true,
+              "index": 1,
+              "position": 1
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "skip-prepared-next",
+          "pass": true,
+          "observations": [
+            {
+              "skippedToPrepared": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "pending-queue-replacement",
+          "pass": true,
+          "observations": [
+            {
+              "lateReplyIgnored": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "high-rate-start",
+          "pass": true,
+          "observations": [
+            {
+              "mseActive": true,
+              "position": 1.001628
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        }
+      ]
+    },
+    "application-effects": {
+      "complete": true,
+      "expected": [
+        "normal-disabled",
+        "startup-error-fallback",
+        "mixed-block-fallback",
+        "stalled-playback-fallback",
+        "pause-seek-session",
+        "repeat-queue-edit",
+        "evicted-backward-seek",
+        "skip-prepared-next",
+        "pending-queue-replacement",
+        "high-rate-start"
+      ],
+      "versions": {
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167",
+        "node": "24.22.0"
+      },
+      "results": [
+        {
+          "id": "normal-disabled",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "normalPlayback": true,
+              "nextPrevious": true,
+              "seekAndAdvance": true,
+              "sameNativeAudio": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "startup-error-fallback",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "startupRecovered": true,
+              "nativeVisible": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "mixed-block-fallback",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "normalTrack": "2",
+              "position": 0.048073,
+              "nativeVisible": true,
+              "gaplessHidden": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "stalled-playback-fallback",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "normalTrack": "1",
+              "position": 0.270356,
+              "message": "Standard playback: Continuous playback stopped progressing; continuing with standard playback.",
+              "nativeVisible": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "pause-seek-session",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "paused": true,
+              "stable": true
+            },
+            {
+              "resumed": true,
+              "rate": 1.25
+            },
+            {
+              "seeked": 0.05
+            },
+            {
+              "cancelled": true,
+              "sourceCleared": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "repeat-queue-edit",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "repeatTrack": true,
+              "relative": 0.05226551247165534
+            },
+            {
+              "advanced": true
+            },
+            {
+              "removedNotWanted": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "evicted-backward-seek",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "evicted": true
+            },
+            {
+              "backwardSeek": true,
+              "index": 1,
+              "position": 1.009038
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "skip-prepared-next",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "skippedToPrepared": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "pending-queue-replacement",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "lateReplyIgnored": true
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        },
+        {
+          "id": "high-rate-start",
+          "pass": true,
+          "observations": [
+            {
+              "visualization": "aurora",
+              "sameNativeAudio": true
+            },
+            {
+              "mseActive": true,
+              "position": 1.017467
+            }
+          ],
+          "sameElement": true,
+          "consoleErrors": []
+        }
+      ]
+    }
+  },
+  "packaging": {
+    "wheel": "tagcast-1.6.5-py3-none-any.whl",
+    "static_assets_verified": true,
+    "catalogues": [
+      "en",
+      "nl",
+      "de",
+      "fr",
+      "es",
+      "ja"
+    ],
+    "packaged_desktop_tested": false
+  },
+  "sourceSha256": {
+    "src/tagcast/static/music-visualizations.css": "6c260b311c60de231fa45ce706b95db26aff900b66bb5ffdc77416a3053f05dd",
+    "src/tagcast/static/music-visualizations.js": "72711ee83b3f77feb2b049ffac92d1ad9c926bdf2d2907be4b1a0a4e089aa52d"
+  },
+  "browser": {
+    "browser": "156.0.8078.4",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "chromiumSandbox": true,
+    "syntheticAudio": true,
+    "modes": [
+      {
+        "mode": "aurora",
+        "failed": false,
+        "pending": false,
+        "last": 1871.2,
+        "renderer": true,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "orbit",
+        "failed": false,
+        "pending": false,
+        "last": 2954.5,
+        "renderer": true,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "ribbons",
+        "failed": false,
+        "pending": false,
+        "last": 4004.4,
+        "renderer": true,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "led",
+        "failed": false,
+        "pending": false,
+        "last": 5021.1,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "scope",
+        "failed": false,
+        "pending": false,
+        "last": 6071.1,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "off",
+        "failed": false,
+        "pending": false,
+        "last": 0,
+        "renderer": false,
+        "message": "",
+        "canvas": null,
+        "rect": {
+          "x": 80,
+          "y": 66,
+          "width": 1120,
+          "height": 645,
+          "top": 66,
+          "right": 1200,
+          "bottom": 711,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      }
+    ],
+    "layouts": [
+      {
+        "width": 420,
+        "theme": "light",
+        "w": 420,
+        "scroll": 420,
+        "canvas": {
+          "x": 25.1875,
+          "y": 103,
+          "width": 369.625,
+          "height": 440,
+          "top": 103,
+          "right": 394.8125,
+          "bottom": 543,
+          "left": 25.1875
+        },
+        "audio": 1
+      },
+      {
+        "width": 420,
+        "theme": "dark",
+        "w": 420,
+        "scroll": 420,
+        "canvas": {
+          "x": 25.1875,
+          "y": 103,
+          "width": 369.625,
+          "height": 440,
+          "top": 103,
+          "right": 394.8125,
+          "bottom": 543,
+          "left": 25.1875
+        },
+        "audio": 1
+      },
+      {
+        "width": 760,
+        "theme": "light",
+        "w": 760,
+        "scroll": 760,
+        "canvas": {
+          "x": 45.59375,
+          "y": 109,
+          "width": 668.8125,
+          "height": 590,
+          "top": 109,
+          "right": 714.40625,
+          "bottom": 699,
+          "left": 45.59375
+        },
+        "audio": 1
+      },
+      {
+        "width": 760,
+        "theme": "dark",
+        "w": 760,
+        "scroll": 760,
+        "canvas": {
+          "x": 45.59375,
+          "y": 109,
+          "width": 668.8125,
+          "height": 590,
+          "top": 109,
+          "right": 714.40625,
+          "bottom": 699,
+          "left": 45.59375
+        },
+        "audio": 1
+      },
+      {
+        "width": 1280,
+        "theme": "light",
+        "w": 1280,
+        "scroll": 1280,
+        "canvas": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1
+      },
+      {
+        "width": 1280,
+        "theme": "dark",
+        "w": 1280,
+        "scroll": 1280,
+        "canvas": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1
+      },
+      {
+        "width": 420,
+        "lyrics": {
+          "x": 41.1875,
+          "y": 347,
+          "width": 337.625,
+          "height": 300
+        }
+      },
+      {
+        "width": 760,
+        "lyrics": {
+          "x": 392,
+          "y": 133,
+          "width": 298.40625,
+          "height": 542
+        }
+      },
+      {
+        "width": 1280,
+        "lyrics": {
+          "x": 652,
+          "y": 110,
+          "width": 524,
+          "height": 557
+        }
+      }
+    ],
+    "errors": [],
+    "externalRequests": 0,
+    "complete": true,
+    "interactions": [
+      "pause/resume",
+      "speed/seek",
+      "close/reopen",
+      "reduced motion",
+      "WebGL context loss/recovery"
+    ]
+  }
+}
