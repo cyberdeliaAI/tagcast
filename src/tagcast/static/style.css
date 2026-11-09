@@ -574,8 +574,10 @@ body.has-player .now-playing-panel{bottom:76px}
 .results-line.album-actions{align-items:center;flex-wrap:wrap}
 .album-actions #selection-help{margin-left:auto}
 .album-actions .button{margin-left:auto;flex-shrink:0}
-.album-actions #selection-help+.button{margin-left:0}
-@media(max-width:760px){.album-actions #selection-help{display:none}.album-actions #selection-help+.button{margin-left:auto}}
+.album-browse-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-left:auto}
+.album-actions .album-browse-actions>.button{margin-left:0}
+.album-actions #selection-help+.album-browse-actions{margin-left:0}
+@media(max-width:760px){.album-actions #selection-help{display:none}.album-actions #selection-help+.album-browse-actions{margin-left:auto}}
 
 /* Fullscreen Now playing reuses the same audio element and transport controls. */
 body.visual-player-open{overflow:hidden}

@@ -220,3 +220,34 @@ verification evidence accompanies
 `build/continuous-browsing-grid-fix-2026-11-09/Tagcast.app` in the original checkout.
 This is a local ad-hoc signed test copy. No real library writes, other-platform runs,
 push, merge, tag or public release are part of this correction.
+
+
+## Follow-up: Random order shortcut
+
+The Albums overview now has a Random order button beside Play random album. It uses
+the existing random sort, reshuffles on repeated clicks and resets the visible prefix
+without changing playback, search, filters or selected albums. It is disabled during
+library loading and for fewer than two matching albums. Labels, tooltip and local
+Albums help are translated in all six languages.
+
+Validation on 9 November 2026:
+
+- Complete frontend suite: **759 passed**, no failures/skips.
+- Complete Electron unit suite: **47 passed**, no failures/skips.
+- Two focused regressions cover repeated reshuffling, continuous-window reset,
+  preserved audio/queue/filter/selection state and loading/zero/one-result guards.
+- Production frontend in Chromium: **60 layouts** (six languages, Light/Dark,
+  420/760/761/1280/1600 CSS pixels), no horizontal overflow or button overlap;
+  repeated shuffle and continuous-prefix reset checked using synthetic data.
+- Catalogue generation, dark CSS generation, JavaScript syntax, version consistency
+  and whitespace checks passed. No backend or audio implementation changed.
+- Apple Silicon build succeeded, including its initial packaged-app smoke check.
+  The delivered copy was subsequently checked twice with restart validation: the
+  first failed its keyboard-focus assertion; the second reported TagcastI18n runtime
+  errors. Thus delivered-copy restart validation is **not established**. These
+  failures are retained in the evidence and have not been bypassed.
+
+Local app and logs: `build/random-order-2026-11-09/` in the original checkout.
+Version/name/profile remain Tagcast 1.6.5, `nl.cyberdelia.tagcast`; the local build
+uses an ad-hoc integrity signature, not release signing/notarization. No installed
+app or real user profile was changed. No push, merge, tag or release performed.
