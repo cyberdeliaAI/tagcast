@@ -34,7 +34,10 @@ class ContinuousBrowse {
     const grows = this.items.length > 0 && this.contextKey === key && this.scope === scope && items.length > this.items.length
       && this.items.every((item, index) => id(item) === id(items[index]));
     const reset = this.scope !== scope || this.key !== identity && !grows;
-    const append = (this.revealing || grows) && !reset && this.host === host && this.layout === layout && host.insertAdjacentHTML;
+    const previousCount = this.renderedCount || 0;
+    const previousChunks = Math.ceil(previousCount / this.batch);
+    // A partial last row must be repainted when its server prefix grows.
+    const append = previousCount % this.batch === 0 && (this.revealing || grows) && !reset && this.host === host && this.layout === layout && host.insertAdjacentHTML;
     if (reset) {
       this.count = this.batch; this.heights.clear(); this.estimate = 0;
       this.key = identity; this.scope = scope;
@@ -42,11 +45,12 @@ class ContinuousBrowse {
     this.contextKey = key; this.key = identity;
     if (this.pendingCount !== null) { this.count = this.pendingCount; this.pendingCount = null; }
     this.count = Math.min(items.length, Math.max(this.batch, this.count));
+    this.renderedCount = this.count;
     Object.assign(this, {items, host, footer, layout, render, changed, total, loadMore, auto, message});
     host.className = "continuous-browse";
     this.width = host.getBoundingClientRect().width;
     const chunks = Math.ceil(this.count / this.batch);
-    const start = append ? chunks - 1 : 0;
+    const start = append ? previousChunks : 0;
     const placeholders = chunks ? Array.from({length: chunks - start}, (_, offset) => {
       const index = start + offset;
       const height = this.heights.get(index) || this.estimate || 1;

@@ -56,7 +56,6 @@ const browseView = {kind: "track-artists", key: null, label: "", rows: [], album
 const browseAlbumContinuous = new ContinuousBrowse("browse-albums", "browse");
 const browseGroupContinuous = new Map(Object.keys(browseKinds).map(kind => {
   const controller = new ContinuousBrowse(`browse-${kind}`, "browse");
-  controller.batch = 50; controller.count = 50;
   return [kind, controller];
 }));
 function browseContinuous() {
@@ -154,7 +153,7 @@ async function loadBrowse() {
     if (!live()) localBrowse();
     else {
       const params = new URLSearchParams({kind: browseView.kind, q: browseView.query,
-        offset: String(continuousBrowseEnabled() ? 0 : browseView.page * browseView.pageSize), limit: String(continuousBrowseEnabled() ? 50 : browseView.pageSize), sort: browseView.key === null ? browseView.sort : "az"});
+        offset: String(continuousBrowseEnabled() ? 0 : browseView.page * browseView.pageSize), limit: String(continuousBrowseEnabled() ? browseContinuous().batch : browseView.pageSize), sort: browseView.key === null ? browseView.sort : "az"});
       if (browseView.key !== null) params.set("key", browseView.key);
       const data = await api(`/api/browse?${params}`);
       if (request !== browseView.request || details !== state.details) return;
@@ -165,7 +164,7 @@ async function loadBrowse() {
     }
     // Restore only the previously revealed overview prefix for browser Back, never all groups.
     if (live() && browseView.key === null && continuousBrowseEnabled()) {
-      const target = browseContinuous().pendingCount || 50;
+      const target = browseContinuous().pendingCount || browseContinuous().batch;
       while (browseView.rows.length < target && browseView.rows.length < browseView.total) {
         const rows = await fetchBrowseMore();
         if (request !== browseView.request || details !== state.details) return;
@@ -186,10 +185,10 @@ async function loadBrowse() {
 async function fetchBrowseMore() {
   const offset = browseView.rows.length;
   const params = new URLSearchParams({kind: browseView.kind, q: browseView.query,
-    offset: String(offset), limit: "50", sort: browseView.sort});
+    offset: String(offset), limit: String(browseContinuous().batch), sort: browseView.sort});
   const data = await api(`/api/browse?${params}`);
   const rows = data.groups;
-  if (data.offset !== offset || !Array.isArray(rows) || !rows.length || rows.length > 50
+  if (data.offset !== offset || !Array.isArray(rows) || !rows.length || rows.length > browseContinuous().batch
     || new Set([...browseView.rows, ...rows].map(row => row.key)).size !== offset + rows.length) {
     throw viewFailure("errors.nav.group_missing");
   }

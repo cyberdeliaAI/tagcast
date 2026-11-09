@@ -188,3 +188,35 @@ The Apple Silicon test app is rebuilt with this fix, retaining version 1.6.5 and
 normal Tagcast name/profile. Package verification and restart evidence are stored
 with `build/continuous-browsing-startup-fix-2026-11-09/Tagcast.app` in the original
 checkout. This is a local ad-hoc signed test copy, not a public release.
+
+## Follow-up: gaps between group grid windows
+
+Genre/group overviews fetched 50 summaries per independent grid chunk. This leaves
+incomplete rows at chunk boundaries for three/four columns. They now use the shared
+60-summary window (divisible by every supported column count). The read-only browse
+API accepts 60 in addition to its existing sizes; its 200-result bound remains intact.
+Ordinary pagination, including 50 per page, is unchanged. Partial prefixes repaint
+their last chunk when expanded, and append positions use the previously rendered
+count so local reveals and server-prefix growth both retain every result.
+
+Two focused regressions failed before correction: incompatible group window sizes
+and missing cards when a partial prefix grows. Coverage also asserts placeholders
+for every locally revealed chunk. Validation:
+
+- Complete frontend JavaScript suite: **757 passed**, no failures/skips.
+- Complete Electron unit suite: **47 passed**, no failures/skips (local test servers
+  require permission to bind; the restricted attempt could not bind).
+- Targeted Python browse checks: **20 passed, 10 subtests**; complete library and
+  upload-browse modules: **66 passed, 69 subtests**.
+- Ruff, JavaScript syntax, version consistency and whitespace checks passed.
+- Actual Chromium reproduced holes in the original four-column layout. Corrected
+  layouts at 420, 760, 761, 1280 and 1600 CSS pixels rendered 180 unique cards without
+  intermediate empty cells, horizontal overflow or runtime errors. Normal 50-item
+  pagination and the bounded mounted window were checked. Synthetic data only.
+
+The Apple Silicon test app is rebuilt from these sources, keeping version 1.6.5,
+the normal Tagcast name, bundle ID and profile. Build and delivered-copy restart
+verification evidence accompanies
+`build/continuous-browsing-grid-fix-2026-11-09/Tagcast.app` in the original checkout.
+This is a local ad-hoc signed test copy. No real library writes, other-platform runs,
+push, merge, tag or public release are part of this correction.
