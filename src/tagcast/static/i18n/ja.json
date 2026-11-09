@@ -1729,7 +1729,6 @@
   "page.artists.search": "アルバムアーティストを検索",
   "page.browse.deleteTag": "タグを削除…",
   "page.browse.newTag": "新しいタグ…",
-  "page.browse.perPage": "1ページあたりの項目数",
   "page.browse.randomTitle": "このグループの一致するすべてのアルバムからランダムに1枚を丸ごと再生します。再生キューは置き換えられます",
   "page.browse.region": "ライブラリを閲覧",
   "page.browse.renameTag": "タグ名を変更…",

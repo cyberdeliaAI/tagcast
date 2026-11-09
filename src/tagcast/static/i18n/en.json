@@ -1805,7 +1805,6 @@
   "page.artists.search": "Search album artists",
   "page.browse.deleteTag": "Delete tag…",
   "page.browse.newTag": "New tag…",
-  "page.browse.perPage": "Browse items per page",
   "page.browse.randomTitle": "Play a full album from all matching albums in this group; replaces the queue",
   "page.browse.region": "Browse library",
   "page.browse.renameTag": "Rename tag…",

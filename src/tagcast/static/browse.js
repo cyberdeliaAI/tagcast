@@ -52,10 +52,28 @@ function decadeIntroduction(key) {
 const browseView = {kind: "track-artists", key: null, label: "", rows: [], albumIds: new Set(), total: 0, page: 0,
   query: "", sort: "az", pageSize: storedPageSize("tagcast-browse-per-page") || 24,
   request: 0, details: null, loaded: false, loading: false, error: "", randomIds: [], membershipQuery: ""};
+// Each group overview remembers its own display choice. Album shelves share one choice.
+const browseAlbumContinuous = new ContinuousBrowse("browse-albums", "browse");
+const browseGroupContinuous = new Map(Object.keys(browseKinds).map(kind => {
+  const controller = new ContinuousBrowse(`browse-${kind}`, "browse");
+  controller.batch = 50; controller.count = 50;
+  return [kind, controller];
+}));
+function browseContinuous() {
+  return browseView.key !== null ? browseAlbumContinuous : browseGroupContinuous.get(browseView.kind);
+}
+for (const controller of [browseAlbumContinuous, ...browseGroupContinuous.values()]) {
+  controller.isActive = () => browseContinuous() === controller && browseView.loaded && !browseView.loading && !state.loading;
+}
+function continuousBrowseEnabled() {
+  // Decades keep their deliberately bounded random album sample.
+  return browseView.kind !== "decades" && browseContinuous().enabled;
+}
 let browseTimer;
 
 function resetBrowse() {
   clearTimeout(browseTimer);
+  for (const controller of [browseAlbumContinuous, ...browseGroupContinuous.values()]) controller.clear();
   browseView.request += 1;
   Object.assign(browseView, {rows: [], albumIds: new Set(), total: 0, details: null, loaded: false, loading: false, error: "", randomIds: []});
 }
@@ -122,12 +140,13 @@ function localBrowse() {
   }
   browseView.total = rows.length;
   browseView.page = Math.min(browseView.page, Math.max(0, Math.ceil(rows.length / browseView.pageSize) - 1));
-  browseView.rows = rows.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
+  browseView.rows = continuousBrowseEnabled() ? rows : rows.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
 }
 
 async function loadBrowse() {
   const request = ++browseView.request, details = state.details;
   browseView.query = $("#browse-search").value.trim();
+  browseView.moreLoading = false; browseView.moreError = null;
   browseView.details = details; browseView.error = ""; browseView.rows = []; browseView.albumIds = new Set(); browseView.total = 0; browseView.loaded = false;
   if (state.loading) { browseView.loading = false; renderBrowse(); return; }
   browseView.loading = true; renderBrowse();
@@ -135,7 +154,7 @@ async function loadBrowse() {
     if (!live()) localBrowse();
     else {
       const params = new URLSearchParams({kind: browseView.kind, q: browseView.query,
-        offset: String(browseView.page * browseView.pageSize), limit: String(browseView.pageSize), sort: browseView.key === null ? browseView.sort : "az"});
+        offset: String(continuousBrowseEnabled() ? 0 : browseView.page * browseView.pageSize), limit: String(continuousBrowseEnabled() ? 50 : browseView.pageSize), sort: browseView.key === null ? browseView.sort : "az"});
       if (browseView.key !== null) params.set("key", browseView.key);
       const data = await api(`/api/browse?${params}`);
       if (request !== browseView.request || details !== state.details) return;
@@ -143,6 +162,15 @@ async function loadBrowse() {
       browseView.albumIds = new Set(data.album_ids || []);
       if (!data.group) { browseView.total = data.total || 0; browseView.page = Math.floor((data.offset || 0) / browseView.pageSize); }
       if (data.group) browseView.label = data.group.label;
+    }
+    // Restore only the previously revealed overview prefix for browser Back, never all groups.
+    if (live() && browseView.key === null && continuousBrowseEnabled()) {
+      const target = browseContinuous().pendingCount || 50;
+      while (browseView.rows.length < target && browseView.rows.length < browseView.total) {
+        const rows = await fetchBrowseMore();
+        if (request !== browseView.request || details !== state.details) return;
+        browseView.rows.push(...rows);
+      }
     }
     browseView.membershipQuery = browseView.query; browseView.loaded = true;
   } catch (error) {
@@ -152,6 +180,43 @@ async function loadBrowse() {
     if (error.status === 401) { state.connection.connected = false; updateChrome(); }
   } finally {
     if (request === browseView.request && details === state.details) { browseView.loading = false; renderBrowse(); }
+  }
+}
+
+async function fetchBrowseMore() {
+  const offset = browseView.rows.length;
+  const params = new URLSearchParams({kind: browseView.kind, q: browseView.query,
+    offset: String(offset), limit: "50", sort: browseView.sort});
+  const data = await api(`/api/browse?${params}`);
+  const rows = data.groups;
+  if (data.offset !== offset || !Array.isArray(rows) || !rows.length || rows.length > 50
+    || new Set([...browseView.rows, ...rows].map(row => row.key)).size !== offset + rows.length) {
+    throw viewFailure("errors.nav.group_missing");
+  }
+  return rows;
+}
+
+async function loadMoreBrowseGroups() {
+  if (!continuousBrowseEnabled() || browseView.key !== null || browseView.moreLoading
+    || !browseView.loaded || browseView.loading || !live()) return;
+  const request = browseView.request, details = state.details, controller = browseContinuous();
+  const current = () => request === browseView.request && details === state.details
+    && state.screen === "browse" && controller === browseContinuous() && continuousBrowseEnabled();
+  browseView.moreLoading = true; browseView.moreError = null;
+  controller.auto = false;
+  controller.message = `<span role="status">${TagcastI18n.html("common.loading")}</span>`;
+  controller.renderFooter();
+  try {
+    const rows = await fetchBrowseMore();
+    if (!current()) return;
+    browseView.rows = [...browseView.rows, ...rows];
+    controller.restore(browseView.rows.length);
+  } catch (error) {
+    if (!current()) return;
+    browseView.moreError = error;
+    if (error.status === 401) { state.connection.connected = false; updateChrome(); }
+  } finally {
+    if (current()) { browseView.moreLoading = false; renderBrowse(); }
   }
 }
 
@@ -189,6 +254,7 @@ function browseAlbums() {
 }
 
 function renderBrowse() {
+  for (const controller of [browseAlbumContinuous, ...browseGroupContinuous.values()]) controller.discardStale(state.details);
   if (state.screen !== "browse") return;
   if (!state.loading && !browseView.loading && (browseView.details !== state.details || !browseView.loaded && !browseView.error)) { loadBrowse(); return; }
   const config = browseKinds[browseView.kind], detail = browseView.key !== null;
@@ -215,7 +281,9 @@ function renderBrowse() {
   $("#browse-search-field").hidden = decades && !detail;
   $("#browse-search").placeholder = TagcastI18n.text(uploadDetail ? "browse.detail.searchUpload" : detail ? "browse.detail.search" : config.keys.search);
   $("#browse-search").setAttribute("aria-label", TagcastI18n.text(detail ? "browse.detail.searchLabel" : config.keys.search));
-  $("#browse-per-page").value = String(browseView.pageSize);
+  const continuous = continuousBrowseEnabled(), controller = browseContinuous();
+  $("#browse-per-page").value = continuous ? "continuous" : String(browseView.pageSize);
+  $("#browse-per-page option[value=continuous]").hidden = decades;
   $("#browse-per-page").hidden = decades && !detail;
   $("#browse-surprise").hidden = !surprise;
   $("#browse-surprise").disabled = state.loading || browseView.loading || Boolean(browseView.error);
@@ -241,12 +309,26 @@ function renderBrowse() {
     } else albums.sort(SORTS[browseView.sort] || SORTS.artist);
     browseView.total = albums.length;
     browseView.page = Math.min(browseView.page, Math.max(0, Math.ceil(albums.length / browseView.pageSize) - 1));
-    rows = albums.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
+    rows = continuous ? albums : albums.slice(browseView.page * browseView.pageSize, (browseView.page + 1) * browseView.pageSize);
   }
   $("#browse-results").textContent = state.loading || browseView.loading ? TagcastI18n.text("common.loading") : browseView.error ? ""
     : surprise ? TagcastI18n.text("browse.results.random", {count: rows.length, total: browseView.total})
     : TagcastI18n.text(detail ? "browse.count.albums" : config.keys.count, {count: browseView.total});
   const list = $("#browse-list");
+  if (continuous && browseView.loaded && !state.loading && !browseView.loading && !browseView.error) {
+    controller.update({items: rows, key: `${browseView.kind}:${browseView.key}:${browseView.query}:${browseView.sort}`,
+      scope: state.details, host: list, footer: $("#browse-pagination"),
+      layout: detail ? "album-grid" : uploads ? "upload-group-list" : "artists-grid",
+      render: items => items.map(detail ? browseAlbumCard : browseCard).join(""),
+      empty: `<div class="empty">${TagcastI18n.html("browse.list.empty")}</div>`, changed: renderBrowse,
+      total: browseView.total, loadMore: !detail && live() ? loadMoreBrowseGroups : null,
+      auto: !browseView.moreLoading && !browseView.moreError,
+      message: browseView.moreLoading ? `<span role="status">${TagcastI18n.html("common.loading")}</span>`
+        : browseView.moreError ? `<span role="alert">${escapeHtml(TagcastI18n.errorText(browseView.moreError))}</span>` : ""});
+    updateFavouriteControls(); updateRandomControls();
+    if (typeof syncHistory === "function") syncHistory();
+    return;
+  }
   list.className = detail ? "album-grid" : uploads ? "upload-group-list" : "artists-grid";
   list.innerHTML = state.loading || browseView.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("browse.list.loading")}</div>`
     : browseView.error ? `<p class="error-box" role="alert">${escapeHtml(TagcastI18n.errorText(browseView.error))}</p>`
@@ -266,6 +348,7 @@ function showBrowse(kind, key = null, saved = {}) {
   if (!saved.sort && typeof rememberedBrowseSort === "function") saved = {...saved, sort: rememberedBrowseSort(browseGroupSortKey(kind, key !== null), key === null ? ["az", "za", "count"] : Object.keys(SORTS), "")};
   Object.assign(browseView, {kind, key, label: saved.label || "", query: kind === "decades" && key === null ? "" : saved.query || "", page: saved.page || 0,
     sort: kind === "decades" && key === null ? "za" : (uploads && key !== null ? ({album:"artist",az:"title",za:"title_za"}[saved.sort] || saved.sort) : saved.sort) || (key !== null ? "artist" : ["years","uploaded"].includes(kind) ? "za" : "az"), rows: [], albumIds: new Set(), details: null, loaded: false, randomIds: Array.isArray(saved.randomIds) ? saved.randomIds.filter(id => typeof id === "string") : []});
+  browseContinuous().restore(saved.continuousCount);
   $("#browse-search").value = browseView.query;
   showScreen("browse"); loadBrowse(); window.scrollTo?.({top: 0});
 }
@@ -290,8 +373,11 @@ $("#browse-search").addEventListener("input", () => {
 });
 $("#browse-sort").addEventListener("change", event => { browseView.sort = event.target.value; browseView.page = 0; refreshBrowseList(); });
 $("#browse-per-page").addEventListener("change", event => {
-  const size = Number(event.target.value);
-  if (![24, 50, 100, 200].includes(size)) return;
+  const continuous = event.target.value === "continuous", size = Number(event.target.value);
+  if (!continuous && ![24, 50, 100, 200].includes(size)) return;
+  browseView.request += 1; browseView.moreLoading = false; browseView.moreError = null;
+  browseContinuous().setEnabled(continuous);
+  if (continuous) { browseView.page = 0; refreshBrowseList(); scrollListingStart("#browse-page"); return; }
   browseView.page = Math.floor(browseView.page * browseView.pageSize / size); browseView.pageSize = size;
   rememberPageSize("tagcast-browse-per-page", size); refreshBrowseList();
 });

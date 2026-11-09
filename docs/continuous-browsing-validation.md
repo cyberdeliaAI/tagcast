@@ -97,3 +97,73 @@ settings paths. The installed app and real user data were not replaced or opened
 
 Test app: `build/continuous-browsing-2026-11-09/Tagcast.app` in the original checkout.
 The build log and complete bounded Electron validation report accompany it.
+
+## Extended group and album shelves
+
+The follow-up extends the same optional mode to Track artists, Composers, Genres,
+Tags, Release year, Upload folders and Date uploaded overviews, their album shelves,
+and favourite albums. The existing Decades random sample remains unchanged.
+Numeric pagination remains available and is still the initial default.
+
+- Group overview preferences are independent; their album shelves share a separate
+  display preference. Favourite albums retain their own choice.
+- Live group overviews request 50 compact results at a time through the existing
+  browse API. Album shelves and favourite albums reveal 60 locally loaded summaries
+  at a time, without additional album, library or audio requests.
+- Older responses cannot append after navigation, search/display changes or library
+  replacement. Overlapping, empty or misplaced result pages are rejected.
+- An incremental request failure retains the displayed prefix, stops automatic
+  loading and offers explicit Show more recovery. No automatic retry loop.
+- Back restores only the previously revealed server prefix and the previous scroll
+  position. Keyboard focus stays on Show more, or the footer after the final batch.
+- All existing review gates, selection behaviour, audio and queue remain shared.
+
+Follow-up verification on macOS Apple Silicon:
+
+- JavaScript suite: **754 passed**, no failures/skips. Eight additional regressions
+  cover bounded server pages, independent display preferences, numeric fallback,
+  errors/manual retry, stale replies, history, all seven ordinary album shelves,
+  local preview/favourites, malformed pages and library replacement.
+- Electron unit suite: **47 passed**, no failures/skips.
+- Ruff, JavaScript syntax, generated CSS, six-language completeness/fallback checks,
+  version consistency (1.6.5) and whitespace checks passed.
+- Actual Chromium, synthetic 18,739 groups: 450 unique results revealed with 100 cards
+  mounted. Bounded requests, exact Back scroll restoration (34,359 CSS pixels),
+  failure/recovery and keyboard focus passed. All seven album shelves revealed
+  60 to 120 results without another request.
+- **240 rendered layouts**: four pages, six languages, Light/Dark, widths 420, 760,
+  761, 1280 and 1600 CSS pixels. No horizontal overflow or JavaScript runtime errors.
+  Representative screenshots were inspected, including the themed favourites selector.
+- The same audio element and unchanged queue were verified in the browser. No real
+  account, music transfers, metadata writes or additional-platform runs were used.
+
+An ad-hoc targeted Python invocation collected `test_upload_browse` before
+`test_collections`; the latter imports `test_client`, which reloads `tagcast.client`.
+That order left the former's imported `ApiError` class stale and caused its exception
+assertions to fail. This is a test collection interaction, not a changed backend path;
+no Python production or test files are modified by this feature.
+
+The full Python suite in its normal collection order completed with **909 passed,
+2,512 subtests passed and the same one existing upload-test failure** described
+above (141.25 seconds). The isolated upload-browse module passed all eight tests
+and six subtests. No new Python failure occurred in the complete run.
+
+### Expanded Apple Silicon test app
+
+The expanded application was built with the frozen dependencies on 9 November 2026.
+The actual delivered copy passed `tools/check_electron.py --restart`, including
+launch/restart, preference persistence, bundled CLI, owned-server lifecycle and
+Electron security checks. Its executable is arm64; deep/strict code-signature
+verification passed. All **14 changed frontend/catalogue assets** match source
+byte for byte, and all six language catalogues are included. Certifi and CA bundle
+verification passed in the existing packaged-app check.
+
+This remains Tagcast 1.6.5, `nl.cyberdelia.tagcast`, using the normal profile and
+settings locations. It has an ad-hoc local integrity signature, not release
+Developer ID signing/notarization. Nothing was installed over the existing app,
+and no real profile was used for automated validation.
+
+Delivered app: `build/continuous-browsing-expanded-2026-11-09/Tagcast.app` in the
+original checkout. The build log, copied-app validation log, Electron JSON report,
+asset comparison, browser evidence and automated test logs accompany it. No push,
+merge, tag or release was performed.

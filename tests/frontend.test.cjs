@@ -12606,3 +12606,119 @@ test("continuous browsing restores revealed scope and scroll on Back from a cach
   assert.equal(p.run("window.scrollY"),3200);
   assert.equal(p.nodes.get("#per-page").value,"continuous");
 });
+
+function continuousGroupServer(p, total = 173) {
+  p.setFetch(url => {
+    const params = new URL(url, 'http://localhost').searchParams;
+    if (params.has('key')) return {ok:true,json:async()=>({group:{key:params.get('key'),label:'Group'},album_ids:p.json('state.albums.map(a=>a.id)')})};
+    const offset=Number(params.get('offset')),limit=Number(params.get('limit'));
+    return {ok:true,json:async()=>({groups:Array.from({length:Math.min(limit,total-offset)},(_,i)=>({key:String(offset+i),label:'Group '+(offset+i),tracks:1,albums:1})),total,offset})};
+  });
+}
+
+test('continuous group overviews fetch bounded pages, remember independent choices and retain ordinary pagination',async()=>{
+  const storage={},p=livePage({storage});await settle();continuousGroupServer(p);
+  p.run('showBrowse("track-artists")');await settle();
+  assert.equal(p.run('browseView.rows.length'),24);
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 1 of 8/);
+  await p.nodes.get('#browse-per-page').emit('change',{target:{value:'continuous'}});await settle();
+  assert.equal(p.run('browseContinuous().count'),50);
+  const before=p.requests.length,audio=p.nodes.get('#audio'),queue=p.json('player.queue');
+  await p.run('browseContinuous().more()');await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseContinuous().count'),150);
+  assert.equal(p.requests.length,before+2);
+  for(const r of p.requests.slice(before))assert.match(r.url,/limit=50/);
+  assert.match(p.requests.at(-1).url,/offset=100/);
+  assert.equal(new Set(p.json('browseView.rows.map(r=>r.key)')).size,150);
+  p.run('showBrowse("composers")');await settle();assert.equal(p.run('continuousBrowseEnabled()'),false);
+  p.run('showBrowse("track-artists")');await settle();assert.equal(p.run('continuousBrowseEnabled()'),true);
+  await p.nodes.get('#browse-per-page').emit('change',{target:{value:'50'}});await settle();
+  assert.equal(p.run('continuousBrowseEnabled()'),false);
+  assert.equal(p.run('browseView.rows.length'),50);
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 1 of 4/);
+  assert.equal(p.nodes.get('#audio'),audio);assert.deepEqual(p.json('player.queue'),queue);
+});
+
+test('group load-more failures stop automatic loading, permit explicit recovery and reject late replies',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p);
+  p.run('browseGroupContinuous.get("composers").setEnabled(true);showBrowse("composers")');await settle();
+  p.setFetch(()=>({ok:false,status:503,json:async()=>({error:'Temporary failure'})}));
+  await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseView.moreLoading'),false);
+  assert.equal(p.run('browseContinuous().auto'),false);
+  assert.equal(p.run('browseView.rows.length'),50);
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Temporary failure/);
+  const requests=p.requests.length;p.run('browseContinuous().scheduleMore()');p.flushTimers(80);await settle();
+  assert.equal(p.requests.length,requests);
+  continuousGroupServer(p);await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseContinuous().count'),100);assert.equal(p.run('browseView.moreError'),null);
+  let finish;p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=p.run('browseContinuous().more()');
+  continuousGroupServer(p);p.run('showBrowse("genres")');await settle();
+  finish({ok:true,json:async()=>({groups:[{key:'old',label:'STALE'}],total:173,offset:100})});await pending;
+  assert.equal(p.run('browseView.kind'),'genres');assert.doesNotMatch(p.nodes.get('#browse-list').innerHTML,/STALE/);
+  assert.equal(p.run('browseView.moreLoading'),false);
+});
+
+test('group history restores the revealed prefix and switching search or library releases obsolete results',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p,250);
+  p.run('browseGroupContinuous.get("composers").setEnabled(true);showBrowse("composers")');await settle();
+  await p.run('browseContinuous().more()');await p.run('browseContinuous().more()');
+  p.run('window.scrollY=2300;rememberNavigationScroll();showBrowse("composers","0")');await settle();
+  p.history.back();await settle();p.flushTimers(0);
+  assert.equal(p.run('browseView.rows.length'),150);assert.equal(p.run('browseContinuous().count'),150);
+  assert.equal(p.run('window.scrollY'),2300);
+  p.run('$("#browse-search").value="different"');await p.nodes.get('#browse-search').emit('input');p.flushTimers(250);await settle();
+  assert.equal(p.run('browseContinuous().count'),50);assert.match(p.requests.at(-1).url,/q=different/);
+  p.run('useLocal(demoLibrary(),"demo")');
+  assert.equal(p.run('browseGroupContinuous.get("composers").items.length'),0);
+});
+
+test('all ordinary group album shelves scroll locally while the decade random sample remains unchanged',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p);
+  p.run('state.albums=Array.from({length:173},(_,i)=>({...state.albums[0],id:String(i+1),name:"Album "+i}));browseAlbumContinuous.setEnabled(true)');
+  for(const kind of ['track-artists','composers','genres','tags','years','upload-folders','uploaded']){
+    p.run(`showBrowse(${JSON.stringify(kind)},"group")`);await settle();
+    assert.equal(p.run('browseAlbumContinuous.count'),60,kind);
+    const before=p.requests.length;p.run('browseAlbumContinuous.more()');
+    assert.equal(p.run('browseAlbumContinuous.count'),120,kind);assert.equal(p.requests.length,before,kind);
+    assert.match(p.nodes.get('#browse-pagination').innerHTML,/Showing 120 of 173/);
+  }
+  p.run('showBrowse("decades","1980")');await settle();
+  assert.equal(p.run('continuousBrowseEnabled()'),false);
+  assert.match(p.nodes.get('#browse-results').textContent,/24 random albums/);
+});
+
+test('preview group overviews and favourite albums use the same local window and retain pagination',async()=>{
+  const p=page();await settle();
+  p.run(`useLocal(Array.from({length:173},(_,i)=>({id:String(i+1),name:"Album "+i,artist:"A",disc:1,tracks:[{id:String(i+1000),title:"Song",artist:"Singer "+i,track:1,composers:["Composer "+i]}]})),"demo");
+    browseGroupContinuous.get("track-artists").setEnabled(true);showBrowse("track-artists")`);await settle();
+  const before=p.requests.length;
+  p.run('browseContinuous().more();browseContinuous().more()');assert.equal(p.run('browseContinuous().count'),150);
+  assert.equal(p.requests.length,before);
+  p.run('state.mode="live";state.albumFavourites=new Set(state.albums.map(a=>a.id));showCollections("album-favourites")');await settle();
+  assert.equal(p.run('favouriteAlbumContinuous.enabled'),false);
+  await p.change({id:'favourite-albums-display',value:'continuous',matches:()=>false});
+  assert.equal(p.run('favouriteAlbumContinuous.count'),60);
+  p.run('favouriteAlbumContinuous.more()');assert.equal(p.run('favouriteAlbumContinuous.count'),120);
+  await p.change({id:'favourite-albums-display',value:'50',matches:()=>false});
+  assert.equal(p.run('favouriteAlbumContinuous.enabled'),false);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/data-collection-page/);
+});
+
+test('continuous groups reject overlapping or misplaced pages and ignore replies after library replacement',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p);
+  p.run('browseGroupContinuous.get("composers").setEnabled(true);showBrowse("composers")');await settle();
+  for(const response of [{offset:0,groups:[{key:'new'}]},{offset:50,groups:[{key:'0'}]},{offset:50,groups:[]}]){
+    p.setFetch(()=>({ok:true,json:async()=>response}));await p.run('browseContinuous().more()');
+    assert.equal(p.run('browseView.rows.length'),50);
+    assert.equal(p.run('browseContinuous().auto'),false);
+    assert.equal(p.run('browseView.moreLoading'),false);
+  }
+  let finish;p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=p.run('browseContinuous().more()');
+  p.run('useLocal(demoLibrary(),"demo")');
+  finish({ok:true,json:async()=>({offset:50,groups:[{key:'obsolete',label:'OBSOLETE'}]})});await pending;await settle();
+  assert.equal(p.run('browseGroupContinuous.get("composers").items.length'),0);
+  assert.doesNotMatch(p.nodes.get('#browse-list').innerHTML,/OBSOLETE/);
+});
