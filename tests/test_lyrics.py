@@ -28,6 +28,7 @@ class LyricsTests(unittest.TestCase):
         for key, row in data['library']['tracks'].items():
             if key != 'map':
                 row.append(200)
+        self.library_data = data
         self.studio = SimpleNamespace(home=Path(self.temp.name), lock=threading.RLock(),
                                       save_lock=threading.Lock(), client=Mock(), library=Library(data),
                                       library_user='one', playback_session='session-one', premium=True)
@@ -425,6 +426,65 @@ class LyricsTests(unittest.TestCase):
         self.assertEqual(len(writes), 1)
         with self.assertRaises(ConflictError):
             self.service.save({'id': prepared['id'], 'approved': True})
+
+    def test_import_prepare_reuses_review_snapshot_but_save_checks_remote_data(self):
+        body = self.import_body()
+        self.studio.client._jsonrequest.reset_mock()
+        prepared = self.service.prepare(body)
+        self.studio.client._jsonrequest.assert_not_called()
+        self.assertEqual(self.service.save({'id': prepared['id'], 'approved': True}),
+                         {'status': 'saved'})
+        self.studio._current.assert_called_once_with(self.studio.client)
+        self.assertEqual([c.args[0] for c in self.studio.client._jsonrequest.call_args_list],
+                         ['gettrackuserdata', 'update_track', 'gettrackuserdata'])
+        self.assertEqual(self.rows[0]['unknown'], 12)
+
+    def test_import_cached_review_never_skips_final_conflict_check(self):
+        body = self.import_body()
+        self.rows[0]['value'] = 'Changed in another app after review'
+        prepared = self.service.prepare(body)
+        with self.assertRaises(ConflictError):
+            self.service.save({'id': prepared['id'], 'approved': True})
+        self.assertFalse(any(c.args[0] == 'update_track'
+                             for c in self.studio.client._jsonrequest.call_args_list))
+        with self.assertRaises(ConflictError):
+            self.service.save({'id': prepared['id'], 'approved': True})
+
+    def test_import_snapshot_survives_library_refresh_only_with_matching_identity(self):
+        body = self.import_body()
+        self.studio.library = Library(copy.deepcopy(self.library_data))
+        self.studio.client._jsonrequest.reset_mock()
+        prepared = self.service.prepare(body)
+        self.studio.client._jsonrequest.assert_not_called()
+        self.assertEqual(self.service.save({'id': prepared['id'], 'approved': True})['status'],
+                         'saved')
+
+    def test_import_prepare_fetches_again_for_expired_or_other_session_snapshots(self):
+        for changed in ('expired', 'session', 'account', 'client', 'token', 'evicted'):
+            with self.subTest(changed=changed):
+                body = self.import_body()
+                if changed == 'expired':
+                    item = self.service.native['100']
+                    self.service.native['100'] = (item[0] - 901, *item[1:])
+                elif changed == 'session':
+                    self.service.context = (*self.service.context[:3], 'different-session')
+                elif changed == 'account':
+                    self.service.context = (*self.service.context[:2], 'different-account',
+                                            self.service.context[3])
+                elif changed == 'client':
+                    self.service.context = (Mock(), *self.service.context[1:])
+                elif changed == 'token':
+                    body['before_token'] = 'invalid'
+                else:
+                    self.service.native.clear()
+                self.studio.client._jsonrequest.reset_mock()
+                if changed == 'token':
+                    with self.assertRaises(ConflictError):
+                        self.service.prepare(body)
+                else:
+                    self.service.prepare(body)
+                self.studio.client._jsonrequest.assert_called_once_with('gettrackuserdata',
+                                                                       track_id=100)
 
     def test_album_import_requires_explicit_replacement_of_existing_lyrics(self):
         self.rows.append({'type': 'lyrics', 'value': 'Existing text'})

@@ -65,6 +65,47 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"device login did not finish: {studio.device}")
 
+    def test_lyrics_import_reuses_review_reads_and_verifies_each_write_over_http(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            mock_ibroadcast.STATE["premium"] = True
+            for track_id in (900, 901):
+                mock_ibroadcast.STATE["tracks"][track_id]["userdata"] = [
+                    {"type": "custom", "name": "Notes", "value": "Keep this", "unknown": 12}]
+            studio = self.connect()
+            studio.load_library()
+            album = studio.album_details(["72"])[0]
+            scope = {"combine_sets": False, "albums": [{
+                **{k: album[k] for k in ("id", "name", "artist")},
+                "tracks": sorted([{k: t[k] for k in ("id", "title", "artist", "track")}
+                                  for t in album["tracks"]], key=lambda t: int(t["id"]))}]}
+            bodies = []
+            for track in album["tracks"]:
+                body = {"track_id": track["id"], "title": track["title"],
+                        "artist": track["artist"], "session": studio.playback_session}
+                view = studio.lyrics.view({**body, "refresh": True})
+                bodies.append({**body, "album_scope": scope, "replace_existing": False,
+                               "before_token": view["before_token"], "lyrics": "Imported text"})
+            downloads = mock_ibroadcast.STATE["downloads"]
+            with patch.object(studio.client, "_jsonrequest", wraps=studio.client._jsonrequest) as request:
+                for body in bodies:
+                    prepared = studio.lyrics.prepare(body)
+                    result = studio.lyrics.save({"id": prepared["id"], "approved": True})
+                    self.assertEqual(result["status"], "saved")
+                modes = [c.args[0] for c in request.call_args_list]
+            self.assertEqual(modes, ["status", "gettrackuserdata", "update_track", "gettrackuserdata",
+                                     "status", "library", "gettrackuserdata", "update_track", "gettrackuserdata"])
+            # Own writes can change the remote revision. Keep the fresh membership
+            # download before the next write; never pretend the old library is current.
+            self.assertEqual(mock_ibroadcast.STATE["downloads"] - downloads, 1)
+            for track_id in (900, 901):
+                self.assertEqual(mock_ibroadcast.STATE["tracks"][track_id]["userdata"], [
+                    {"type": "custom", "name": "Notes", "value": "Keep this", "unknown": 12},
+                    {"type": "lyrics", "value": "Imported text"}])
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
     def test_album_split_creates_and_reads_back_new_membership_over_http(self):
         original = copy.deepcopy(mock_ibroadcast.STATE)
         try:
