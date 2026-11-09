@@ -300,6 +300,7 @@ class ClientTests(unittest.TestCase):
         studio = self.local_connection()
         groups = studio.browse("track-artists")
         self.assertEqual(groups["count"], 2)
+        self.assertEqual(studio.browse("track-artists", limit="60"), groups)
         self.assertEqual(studio.browse("decades", key="1980")["album_ids"], ["72", "73"])
         self.assertEqual(studio.browse("track-artists", key="41")["album_ids"], ["72", "73"])
         self.assertEqual(studio.browse("genres", query="Art")["groups"][0]["label"], "Art Pop;New Wave")

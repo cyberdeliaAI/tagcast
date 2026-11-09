@@ -62,6 +62,7 @@ test("continuous browsing paints a bounded window and restores earlier cards wit
   const f = fixture(18739);
   for (let i = 0; i < 9; i++) f.controller.more();
   assert.equal(f.controller.count, 600);
+  assert.equal(f.nodes.size, 10, "Every revealed chunk has a placeholder, including locally revealed results");
   assert.equal(f.cards().length, 60, "Offscreen summaries do not become card elements");
   const before = f.footer.getBoundingClientRect().top;
   f.window.scrollY = 12000; f.controller.refresh();
@@ -162,4 +163,15 @@ test("first results replace the empty/loading placeholder instead of appending b
   assert.doesNotMatch(f.hostHTML, /empty/);
   assert.equal(f.cards().length, 60);
   assert.equal(f.nodes.size, 1);
+});
+
+
+test("growing a partially filled window replaces its last chunk without duplicate nodes or missing cards", () => {
+  const f = fixture(50);
+  f.append(100);
+  f.window.scrollY = 1300; f.controller.refresh();
+  assert.equal(f.cards().length, 100);
+  assert.equal(new Set(f.cards()).size, 100);
+  assert.equal((f.hostHTML.match(/data-continuous-chunk="0"/g) || []).length, 1);
+  assert.ok(f.cards().includes("card:59"));
 });

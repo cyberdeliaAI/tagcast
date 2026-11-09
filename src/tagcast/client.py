@@ -891,7 +891,7 @@ class Studio:
         uploads = kind in ("upload-folders", "uploaded")
         if kind not in ("track-artists", "composers", "genres", "years", "decades", "tags", "upload-folders", "uploaded") \
                 or sort not in (("az", "za", "album") if uploads and key is not None else ("az", "za", "count")) \
-                or len(query) > 200 or offset < 0 or limit not in (24, 50, 100, 200) \
+                or len(query) > 200 or offset < 0 or limit not in (24, 50, 60, 100, 200) \
                 or (key is not None and (not isinstance(key, str) or len(key) > 500)):
             raise ApiError("Choose a valid group, page and a search of at most 200 characters.")
         if uploads:
