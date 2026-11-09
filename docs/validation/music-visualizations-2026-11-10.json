@@ -2614,7 +2614,83 @@
       "es",
       "ja"
     ],
-    "packaged_desktop_tested": false
+    "packaged_desktop_tested": true,
+    "desktop": {
+      "app": "/Users/cyberdelia/Documents/GitHub/tagcast/build/music-visualizations-2026-11-10/Tagcast.app",
+      "version": "1.6.5",
+      "bundle_id": "nl.cyberdelia.tagcast",
+      "architecture": "/Users/cyberdelia/Documents/GitHub/tagcast/build/music-visualizations-2026-11-10/Tagcast.app/Contents/MacOS/Tagcast: Mach-O 64-bit executable arm64",
+      "signature": "ad-hoc; deep strict verified; not notarized",
+      "static_files_verified": 89,
+      "missing": [],
+      "different": [],
+      "catalogues": [
+        "nl",
+        "ja",
+        "de",
+        "en",
+        "fr",
+        "es"
+      ],
+      "sha256": {
+        "music-visualizations.css": "6c260b311c60de231fa45ce706b95db26aff900b66bb5ffdc77416a3053f05dd",
+        "music-visualizations.js": "72711ee83b3f77feb2b049ffac92d1ad9c926bdf2d2907be4b1a0a4e089aa52d",
+        "vendor/butterchurn/butterchurn.js": "204ef8d6ab3bca12ee74736d659c7baf26614e09481899def69c5ed1ab580790"
+      },
+      "checks": {
+        "ok": true,
+        "version": "1.6.5",
+        "electron": "44.9.3",
+        "chromium": "152.0.7977.167",
+        "sandbox": true,
+        "contextIsolation": true,
+        "nodeIntegration": false,
+        "sharedInterface": true,
+        "persistence": {
+          "before": {
+            "gapless": true,
+            "quality": false,
+            "view": "window",
+            "theme": "light",
+            "palette": "warm"
+          },
+          "supported": true,
+          "after": {
+            "gapless": true,
+            "quality": false,
+            "view": "window",
+            "theme": "light",
+            "palette": "warm"
+          }
+        },
+        "mini": {
+          "sameAudio": true,
+          "sameQueue": true,
+          "passiveWindow": true,
+          "seek": true,
+          "transport": true,
+          "hiddenOwner": true,
+          "minimizedMini": true,
+          "singleVisibleWindow": true,
+          "returnClosesMini": true,
+          "closeRestoresMain": true,
+          "closePreservesPlayback": true,
+          "reopen": true,
+          "sandbox": true,
+          "apiBlocked": true,
+          "errors": []
+        },
+        "certificates": {
+          "certifi": "2026.10.23",
+          "ca_sha256": "2ef52ad56b4803e264045c915e55c236cbfa045b84b81efefc218a19eb44bd2b",
+          "root_count": 118,
+          "compromised_root_present": false
+        }
+      },
+      "restart_checked": true,
+      "production_profile_unchanged": true,
+      "installed_app_replaced": false
+    }
   },
   "sourceSha256": {
     "src/tagcast/static/music-visualizations.css": "6c260b311c60de231fa45ce706b95db26aff900b66bb5ffdc77416a3053f05dd",
