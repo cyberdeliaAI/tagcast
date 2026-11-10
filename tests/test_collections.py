@@ -6,6 +6,8 @@ import threading
 import time
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import certifi
@@ -28,8 +30,8 @@ class CollectionTests(unittest.TestCase):
         self.studio.load_library()
 
     def tearDown(self):
-        self.studio.queue_sync.disconnect()
-        # Cache writes run briefly in the background; join before cleaning settings.
+        self.studio._disconnect()
+        # Invalidate pending cache writes, then drain a writer already holding the lock.
         with self.studio.cache_lock:
             pass
         self.home.cleanup()
@@ -797,6 +799,7 @@ class CollectionTests(unittest.TestCase):
         loaded = restarted.load_library()
         self.assertIn('73', loaded['album_favourites']['albums'])
         self.assertEqual(restarted.album_details(['73'])[0]['rating'], 3)
+        restarted._disconnect()
         with restarted.cache_lock:
             pass
         self.favourite(before=(True,), value=False)
@@ -1244,3 +1247,90 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(mock_ibroadcast.STATE['playlists'][800]['tracks'], [])
         self.assertEqual(mock_ibroadcast.STATE['playlists'][801]['tracks'], [900])
         self.assertEqual(mock_ibroadcast.STATE['writes'][-1]['playlist'], 800)
+
+
+class CollectionTeardownTests(unittest.TestCase):
+    def fixture(self):
+        fixture = CollectionTests('test_playlist_browsing_reuses_loaded_library_without_remote_status_checks')
+        fixture.original = copy.deepcopy(mock_ibroadcast.STATE)
+        fixture.home = tempfile.TemporaryDirectory()
+        self.addCleanup(fixture.home.cleanup)
+        fixture.studio = client.Studio(fixture.home.name)
+        fixture.studio.client = object()  # No connection or service request.
+        return fixture
+
+    def finish(self, release, workers):
+        release.set()
+        for worker in workers:
+            worker.join(5)
+            self.assertFalse(worker.is_alive(), 'Fixture worker did not finish')
+
+    def test_delayed_cache_worker_cannot_recreate_removed_fixture_home(self):
+        fixture = self.fixture()
+        entered, release, ran = (threading.Event() for _ in range(3))
+        workers = []
+        self.addCleanup(self.finish, release, workers)
+        real_thread = threading.Thread
+
+        def delayed_thread(*, target, daemon):
+            def run():
+                entered.set()
+                if release.wait(5):
+                    target()
+                    ran.set()
+            worker = real_thread(target=run, daemon=daemon)
+            workers.append(worker)
+            return worker
+
+        with patch.object(client.threading, 'Thread', side_effect=delayed_thread):
+            fixture.studio._write_cache(SimpleNamespace(to_cache=lambda: {}), 123, fixture.studio.client)
+        self.assertTrue(entered.wait(5))
+        fixture.tearDown()
+        self.finish(release, workers)
+        self.assertTrue(ran.is_set(), 'Delayed worker did not exercise its ownership guard')
+        self.assertFalse(Path(fixture.home.name).exists(), 'Late cache write recreated the removed fixture')
+
+    def test_active_cache_write_finishes_before_fixture_removal(self):
+        fixture = self.fixture()
+        writing, release, disconnected, finished, written = (threading.Event() for _ in range(5))
+        workers, errors = [], []
+        self.addCleanup(self.finish, release, workers)
+        original_write, original_disconnect = fixture.studio._write_bytes, fixture.studio._disconnect
+
+        def write(*args):
+            workers.append(threading.current_thread())
+            writing.set()
+            if not release.wait(5):
+                raise AssertionError('Cache write was not released')
+            original_write(*args)
+            written.set()
+
+        def disconnect():
+            original_disconnect()
+            disconnected.set()
+
+        def teardown():
+            try:
+                fixture.tearDown()
+            except Exception as error:
+                errors.append(error)
+            finally:
+                finished.set()
+
+        fixture.studio._write_bytes = Mock(side_effect=write)
+        fixture.studio._disconnect = disconnect
+        fixture.home.cleanup = Mock(wraps=fixture.home.cleanup)
+        fixture.studio._write_cache(SimpleNamespace(to_cache=lambda: {}), 123, fixture.studio.client)
+        self.assertTrue(writing.wait(5))
+        worker = threading.Thread(target=teardown)
+        workers.append(worker)
+        worker.start()
+        self.assertTrue(disconnected.wait(5))
+        self.assertFalse(finished.is_set())
+        fixture.home.cleanup.assert_not_called()
+        self.finish(release, workers)
+        self.assertEqual(errors, [])
+        self.assertTrue(written.is_set(), 'The active cache write must complete successfully')
+        fixture.studio._write_bytes.assert_called_once()
+        fixture.home.cleanup.assert_called_once()
+        self.assertFalse(Path(fixture.home.name).exists())
