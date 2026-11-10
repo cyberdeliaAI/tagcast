@@ -156,8 +156,16 @@ It can navigate only to the shared application's entry pages. External links are
 parsed as HTTPS URLs; native/file/JavaScript protocols and new app windows are denied.
 Permissions are restricted to the main application frame's fullscreen, audio output
 and sanitized clipboard writes; camera, microphone and screen capture are denied.
-The existing early theme scripts are hashed in the desktop CSP. API Host/header/Fetch
-Metadata guards remain shared with the browser version.
+The browser server and desktop CSP use the same bundled rules in
+`src/tagcast/static/content-security-policy.json`. Trusted inline restoration code
+is authorised by exact SHA-256 hashes, with HTML line endings normalised; neither
+JavaScript `unsafe-inline` nor `unsafe-eval` is allowed. The HTTP host hashes and
+serves the same document snapshot, including HEAD requests and source updates.
+The extracted-app smoke test checks that its HTTP policy and Electron policy agree.
+The Mini Player and shutdown window keep their separate, stricter desktop policies.
+API Host/header/Fetch Metadata guards remain shared with the browser version.
+See [browser CSP validation](audits/browser-csp-2026-11-10.md) for the resource
+inventory, browser matrix and reproducible offline probe.
 
 ```sh
 uv run --frozen pytest -q
