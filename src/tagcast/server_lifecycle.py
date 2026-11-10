@@ -6,6 +6,7 @@ interrupt; accepted actions and their read-backs are drained without killing the
 
 import socket
 import threading
+import time
 from contextlib import contextmanager
 
 from .errors import CodedError
@@ -18,13 +19,58 @@ class ServerClosing(CodedError):
 
 def close_socket(connection):
     try:
-        connection.shutdown(socket.SHUT_RDWR)
-    except OSError:
+        # Do not run SSLSocket.shutdown(), which mutates another thread's TLS state.
+        socket.socket.shutdown(connection, socket.SHUT_RDWR)
+    except (OSError, TypeError, ValueError):
         pass
+
+
+def interruptible_response(response):
+    """Make only an audio/download body cooperatively cancellable, preserving its timeout.
+
+    Winsock shutdown does not wake an already blocked read/select. Catch short
+    waits below SocketIO/BufferedReader: retrying a timeout *above* that buffer
+    would poison it. Never close/detach a handle concurrently with Winsock calls.
+    This adapter is installed after headers, never on a remote mutation socket.
+    """
+    if getattr(response, "_tagcast_cancel_read", None) is not None:
+        return
+    fp = getattr(getattr(getattr(response, "raw", None), "_fp", None), "fp", None)
+    reader = getattr(fp, "raw", None)
+    sock = getattr(reader, "_sock", None)
+    if not isinstance(reader, socket.SocketIO) or not isinstance(sock, socket.socket):
+        return  # Unknown adapters retain their existing read timeout.
+    timeout = sock.gettimeout()
+    if timeout == 0:
+        return
+    cancel = threading.Event()
+    def readinto(buffer):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        try:
+            while not cancel.is_set():
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise socket.timeout("Audio read timed out")
+                sock.settimeout(.2 if remaining is None else min(.2, remaining))
+                try:
+                    return sock.recv_into(buffer)
+                except socket.timeout:
+                    continue
+            return 0
+        finally:
+            try:
+                sock.settimeout(timeout)
+            except OSError:
+                pass
+    reader.readinto = readinto
+    response._tagcast_cancel_read = cancel
 
 
 def interrupt_response(response):
     """Wake a blocked audio read before close() can wait on its buffered-reader lock."""
+    cancel = getattr(response, "_tagcast_cancel_read", None)
+    if isinstance(cancel, threading.Event):
+        cancel.set()
     raw = getattr(response, "raw", None)
     connection = getattr(raw, "_connection", None)
     sock = getattr(connection, "sock", None)
@@ -95,6 +141,7 @@ class RequestDrain:
 
     @contextmanager
     def stream_reader(self, connection, upstream):
+        interruptible_response(upstream)
         with self.request_lock:
             entry = self.requests.get(connection)
             if entry is not None:

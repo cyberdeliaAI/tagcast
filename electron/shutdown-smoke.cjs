@@ -43,6 +43,9 @@ function check({app, window, origin, backend, shutdownView}) {
     original(status);
     observations.phases.push(status.phase);
     observations.lastProgress=status;
+    // Windows may need the peer's response to settle an already accepted upload;
+    // never force-close that mutation socket or fake a cancelled outcome.
+    if(scenario==="upload"&&status.phase==="services")control("release").catch(()=>{});
     observations.uncertain=Boolean(observations.uncertain||status.uncertain);
     const view=shutdownView.window;
     observations.feedback ||= Boolean(view&&!view.isDestroyed()&&view.isVisible());

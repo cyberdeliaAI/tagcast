@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 import requests
 
 from tagcast import app, client, electron_host
+from tagcast.server_lifecycle import interruptible_response
 
 
 class DrainTests(unittest.TestCase):
@@ -277,7 +278,10 @@ class DrainTests(unittest.TestCase):
         response = requests.get(f"http://127.0.0.1:{upstream.server_port}", stream=True, timeout=30)
         self.assertTrue(started.wait(3))
         try:
-            with patch.object(self.studio, "stream", return_value=(response, "audio/mpeg")):
+            with patch.object(self.studio, "stream", return_value=(response, "audio/mpeg")), \
+                    patch("tagcast.server_lifecycle.close_socket"):
+                # Simulate Winsock's inability to wake an already blocked read.
+                # Cooperative cancellation must work without shutdown/peer EOF.
                 connection = requests.get(self.url + "/api/stream/1", stream=True, timeout=3)
                 try:
                     closing = self.drain()
@@ -290,6 +294,58 @@ class DrainTests(unittest.TestCase):
                     connection.close()
         finally:
             release.set()
+            upstream.shutdown()
+            upstream.server_close()
+            worker.join(timeout=3)
+
+    def test_cooperative_audio_waits_preserve_data_and_original_read_timeout(self):
+        release = self.gate()
+        class Audio(BaseHTTPRequestHandler):
+            def do_GET(_self):
+                _self.send_response(200)
+                _self.send_header("Content-Length", "7")
+                _self.end_headers()
+                release.wait()
+                try:
+                    _self.wfile.write(b"delayed")
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+            def log_message(_self, *_args):
+                pass
+        upstream = ThreadingHTTPServer(("127.0.0.1", 0), Audio)
+        worker = threading.Thread(target=upstream.serve_forever)
+        worker.start()
+        response = requests.get(f"http://127.0.0.1:{upstream.server_port}", stream=True, timeout=3)
+        interruptible_response(response)
+        results = []
+        reader = self.launch(lambda: results.append(response.content))
+        try:
+            time.sleep(.45)  # Longer than cooperative waits, shorter than the original timeout.
+            self.assertTrue(reader.is_alive())
+            release.set()
+            reader.join(timeout=3)
+            self.assertEqual(results, [b"delayed"])
+            response.close()
+            release.clear()
+            timed = requests.get(f"http://127.0.0.1:{upstream.server_port}", stream=True, timeout=.35)
+            interruptible_response(timed)
+            errors = []
+            def read_timeout():
+                try:
+                    timed.content
+                except requests.RequestException as error:
+                    errors.append(type(error))
+            bounded = self.launch(read_timeout)
+            try:
+                bounded.join(timeout=3)
+                self.assertFalse(bounded.is_alive(), "The original read timeout must still expire")
+                self.assertEqual(len(errors), 1)
+            finally:
+                release.set()
+                timed.close()
+        finally:
+            release.set()
+            response.close()
             upstream.shutdown()
             upstream.server_close()
             worker.join(timeout=3)
