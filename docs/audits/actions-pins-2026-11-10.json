@@ -1,0 +1,68 @@
+[
+  {
+    "action": "actions/checkout",
+    "previous_ref": "v4",
+    "sha": "11d5960a326750d5838078e36cf38b85af677262",
+    "release_tags": [
+      "v4.4.0"
+    ],
+    "action_yml_blob": "24e73e5a12126edc2adb9e5cd1bf245ce85bde56",
+    "main_build_run": 42866827475,
+    "source": "https://github.com/actions/checkout/commit/11d5960a326750d5838078e36cf38b85af677262"
+  },
+  {
+    "action": "actions/setup-python",
+    "previous_ref": "v5",
+    "sha": "a26af69be951a213d495a4c3e4e4022e16d87065",
+    "release_tags": [
+      "v5.6.0"
+    ],
+    "action_yml_blob": "efa8de904209196588db1453bdb44079b3c393d7",
+    "main_build_run": 42866827475,
+    "source": "https://github.com/actions/setup-python/commit/a26af69be951a213d495a4c3e4e4022e16d87065"
+  },
+  {
+    "action": "astral-sh/setup-uv",
+    "previous_ref": "v6",
+    "sha": "d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+    "release_tags": [
+      "v6.8.0"
+    ],
+    "action_yml_blob": "0a591c3869ee14e2e85369714ccc461cba3ab878",
+    "main_build_run": 42866827475,
+    "source": "https://github.com/astral-sh/setup-uv/commit/d0cc045d04ccac9d8b7881df0226f9e82c39688e"
+  },
+  {
+    "action": "actions/setup-node",
+    "previous_ref": "v4",
+    "sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "release_tags": [
+      "v4.4.0"
+    ],
+    "action_yml_blob": "ef58e69919a94e6a823d333159fad95e2720c896",
+    "main_build_run": 42866827475,
+    "source": "https://github.com/actions/setup-node/commit/49933ea5288caeca8642d1e84afbd3f7d6820020"
+  },
+  {
+    "action": "actions/upload-artifact",
+    "previous_ref": "v4",
+    "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "release_tags": [
+      "v4.6.2"
+    ],
+    "action_yml_blob": "2a0ecf19e8d0087dd2e5d1785dcf764811e79fae",
+    "main_build_run": 42866827475,
+    "source": "https://github.com/actions/upload-artifact/commit/ea165f8d65b6e75b540449e92b4886f43607fa02"
+  },
+  {
+    "action": "actions/download-artifact",
+    "previous_ref": "v4",
+    "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    "release_tags": [
+      "v4.3.0"
+    ],
+    "action_yml_blob": "7fc4fb55c7d0c7b198b1c7466e1efd7c7d05fb26",
+    "main_build_run": 42866827475,
+    "source": "https://github.com/actions/download-artifact/commit/d3f86a106a0bac45b974a628896c90dbdf5c8093"
+  }
+]
