@@ -772,6 +772,8 @@
   "errors.album.missing": "Cet album n’est plus dans votre bibliothèque. Rechargez la bibliothèque.",
   "errors.album.track_moved": "Ce morceau n’est plus sur cet album. Lancez une nouvelle recherche.",
   "errors.albumMerge.not_confirmed": "La fusion n’a pas été entièrement confirmée. Rechargez la bibliothèque et contrôlez iBroadcast avant toute autre action. Cette requête ne sera pas relancée.",
+  "errors.app.closing": "Tagcast est en cours de fermeture. Cette requête n’a pas été lancée.",
+  "errors.app.transfers_stopping": "Les transferts locaux sont encore en cours d’arrêt. Attendez avant de les préparer à nouveau.",
   "errors.desktop.picker_failed": "Le sélecteur de fichiers n’a pas pu s’ouvrir. Saisissez plutôt les chemins complets.",
   "errors.desktop.picker_limit": "Choisissez au maximum 100 chemins, sans saut de ligne.",
   "errors.desktop.picker_unavailable": "La sélection de fichiers n’est pas disponible.",
@@ -3508,7 +3510,5 @@
   "yearReview.summary.missingTrackYears_one": "{{count, number}} morceau sans année (année de l’album connue)",
   "yearReview.summary.missingTrackYears_other": "{{count, number}} morceaux sans année (année de l’album connue)",
   "yearReview.viewChanged": "La vue ou la session a changé. Analysez à nouveau les années pour obtenir des résultats à jour.",
-  "yearReview.year.unknown": "Inconnue",
-  "errors.app.closing": "Tagcast est en cours de fermeture. Cette requête n’a pas été lancée.",
-  "errors.app.transfers_stopping": "Les transferts locaux sont encore en cours d’arrêt. Attendez avant de les préparer à nouveau."
+  "yearReview.year.unknown": "Inconnue"
 }

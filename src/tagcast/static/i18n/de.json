@@ -726,6 +726,8 @@
   "errors.album.missing": "Dieses Album ist nicht mehr in deiner Bibliothek. Lade die Bibliothek neu.",
   "errors.album.track_moved": "Dieser Titel ist nicht mehr auf diesem Album. Suche erneut.",
   "errors.albumMerge.not_confirmed": "Das Zusammenführen wurde nicht vollständig bestätigt. Lade die Bibliothek neu und sieh in iBroadcast nach, bevor du etwas anderes tust. Diese Anfrage wird nicht wiederholt.",
+  "errors.app.closing": "Tagcast wird geschlossen. Diese Anfrage wurde nicht gestartet.",
+  "errors.app.transfers_stopping": "Lokale Übertragungen werden noch beendet. Warte, bevor du sie erneut vorbereitest.",
   "errors.desktop.picker_failed": "Die Dateiauswahl konnte nicht geöffnet werden. Gib stattdessen vollständige Pfade ein.",
   "errors.desktop.picker_limit": "Wähle höchstens 100 Pfade ohne Zeilenumbrüche.",
   "errors.desktop.picker_unavailable": "Die Dateiauswahl ist nicht verfügbar.",
@@ -3321,7 +3323,5 @@
   "yearReview.summary.missingTrackYears_one": "{{count, number}} Titel ohne Jahr (Albumjahr bekannt)",
   "yearReview.summary.missingTrackYears_other": "{{count, number}} Titel ohne Jahr (Albumjahr bekannt)",
   "yearReview.viewChanged": "Die Ansicht oder Sitzung hat sich geändert. Analysiere die Jahre erneut, um aktuelle Ergebnisse zu erhalten.",
-  "yearReview.year.unknown": "Unbekannt",
-  "errors.app.closing": "Tagcast wird geschlossen. Diese Anfrage wurde nicht gestartet.",
-  "errors.app.transfers_stopping": "Lokale Übertragungen werden noch beendet. Warte, bevor du sie erneut vorbereitest."
+  "yearReview.year.unknown": "Unbekannt"
 }

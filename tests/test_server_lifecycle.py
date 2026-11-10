@@ -160,6 +160,42 @@ class DrainTests(unittest.TestCase):
             urlopen(Request(self.url + "/api/save", data=b"{}"), timeout=3)
         self.assertEqual(error.exception.code, 403)
 
+    def test_delayed_job_poll_headers_remain_usable_until_finish_acknowledgment(self):
+        self.studio.jobs["delayed"] = {"state": "checking"}
+        with socket.create_connection(("127.0.0.1", self.server.server_port), timeout=3) as connection:
+            connection.sendall(b"GET /api/jobs/delayed HTTP/1.1\r\n")
+            self.drain()
+            self.state("checking")
+            self.studio.jobs["delayed"] = {"state": "done", "results": []}
+            self.state("ready")
+            connection.sendall(f"Host: 127.0.0.1:{self.server.server_port}\r\n\r\n".encode())
+            with connection.makefile("rb") as response:
+                data = response.read()
+            self.assertIn(b"200 OK", data)
+            self.assertIn(b'"state": "done"', data)
+
+    def test_accepted_write_result_is_delivered_before_ready(self):
+        entered, deliver = self.gate(), self.gate()
+        replies = []
+        original = app.Handler._json
+        def respond(handler, status, payload):
+            if payload.get("sent"):
+                entered.set()
+                deliver.wait()
+            original(handler, status, payload)
+        with patch.object(self.studio, "save", return_value={"sent": True}) as save, \
+                patch.object(app.Handler, "_json", respond):
+            request = self.launch(lambda: replies.append(self.post()))
+            self.assertTrue(entered.wait(3))
+            closing = self.drain()
+            self.state("writes")
+            self.assertTrue(closing.is_alive())
+            deliver.set()
+            self.state("ready")
+            request.join(timeout=3)
+            self.assertEqual(replies, [{"sent": True}])
+            save.assert_called_once()
+
     def test_cleanup_stop_is_reasserted_after_admitted_start(self):
         entered, release = self.gate(), self.gate()
         def start(_id, _excluded):

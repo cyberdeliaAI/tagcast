@@ -42,6 +42,7 @@ function check({app, window, origin, backend, shutdownView}) {
   backend.onShutdown=status=>{
     original(status);
     observations.phases.push(status.phase);
+    observations.lastProgress=status;
     observations.uncertain=Boolean(observations.uncertain||status.uncertain);
     const view=shutdownView.window;
     observations.feedback ||= Boolean(view&&!view.isDestroyed()&&view.isVisible());
@@ -142,13 +143,15 @@ function check({app, window, origin, backend, shutdownView}) {
         if(!identity.closing||backend.child.exitCode!==null)throw Error("Backend stopped during protected work");
         observations.portRetained=true;
         if(scenario==="stalled-read"){
-          shutdownView.window.minimize();
-          await until(()=>shutdownView.window.isMinimized(),"minimized feedback");
+          // Xvfb has no window manager to implement native minimization. Hiding
+          // still requires the second process to restore the real status window.
+          shutdownView.window.hide();
+          await until(()=>!shutdownView.window.isVisible(),"hidden feedback");
           const env={...process.env};delete env.TAGCAST_SHUTDOWN_SMOKE_REPORT;delete env.TAGCAST_SHUTDOWN_SMOKE_CASE;
           const second=spawn(app.getPath("exe"),app.isPackaged?[]:[__dirname],{env,stdio:"ignore",windowsHide:true});
           const exit=await new Promise(resolve=>second.once("exit",resolve));
           if(exit!==0)throw Error("Second application launch failed");
-          await until(()=>observations.secondInstance&&!shutdownView.window.isMinimized()&&shutdownView.window.isVisible(),"second-instance feedback");
+          await until(()=>observations.secondInstance&&shutdownView.window.isVisible(),"second-instance feedback");
         }
         if(scenario==="reopen"){
           const pid=backend.child.pid;

@@ -726,6 +726,8 @@
   "errors.album.missing": "This album is no longer in your library. Reload the library.",
   "errors.album.track_moved": "This track is no longer on that album. Search again.",
   "errors.albumMerge.not_confirmed": "The merge was not fully confirmed. Reload the library and check iBroadcast before doing anything else. This request will not be retried.",
+  "errors.app.closing": "Tagcast is closing. This request was not started.",
+  "errors.app.transfers_stopping": "Local transfers are still stopping. Wait before preparing them again.",
   "errors.desktop.picker_failed": "The file chooser could not open. Enter complete paths instead.",
   "errors.desktop.picker_limit": "Choose at most 100 paths without line breaks.",
   "errors.desktop.picker_unavailable": "File selection is not available.",
@@ -3321,7 +3323,5 @@
   "yearReview.summary.missingTrackYears_one": "{{count, number}} track without a year (known album year)",
   "yearReview.summary.missingTrackYears_other": "{{count, number}} tracks without a year (known album year)",
   "yearReview.viewChanged": "The view or session changed. Analyse years again for current results.",
-  "yearReview.year.unknown": "Unknown",
-  "errors.app.closing": "Tagcast is closing. This request was not started.",
-  "errors.app.transfers_stopping": "Local transfers are still stopping. Wait before preparing them again."
+  "yearReview.year.unknown": "Unknown"
 }

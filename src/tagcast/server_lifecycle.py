@@ -88,7 +88,9 @@ class RequestDrain:
             yield
         finally:
             with self.request_lock:
-                if entry is not None:
+                # Accepted writes include delivery of their result/job ID. Keep
+                # them protected until shutdown_request removes the handler.
+                if entry is not None and phase != "write":
                     entry["phase"] = "responding"
 
     @contextmanager
@@ -126,7 +128,7 @@ class RequestDrain:
         for connection, phase, upstream in entries:
             if phase == "stream" and upstream is not None:
                 interrupt_response(upstream)
-            if final or phase in ("receiving", "stream"):
+            if final or phase == "stream":
                 close_socket(connection)
 
     def stop_services(self, studio):
@@ -155,10 +157,13 @@ class RequestDrain:
         threading.Thread(target=run, daemon=True, name="tagcast-stop-services").start()
 
     def pending_requests(self):
+        # Partial headers/bodies cannot mutate past the admission gate. Leave
+        # them usable for job polling until finish acknowledgment, then close
+        # every remaining socket before joining HTTP handlers.
         with self.request_lock:
             phases = [entry["phase"] for entry in self.requests.values()]
         return {"writes": phases.count("write"),
-                "reads": sum(phase in ("read", "stream", "receiving") for phase in phases)}
+                "reads": sum(phase in ("read", "stream") for phase in phases)}
 
 
 def drain_server(server, progress=lambda _state: None, commands=None):
