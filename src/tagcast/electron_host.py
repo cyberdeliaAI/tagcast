@@ -4,15 +4,24 @@ import argparse
 import json
 import logging
 import os
+import queue
 import signal
 import sys
 import threading
-import time
 from urllib.request import urlopen
 
 from . import __version__, app
+from .server_lifecycle import drain_server
 
 PROTOCOL = 1
+
+
+def emit(data):
+    try:
+        print(json.dumps(data), flush=True)
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 def compatible_server(port):
@@ -21,28 +30,17 @@ def compatible_server(port):
         with urlopen(f"http://127.0.0.1:{port}/api/app", timeout=3) as response:
             data = json.loads(response.read(4097))
         return (data.get("application") == "Tagcast" and data.get("version") == __version__
-                and data.get("desktop_protocol") == PROTOCOL)
+                and data.get("desktop_protocol") == PROTOCOL and not data.get("closing"))
     except (OSError, ValueError, AttributeError):
         return False
 
 
-def finish_server(server):
-    """Stop between batches and finish accepted requests/read-backs before exit."""
-    studio = server.RequestHandlerClass.func.studio
-    studio.cleanup.stop.set()
-    studio.duplicate_cleanup.stop.set()
-    server.shutdown()
+def finish_server(server, progress=lambda _state: None, commands=None):
+    """Keep the owned listener until all admitted work is safely drained."""
+    if not drain_server(server, progress, commands):
+        return False
     server.server_close()
-    with studio.save_lock:
-        pass
-    while True:
-        with studio.lock:
-            checking = any(job.get("state") == "checking" for job in studio.jobs.values())
-        if not checking:
-            break
-        time.sleep(.1)
-    with studio.cache_lock:
-        pass
+    return True
 
 
 def main(argv=None):
@@ -68,30 +66,44 @@ def main(argv=None):
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
     port = server.server_port if server else args.port
-    stopping = threading.Event()
+    commands = queue.Queue()
 
     def read_parent():
         try:
             for line in sys.stdin:
-                if line.strip() == "stop":
-                    break
+                command = line.strip()
+                if command in ("stop", "drain", "resume", "finish"):
+                    commands.put(command)
         finally:
-            stopping.set()  # EOF also stops our child after an unexpected parent exit.
+            commands.put("eof")  # An absent parent still waits for accepted work.
 
     def stop_signal(_signum, _frame):
-        stopping.set()
+        commands.put("eof")
 
     for name in ("SIGTERM", "SIGINT"):
         signal.signal(getattr(signal, name), stop_signal)
     threading.Thread(target=read_parent, daemon=True).start()
     try:
-        print(json.dumps({"event": "ready", "protocol": PROTOCOL, "version": __version__,
-                          "url": f"http://127.0.0.1:{port}", "owned": server is not None}), flush=True)
-        stopping.wait()
+        if not emit({"event": "ready", "protocol": PROTOCOL, "version": __version__,
+                     "url": f"http://127.0.0.1:{port}", "owned": server is not None, "shutdown_control": 1}):
+            commands.put("eof")
+        while True:
+            command = commands.get()
+            if command not in ("stop", "drain", "finish", "eof"):
+                continue
+            if not server:
+                break
+            if command in ("stop", "finish", "eof"):
+                commands.put("eof")
+            def progress(state):
+                if not emit({"event": "shutdown", **state}):
+                    commands.put("eof")
+            if finish_server(server, progress, commands):
+                worker.join()
+                break
+            if not emit({"event": "resumed"}):
+                commands.put("eof")
     finally:
-        if server:
-            finish_server(server)
-            worker.join()
         logging.shutdown()
     return 0
 

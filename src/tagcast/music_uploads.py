@@ -44,6 +44,7 @@ class MusicUploads:
         self.library = None
         self.stop = threading.Event()
         self.transfer = self.job = self.worker = None
+        self._preparations, self._jobs = [], []
         self.items = []
         self.review = None
         self.preparing = False
@@ -137,6 +138,8 @@ class MusicUploads:
             self.checked = self.total = self.ignored = 0
             self.worker = threading.Thread(target=self._prepare, args=(owner, generation, paths, stop),
                                            name="tagcast-upload-plan", daemon=True)
+            self._preparations = [worker for worker in self._preparations if worker.is_alive()]
+            self._preparations.append(self.worker)
             self.worker.start()
             return self._view()
 
@@ -236,6 +239,8 @@ class MusicUploads:
             stop = self.stop
             self.job = engine.UploadJob(engine.UploadService(owner[0]), self.items,
                                         valid=lambda: not stop.is_set() and self._valid(owner, generation))
+            self._jobs = [job for job in self._jobs if job._thread and job._thread.is_alive()]
+            self._jobs.append(self.job)
             self.phase = "Uploading reviewed files…"
             self.job.start()
             return self._view()
@@ -274,6 +279,22 @@ class MusicUploads:
             if job:
                 job.stop()
         threading.Thread(target=abort, name="tagcast-upload-stop", daemon=True).start()
+
+    def shutdown(self):
+        """Stop transfers off the request thread; retain uncertain results on reopen."""
+        with self.lock:
+            self._stop()
+            workers, jobs = list(self._preparations), list(self._jobs)
+            self.library = self.review = None
+            self.phase = "Stopping. A file already sent may still arrive in iBroadcast."
+        for job in jobs:
+            job.stop()
+        for worker in workers:
+            worker.join()
+        for job in jobs:
+            job.join()
+        return any(item.status == engine.UNCERTAIN or (item.status == engine.SENT and not item.verified)
+                   for job in jobs for item in job.items)
 
     def close(self):
         with self.lock:

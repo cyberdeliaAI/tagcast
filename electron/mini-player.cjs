@@ -7,7 +7,7 @@ const {command, snapshot, bounds} = require("./mini-contract.cjs");
 function installMiniPlayer(owner, origin, text = () => "Tagcast · Mini Player") {
   const url = origin + "/mini-player/index.html", ownerContents = owner.webContents;
   const preferences = path.join(app.getPath("userData"), "mini-player.json");
-  let mini = null, latest = null, saved = {}, serial = 0;
+  let mini = null, latest = null, saved = {}, serial = 0, closing = false;
   const pending = new Map();
   const wayland = process.platform === "linux" && Boolean(process.env.WAYLAND_DISPLAY);
   try { const data = fs.readFileSync(preferences, "utf8"); if (data.length < 4096) saved = JSON.parse(data); } catch { /* first use */ }
@@ -18,7 +18,7 @@ function installMiniPlayer(owner, origin, text = () => "Tagcast · Mini Player")
   const sendOwner = (channel, value) => { if (!ownerContents.isDestroyed()) ownerContents.send(channel, value); };
   const publish = () => { if (mini && !mini.isDestroyed()) mini.webContents.send("mini:state", {playback: latest, pinned, canPin: !wayland}); };
   const cancelPending = () => { for (const item of pending.values()) { clearTimeout(item.timer); item.resolve(false); } pending.clear(); };
-  const restoreMain = () => { if (!owner.isDestroyed()) { if (owner.isMinimized()) owner.restore(); owner.show(); owner.focus(); } };
+  const restoreMain = () => { if (!closing && !owner.isDestroyed()) { if (owner.isMinimized()) owner.restore(); owner.show(); owner.focus(); } };
   function showMain() {
     // Closing this passive view must never close the renderer that owns audio.
     restoreMain();
@@ -36,7 +36,7 @@ function installMiniPlayer(owner, origin, text = () => "Tagcast · Mini Player")
     try { fs.writeFileSync(preferences + ".tmp", JSON.stringify(saved)); fs.renameSync(preferences + ".tmp", preferences); } catch { /* optional window preference */ }
   }
   function open() {
-    if (owner.isDestroyed()) return;
+    if (closing || owner.isDestroyed()) return;
     if (mini && !mini.isDestroyed()) { showMini(); return; }
     const candidate = bounds(saved, screen.getPrimaryDisplay().workArea);
     const area = screen.getDisplayMatching(candidate).workArea;
@@ -98,6 +98,6 @@ function installMiniPlayer(owner, origin, text = () => "Tagcast · Mini Player")
   owner.on("focus", returnOnOwner);
   owner.on("closed", () => { cancelPending(); mini?.destroy(); });
   screen.on("display-removed", () => { if (mini && !wayland) mini.setBounds(bounds(mini.getBounds(), screen.getDisplayMatching(mini.getBounds()).workArea)); });
-  return {open, showMain, get window() { return mini; }};
+  return {open, showMain, beginShutdown() { closing=true; cancelPending(); mini?.destroy(); }, resume() { closing=false; restoreMain(); }, get window() { return mini; }};
 }
 module.exports = {installMiniPlayer};
