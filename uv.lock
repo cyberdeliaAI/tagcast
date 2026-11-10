@@ -337,7 +337,7 @@ wheels = [
 
 [[package]]
 name = "tagcast"
-version = "1.6.5"
+version = "1.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
