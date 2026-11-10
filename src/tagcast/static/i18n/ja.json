@@ -680,6 +680,8 @@
   "errors.album.missing": "このアルバムはもうライブラリにありません。ライブラリを再読み込みしてください。",
   "errors.album.track_moved": "この曲はもうそのアルバムにありません。もう一度検索してください。",
   "errors.albumMerge.not_confirmed": "統合を完全には確認できませんでした。ほかの操作をする前に、ライブラリを再読み込みしてiBroadcastを確認してください。このリクエストは再試行されません。",
+  "errors.app.closing": "Tagcast を終了しています。このリクエストは開始されませんでした。",
+  "errors.app.transfers_stopping": "ローカル転送を停止しています。再度準備する前にお待ちください。",
   "errors.desktop.picker_failed": "ファイル選択ダイアログを開けませんでした。代わりに完全なパスを入力してください。",
   "errors.desktop.picker_limit": "改行を含まないパスを最大100件まで選択してください。",
   "errors.desktop.picker_unavailable": "ファイルの選択は利用できません。",
@@ -3134,7 +3136,5 @@
   "yearReview.summary.discs_other": "個別のディスク項目：{{count, number}}件",
   "yearReview.summary.missingTrackYears_other": "年のない曲（アルバムの年は判明）：{{count, number}}曲",
   "yearReview.viewChanged": "表示またはセッションが変わりました。最新の結果を得るには、もう一度年を分析してください。",
-  "yearReview.year.unknown": "不明",
-  "errors.app.closing": "Tagcast を終了しています。このリクエストは開始されませんでした。",
-  "errors.app.transfers_stopping": "ローカル転送を停止しています。再度準備する前にお待ちください。"
+  "yearReview.year.unknown": "不明"
 }

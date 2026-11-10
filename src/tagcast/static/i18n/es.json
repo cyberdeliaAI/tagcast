@@ -772,6 +772,8 @@
   "errors.album.missing": "Este álbum ya no está en tu biblioteca. Recarga la biblioteca.",
   "errors.album.track_moved": "Esta canción ya no está en ese álbum. Vuelve a buscar.",
   "errors.albumMerge.not_confirmed": "La combinación no se confirmó por completo. Recarga la biblioteca y comprueba iBroadcast antes de hacer nada más. Esta solicitud no se volverá a intentar.",
+  "errors.app.closing": "Tagcast se está cerrando. Esta solicitud no se ha iniciado.",
+  "errors.app.transfers_stopping": "Las transferencias locales aún se están deteniendo. Espera antes de volver a prepararlas.",
   "errors.desktop.picker_failed": "No se pudo abrir el selector de archivos. Introduce rutas completas en su lugar.",
   "errors.desktop.picker_limit": "Elige como máximo 100 rutas, sin saltos de línea.",
   "errors.desktop.picker_unavailable": "La selección de archivos no está disponible.",
@@ -3508,7 +3510,5 @@
   "yearReview.summary.missingTrackYears_one": "{{count, number}} canción sin año (año del álbum conocido)",
   "yearReview.summary.missingTrackYears_other": "{{count, number}} canciones sin año (año del álbum conocido)",
   "yearReview.viewChanged": "La vista o la sesión cambió. Vuelve a analizar los años para obtener resultados actuales.",
-  "yearReview.year.unknown": "Desconocido",
-  "errors.app.closing": "Tagcast se está cerrando. Esta solicitud no se ha iniciado.",
-  "errors.app.transfers_stopping": "Las transferencias locales aún se están deteniendo. Espera antes de volver a prepararlas."
+  "yearReview.year.unknown": "Desconocido"
 }

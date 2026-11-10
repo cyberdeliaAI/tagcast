@@ -726,6 +726,8 @@
   "errors.album.missing": "Dit album staat niet meer in je bibliotheek. Laad de bibliotheek opnieuw.",
   "errors.album.track_moved": "Dit nummer staat niet meer op dat album. Zoek opnieuw.",
   "errors.albumMerge.not_confirmed": "De samenvoeging is niet volledig bevestigd. Laad de bibliotheek opnieuw en controleer iBroadcast voordat je iets anders doet. Dit verzoek wordt niet opnieuw geprobeerd.",
+  "errors.app.closing": "Tagcast wordt afgesloten. Dit verzoek is niet gestart.",
+  "errors.app.transfers_stopping": "Lokale overdrachten worden nog gestopt. Wacht voordat je ze opnieuw voorbereidt.",
   "errors.desktop.picker_failed": "De bestandskiezer kon niet worden geopend. Voer in plaats daarvan volledige paden in.",
   "errors.desktop.picker_limit": "Kies maximaal 100 paden zonder regeleinden.",
   "errors.desktop.picker_unavailable": "Bestanden kiezen is niet beschikbaar.",
@@ -3321,7 +3323,5 @@
   "yearReview.summary.missingTrackYears_one": "{{count, number}} nummer zonder jaar (albumjaar bekend)",
   "yearReview.summary.missingTrackYears_other": "{{count, number}} nummers zonder jaar (albumjaar bekend)",
   "yearReview.viewChanged": "De weergave of sessie is gewijzigd. Analyseer de jaren opnieuw voor actuele resultaten.",
-  "yearReview.year.unknown": "Onbekend",
-  "errors.app.closing": "Tagcast wordt afgesloten. Dit verzoek is niet gestart.",
-  "errors.app.transfers_stopping": "Lokale overdrachten worden nog gestopt. Wacht voordat je ze opnieuw voorbereidt."
+  "yearReview.year.unknown": "Onbekend"
 }

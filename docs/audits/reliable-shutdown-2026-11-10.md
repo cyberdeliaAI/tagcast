@@ -42,14 +42,15 @@ After:
    renderer alive, pause its existing audio element, and show a small sandboxed
    shell status window. Mini Player dismissal cannot reveal the hidden main window.
 2. Mark the owned server as closing. Admit no new actions. Incomplete request
-   bodies are not accepted mutations; idle/parser sockets and audio streams can
-   be interrupted safely. Job polling and `/api/app` remain available.
+   bodies are not accepted mutations. Interrupt audio streams; leave header/body
+   parsing available until final acknowledgment so a delayed job poll is not cut
+   off as idle. Job polling and `/api/app` remain available.
 3. Stop cleanup/duplicate cleanup between batches, and cancel the local chooser.
    Reassert those stop flags to cover an already-admitted start. Once admitted
    POST actions return, stop/join transfer workers, disconnect queue sync and cancel
    export preparation. Waiting until starts return prevents a late worker escaping
    the stop pass. Upload results remain visible if closing is cancelled.
-4. Drain accepted HTTP actions, the save lock, active read-back workers, cache
+4. Drain accepted HTTP actions including their result/job-ID responses, the save lock, active read-back workers, cache
    persistence and credential renewal/persistence. Retain active read-back markers
    independently of the account-scoped job view. Ownership checks remain intact;
    old-account results are never published into a replacement session.
@@ -57,7 +58,8 @@ After:
    account-free progress, then await the shell's finish acknowledgment. Wake an
    existing History poll so a confirmed result can be stored before renderer exit.
 6. Explain unknown outcomes and offer reopening. Only after acknowledgment stop
-   the HTTP loop, close the listener, join handlers and await the real child exit.
+   the HTTP loop, interrupt remaining parser/idle sockets, close the listener,
+   join handlers and await the real child exit.
    Then destroy the renderer/status window and release the single-instance lock.
 
 The control capability is advertised as `shutdown_control: 1`; protocol/version
@@ -94,14 +96,32 @@ The frontend test proves that a completed read-back reaches History immediately
 on a desktop close notification without sending a mutation or waiting for its
 ordinary polling interval.
 
-Local full suites: Python 3.11 and 3.13 each passed 953 tests / 2,562 subtests.
-The final shutdown/security subset additionally passed 31 tests / 14 subtests,
-including the added test preserving all HTTP guards while closing.
+Local full suites: Python 3.11 and 3.13 each passed 953 tests / 2,562 subtests
+before the final HTTP-delivery cases. The final full Python 3.13 run passed
+956 tests / 2,562 subtests; the final Python 3.11 shutdown/security/transfer subset
+passed 57 tests / 23 subtests, including the added HTTP-delivery cases.
 Frontend/media: 775 passed. Electron: 58 passed.
 Ruff, generated translations, release consistency and diff
 whitespace checks passed. The initial HTTP health test used an incomplete Studio
 double; it now uses a real temporary Studio and preserves its original guard
 assertions. No known pre-existing failures were hidden.
+
+A PR-review reproduction exposed an overly early interruption in the first
+draining implementation: a job poll with only its request line sent received EOF
+instead of the completed result. Parser sockets are now excluded from protected
+work and left usable until the finish acknowledgment. The closing admission gate
+still prevents an incomplete POST from becoming a mutation. Final socket shutdown
+then releases idle parsers before handler joins. Separate coverage gates result
+delivery after an accepted write, proving the job ID/result cannot be lost merely
+because the route returned. Both corrections strengthen the close handshake;
+no timeout or assertion was relaxed.
+
+The first CI run also caught two newly appended translation keys outside the
+catalogues' required sort order; all six catalogues and generated English are
+sorted again. Its Linux native case attempted minimization under bare Xvfb,
+which has no window manager: second-instance verification now hides the real
+status window and still requires that launch to restore it. Minimized restoration
+remains covered by the window unit test and the earlier native macOS run.
 
 Native verification uses the actual ad-hoc signed macOS ARM64 app, packaged Python
 backend and CLI, isolated profiles/settings and a numeric-loopback service fixture.
