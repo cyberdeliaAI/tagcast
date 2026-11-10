@@ -74,3 +74,17 @@ remain the regression reference.
 First-use search/browse index construction, very large queue rendering and native
 network waits remain separate investigation topics. No eager startup scan, persistent
 derived cache, partial read-back shortcut or playback change is included.
+
+## Ordinary browsing without repeated status requests
+
+The B-03 follow-up reuses the active loaded snapshot for ordinary category pages,
+native track favourites and tag catalogue/selection reads. Continuous browsing and
+Back restoration keep their existing bounded local pages but no longer add an
+upstream status check to each one. Fresh checks before writes, explicit reloads,
+legacy feature upgrades and uncertain-write read-back remain in place.
+
+The [measurement and validation record](audits/browsing-performance-2026-11-10.md)
+contains the complete path inventory, ownership/job behavior, reproducible probes,
+large-fixture measurements with and without simulated network delay, real Chromium
+history/outage results, memory limits and regression coverage. This removes network
+round trips; it does not change first-index construction or the existing summary cache.
