@@ -33,6 +33,14 @@ function check({app, window, origin, backend, shutdownView}) {
   const originalReady=backend.onShutdownReady;
   backend.onShutdownReady=async status=>{
     const approved=await originalReady(status);
+    if(scenario==="stream"){
+      observations.recoveryClosed=await window.webContents.executeJavaScript(`({closing:audioRecovery.closing,
+        pending:!!audioRecovery.pending,paused:audio.paused,activeReport:!!playReporting.watch?.active,
+        sameWatch:playReporting.watch===window.shutdownRecoveryWatch})`);
+      const value=observations.recoveryClosed;
+      if(!value.closing||value.pending||!value.paused||value.activeReport||!value.sameWatch)
+        failure="Audio recovery continued or replaced its listening event during native shutdown";
+    }
     if(scenario==="write"){
       observations.historySaved=await window.webContents.executeJavaScript("JSON.parse(localStorage.getItem('tagcast-history')||'[]')[0]?.status==='saved'");
       if(!observations.historySaved)failure="Confirmed result was not flushed to History";
@@ -108,7 +116,8 @@ function check({app, window, origin, backend, shutdownView}) {
       }else if(["stalled-read","reopen"].includes(scenario)){
         operation=api("/api/overview").catch(error=>({error:error.message}));
       }else if(scenario==="stream"){
-        await window.webContents.executeJavaScript(`(()=>{const audio=document.querySelector('audio');audio.muted=true;audio.src='/api/stream/900';audio.play().catch(()=>{});})()`,true);
+        await window.webContents.executeJavaScript(`(async()=>{audio.muted=true;applyPlaybackSettings({record_plays:true});
+          playTracks((await albumDetails(['72']))[0]);})()`,true);
       }else if(scenario==="download"){
         await api("/api/downloads/add",{session,albums:["72"]});
         await api("/api/downloads/prepare",{session,out:path.join(process.env.TAGCAST_HOME,"audio"),quality:"128"});
@@ -133,6 +142,11 @@ function check({app, window, origin, backend, shutdownView}) {
       if(scenario==="stream"){
         await until(()=>window.webContents.executeJavaScript("!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>0"),"active audio");
         observations.audioPlaying=true;
+        // Actual media-error recovery is covered by check_audio_recovery.cjs.
+        // Inject pending recovery here to exercise the real native close/drain path.
+        await window.webContents.executeJavaScript(`window.shutdownRecoveryWatch=playReporting.watch;
+          if(!shutdownRecoveryWatch||!recoverAudio(2)||!audioRecovery.pending)throw Error('No pending audio recovery')`);
+        observations.recoveryPending=true;
       }
       if(scenario==="upload"){
         observations.uploads=(await control("state")).uploads;

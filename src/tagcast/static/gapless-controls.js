@@ -3,7 +3,7 @@
 // Presentation only: all buttons and seeking retain the same native audio element.
 const gaplessControls = {draft: null, spacious: false};
 function customTransportEnabled() {
-  return Boolean(gaplessTrial.active) || gaplessControls.spacious || Boolean(player.resumePending);
+  return Boolean(gaplessTrial.active) || gaplessControls.spacious || Boolean(player.resumePending) || Boolean(audioRecoveryCurrent());
 }
 function transportSelection() {
   const g = gaplessTrial.active;
@@ -30,13 +30,14 @@ function gaplessRenderTransport() {
     return;
   }
   const failed = Boolean(audio.error);
-  const ready = !failed && (g ? Boolean(g.started && g.current && g.ready !== false)
+  const recovery = audioRecoveryCurrent();
+  const ready = Boolean(recovery && Number.isFinite(recovery.duration) && recovery.duration > 0) || !failed && (g ? Boolean(g.started && g.current && g.ready !== false)
     : Boolean(player.queue[player.index] && Number.isFinite(audio.duration) && audio.duration > 0));
   const duration = ready ? playerTrackDuration() : Number(player.resumePending ? player.queue[player.index]?.length : g?.first?.length) || 0;
   const draft = gaplessControls.draft || g?.seekIntent;
   const preview = draft && (draft === g?.seekIntent || transportDraftCurrent(draft));
   const position = Math.max(0, Math.min(duration, preview ? draft.position : ready ? playerTrackPosition() : 0));
-  const waiting = !player.resumePending && !failed && (g ? g.ready === false || Boolean(g.seekIntent) : !ready);
+  const waiting = Boolean(recovery && recovery === audioRecovery.pending) || !player.resumePending && !failed && (g ? g.ready === false || Boolean(g.seekIntent) : !ready);
   transport.setAttribute("aria-busy", String(waiting));
   $("#gapless-time").textContent = waiting ? TagcastI18n.text("gaplessSettings.transport.preparing") : `${gaplessClock(position)} / ${gaplessClock(duration)}`;
   $("#gapless-time").title = waiting && g ? gaplessTrial.message : "";
@@ -48,15 +49,15 @@ function gaplessRenderTransport() {
   const title = player.queue[player.index]?.title, times = {position: gaplessClock(position), duration: gaplessClock(duration)};
   slider.setAttribute("aria-label", title ? TagcastI18n.text("gaplessSettings.transport.seekIn", {title}) : TagcastI18n.text("gaplessSettings.transport.seekCurrent"));
   slider.setAttribute("aria-valuetext", TagcastI18n.text(waiting ? "gaplessSettings.transport.preparingAt" : "gaplessSettings.transport.position", times));
-  const button = $("#gapless-play"), paused = audio.paused;
-  button.disabled = !ready && !player.resumePending; button.textContent = paused ? "▶" : "❚❚";
+  const button = $("#gapless-play"), paused = audioRecoveryPaused();
+  button.disabled = !ready && !player.resumePending && !recovery; button.textContent = paused ? "▶" : "❚❚";
   button.setAttribute("aria-label", TagcastI18n.text(paused ? "gaplessSettings.transport.playTrack" : "gaplessSettings.transport.pauseTrack"));
   button.title = TagcastI18n.text(paused ? "gaplessSettings.transport.play" : "gaplessSettings.transport.pause");
   const muted = audio.muted || audio.volume === 0, label = TagcastI18n.text(muted ? "gaplessSettings.transport.unmute" : "gaplessSettings.transport.mute");
   $("#gapless-mute").setAttribute("aria-pressed", String(muted));
   $("#gapless-mute").setAttribute("aria-label", label); $("#gapless-mute").title = label;
   $("#gapless-speed").value = String(audio.playbackRate || 1);
-  if (wasNative && ready) button.focus();
+  if (wasNative && (ready || recovery)) button.focus();
 }
 function gaplessSeekInput() {
   const slider = $("#gapless-position"), selection = transportSelection();
@@ -83,7 +84,7 @@ $("#gapless-position").addEventListener("keydown", event => {
 });
 $("#gapless-play").addEventListener("click", () => {
   if (!customTransportEnabled() || $("#gapless-play").disabled) return;
-  if (audio.paused) playSystemPlayback(); else audio.pause();
+  if (audioRecoveryPaused()) playSystemPlayback(); else pauseSystemPlayback();
 });
 $("#gapless-mute").addEventListener("click", () => {
   if (!customTransportEnabled()) return;

@@ -25,11 +25,13 @@ function miniLabels() {
 }
 function miniSnapshot() {
   const track = player.queue[player.index], g = gaplessTrial.active;
+  const recovery = audioRecoveryCurrent();
   const available = Boolean(track && live() && !$("#player").hidden);
   const controllable = available && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
   const duration = playerTrackDuration(), ready = !g || Boolean(g.started && g.current && g.ready !== false);
   const theme = document.documentElement.dataset.theme;
-  const status = !available ? "" : !controllable ? "remote" : audio.error ? "error" : g && (!ready || g.seekIntent) ? "preparing"
+  const status = !available ? "" : !controllable ? "remote" : recovery === audioRecovery.pending && recovery ? "preparing"
+    : audio.error || recovery === audioRecovery.failed && recovery ? "error" : g && (!ready || g.seekIntent) ? "preparing"
     : audio.readyState < 3 && !audio.paused ? "buffering" : g ? "gapless" : "";
   return {document: miniOwner.document, sequence: ++miniOwner.sequence,
     entry: available ? `${player.epoch}:${miniIdentity(track)}` : "", segment: g ? miniIdentity(g.current || g) : `normal:${miniOwner.normal}`,
@@ -37,8 +39,8 @@ function miniSnapshot() {
     title: available ? track.title : "", artist: available ? track.artist || track.album?.artist || "" : "", idle: !available,
     album: available ? track.album?.name || "" : "", cover: available ? track.album?.artwork || "" : "",
     position: available && ready ? playerTrackPosition() : 0, duration: available && ready ? duration : 0,
-    paused: g && !ready ? !g.autoPlay : audio.paused,
-    controllable, seekable: controllable && ready && !state.loading && !audio.error && Number.isFinite(duration) && duration > 0,
+    paused: g && !ready ? !g.autoPlay : audioRecoveryPaused(),
+    controllable, seekable: controllable && ready && !state.loading && (!audio.error || recovery) && Number.isFinite(duration) && duration > 0,
     previous: controllable && player.index > 0, next: controllable && player.index < player.queue.length - 1,
     status: status ? TagcastI18n.text(`mini.status.${status}`) : "",
     language: TagcastI18n.language, direction: TagcastI18n.direction, labels: miniLabels(),
@@ -54,8 +56,9 @@ function miniApplyCommand(command) {
   if (!current.controllable || command.document !== current.document || command.entry !== current.entry || command.segment !== current.segment) return false;
   const g = gaplessTrial.active;
   switch (command.action) {
-    case "pause": if (g?.ready === false) g.autoPlay = false; audio.pause(); break;
+    case "pause": pauseSystemPlayback(); break;
     case "play":
+      if (audioRecoveryCurrent()) { playSystemPlayback(); break; }
       if (g?.ready === false) { g.autoPlay = true; break; }
       if (!audio.getAttribute("src") || audio.error) return false;
       if (audio.ended) { if (g) seekSystemPlayback(0); else audio.currentTime = 0; }
@@ -80,7 +83,7 @@ if (window.tagcastMiniOwner) {
       window.tagcastMiniOwner.respond({id: request.id, ok});
     }
   });
-  for (const name of ["loadstart", "ended"]) audio.addEventListener(name, () => { miniOwner.normal += 1; publishMiniPlayer(); });
+  for (const name of ["loadstart", "ended"]) audio.addEventListener(name, () => { if (!audioRecoveryCurrent()) miniOwner.normal += 1; publishMiniPlayer(); });
   for (const name of ["play", "pause", "playing", "waiting", "stalled", "ended", "error", "emptied", "loadedmetadata", "seeked"]) audio.addEventListener(name, publishMiniPlayer);
   document.addEventListener("tagcast-theme-change", publishMiniPlayer);
   TagcastI18n.subscribe(publishMiniPlayer);

@@ -20,6 +20,8 @@ MP3 is separately experimental. It needs accepted encoder delay/padding metadata
 
 Unsupported files/transitions and preparation/decoder failures safely return to normal playback. The UI reports that fallback; the resulting boundary is not advertised as gapless. A slow network or unsupported output can still produce a pause. Intentional silence already present in a recording remains.
 
+Ordinary playback can reload the same track once after a confirmed transient network error, retaining position, pause intent and its listening-history event. A Gapless fallback already uses that ordinary recovery budget; the two mechanisms do not retry concurrently. Persistent failures stay on the current track and require explicit Play. See the [B-02 validation report](audits/audio-error-recovery-2026-11-10.md) for classification, tests and browser limitations.
+
 ## Preparation and controls
 
 The current file is prepared before playback, so starting can take longer than normal streaming. Longer tracks start while subsequent preparation continues; very short consecutive tracks can require one additional file before startup. A near-end seek can wait for preparation while current audio continues. Explicit Next/Previous and queue changes are supported but are not promised seamless transitions.
