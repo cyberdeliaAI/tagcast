@@ -4907,6 +4907,35 @@ test("an unknown observation requires explicit Play and retains the same reporti
   assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
 });
 
+test("explicit Play after an autoplay rejection preserves a later user seek without reloading", async () => {
+  const {p, audio, loads} = await recoveryPage();
+  audio.play = function () { this.paused=true;return Promise.reject(Error('Autoplay requires a gesture')); };
+  await failRecovery(p);
+  p.run('audio.readyState=4'); await audio.emit('loadedmetadata'); await settle();
+  assert.equal(p.run('!!audioRecovery.failed'), true);
+  p.run('seekSystemPlayback(82)');
+  audio.play = function () { this.paused=false;return Promise.resolve(); };
+  p.run('playSystemPlayback()'); await audio.emit('playing');
+  assert.equal(audio.currentTime, 82);
+  assert.equal(loads(), 1);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+  assert.equal(p.run('playReporting.watch.listened'), 5);
+});
+
+test("a timed-out status reply cannot replace a newer explicit attempt on the same occurrence", async () => {
+  const {p, audio, loads} = await recoveryPage(); let release;
+  p.setFetch(() => new Promise(resolve => { release = resolve; }));
+  await failRecovery(p); const expired = release;
+  p.flushTimers(30000); await settle();
+  p.run('playSystemPlayback()'); p.flushTimers(0); await settle(); const current = release;
+  expired({ok:true,json:async()=>({state:'network'})}); await settle();
+  assert.equal(loads(), 0);
+  assert.equal(p.run('audioRecovery.pending.stage'), 'checking');
+  current({ok:true,json:async()=>({state:'network'})}); await settle(); await readyRecovery(p);
+  assert.equal(loads(), 1);assert.equal(audio.currentTime, 23);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+});
+
 test("Mini Player pause, play and seek commands retain the current occurrence during recovery", async () => {
   const {p, audio} = await recoveryPage(); await failRecovery(p);
   assert.equal(p.run('miniApplyCommand({...miniSnapshot(),action:"pause"})'), true);

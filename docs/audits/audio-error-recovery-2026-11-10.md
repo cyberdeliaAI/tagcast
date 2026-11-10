@@ -93,7 +93,7 @@ under the main checkout's ignored
 | Check | Result |
 | --- | --- |
 | Full Python 3.11 and 3.13 suites | Each: 969 tests and 2,585 subtests passed |
-| Full frontend, translation and Electron Node suites | 855 passed, including 795 frontend tests |
+| Full frontend, translation and Electron Node suites | 857 passed, including 797 frontend tests |
 | Ruff, generated translations, JavaScript parsing, release versions | Passed; no version/dependency change |
 | Extracted macOS ARM64 Electron 44.9.3 package | Startup, CLI, sandbox, shared interface, CSP, signatures and all 15 shutdown/restart cases passed |
 | Isolated PCM smoke | All 12 cases plus 12 independently encoded references passed |
@@ -107,6 +107,12 @@ guards. New frontend cases cover all fourteen requested failure/state categories
 including offline wake simulation, non-zero seek, retry exhaustion, unchanged
 quality, codec fallback, auth/TLS/decode/cancellation, shutdown, account/library
 replacement, actual queue-occurrence identity and sent/uncertain reporting.
+Final review also reproduced two edge cases before correction: a user seek made
+after autoplay rejection was lost on explicit Play, and an already timed-out
+classification response could affect a newer explicit attempt on the same queue
+occurrence. Prepared sources now apply that seek directly; classification replies
+must still own the active attempt after JSON completion. Both have focused
+regressions in the full passing suite.
 
 The optional `tools/check_audio_recovery.cjs` drives real media events through
 `tools/browser_audio_fixture.py`, not DOM-injected error events or substituted API

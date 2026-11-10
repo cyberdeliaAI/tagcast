@@ -97,7 +97,8 @@ function audioRecoverySeek(position) {
   const record = audioRecoveryCurrent();
   if (!record) return false;
   record.position = Math.max(0, Math.min(record.duration, position));
-  if (record === audioRecovery.pending && record.metadata) {
+  const prepared = record === audioRecovery.failed && !audio.error && audio.getAttribute("src") && audio.readyState >= 2;
+  if (record === audioRecovery.pending && record.metadata || prepared) {
     record.playSerial++; record.playRequested = false; audio.currentTime = record.position; audioRecoveryReady();
   }
   renderAudioRecovery(); return true;
@@ -158,6 +159,7 @@ function recoverAudio(code, manual = false) {
         {signal: record.controller.signal, cache: "no-store"});
       if (!response.ok) throw Error("Playback status unavailable");
       const status = await response.json();
+      if (audioRecovery.pending !== record) return;
       if (!audioRecoveryCurrent(record)) { if (audioRecovery.pending === record) clearAudioRecovery(); return; }
       if (status.state === "auth") record.failureKey = "errors.account.not_connected";
       else if (["security", "unavailable"].includes(status.state)) record.failureKey = "player.error.trackStatus";
