@@ -4,6 +4,7 @@ import copy
 import json
 import threading
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import requests
@@ -37,6 +38,11 @@ class TagStudio:
         if not self.client:
             raise LibraryError("Disconnected")
         return self.client
+
+    @contextmanager
+    def _browse_library(self, tags=False):
+        # This payload-contract double has no persistent cache; real Studio is tested separately.
+        yield Library(copy.deepcopy(self.raw))
 
     def _current(self, client, **kwargs):
         return Library(copy.deepcopy(self.raw)), "memory"
@@ -243,7 +249,7 @@ class TagTests(unittest.TestCase):
                         transport._post("https://api.ibroadcast.com", {"mode": mode})
                     self.assertEqual(post.call_count, 1)
 
-    def test_old_cache_fetches_tags_once_before_browsing_or_writing(self):
+    def test_fresh_write_library_upgrades_an_old_tag_cache(self):
         original = self.studio._current
         reads = []
 
@@ -256,7 +262,8 @@ class TagTests(unittest.TestCase):
             return original(client)
 
         self.studio._current = current
-        self.assertEqual(self.tags.catalogue()["total"], 3)
+        _, library = self.tags.library()
+        self.assertEqual(len(library.tags), 3)
         self.assertEqual(reads, [False, True])
         self.assertEqual(self.studio.writes, [])
 
