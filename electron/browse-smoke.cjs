@@ -26,6 +26,45 @@ function inspectMenuTargets(menuId) {
   return {ok: checked > 0, checked, overlaps};
 }
 
+// Keep the notification painted over the bottom menu control. Test the actual
+// pointer target rather than waiting for a toast to expire or hiding it.
+function inspectToastTarget() {
+  const control = document.querySelector('[data-open-theme-editor]');
+  control.scrollIntoView({block: "nearest", inline: "nearest"});
+  const rect = control.getBoundingClientRect(), toast = document.getElementById("toast");
+  const point = {x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2)};
+  const notification = toast.getBoundingClientRect(), hit = document.elementFromPoint(point.x, point.y);
+  return {point, hit: hit?.id || hit?.tagName, receivesPointer: control.contains(hit),
+    visible: !toast.hidden && getComputedStyle(toast).display !== "none" && notification.height > 0,
+    role: toast.getAttribute("role"), text: toast.textContent, children: toast.children.length,
+    overlap: point.x >= notification.left && point.x < notification.right && point.y >= notification.top && point.y < notification.bottom};
+}
+
+async function checkToastPointerInput(window) {
+  const owner = window.webContents, samples = [];
+  const run = code => owner.executeJavaScript(code);
+  for (const width of [420, 760, 768, 1280]) for (const height of [656, 800]) for (const appearance of ["light", "dark"]) {
+    window.setContentSize(width, height);
+    await run(`document.documentElement.dataset.theme='${appearance}';showBrowse('years');window.scrollTo(0,0);
+      setThemeMenu(true);toast('Synthetic notification: upstream service unavailable')`);
+    await run("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+    const before = await run(`(${inspectToastTarget.toString()})()`);
+    assert.equal(before.visible, true, "Notification remains visible during pointer testing");
+    assert.equal(before.role, "status");
+    assert.equal(before.children, 0, "The click-through notification contains no interactive controls");
+    assert.equal(before.receivesPointer, true, `${width}x${height}/${appearance}: visible toast cannot block Edit themes ${JSON.stringify(before)}`);
+    owner.sendInputEvent({type:"mouseDown", ...before.point, button:"left", clickCount:1});
+    owner.sendInputEvent({type:"mouseUp", ...before.point, button:"left", clickCount:1});
+    await run("new Promise(resolve=>requestAnimationFrame(resolve))");
+    assert.equal(await run("state.screen === 'settings' && settingsView.category === 'appearance' && !document.querySelector('#settings').hidden && !!document.querySelector('#theme-editor')"), true, "Real pointer input opens the theme editor");
+    assert.equal(await run("document.querySelector('#toast').hidden"), false, "Clicking does not dismiss the notification");
+    await run("closeSettings()");
+    samples.push({width, height, appearance, ...before});
+  }
+  assert.ok(samples.some(sample => sample.width === 420 && sample.overlap), "Exercise the reported physical toast/control overlap");
+  return samples;
+}
+
 // Real hit testing catches menus painted behind the sticky listing controls.
 async function checkBrowseMenus(window) {
   const owner = window.webContents, bounds = window.getBounds();
@@ -50,6 +89,7 @@ async function checkBrowseMenus(window) {
         samples.push({width, appearance, menu, ...result});
       }
     }
+    samples[0].toastPointer = await checkToastPointerInput(window);
     return samples;
   } finally {
     window.setBounds(bounds);
@@ -58,4 +98,4 @@ async function checkBrowseMenus(window) {
   }
 }
 
-module.exports = {checkBrowseMenus, inspectMenuTargets};
+module.exports = {checkBrowseMenus, inspectMenuTargets, inspectToastTarget};
