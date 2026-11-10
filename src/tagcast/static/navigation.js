@@ -210,15 +210,16 @@ function viewState(index, from, fromHash = "") {
   return {index, from, fromHash, scrollY: nav.scroll?.hash === `#/${currentRoute()}` ? nav.scroll.top : Math.max(0, window.scrollY || 0),
     label: state.screen === "browse" && browseView.key !== null ? browseView.label : state.screen === "playlists" && collectionsView.playlist ? collectionsView.data?.name || TagcastI18n.text("nav.route.playlist") : routeLabel(`#/${currentRoute()}`, {}),
     albumOrigin: state.screen === "album" ? history.state?.albumOrigin || [] : [], search: $("#search").value, filter: $("#filter").value, sort: $("#sort").value, page: state.page,
+    albumsContinuousCount: albumContinuous.count, artistsContinuousCount: artistContinuous.count,
     albumsRandomIds: $("#sort").value === "random" ? albumOrder.ids : [], albumsLibrary: albumOrder.library,
     artistsSearch: $("#artists-search").value, artistsSort: $("#artists-sort").value, artistsFilter: $("#artists-filter").value, artistsPage: artistBrowse.page,
     artistsRandomNames: $("#artists-sort").value === "random" ? artistBrowse.randomNames : [], artistsLibrary: artistBrowse.library,
     tracksSearch: $("#tracks-search").value, tracksPage: trackSearch.page, favouritesSearch: $("#favourites-search").value, favouritesPage: favourites.page,
-    collections: {query: collectionsView.query, offset: collectionsView.offset},
+    collections: {query: collectionsView.query, offset: collectionsView.offset, continuousCount: favouriteAlbumContinuous.count},
     favouriteArtists: {query: $("#favourite-artists-search").value, sort: $("#favourite-artists-sort").value, page: favouriteArtists.page},
     recentSearch: $("#recently-played-search").value, recentPage: recentlyPlayed.page,
     guide: {query: albumGuide.query, filter: albumGuide.filter, decade: albumGuide.decade, sort: albumGuide.sort, page: albumGuide.page},
-    browse: {query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
+    browse: {continuousCount: browseContinuous().count, query: $("#browse-search").value, page: browseView.page, sort: browseView.sort, label: browseView.label, randomIds: browseView.randomIds}};
 }
 
 // Remember browsing context only within this loaded library.
@@ -370,6 +371,7 @@ function showRoute(route, saved = {}) {
     if (saved.artistsLibrary === artistBrowse.library && Array.isArray(saved.artistsRandomNames)) {
       artistBrowse.randomNames = [...new Set(saved.artistsRandomNames.filter(name => typeof name === "string"))];
     }
+    artistContinuous.restore(saved.artistsContinuousCount);
     artistBrowse.page = saved.artistsPage || 0;
     showArtistBrowse();
   } else if (route.screen === "tracks") {
@@ -405,6 +407,7 @@ function showRoute(route, saved = {}) {
     if (saved.albumsLibrary === albumOrder.library && Array.isArray(saved.albumsRandomIds)) {
       albumOrder.ids = [...new Set(saved.albumsRandomIds.filter(id => typeof id === "string"))];
     }
+    albumContinuous.restore(saved.albumsContinuousCount);
     state.page = saved.page || 0;
     showScreen("albums"); render();
   }

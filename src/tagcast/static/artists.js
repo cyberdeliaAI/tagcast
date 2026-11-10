@@ -307,6 +307,7 @@ function updateArtistSearchClear() {
 }
 
 function renderArtistBrowse() {
+  artistContinuous.discardStale(state.details);
   if (state.screen !== "artists") return;
   updateArtistSearchClear();
   const all = artistGroups();
@@ -319,13 +320,19 @@ function renderArtistBrowse() {
   const groups = filteredArtistGroups(all), size = artistBrowse.pageSize;
   const maxPage = Math.max(0, Math.ceil(groups.length / size) - 1);
   artistBrowse.page = Math.max(0, Math.min(artistBrowse.page, maxPage));
-  $("#artists-per-page").value = String(size);
+  $("#artists-per-page").value = artistContinuous.enabled ? "continuous" : String(size);
   $("#artist-favourites-error").hidden = !state.artistFavouriteError;
   $("#artist-favourites-error").textContent = state.artistFavouriteError;
   $("#artists-results").textContent = TagcastI18n.text("artists.count.albumArtists", {count: groups.length});
-  $("#artists-grid").innerHTML = groups.slice(artistBrowse.page * size, (artistBrowse.page + 1) * size).map(artistCard).join("") || (state.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("artists.list.loading")}</div>`
-    : `<div class="empty">${TagcastI18n.html("artists.list.empty")}</div>`);
-  $("#artists-pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-artist-page="-1" ${artistBrowse.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: artistBrowse.page + 1, pages: maxPage + 1})}</span><button class="button small" data-artist-page="1" ${artistBrowse.page === maxPage ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
+  const empty = state.loading ? `<div class="empty" role="status"><span class="spinner"></span>${TagcastI18n.html("artists.list.loading")}</div>` : `<div class="empty">${TagcastI18n.html("artists.list.empty")}</div>`;
+  if (artistContinuous.enabled) {
+    artistContinuous.update({items: groups, key: JSON.stringify([$("#artists-search").value, $("#artists-filter").value, $("#artists-sort").value]),
+      scope: state.details, host: $("#artists-grid"), footer: $("#artists-pagination"), layout: "artists-grid", render: items => items.map(artistCard).join(""), empty, changed: renderArtistBrowse});
+  } else {
+    $("#artists-grid").className = "artists-grid";
+    $("#artists-grid").innerHTML = groups.slice(artistBrowse.page * size, (artistBrowse.page + 1) * size).map(artistCard).join("") || empty;
+    $("#artists-pagination").innerHTML = maxPage > 0 ? `<button class="button small" data-artist-page="-1" ${artistBrowse.page === 0 ? "disabled" : ""}>${TagcastI18n.html("common.pagination.previous")}</button><span>${TagcastI18n.html("common.pagination.pageCounted", {page: artistBrowse.page + 1, pages: maxPage + 1})}</span><button class="button small" data-artist-page="1" ${artistBrowse.page === maxPage ? "disabled" : ""}>${TagcastI18n.html("common.pagination.next")}</button>` : "";
+  }
   if (typeof syncHistory === "function") syncHistory();
 }
 
@@ -352,9 +359,14 @@ $("#artists-sort").addEventListener("change", () => {
 });
 $("#artists-filter").addEventListener("change", () => { artistBrowse.page = 0; renderArtistBrowse(); });
 $("#artists-per-page").addEventListener("change", event => {
+  if (event.target.value === "continuous") { artistContinuous.setEnabled(true); artistBrowse.page = 0; renderArtistBrowse(); scrollListingStart("#artists-page"); return; }
   const size = Number(event.target.value);
+  if (![24, 50, 100, 200].includes(size)) return;
+  const wasContinuous = artistContinuous.enabled;
+  artistContinuous.setEnabled(false);
   artistBrowse.page = Math.floor(artistBrowse.page * artistBrowse.pageSize / size); artistBrowse.pageSize = size;
   rememberPageSize("tagcast-artists-per-page", size); renderArtistBrowse();
+  if (wasContinuous) scrollListingStart("#artists-page");
 });
 document.addEventListener("toggle", event => {
   if (!event.target.matches?.("#artist-biography details")) return;

@@ -419,6 +419,10 @@ def _log_to_file(home):
 
 
 class Server(ThreadingHTTPServer):
+    # Chromium opens several script connections together. Keep a bounded backlog
+    # through cold-start scheduling pauses instead of resetting queued assets.
+    request_queue_size = 64
+
     # On Windows, SO_REUSEADDR lets a second program listen on a port that is in use,
     # so a second Tagcast would start next to the first instead of noticing it.
     allow_reuse_address = sys.platform != "win32"

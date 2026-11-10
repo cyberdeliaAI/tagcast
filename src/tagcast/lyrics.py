@@ -345,7 +345,17 @@ class Lyrics:
                 selection = self._selection(body)
                 if not self.studio.premium:
                     raise LibraryError("Saving lyrics to iBroadcast requires Premium.")
-            rows, before = self._userdata(selection[0], body["track_id"])
+            item = self.native.get(body["track_id"]) if "album_scope" in body else None
+            context = self.context
+            # Import review already read complete userdata for each linked track. Reuse
+            # only its authenticated snapshot; save() still checks fresh remote data
+            # immediately before writing and reads back each write before continuing.
+            if item and time.monotonic() - item[0] <= 900 and context \
+                    and context[0] is selection[0] and context[2:] == (selection[2], body["session"]) \
+                    and body.get("before_token") == self._token(selection, body, item[1]):
+                rows, before = item[1:]
+            else:
+                rows, before = self._userdata(selection[0], body["track_id"])
             if "album_scope" in body:
                 if type(body.get("replace_existing")) is not bool:
                     raise LibraryError("Choose whether to replace existing lyrics for this track.")

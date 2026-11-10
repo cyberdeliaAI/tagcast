@@ -3,12 +3,13 @@
 import io
 import json
 import os
+import socket
 import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
 from functools import partial
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPResponse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -35,6 +36,37 @@ class BiographyResponseTests(unittest.TestCase):
 
 
 class LoopbackBindTests(unittest.TestCase):
+    def test_startup_asset_burst_survives_a_delayed_accept_loop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            body = b"window.startupAsset = true;"
+            (Path(directory) / "app.js").write_bytes(body)
+            handler = type("BurstHandler", (app.Handler,), {"port": 0})
+            server = app.Server(("127.0.0.1", 0), partial(handler, directory=directory))
+            handler.port = server.server_port
+            clients, thread = [], None
+            try:
+                # Cold starts can briefly delay accept while Chromium opens its
+                # parallel connections. Every queued script must remain readable.
+                for _ in range(16):
+                    connection = socket.create_connection(server.server_address, timeout=1)
+                    clients.append(connection)
+                    connection.sendall((f"GET /app.js HTTP/1.0\r\n"
+                                        f"Host: 127.0.0.1:{server.server_port}\r\n\r\n").encode())
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                for connection in clients:
+                    with HTTPResponse(connection) as response:
+                        response.begin()
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.read(), body)
+            finally:
+                for connection in clients:
+                    connection.close()
+                if thread:
+                    server.shutdown()
+                    thread.join()
+                server.server_close()
+
     def test_binding_numeric_loopback_never_performs_reverse_dns(self):
         with mock.patch("socket.getfqdn", side_effect=AssertionError("No DNS for loopback")):
             server = app.Server(("127.0.0.1", 0), app.Handler)
