@@ -1,0 +1,189 @@
+{
+  "date": "2026-11-10",
+  "baseline": "f2becdaecf20d48160a17557acaf4440e16502c5",
+  "main_build_run": 42778717470,
+  "successful_pr_build_run": 42777562692,
+  "main_tests": "success",
+  "same_pr_and_merge_tree": true,
+  "runner_image": "macos-15-arm64/20261104.0514",
+  "runtime": "Electron 44.9.3; macOS 15.8.2 ARM64 in CI",
+  "local_host": "macOS Apple Silicon; different OS from CI",
+  "baseline_local": {
+    "ordinary_menu_matrices_passed": 60,
+    "full_smoke_runs_passed": 12
+  },
+  "controlled_420_light_failure": "420/light/theme: menu choices receive pointer input {\"ok\":false,\"checked\":10,\"overlaps\":3,\"control\":{\"tag\":\"BUTTON\",\"text\":\"Edit themes\u2026\",\"rect\":{\"x\":137,\"y\":490.796875,\"width\":78.8671875,\"height\":18,\"top\":490.796875,\"right\":215.8671875,\"bottom\":508.796875,\"left\":137}},\"hit\":{\"tag\":\"BUTTON\",\"id\":\"\",\"className\":\"artist-card browse-label-card\",\"text\":\"\\n    \\n    20111 album10 tracks\"},\"viewport\":{\"width\":420,\"height\":550,\"scrollY\":96},\"menuRect\":{\"x\":116,\"y\":81.796875,\"width\":230,\"height\":400,\"top\":81.796875,\"right\":346,\"bottom\":481.796875,\"left\":116},\"toolbarRect\":{\"x\":20,\"y\":328.6875,\"width\":369,\"height\":116,\"top\":328.6875,\"right\":389,\"bottom\":444.6875,\"left\":20}}\n\nfalse !== true\n",
+  "corrected_420": {
+    "pass": true,
+    "samples": [
+      {
+        "width": 420,
+        "appearance": "light",
+        "menu": "theme",
+        "ok": true,
+        "checked": 10,
+        "overlaps": 3
+      },
+      {
+        "width": 420,
+        "appearance": "light",
+        "menu": "language",
+        "ok": true,
+        "checked": 7,
+        "overlaps": 1
+      },
+      {
+        "width": 420,
+        "appearance": "dark",
+        "menu": "theme",
+        "ok": true,
+        "checked": 10,
+        "overlaps": 3
+      },
+      {
+        "width": 420,
+        "appearance": "dark",
+        "menu": "language",
+        "ok": true,
+        "checked": 7,
+        "overlaps": 1
+      },
+      {
+        "width": 761,
+        "appearance": "light",
+        "menu": "theme",
+        "ok": true,
+        "checked": 10,
+        "overlaps": 2
+      },
+      {
+        "width": 761,
+        "appearance": "light",
+        "menu": "language",
+        "ok": true,
+        "checked": 7,
+        "overlaps": 1
+      },
+      {
+        "width": 761,
+        "appearance": "dark",
+        "menu": "theme",
+        "ok": true,
+        "checked": 10,
+        "overlaps": 2
+      },
+      {
+        "width": 761,
+        "appearance": "dark",
+        "menu": "language",
+        "ok": true,
+        "checked": 7,
+        "overlaps": 1
+      },
+      {
+        "width": 1280,
+        "appearance": "light",
+        "menu": "theme",
+        "ok": true,
+        "checked": 10,
+        "overlaps": 2
+      },
+      {
+        "width": 1280,
+        "appearance": "light",
+        "menu": "language",
+        "ok": true,
+        "checked": 7,
+        "overlaps": 1
+      },
+      {
+        "width": 1280,
+        "appearance": "dark",
+        "menu": "theme",
+        "ok": true,
+        "checked": 10,
+        "overlaps": 2
+      },
+      {
+        "width": 1280,
+        "appearance": "dark",
+        "menu": "language",
+        "ok": true,
+        "checked": 7,
+        "overlaps": 1
+      }
+    ]
+  },
+  "corrected_heights": {
+    "heights": [
+      800,
+      768,
+      741,
+      720,
+      700,
+      680,
+      640,
+      600,
+      550,
+      500
+    ],
+    "widths": [
+      420,
+      761,
+      1280
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "menus": [
+      "theme",
+      "language"
+    ],
+    "cases": 120,
+    "passed": 120
+  },
+  "native_click": {
+    "before": {
+      "hit": false,
+      "menuScroll": 0
+    },
+    "point": {
+      "x": 176,
+      "y": 472
+    },
+    "after": {
+      "screen": "settings",
+      "category": "appearance",
+      "sameAudio": true,
+      "sameQueue": true,
+      "menuClosed": true
+    },
+    "pass": true
+  },
+  "real_overlay_negative": "420/light/theme: menu choices receive pointer input {\"ok\":false,\"checked\":6,\"overlaps\":1,\"blocked\":\"palette-warm\",\"hit\":{\"tag\":\"INPUT\",\"id\":\"browse-search\",\"className\":\"\"},\"point\":{\"x\":225.5,\"y\":354.796875},\"rect\":{\"x\":129,\"y\":336.796875,\"width\":193,\"height\":36,\"top\":336.796875,\"right\":322,\"bottom\":372.796875,\"left\":129},\"menuRect\":{\"x\":116,\"y\":81.796875,\"width\":230,\"height\":400,\"top\":81.796875,\"right\":346,\"bottom\":481.796875,\"left\":116},\"menuScroll\":{\"top\":0,\"height\":398,\"total\":440},\"viewport\":{\"width\":420,\"height\":550,\"scrollY\":96}}\n\nfalse !== true\n",
+  "unit_tests": {
+    "electron_passed": 50,
+    "added": 3
+  },
+  "limits": [
+    "The original failing CI report lacks hit target and viewport geometry; its exact height/scroll state cannot be reconstructed.",
+    "The same assertion is reproduced deterministically for a clipped Edit themes button at 420/light and other sizes.",
+    "Only development smoke-test code changes; no UI, timeout, retry, release, tag or runtime behavior changes."
+  ],
+  "raw_evidence": "build/menu-smoke-investigation-2026-11-10 in the primary checkout",
+  "package": {
+    "ok": true,
+    "version": "1.6.5",
+    "electron": "44.9.3",
+    "chromium": "152.0.7977.167",
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "restarted": true,
+    "archive_extraction_smoke": true,
+    "packaged_smoke_matches_final_source": true,
+    "archive_sha256": "d3c64b474c424efefbc0d67ec3af52118f05e6ef4a8b862a32f4cb279207b8a1",
+    "signing": "local ad-hoc; not notarized; not published"
+  }
+}
