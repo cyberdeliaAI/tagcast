@@ -1,6 +1,11 @@
 "use strict";
 
 const {createHash} = require("node:crypto");
+const {existsSync, readFileSync} = require("node:fs");
+const path = require("node:path");
+const sourceRules = path.join(__dirname, "../src/tagcast/static/content-security-policy.json");
+const rules = JSON.parse(readFileSync(existsSync(sourceRules) ? sourceRules
+  : path.join(process.resourcesPath, "content-security-policy.json"), "utf8"));
 
 function applicationUrl(value, origin) {
   try {
@@ -23,10 +28,10 @@ function permissionAllowed(contents, permission, requestingUrl, details, origin)
 }
 
 function contentPolicy(page) {
-  // Hash the existing early theme restoration scripts; never permit arbitrary inline JS.
-  const hashes = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
-    .filter(match => match[1].trim()).map(match => `'sha256-${createHash("sha256").update(match[1]).digest("base64")}'`);
-  return `default-src 'self'; script-src 'self' ${hashes.join(" ")}; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'`;
+  // Hash trusted early restoration scripts; never permit arbitrary inline JS.
+  const hashes = [...new Set([...page.replace(/\r\n?/g, "\n").matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
+    .filter(match => match[1].trim()).map(match => `'sha256-${createHash("sha256").update(match[1]).digest("base64")}'`))];
+  return Object.entries(rules).map(([name, values]) => name + " " + [...values, ...(name === "script-src" ? hashes : [])].join(" ")).join("; ");
 }
 
 module.exports = {applicationUrl, externalUrl, permissionAllowed, contentPolicy};
