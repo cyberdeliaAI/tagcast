@@ -1,8 +1,7 @@
 # Electron desktop and Python/browser use
 
 Since 0.60.0, standalone downloads for macOS (Apple Silicon and Intel), Windows x64
-and Linux x64 use Electron. Published Tagcast 1.6.5 uses Electron 44.9.3;
-the separately reviewed development candidate pins 44.11.0 within major 44.
+and Linux x64 use Electron. Tagcast 1.7.0 pins Electron 44.11.0 within major 44.
 Source installs and the existing Python startscripts
 continue to open the browser. Earlier releases retain their original browser launcher.
 
