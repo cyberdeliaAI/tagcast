@@ -187,8 +187,10 @@ class AudioDownloads:
         self.queue = {}
         self.generation = 0
         self.review = None
-        self.transfer = self.transport = self.thread = None
+        self.transfer = self.transport = self.thread = self.plan_thread = None
+        self._workers = []  # Keep in-flight workers even after account/queue replacement.
         self.preparing = self.picker = False
+        self.picker_stop = threading.Event()
         self.error = ""
         self.stop = threading.Event()
         self.options = self._read_options()
@@ -377,7 +379,11 @@ class AudioDownloads:
                 with self.lock:
                     if generation == self.generation:
                         self.preparing = False
-        threading.Thread(target=plan, daemon=True, name="tagcast-download-plan").start()
+        with self.lock:
+            self.plan_thread = threading.Thread(target=plan, daemon=True, name="tagcast-download-plan")
+            self._workers = [(worker, transport) for worker, transport in self._workers if worker.is_alive()]
+            self._workers.append((self.plan_thread, None))
+            self.plan_thread.start()
         return self.view(body.get("session"))
 
     def start(self, body):
@@ -422,6 +428,8 @@ class AudioDownloads:
                     transfer.lib = transfer.session = None
                     transport.context = None
             self.thread = threading.Thread(target=run, daemon=True, name="tagcast-downloads")
+            self._workers = [(worker, transport) for worker, transport in self._workers if worker.is_alive()]
+            self._workers.append((self.thread, transport))
             self.thread.start()
         return self.view(body.get("session"))
 
@@ -443,7 +451,30 @@ class AudioDownloads:
             threading.Thread(target=self.transport.close, daemon=True,
                              name="tagcast-download-close").start()
 
+    def shutdown(self):
+        """Release readers and filesystem locks before the backend exits."""
+        from .server_lifecycle import interrupt_response
+
+        self.close()
+        with self.lock:
+            workers = dict(self._workers)
+            workers.update({worker: transport for worker, transport in (
+                (self.plan_thread, None), (self.thread, self.transport)) if worker is not None})
+        for transport in workers.values():
+            if transport is None:
+                continue
+            transport.cancelled.set()
+            with transport.response_lock:
+                responses = list(transport.responses)
+            for response in responses:
+                interrupt_response(response.response)
+        for worker in workers:
+            worker.join()
+        with self.lock:
+            self._workers = []
+
     def close(self):
+        self.picker_stop.set()
         with self.lock:
             self._cancel()
             self.generation += 1
@@ -458,8 +489,9 @@ class AudioDownloads:
             if self.picker:
                 raise ConflictError("A folder chooser is already open.")
             self.picker = True
+            self.picker_stop.clear()
         try:
-            folder = engine.choose_folder(self.options["out"])
+            folder = engine.choose_folder(self.options["out"], cancel=self.picker_stop)
             if self._context(body.get("session"))[0] is not context[0]:
                 raise ConflictError("The connection changed.")
             return {"folder": folder, "unavailable": folder is None}
