@@ -111,7 +111,7 @@ function showTracks(page = trackSearch.page) {
 // A track plays with the rest of its album after it, as on the album page.
 async function playFoundTrack(trackId, albumId) {
   if (!live()) return;
-  if (player.queue[player.index]?.id === trackId) { if (audio.paused) audio.play(); else audio.pause(); return; }
+  if (player.queue[player.index]?.id === trackId) { if (audioRecoveryPaused()) playSystemPlayback(); else pauseSystemPlayback(); return; }
   const details = state.details, epoch = player.epoch;
   try {
     await albumDetails(shelfIds(albumId));

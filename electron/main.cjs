@@ -49,7 +49,7 @@ function beginShutdown(){
   miniPlayer?.beginShutdown();
   signIn?.window?.destroy();
   if(window&&!window.isDestroyed()){
-    window.webContents.executeJavaScript("document.querySelector('audio')?.pause()").catch(()=>{});
+    window.webContents.executeJavaScript("window.dispatchEvent(new Event('tagcast-playback-shutdown'));document.querySelector('audio')?.pause()").catch(()=>{});
     window.hide();
   }
   shutdownView.show({phase:"reads",elapsed:0},canReopen());
@@ -65,7 +65,7 @@ function beginShutdown(){
       miniPlayer?.resume();
       if(window&&!window.isDestroyed()){
         window.show();window.focus();
-        window.webContents.executeJavaScript('toast(TagcastI18n.text("desktop.shutdown.reopened"))').catch(()=>{});
+        window.webContents.executeJavaScript('window.dispatchEvent(new Event("tagcast-playback-resume"));toast(TagcastI18n.text("desktop.shutdown.reopened"))').catch(()=>{});
       }
       shutdownView.destroy();
       return;

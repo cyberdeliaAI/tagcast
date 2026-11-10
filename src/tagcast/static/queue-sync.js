@@ -36,8 +36,8 @@ function encodedLocalQueue() {
   if (queueSync.handover && queueSync.handover.entry !== track) queueSync.handover = null;
   const normal = player.queue.filter(t => !t.upNext), next = player.queue.slice(Math.max(0, player.index)).filter(t => t.upNext);
   return {tracks: normal.map(t => Number(t.id)), play_next: next.map(t => Number(t.id)),
-    current_song: Number(track?.id) || 0, name: track?.title || "", pause: audio.paused || !track,
-    shuffle: Boolean(player.shuffle), start_position: queueSync.handover?.position ?? (Number(audio.currentTime) || 0), start_time: Date.now() / 1000,
+    current_song: Number(track?.id) || 0, name: track?.title || "", pause: audioRecoveryPaused() || !track,
+    shuffle: Boolean(player.shuffle), start_position: queueSync.handover?.position ?? playerTrackPosition(), start_time: Date.now() / 1000,
     volume: Number.isFinite(audio.volume) ? audio.volume : 1,
     data: {play_from: track?.upNext ? "play_next" : "tracks", repeat_mode: player.repeat, crossfade: false,
       play_index: player.index < 0 ? 0 : player.queue.slice(0, player.index).filter(t => !t.upNext).length}};
@@ -88,8 +88,14 @@ async function restoreQueue(view, resume = false) {
         if (request === queueSync.request && session === state.connection.playback_session && queueSync.active && player.queue[player.index] === rows[currentIndex]) { audio.currentTime = Math.min(desired, Number.isFinite(audio.duration) ? audio.duration : desired); if (resume && !q.pause) audio.play().catch(() => toast(TagcastI18n.text("queueSync.toast.allowAudio"))); }
       }, {once: true});
     } else if (rows[currentIndex]) {
-      if (Math.abs((audio.currentTime || 0) - desired) > 3) audio.currentTime = desired;
-      if (q.pause || !queueSync.allowed) audio.pause(); else if (audio.paused) audio.play().catch(() => toast(TagcastI18n.text("queueSync.toast.allowAudio")));
+      if (audioRecoveryCurrent()) {
+        if (Math.abs(playerTrackPosition() - desired) > 3) audioRecoverySeek(desired);
+        audioRecoveryIntent(!q.pause && queueSync.allowed);
+        if (q.pause || !queueSync.allowed) audio.pause();
+      } else {
+        if (Math.abs((audio.currentTime || 0) - desired) > 3) audio.currentTime = desired;
+        if (q.pause || !queueSync.allowed) audio.pause(); else if (audio.paused) audio.play().catch(() => toast(TagcastI18n.text("queueSync.toast.allowAudio")));
+      }
     } else audio.pause();
     markPlaying(); renderStreamQuality();
   } catch (error) { queueSync.error = () => TagcastI18n.text("errors.queueSync.restoreFailed", {error: TagcastI18n.errorText(error)}); }

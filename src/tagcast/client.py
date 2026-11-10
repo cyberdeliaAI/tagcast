@@ -436,6 +436,7 @@ class Studio:
         self.play_lock = threading.Lock()
         self.play_events = {}
         self.playback_session = ""
+        self.stream_results = {}  # Bounded, session-scoped observations; no audio or URLs.
         self.client = None
         self.library = None
         self.library_user = None
@@ -585,6 +586,7 @@ class Studio:
             self.client, self.library, self.account = client, None, None
             self.jobs.clear()
             self.playback_session = secrets.token_hex(16)
+            self.stream_results.clear()
             if save:
                 self._save_tokens(token_set, client)
 
@@ -596,6 +598,7 @@ class Studio:
             self.client = self.library = self.account = self.device = None
             self.jobs.clear()
             self.playback_session = ""
+            self.stream_results.clear()
             self._device_gen += 1
             self._device_request_id = None
             self._device_stop.set()
@@ -1585,19 +1588,65 @@ class Studio:
 
     # -- playback -------------------------------------------------------------
 
-    def stream(self, track_id, range_header=None, quality=None):
+    def record_stream_result(self, request_id, session, state):
+        """Observe an existing request, never contact the service to classify it."""
+        if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,100}", request_id):
+            return
+        priority = {"available": 0, "network": 1, "unavailable": 2, "auth": 2, "security": 2}
+        with self.lock:
+            if not self.client or not session or session != self.playback_session:
+                return
+            now = time.monotonic()
+            self.stream_results = {key: value for key, value in self.stream_results.items() if value[2] > now}
+            previous = self.stream_results.get(request_id)
+            # A later browser Range request cannot hide a terminal rejection.
+            if previous and previous[0] == session and priority[previous[1]] > priority[state]:
+                state = previous[1]
+            self.stream_results.pop(request_id, None)
+            self.stream_results[request_id] = (session, state, now + 120)
+            while len(self.stream_results) > 64:
+                self.stream_results.pop(next(iter(self.stream_results)))
+
+    def stream_status(self, request_id, session):
+        if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,100}", request_id):
+            raise ApiError("Invalid playback request.")
+        with self.lock:
+            self._require_client()
+            if not session or session != self.playback_session:
+                raise NotConnected("The playback session changed. Connect again.")
+            result = self.stream_results.get(request_id)
+            return {"state": result[1] if result and result[0] == session and result[2] > time.monotonic() else "unknown"}
+
+    def stream(self, track_id, range_header=None, quality=None, *, request_id=None, playback_session=None):
         """Open a track's audio from iBroadcast. Returns (response, mime); close the response."""
-        client = self._require_client()
-        library, user_id = self._library()
-        quality = quality or self.config.get("stream_quality", "128")
-        if quality not in ("96", "128", "192", "256", "320", "orig"):
-            raise ApiError("Choose a supported streaming quality.")
-        if quality != "128" and not self.premium:
-            raise ApiError("This streaming quality requires iBroadcast Premium.")
-        path, mime = library.stream_info(number(track_id), quality)
-        if quality != "orig":
-            mime = "audio/mpeg"
-        response = client.open_stream(path, number(track_id), user_id, library.expires, range_header)
+        with self.lock:
+            client = self._require_client()
+            session = self.playback_session
+            if playback_session is not None and playback_session != session:
+                raise NotConnected("The playback session changed. Connect again.")
+        try:
+            library, user_id = self._library()
+            with self.lock:
+                if client is not self.client or session != self.playback_session:
+                    raise NotConnected("The playback session changed. Connect again.")
+            quality = quality or self.config.get("stream_quality", "128")
+            if quality not in ("96", "128", "192", "256", "320", "orig"):
+                raise ApiError("Choose a supported streaming quality.")
+            if quality != "128" and not self.premium:
+                raise ApiError("This streaming quality requires iBroadcast Premium.")
+            path, mime = library.stream_info(number(track_id), quality)
+            if quality != "orig":
+                mime = "audio/mpeg"
+            response = client.open_stream(path, number(track_id), user_id, library.expires, range_header)
+        except (ApiError, LibraryError) as error:
+            state = ("auth" if isinstance(error, NotConnected) else "security" if isinstance(error, ConnectionSecurityError)
+                     else "network" if isinstance(error, ConnectionUnavailable) else "unavailable")
+            self.record_stream_result(request_id, session, state)
+            raise
+        status = response.status_code
+        state = ("auth" if status in (401, 403) else "network" if status in (408, 500, 502, 503, 504)
+                 else "available" if response.ok else "unavailable")
+        self.record_stream_result(request_id, session, state)
         if response.status_code in (401, 403):
             response.close()
             raise NotConnected("iBroadcast did not accept the session for playback. Connect again.")

@@ -233,12 +233,13 @@ function gaplessPrefetchAhead(g) {
 // classify the same English text either way.
 function gaplessFallback(g, reason) {
   if (!gaplessValid(g)) return;
+  samplePlayback();
   const position = g.seekIntent?.segment === g.current ? g.seekIntent.position : g.current ? gaplessPosition() : g.offset || 0, entry = g.current?.entry || g.first;
   const playing = g.ready ? !audio.paused : g.autoPlay;
   gaplessFail(entry, g); gaplessCancel();
   gaplessNote("gapless.status.standard", {}, reason ?? "");
   gaplessTrial.bypass = true; gaplessTrial.offset = position;
-  playCurrent(playing); gaplessTrial.bypass = false;
+  playCurrent(playing, true); gaplessTrial.bypass = false;
 }
 function gaplessQueueChanged() {
   const g = gaplessTrial.active;

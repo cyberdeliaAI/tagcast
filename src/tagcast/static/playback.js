@@ -5,7 +5,7 @@ const playbackOutput = {devices: [], names: new Map(), read: 0, opened: 0, busy:
 const systemPlayback = {session: null, installed: false, metadata: "", positionAt: -Infinity};
 
 function systemPlaybackTrack() {
-  return live() && !state.loading && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) && (player.resumePending || audio.getAttribute("src") && !audio.error)
+  return live() && !state.loading && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) && (player.resumePending || audioRecoveryCurrent() || audio.getAttribute("src") && !audio.error)
     ? player.queue[player.index] : null;
 }
 
@@ -181,6 +181,7 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 function seekSystemPlayback(position, fast = false) {
   if (!systemPlaybackTrack() || !Number.isFinite(position) || !Number.isFinite(playerTrackDuration()) || playerTrackDuration() <= 0) return;
   const target = Math.max(0, Math.min(playerTrackDuration(), position));
+  if (audioRecoverySeek(target)) { syncSystemPlayback(); return; }
   if (typeof gaplessSeek === "function") gaplessSeek(target, fast);
   else if (fast && typeof audio.fastSeek === "function") audio.fastSeek(target);
   else audio.currentTime = target;
@@ -190,6 +191,16 @@ function seekSystemPlayback(position, fast = false) {
 function playSystemPlayback() {
   const track = systemPlaybackTrack(), details = state.details;
   if (!track) return;
+  if (audioRecoveryCurrent()) {
+    if (audioRecovery.failed && !audio.error && audio.getAttribute("src") && audio.readyState >= 2) {
+      // A prepared source may only need a fresh user gesture after autoplay rejection.
+      audioRecovery.failed = null; audioRecovery.intent = true;
+      audio.play().catch(() => toast(TagcastI18n.text("playback.resume")));
+      renderAudioRecovery();
+    } else if (audioRecovery.failed) recoverAudio(audioRecovery.failed.code, true);
+    else audioRecoveryIntent(true);
+    return;
+  }
   if (player.resumePending) { playCurrent(); gaplessRenderTransport(); return; }
   if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) { gaplessTrial.active.autoPlay = true; return; }
   if (audio.ended) audio.currentTime = 0;
@@ -198,9 +209,16 @@ function playSystemPlayback() {
   });
 }
 
+function pauseSystemPlayback() {
+  if (!systemPlaybackTrack()) return;
+  audioRecoveryIntent(false);
+  if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) gaplessTrial.active.autoPlay = false;
+  audio.pause();
+}
+
 const systemPlaybackActions = {
   play: playSystemPlayback,
-  pause: () => { if (systemPlaybackTrack()) { if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) gaplessTrial.active.autoPlay = false; audio.pause(); } },
+  pause: pauseSystemPlayback,
   stop: () => { if (systemPlaybackTrack()) stopPlayer(); },
   previoustrack: () => { if (systemPlaybackTrack()) step(-1); },
   nexttrack: () => { if (systemPlaybackTrack()) step(1); },
@@ -236,7 +254,7 @@ function syncSystemPlayback() {
     }
     systemPlayback.installed = active;
   }
-  try { session.playbackState = !track ? "none" : audio.paused || audio.ended ? "paused" : "playing"; }
+  try { session.playbackState = !track ? "none" : audioRecoveryPaused() || audio.ended ? "paused" : "playing"; }
   catch { /* Browsers may expose a partial Media Session implementation. */ }
   const key = track ? JSON.stringify([track.id, track.title, track.artist, track.album?.name, track.album?.artwork]) : "";
   if (!track || key !== systemPlayback.metadata) {
