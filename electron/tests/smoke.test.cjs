@@ -6,7 +6,7 @@ const {EventEmitter} = require("node:events");
 const {readFileSync} = require("node:fs");
 const vm = require("node:vm");
 
-function harness() {
+function harness({policy = require("../security.cjs").contentPolicy('src="playback.js"')} = {}) {
   const reports = [], timers = [], app = new EventEmitter(), contents = new EventEmitter();
   let quits = 0;
   app.quit = () => quits++;
@@ -18,9 +18,10 @@ function harness() {
     module, performance: {now: () => 100},
     process: {env: {TAGCAST_HOME: "/isolated/settings", TAGCAST_ELECTRON_PROFILE: "/isolated/profile", TAGCAST_ELECTRON_SMOKE_REPORT: "/test/report"}},
     setTimeout: fn => {timers.push(fn); return timers.length;}, clearTimeout() {},
-    fetch: async url => ({status: 200, json: async () => url.endsWith("/api/app") ? {version: "1.1.0"} : {}, text: async () => 'src="playback.js"'}),
+    fetch: async url => ({status: 200, headers: {get: () => policy}, json: async () => url.endsWith("/api/app") ? {version: "1.1.0"} : {}, text: async () => 'src="playback.js"'}),
     require: name => {
       if (name === "node:fs") return {writeFileSync: (_file, value) => reports.push(JSON.parse(value))};
+      if (name === "./security.cjs") return require("../security.cjs");
       if (name === "electron") return {Menu: {getApplicationMenu: () => ({items: [{role: "help", submenu: {items: ["Tagcast Help", "Tagcast Website", "Tagcast on Reddit", "Tagcast on GitHub"].map(label => ({label}))}}]})}};
       throw Error("Unexpected module " + name);
     },
@@ -51,6 +52,16 @@ test("a later stalled check does not misreport that the application failed to lo
   h.timers[0]();
   assert.equal(h.reports.at(-1).error, "Electron check timed out during renderer-preferences.");
   assert.equal(h.reports.at(-1).diagnostics.loaded, true);
+});
+
+test("the native smoke check rejects a missing or divergent browser policy", async () => {
+  for (const policy of [null, "script-src 'unsafe-inline'"]) {
+    const h = harness({policy});
+    h.contents.emit("did-finish-load");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.reports.at(-1).ok, false);
+    assert.equal(h.reports.at(-1).error, "Browser/Electron content policies differ.");
+  }
 });
 
 test("process diagnostics are bounded and do not retain names, URLs or error text", () => {

@@ -1,6 +1,7 @@
 """Local web server for Tagcast. Listens on 127.0.0.1 only."""
 
 import argparse
+import io
 import json
 import logging
 import logging.handlers
@@ -20,6 +21,7 @@ from .album_info import AlbumInformationRetryError
 from .artist_bios import BiographyRetryError
 from .artwork import ArtworkError
 from .client import ApiError, NotConnected, Studio, UncertainWrite
+from .content_security import BASE_POLICY, content_policy
 from .errors import error_payload
 from .library import ConflictError, LibraryError
 from .server_lifecycle import RequestDrain, ServerClosing, drain_server
@@ -103,6 +105,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", getattr(self, "_document_policy", BASE_POLICY))
         super().end_headers()
 
     def _frontend_asset(self):
@@ -119,6 +122,22 @@ class Handler(SimpleHTTPRequestHandler):
             for header in ("If-Modified-Since", "If-None-Match"):
                 if header in self.headers:
                     del self.headers[header]
+        if urlparse(self.path).path in ("/", "/index.html"):
+            # Hash and serve one snapshot. A source update (even with the same
+            # timestamp/size) cannot leave a stale hash or race a second file read.
+            path = Path(self.translate_path("/index.html"))
+            try:
+                with path.open("rb") as source:
+                    body, modified = source.read(), os.fstat(source.fileno()).st_mtime
+            except OSError:
+                return super().send_head()
+            self._document_policy = content_policy(body)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Last-Modified", self.date_time_string(modified))
+            self.end_headers()
+            return io.BytesIO(body)
         return super().send_head()
 
     # -- routes --------------------------------------------------------------

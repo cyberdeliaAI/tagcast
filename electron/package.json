@@ -30,6 +30,10 @@
     ],
     "extraResources": [
       {
+        "from": "../src/tagcast/static/content-security-policy.json",
+        "to": "content-security-policy.json"
+      },
+      {
         "from": "../build/electron/backend/tagcast-server",
         "to": "backend"
       },

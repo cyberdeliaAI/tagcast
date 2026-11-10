@@ -53,6 +53,8 @@ function check({app, window, origin, backend, miniPlayer}) {
       const identity = await response.json();
       const status = await (await fetch(origin + "/api/status")).json();
       const page = await (await fetch(origin)).text();
+      const documentHeaders = await fetch(origin, {method:"HEAD"});
+      if (documentHeaders.headers.get("content-security-policy") !== require("./security.cjs").contentPolicy(page)) throw new Error("Browser/Electron content policies differ.");
       const preferences = window.webContents.getLastWebPreferences();
       if (status.connected || !identity.version || !page.includes('src="playback.js"')) throw new Error("The shared interface or isolated server is invalid.");
       if (!preferences.sandbox || !preferences.contextIsolation || preferences.nodeIntegration || !preferences.webSecurity) throw new Error("The renderer's security settings are invalid.");
