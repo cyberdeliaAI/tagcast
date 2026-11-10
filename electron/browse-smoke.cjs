@@ -1,6 +1,31 @@
 "use strict";
 const assert = require("node:assert/strict");
 
+// This dependency-free function also runs in the real renderer. Viewport visibility
+// alone is insufficient: theme choices can be clipped by the menu's own scrollport.
+function inspectMenuTargets(menuId) {
+  const menu = document.getElementById(menuId), toolbar = document.querySelector("#browse-toolbar");
+  let overlaps = 0, checked = 0;
+  for (const control of menu.querySelectorAll("label,button")) {
+    if (!control.getClientRects().length) continue;
+    // Exercise every rendered choice, including those initially clipped inside
+    // the scrollable menu. Do not skip an occluded point or retry a failed hit.
+    control.scrollIntoView({block: "nearest", inline: "nearest"});
+    const r = control.getBoundingClientRect(), t = toolbar.getBoundingClientRect();
+    const x = r.x + r.width / 2, y = r.y + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    checked++;
+    if (y >= t.top && y < t.bottom && x >= t.left && x < t.right) overlaps++;
+    if (!control.contains(hit)) return {ok: false, checked, overlaps,
+      blocked: control.id || control.querySelector("input")?.id || control.tagName,
+      hit: hit ? {tag: hit.tagName, id: hit.id, className: hit.className} : null,
+      point: {x, y}, rect: r.toJSON(), menuRect: menu.getBoundingClientRect().toJSON(),
+      menuScroll: {top: menu.scrollTop, height: menu.clientHeight, total: menu.scrollHeight},
+      viewport: {width: innerWidth, height: innerHeight, scrollY}};
+  }
+  return {ok: checked > 0, checked, overlaps};
+}
+
 // Real hit testing catches menus painted behind the sticky listing controls.
 async function checkBrowseMenus(window) {
   const owner = window.webContents, bounds = window.getBounds();
@@ -14,19 +39,8 @@ async function checkBrowseMenus(window) {
       for (const menu of ["theme", "language"]) {
         await run(menu === "theme" ? "setThemeMenu(true)" : "setHeaderLanguageMenu(true)");
         await run("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
-        const result = await run(`(() => {
-          const menu=document.querySelector('#${menu}-menu'),toolbar=document.querySelector('#browse-toolbar');
-          const t=toolbar.getBoundingClientRect();let overlaps=0,checked=0;
-          for(const control of menu.querySelectorAll('label,button')) {
-            const r=control.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
-            if(!r.width||!r.height||y<0||y>=innerHeight||x<0||x>=innerWidth)continue;
-            checked++;
-            if(y>=t.top&&y<t.bottom&&x>=t.left&&x<t.right)overlaps++;
-            if(!control.contains(document.elementFromPoint(x,y)))return {ok:false,checked,overlaps};
-          }
-          return {ok:checked>0,checked,overlaps};
-        })()`);
-        assert.equal(result.ok, true, `${width}/${appearance}/${menu}: menu choices receive pointer input`);
+        const result = await run(`(${inspectMenuTargets.toString()})('${menu}-menu')`);
+        assert.equal(result.ok, true, `${width}/${appearance}/${menu}: menu choices receive pointer input ${JSON.stringify(result)}`);
         if (menu === "theme") assert.ok(result.overlaps > 0, "Exercise a choice over the listing toolbar");
         owner.sendInputEvent({type:"keyDown", keyCode:"Escape"});
         owner.sendInputEvent({type:"keyUp", keyCode:"Escape"});
@@ -44,4 +58,4 @@ async function checkBrowseMenus(window) {
   }
 }
 
-module.exports = {checkBrowseMenus};
+module.exports = {checkBrowseMenus, inspectMenuTargets};
