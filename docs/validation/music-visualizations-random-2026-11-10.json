@@ -1,0 +1,488 @@
+{
+  "date": "2026-11-10",
+  "baseline": "0956a05663e38da4e08c91f623c6ec10fe14b30a",
+  "scope": "Eight local visualizations and automatic random rotation; macOS arm64 only",
+  "targeted_tests": {
+    "passed": 61,
+    "failed": 0,
+    "command": "node --test tests/music-visualizations.test.cjs tests/visualizer.test.cjs tests/continuous-browse.test.cjs tests/i18n.test.cjs"
+  },
+  "browser": {
+    "browser": "156.0.8078.4",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "chromiumSandbox": true,
+    "syntheticAudio": true,
+    "modes": [
+      {
+        "mode": "aurora",
+        "failed": false,
+        "pending": false,
+        "last": 1928.6,
+        "renderer": true,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "orbit",
+        "failed": false,
+        "pending": false,
+        "last": 3028.5,
+        "renderer": true,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "ribbons",
+        "failed": false,
+        "pending": false,
+        "last": 4128.5,
+        "renderer": true,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "led",
+        "failed": false,
+        "pending": false,
+        "last": 5145.1,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "scope",
+        "failed": false,
+        "pending": false,
+        "last": 6178.4,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "radial",
+        "failed": false,
+        "pending": false,
+        "last": 7245,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "stars",
+        "failed": false,
+        "pending": false,
+        "last": 8278.3,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "waterfall",
+        "failed": false,
+        "pending": false,
+        "last": 9311.6,
+        "renderer": false,
+        "message": "",
+        "canvas": {
+          "w": 1120,
+          "h": 605
+        },
+        "rect": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      },
+      {
+        "mode": "off",
+        "failed": false,
+        "pending": false,
+        "last": 0,
+        "renderer": false,
+        "message": "",
+        "canvas": null,
+        "rect": {
+          "x": 80,
+          "y": 66,
+          "width": 1120,
+          "height": 645,
+          "top": 66,
+          "right": 1200,
+          "bottom": 711,
+          "left": 80
+        },
+        "audio": 1,
+        "paused": false
+      }
+    ],
+    "layouts": [
+      {
+        "width": 420,
+        "theme": "light",
+        "w": 420,
+        "scroll": 420,
+        "canvas": {
+          "x": 25.1875,
+          "y": 103,
+          "width": 369.625,
+          "height": 440,
+          "top": 103,
+          "right": 394.8125,
+          "bottom": 543,
+          "left": 25.1875
+        },
+        "audio": 1
+      },
+      {
+        "width": 420,
+        "theme": "dark",
+        "w": 420,
+        "scroll": 420,
+        "canvas": {
+          "x": 25.1875,
+          "y": 103,
+          "width": 369.625,
+          "height": 440,
+          "top": 103,
+          "right": 394.8125,
+          "bottom": 543,
+          "left": 25.1875
+        },
+        "audio": 1
+      },
+      {
+        "width": 760,
+        "theme": "light",
+        "w": 760,
+        "scroll": 760,
+        "canvas": {
+          "x": 45.59375,
+          "y": 109,
+          "width": 668.8125,
+          "height": 590,
+          "top": 109,
+          "right": 714.40625,
+          "bottom": 699,
+          "left": 45.59375
+        },
+        "audio": 1
+      },
+      {
+        "width": 760,
+        "theme": "dark",
+        "w": 760,
+        "scroll": 760,
+        "canvas": {
+          "x": 45.59375,
+          "y": 109,
+          "width": 668.8125,
+          "height": 590,
+          "top": 109,
+          "right": 714.40625,
+          "bottom": 699,
+          "left": 45.59375
+        },
+        "audio": 1
+      },
+      {
+        "width": 1280,
+        "theme": "light",
+        "w": 1280,
+        "scroll": 1280,
+        "canvas": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1
+      },
+      {
+        "width": 1280,
+        "theme": "dark",
+        "w": 1280,
+        "scroll": 1280,
+        "canvas": {
+          "x": 80,
+          "y": 86,
+          "width": 1120,
+          "height": 605,
+          "top": 86,
+          "right": 1200,
+          "bottom": 691,
+          "left": 80
+        },
+        "audio": 1
+      },
+      {
+        "width": 420,
+        "lyrics": {
+          "x": 41.1875,
+          "y": 347,
+          "width": 337.625,
+          "height": 300
+        }
+      },
+      {
+        "width": 760,
+        "lyrics": {
+          "x": 392,
+          "y": 133,
+          "width": 298.40625,
+          "height": 542
+        }
+      },
+      {
+        "width": 1280,
+        "lyrics": {
+          "x": 652,
+          "y": 110,
+          "width": 524,
+          "height": 557
+        }
+      }
+    ],
+    "random": [
+      {
+        "effect": "waterfall",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "led",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "scope",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "ribbons",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "stars",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "aurora",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "radial",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "orbit",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      },
+      {
+        "effect": "aurora",
+        "failed": false,
+        "canvas": true,
+        "sameAudio": true,
+        "audio": 1,
+        "selection": "random"
+      }
+    ],
+    "errors": [],
+    "externalRequests": 0,
+    "complete": true,
+    "interactions": [
+      "pause/resume",
+      "speed/seek",
+      "close/reopen",
+      "reduced motion",
+      "WebGL context loss/recovery",
+      "random eight-effect bag without adjacent repeats",
+      "automatic canvas/WebGL transitions preserve one audio element",
+      "random clock pauses with playback"
+    ]
+  },
+  "package": {
+    "ok": true,
+    "version": "1.6.5",
+    "electron": "44.9.3",
+    "chromium": "152.0.7977.167",
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "sharedInterface": true,
+    "normalSettingsAllowed": true,
+    "restarted": true,
+    "certificates": {
+      "certifi": "2026.10.23",
+      "ca_sha256": "2ef52ad56b4803e264045c915e55c236cbfa045b84b81efefc218a19eb44bd2b",
+      "root_count": 118,
+      "compromised_root_present": false
+    }
+  },
+  "package_initial_phase_passed": true,
+  "package_asset_count": 89,
+  "package_asset_mismatches": [],
+  "failed_attempts": [
+    {
+      "check": "First isolated packaged-app start",
+      "error": "updateSettingsPanel is not defined",
+      "followup": "Retained in recovery logs. A diagnostic run using preserved isolated folders completed initial startup and restart. The consolidated app will be rebuilt and checked independently."
+    }
+  ],
+  "python313_upload_regression": {
+    "passed": 1,
+    "failed": 0,
+    "python": "3.13.16"
+  },
+  "sourceSha256": {
+    "src/tagcast/static/music-visualizations.js": "e3b62dd794cf30fdd2a494a5c80d798271b12502685b8b44fee6fdf70a645705",
+    "tests/music-visualizations.test.cjs": "76eff56a7b9464470e629ff3e66fb3a58b9592073099e2f79c46140478ebb252",
+    "tools/check_music_visualizations.cjs": "31f05494df7a75946cc26ad59ec18d5c6914d5a83c1b887144dfb08d9a189901"
+  }
+}

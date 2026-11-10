@@ -11,6 +11,17 @@ Available presentations:
 - MilkDrop · Aurora, Orbit and Ribbons: three original bundled Butterchurn presets.
 - Retro · LED spectrum: amber segmented frequency bars.
 - Retro · Oscilloscope: a green waveform with a grid and rising-edge alignment.
+- Spectrum · Neon ring: a circular frequency spectrum.
+- Space · Starfield: moving stars with bass-reactive trails.
+- Spectrum · Waterfall: a rolling coloured frequency history.
+- Random: a shuffled rotation through all eight effects, every 30 seconds of
+  visible playback. Every effect gets a turn before the bag repeats, with no
+  adjacent repeat between bags. Pause, buffering, seeking and hidden views do
+  not advance the clock. Choosing a fixed effect stops the rotation.
+
+Random MilkDrop-to-MilkDrop changes crossfade for two seconds in the same
+renderer. Changes between Canvas and WebGL release the previous surface/context.
+The waterfall history exists only in the bounded canvas, without retained audio.
 
 VisualBee informed the retro presentation ideas; no VisualBee code/assets or
 LRCLIBee changes are included. Lyrics lookup, attribution and saving are unchanged.
@@ -138,3 +149,31 @@ The durable condensed result record is
 `docs/validation/music-visualizations-2026-11-10.json`. Raw media/PCM captures and
 screenshots remain under the corresponding local `build/music-visualizations-*`
 directories. No push, merge, version bump, tag or release was performed.
+
+## Eight-effect rotation follow-up — 10 November 2026
+
+The three additional Canvas effects and Random are implemented and translated in
+all six catalogues. Random uses a shuffled eight-effect bag and 30 seconds of
+visible playback; pause, stalls, seeks and hidden views freeze its clock.
+
+- Targeted visualization, shared analyser, continuous-browse and i18n suites:
+  **61 passed, zero failed**. Catalogue/CSS generation checks, Ruff and version
+  consistency passed.
+- A fresh sandboxed Chromium probe exercised all eight effects and Off, one full
+  random bag, Canvas/WebGL changes, pause/resume, seek/speed, reduced motion,
+  context recovery and responsive lyrics. No runtime errors or external requests.
+- The existing eight-effect Apple Silicon app in
+  `build/music-visualizations-random-2026-11-10/Tagcast.app` has 89 static files
+  byte-identical to these sources. Isolated initial startup and restart passed,
+  including CLI, persistence, Mini Player, sandbox and owned-server shutdown.
+  The first attempt failed with `updateSettingsPanel is not defined`; that failure
+  is retained, not counted as a pass. A diagnostic run retaining its isolated
+  folders passed both phases. Consolidation requires a separately rebuilt app.
+- The previously documented upload test passes under Python 3.13.16. The older
+  Python 3.14 failure remains historical evidence; it is not silently removed.
+
+Condensed evidence is in
+`docs/validation/music-visualizations-random-2026-11-10.json`; recovery archives and
+complete follow-up logs are retained under
+`build/repository-integration-2026-11-10/` in the original checkout. No release or
+installed-app replacement is part of this follow-up.

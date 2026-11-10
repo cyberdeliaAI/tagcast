@@ -26,7 +26,7 @@ function page({stored = null, reduced = false, supported = true, paused = false,
   document.head = {append(n) { log.scripts.push(n); }};
   const audio = node(); Object.assign(audio,{paused,seeking:false,readyState:4});
   const renderer = {renderer: {gl: {getExtension() { return {loseContext() { log.lost++; }}; }}},
-    loadPreset(p) { this.preset=p; }, setRendererSize(w,h) { this.size=[w,h]; }, render(data) { this.frames=(this.frames||0)+1;this.data=data; }};
+    loadPreset(p, blend) { this.preset=p;this.blend=blend; }, setRendererSize(w,h) { this.size=[w,h]; }, render(data) { this.frames=(this.frames||0)+1;this.data=data; }};
   const butterchurn = {default: {createVisualizer(context, canvas, options) {
     assert.equal(context,null,"never allocates a second audio graph");
     if(fail)throw Error("WebGL unavailable");
@@ -71,11 +71,70 @@ test("precompiled local presets consume samples, cap GPU size and share the exis
   assert.equal(p.storage["tagcast-fullscreen-visualization"],"off");
 });
 
-test("LED and scope work without Butterchurn, and never load it",async()=>{
+test("all five canvas effects work without Butterchurn and never load it",async()=>{
   const p=page({library:false});
-  for(const mode of ["led","scope"]){p.run(`setMusicVisualization("${mode}")`);await settle();p.run("drawMusicVisualization(100,true)");}
+  for(const mode of ["led","scope","radial","stars","waterfall"]){p.run(`setMusicVisualization("${mode}")`);await settle();p.run("drawMusicVisualization(100,true)");}
   assert.equal(p.log.scripts.length,0);assert.equal(p.log.renderers.length,0);
   assert.ok(p.log.calls.some(c=>c[0]==="fillRect"));assert.ok(p.log.calls.some(c=>c[0]==="lineTo"));
+  assert.ok(p.log.calls.some(c=>c[0]==="drawImage"));
+});
+
+test("random visits every effect before repeating and avoids repeats at bag boundaries",async()=>{
+  const p=page({stored:"random"});p.run("syncMusicVisualization()");await settle();
+  const effects=[];
+  for(let i=0;i<24;i++){
+    effects.push(p.run("musicVisualization.effect"));
+    p.run("advanceMusicVisualization()");await settle();
+    assert.ok(p.run("!!musicVisualization.canvas"));
+    assert.equal(p.run("musicVisualization.failed"),false);
+  }
+  for(let i=1;i<effects.length;i++)assert.notEqual(effects[i],effects[i-1]);
+  for(let i=0;i<24;i+=8)assert.equal(new Set(effects.slice(i,i+8)).size,8);
+  assert.equal(p.run("musicVisualization.mode"),"random");
+});
+
+test("random uses visible playback time, freezes on pauses, stalls and seeks, and persists only the choice",async()=>{
+  const p=page();p.run('setMusicVisualization("random")');await settle();
+  const first=p.run("musicVisualization.effect");
+  p.run("for(let i=0;i<700;i++)drawMusicVisualization(100+i*40,true)");
+  assert.equal(p.run("musicVisualization.effect"),first);
+  const seconds=p.run("musicVisualization.activeSeconds");
+  p.run("drawMusicVisualization(50000,false);audio.seeking=true;drawMusicVisualization(60000,true);audio.seeking=false;audio.readyState=2;drawMusicVisualization(70000,true);audio.readyState=4");
+  assert.equal(p.run("musicVisualization.activeSeconds"),seconds);
+  p.document.hidden=true;p.document.handlers.visibilitychange();
+  p.run("drawMusicVisualization(80000,true)");
+  assert.equal(p.run("musicVisualization.activeSeconds"),seconds);
+  p.document.hidden=false;p.document.handlers.visibilitychange();await settle();
+  p.run("for(let i=0;i<70;i++)drawMusicVisualization(100000+i*40,true)");await settle();
+  assert.notEqual(p.run("musicVisualization.effect"),first);
+  assert.equal(p.storage["tagcast-fullscreen-visualization"],"random");
+  assert.equal(p.audio.paused,false);
+  p.run('setMusicVisualization("scope");musicVisualization.activeSeconds=99;drawMusicVisualization(200000,true)');
+  assert.equal(p.run("musicVisualization.effect"),"scope");
+});
+
+test("random blends MilkDrop changes on one renderer and replaces canvas contexts cleanly",async()=>{
+  const p=page();p.run('setMusicVisualization("aurora")');await settle();
+  const first=p.run("musicVisualization.canvas");
+  p.run('musicVisualization.mode="random";musicVisualization.shuffle=["orbit","led","scope","aurora"];advanceMusicVisualization()');await settle();
+  assert.equal(p.log.renderers.length,1);assert.equal(p.log.renderers[0].blend,2);
+  assert.equal(p.run("musicVisualization.canvas"),first);
+  p.run("advanceMusicVisualization()");await settle();
+  assert.equal(p.log.lost,1);assert.equal(first.removed,true);
+  assert.equal(p.run("musicVisualization.renderer"),null);
+  p.run("advanceMusicVisualization();advanceMusicVisualization()");await settle();
+  assert.equal(p.log.renderers.length,2);
+});
+
+test("a random load superseded by a fixed effect never recreates an obsolete renderer",async()=>{
+  const p=page({library:false});p.run('setMusicVisualization("random");musicVisualization.shuffle=["aurora"];advanceMusicVisualization()');
+  p.run('setMusicVisualization("radial")');await settle();
+  const canvas=p.run("musicVisualization.canvas");
+  p.context.butterchurn=p.butterchurn;
+  for(const script of p.log.scripts)if(script.onload)script.onload();await settle();
+  assert.equal(p.run("musicVisualization.canvas"),canvas);
+  assert.equal(p.run("musicVisualization.effect"),"radial");
+  assert.equal(p.log.renderers.length,0);
 });
 
 test("reduced motion, unsupported capture and paused opening allocate no effect resources",()=>{
