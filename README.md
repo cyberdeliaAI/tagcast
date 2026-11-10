@@ -21,20 +21,16 @@ create separate local copies. Optional music uploads read selected local audio a
 send copies to your own iBroadcast library only after review; see
 [setup, privacy and current validation limits](docs/music-uploads.md). Tagcast's server listens on `127.0.0.1` only. It is an independent project, not made or endorsed by iBroadcast.
 
-**New in [Tagcast 1.6.5](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.5):**
-Track years are now visible when selecting and reviewing tracks for the trash.
-A **Less common year** label highlights known years that differ from a strict
-majority on the same original disc. **Select different years** is an optional,
-reviewed selection aid: bonus tracks, live recordings and reissues may legitimately
-differ, so nothing is selected or removed automatically. All new texts are
-translated into the six interface languages.
-
-Album splitting from 1.6.0 remains available: select tracks, review the new album,
-and keep track metadata, artwork, IDs and playlist references intact.
+**New in [Tagcast 1.7.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.7.0):**
+Optional continuous browsing and Random Order make larger libraries easier to
+explore. Expanded Now playing offers eight local music visualizations and automatic
+30-second rotation. This release also improves settings integrity, uncertain-write
+verification, cached browsing, shutdown/restart, browser security and recovery from
+temporary audio failures. Notifications no longer block controls beneath them.
 
 Experimental Gapless playback remains optional and off by default. Unsupported
 transitions safely use ordinary playback. See the
-[release notes](.github/release-notes/1.6.5.md) and
+[release notes](.github/release-notes/1.7.0.md) and
 [Gapless setup and limitations](docs/gapless-playback.md).
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
@@ -100,15 +96,15 @@ real-library example and explains the review, limits and failure handling.
 ### Desktop app — no Python required
 
 Download the archive for your computer from
-[Tagcast 1.6.5](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.6.5):
+[Tagcast 1.7.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.7.0):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
-| Debian / Ubuntu, x64 | [DEB](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.6.5/tagcast-1.6.5-linux-amd64.deb) | Install with `sudo apt install ./tagcast-1.6.5-linux-amd64.deb`; open Tagcast from the app menu. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.7.0/tagcast-1.7.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.7.0/tagcast-1.7.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.7.0/tagcast-1.7.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.7.0/tagcast-1.7.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | [DEB](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.7.0/tagcast-1.7.0-linux-amd64.deb) | Install with `sudo apt install ./tagcast-1.7.0-linux-amd64.deb`; open Tagcast from the app menu. |
 
 macOS requires **13 Ventura or newer**. Linux needs a graphical desktop and
 glibc 2.35 or newer. Keep the complete package together. No separate browser,
