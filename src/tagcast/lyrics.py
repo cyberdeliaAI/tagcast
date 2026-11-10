@@ -417,8 +417,13 @@ class Lyrics:
                 # Intent is consumed above. A failed/uncertain request is never replayed.
                 self.native.pop(before_body["track_id"], None)
                 self._native_forget(current)
-                client._jsonrequest("update_track", _retry=False,
-                                    tracks=[{"file_id": int(before_body["track_id"]), "userdata": wanted}])
+                from .client import UncertainWrite
+
+                try:
+                    client._jsonrequest("update_track", _retry=False,
+                                        tracks=[{"file_id": int(before_body["track_id"]), "userdata": wanted}])
+                except UncertainWrite:
+                    pass  # Verify the attempted write without sending it again.
                 try:
                     got, actual = self._userdata(client, before_body["track_id"])
                     confirmed = actual == after and [r for r in got if r.get("type") != "lyrics"] == [r for r in rows if r.get("type") != "lyrics"]

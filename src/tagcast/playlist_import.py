@@ -723,16 +723,17 @@ class PlaylistImport:
                 # Consume before sending: an ambiguous creation must never be repeated.
                 self._checkpoint_state(draft, state="submitted")
                 draft["phase"] = "uncertain"
-                result = client._jsonrequest("createplaylist", name=review["name"], description=review["description"],
+                result = studio.collections._playlist_write(client, "createplaylist", name=review["name"], description=review["description"],
                                              make_public=False, tracks=review["tracks"])
-                playlist_id = number(result.get("playlist_id"))
-                if playlist_id <= 0 or playlist_id in fresh.playlists:
-                    raise LibraryError("The new playlist ID was not confirmed. Check Playlists before importing again.")
-                self._checkpoint_state(draft, playlist=playlist_id)
+                playlist_id = studio.collections._created_playlist_id(result, fresh)
+                if playlist_id:
+                    self._checkpoint_state(draft, playlist=playlist_id)
 
                 def check(after):
+                    if not after.playlists_loaded:
+                        raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                     row = after.playlists.get(playlist_id, {})
-                    matches = studio.collections.editable(row) and text(row.get("name")) == review["name"] \
+                    matches = playlist_id > 0 and studio.collections.editable(row) and text(row.get("name")) == review["name"] \
                         and text(row.get("description")) == review["description"] and row.get("tracks") == review["tracks"]
                     if matches and draft.get("checkpoint"):
                         with self.lock:
@@ -743,7 +744,9 @@ class PlaylistImport:
                     return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
 
                 job = studio._check_later(client, studio.downloads, check, include_albums=False)
-                draft["phase"] = "sent"
-                return {"id": str(playlist_id), "job": job}
+                if playlist_id:
+                    draft["phase"] = "sent"
+                return {"id": str(playlist_id) if playlist_id else "", "job": job,
+                        **({"outcome": "unknown"} if not playlist_id else {})}
         finally:
             studio.save_lock.release()

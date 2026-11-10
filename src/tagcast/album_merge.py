@@ -167,7 +167,12 @@ class AlbumMerge:
             with studio.lock:
                 self.selections.clear()
                 self.reviews.clear()
-            client._jsonrequest("update_track", _retry=False, tracks=updates)
+            from .client import UncertainWrite
+
+            try:
+                client._jsonrequest("update_track", _retry=False, tracks=updates)
+            except UncertainWrite:
+                pass  # Verify the attempted write without sending it again.
 
             def result(tid, status):
                 return {"kind": "track", "id": str(tid), "label": text(snapshot["tracks"][tid]["metadata"]["title"]),

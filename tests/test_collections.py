@@ -44,6 +44,108 @@ class CollectionTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('Read-back did not finish')
 
+    def test_applied_playlist_mutations_with_lost_replies_are_read_back_once(self):
+        cases = [('append', 'appendplaylist'), ('replace', 'updateplaylist'),
+                 ('metadata', 'updateplaylist'), ('reorder', 'updateplaylist'),
+                 ('remove-track', 'updateplaylist'), ('delete', 'deleteplaylist'),
+                 ('folder-rename', 'updateplaylist'), ('folder-delete', 'deleteplaylist'),
+                 ('cover', 'updateplaylist')]
+        for action, mode in cases:
+            with self.subTest(action=action):
+                folder = action.startswith('folder-')
+                row = {'name': 'Original', 'description': 'Keep notes', 'artwork_id': 77,
+                       'type': 'folder' if folder else 'playlist',
+                       'tracks': [] if folder else [900, 901, 900]}
+                # Append's API contract is intentionally unchanged, investigated separately.
+                if action == 'append':
+                    row['tracks'] = [900, 901]
+                mock_ibroadcast.STATE['playlists'] = {888: row}
+                mock_ibroadcast.STATE['version'] += 1
+                self.studio.load_library(refresh=True)
+                body = {'playlist': '888', 'before_token': self.studio.collections.playlist_snapshot(row, 888),
+                        'before_name': row['name'], 'session': self.studio.playback_session,
+                        'approved': True, 'action': action, 'confirm_delete': True}
+                if action == 'metadata':
+                    body['fields'] = {'description': 'Changed notes'}
+                elif action == 'reorder':
+                    body['positions'] = [1, 0, 2]
+                elif action == 'remove-track':
+                    body.update(position=0, track='900')
+                elif action in ('append', 'replace'):
+                    body.update(tracks=[903], name='Original', description='Keep notes')
+                elif folder:
+                    body.update(action=action.removeprefix('folder-'), name='Renamed', description='Keep notes')
+                elif action == 'cover':
+                    body['source'] = {'artwork_id': 99}
+                original = self.studio.client._jsonrequest
+                sent = []
+                def lost(request_mode, **fields):
+                    result = original(request_mode, **fields)
+                    if request_mode == mode:
+                        sent.append(request_mode)
+                        raise client.UncertainWrite('Applied remotely, reply lost')
+                    return result
+                with patch.object(self.studio.client, '_jsonrequest', side_effect=lost):
+                    if folder:
+                        response = self.studio.collections.save_folder(body)
+                    elif action == 'cover':
+                        response = self.studio.collections.playlist_artwork(body)
+                    else:
+                        response = self.studio.collections.save_playlist(body)
+                    result = self.job(response)
+                self.assertEqual(sent, [mode])
+                self.assertEqual(result['state'], 'done')
+                self.assertEqual([r['status'] for r in result['results']], ['saved'])
+                if action == 'metadata':
+                    self.assertEqual(self.studio.library.playlists[888]['tracks'], [900, 901, 900])
+
+    def test_creation_without_receipt_refreshes_but_never_identifies_by_name(self):
+        for folder in (False, True):
+            for receipt in ('lost', 'missing', 'existing'):
+                with self.subTest(folder=folder, receipt=receipt):
+                    row = {'name': 'Same name', 'description': '', 'tracks': [] if folder else [900],
+                           'type': 'folder' if folder else 'playlist'}
+                    mock_ibroadcast.STATE['playlists'] = {888: row}
+                    mock_ibroadcast.STATE['version'] += 1
+                    self.studio.load_library(refresh=True)
+                    before = set(self.studio.library.playlists)
+                    original = self.studio.client._jsonrequest
+                    mode = 'createplaylistfolder' if folder else 'createplaylist'
+                    sent = []
+                    def lost(request_mode, **fields):
+                        result = original(request_mode, **fields)
+                        if request_mode == mode:
+                            sent.append(request_mode)
+                            if receipt == 'lost':
+                                raise client.UncertainWrite('Creation applied, ID lost')
+                            return {'result': True, **({'playlist_id': 888} if receipt == 'existing' else {})}
+                        return result
+                    body = {'action': 'create', 'name': 'Same name', 'tracks': [900],
+                            'approved': True, 'session': self.studio.playback_session}
+                    with patch.object(self.studio.client, '_jsonrequest', side_effect=lost):
+                        response = (self.studio.collections.save_folder(body) if folder
+                                    else self.studio.collections.save_playlist(body))
+                        result = self.job(response)
+                    self.assertEqual(response['id'], '')
+                    self.assertEqual(response['outcome'], 'unknown')
+                    self.assertEqual([r['status'] for r in result['results']], ['unverified'])
+                    self.assertEqual(len(set(self.studio.library.playlists) - before), 1)
+                    self.assertEqual(sent, [mode])
+
+    def test_lost_reply_without_matching_readback_stays_unknown_and_never_retries(self):
+        body = self.playlist_remove_body()
+        original = self.studio.client._jsonrequest
+        sent = []
+        def lost(mode, **fields):
+            if mode == 'updateplaylist':
+                sent.append(mode)
+                raise client.UncertainWrite('No receipt')
+            return original(mode, **fields)
+        with patch.object(self.studio.client, '_jsonrequest', side_effect=lost):
+            result = self.job(self.studio.collections.save_playlist(body))
+        self.assertEqual([r['status'] for r in result['results']], ['unverified'])
+        self.assertEqual(sent, ['updateplaylist'])
+
     def test_queue_restore_is_account_bound_and_preserves_duplicate_positions_without_remote_reads(self):
         library = self.studio.library
         profile = self.studio.load_library()["playback_profile"]

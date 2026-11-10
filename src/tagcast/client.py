@@ -1093,11 +1093,15 @@ class Studio:
         job_id = secrets.token_urlsafe(9)
         marker = {"state": "checking"}
         with self.lock:
+            owner = (self.client, self.library_user, self.playback_session)
             self.jobs[job_id] = marker
 
         def run():
             try:
                 after, _ = self._current(client, after=written)
+                with self.lock:
+                    if client is not self.client or owner != (self.client, self.library_user, self.playback_session):
+                        raise NotConnected("The account or session changed before read-back confirmation.")
                 result = {"state": "done", "results": check(after),
                           "playlists_count": self.collections.playlist_count(after)}
                 if include_albums:
@@ -1111,6 +1115,8 @@ class Studio:
                 result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
                 if self.jobs.get(job_id) is marker:
+                    if owner != (self.client, self.library_user, self.playback_session):
+                        result = {"state": "error", "error": "The account or session changed. The write outcome is unknown; check iBroadcast before any new review."}
                     self.jobs[job_id] = result
                     finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
                     for old in finished[:-20]:
@@ -1180,8 +1186,9 @@ class Studio:
         if not valid_interface_language(language):
             raise ApiError("Choose a supported interface language.", code="settings.invalid_language")
         with self.lock:
-            self.config["interface_language"] = language
-            self._write("config.json", self.config)
+            config = {**self.config, "interface_language": language}
+            self._write("config.json", config)
+            self.config = config
         return {"interface_language": language}
 
     def check_updates(self, manual=False):
@@ -1191,6 +1198,7 @@ class Studio:
 
     def save_settings(self, body):
         with self.lock:
+            config = dict(self.config)
             if "disabled_sources" in body:
                 disabled = body["disabled_sources"]
                 names = {source["name"] for source in self.lookup.describe()}
@@ -1206,6 +1214,8 @@ class Studio:
                 raise ApiError("Choose whether 1001 Albums is enabled.")
             if "guide_matching_details" in body and type(body["guide_matching_details"]) is not bool:
                 raise ApiError("Choose whether matching details are shown.")
+            if "auto_lookup" in body and type(body["auto_lookup"]) is not bool:
+                raise ApiError("Choose whether automatic lookup is enabled.")
             if "auto_updates" in body and not isinstance(body["auto_updates"], bool):
                 raise ApiError("Choose whether automatic update checks are enabled.")
             if "record_plays" in body and not isinstance(body["record_plays"], bool):
@@ -1215,46 +1225,47 @@ class Studio:
             if "stream_quality" in body:
                 if body["stream_quality"] not in ("96", "128", "192", "256", "320", "orig"):
                     raise ApiError("Choose a supported streaming quality.")
-                self.config["stream_quality"] = body["stream_quality"]
+                config["stream_quality"] = body["stream_quality"]
             if "queue_sync" in body:
                 if type(body["queue_sync"]) is not bool:
                     raise ApiError("Choose whether queue synchronisation is enabled.")
-                self.config["queue_sync"] = body["queue_sync"]
+                config["queue_sync"] = body["queue_sync"]
             if "music_uploads" in body:
-                self.config["music_uploads"] = body["music_uploads"]
+                config["music_uploads"] = body["music_uploads"]
             for key in KEY_ENV:
                 if key in body:
                     value = str(body[key] or "").strip()
                     if len(value) > 200 or any(c.isspace() for c in value):
                         raise ApiError(f"That {SOURCE_KEYS[key].label} key doesn't look right.")
                     if value:
-                        self.config[key] = value
+                        config[key] = value
                     else:
-                        self.config.pop(key, None)
+                        config.pop(key, None)
             if "auto_lookup" in body:
-                self.config["auto_lookup"] = bool(body["auto_lookup"])
+                config["auto_lookup"] = bool(body["auto_lookup"])
             if "disabled_sources" in body:
-                self.config["disabled_sources"] = list(body["disabled_sources"])
+                config["disabled_sources"] = list(body["disabled_sources"])
             if "auto_updates" in body:
-                self.config["auto_updates"] = body["auto_updates"]
+                config["auto_updates"] = body["auto_updates"]
             if "record_plays" in body:
-                self.config["record_plays"] = body["record_plays"]
+                config["record_plays"] = body["record_plays"]
             if "album_guide" in body:
-                self.config["album_guide"] = body["album_guide"]
+                config["album_guide"] = body["album_guide"]
             if "artist_biographies" in body:
-                if body["artist_biographies"] != self.config.get("artist_biographies", False):
-                    self.artist_bios.revision += 1
-                self.config["artist_biographies"] = body["artist_biographies"]
+                config["artist_biographies"] = body["artist_biographies"]
             if "album_information" in body:
-                if body["album_information"] != self.config.get("album_information", False):
-                    self.album_info.revision += 1
-                self.config["album_information"] = body["album_information"]
+                config["album_information"] = body["album_information"]
             if "guide_matching_details" in body:
-                self.config["guide_matching_details"] = body["guide_matching_details"]
-            self._write("config.json", self.config)
-        if not self.config.get("queue_sync"):
+                config["guide_matching_details"] = body["guide_matching_details"]
+            self._write("config.json", config)
+            if config.get("artist_biographies", False) != self.config.get("artist_biographies", False):
+                self.artist_bios.revision += 1
+            if config.get("album_information", False) != self.config.get("album_information", False):
+                self.album_info.revision += 1
+            self.config = config
+        if not config.get("queue_sync"):
             self.queue_sync.disconnect()
-        if not self.config.get("music_uploads"):
+        if not config.get("music_uploads"):
             self.music_uploads.close()
         return self.settings()
 
@@ -1502,7 +1513,10 @@ class Studio:
     def _trash_checked(self, client, wanted):
         if client is not self.client:
             raise NotConnected("The connection changed. Review the selection again.")
-        client._jsonrequest("trash", tracks=list(wanted))
+        try:
+            client._jsonrequest("trash", tracks=list(wanted))
+        except UncertainWrite:
+            pass  # A fresh read-back determines the result, never a retry.
 
         def result(track_id, status):
             return {"kind": "track", "id": str(track_id), "label": wanted[track_id][1][:300] or "Track",

@@ -417,6 +417,21 @@ class Collections:
         return {"playlists": [self.playlist_summary(library, i) for i in ids[offset:offset + 100]],
                 "total": len(ids), "offset": offset}
 
+    @staticmethod
+    def _playlist_write(client, mode, **fields):
+        """Send once; a lost receipt must still reach the caller's read-back."""
+        from .client import UncertainWrite
+
+        try:
+            return client._jsonrequest(mode, **fields)
+        except UncertainWrite:
+            return {}  # No receipt is evidence of neither success nor failure.
+
+    @staticmethod
+    def _created_playlist_id(response, library):
+        playlist_id = number(response.get("playlist_id"))
+        return playlist_id if playlist_id > 0 and playlist_id not in library.playlists else 0
+
     def _playlist_session(self, body, client):
         studio = self.studio
         if body.get("session") != studio.playback_session or not body.get("session") \
@@ -463,10 +478,8 @@ class Collections:
             if action == "create":
                 if description:
                     raise LibraryError("Create the folder with a name first; add a description through Rename folder.")
-                response = client._jsonrequest("createplaylistfolder", name=name)
-                playlist_id = number(response.get("playlist_id"))
-                if playlist_id <= 0 or playlist_id in library.playlists:
-                    raise LibraryError("The folder ID could not be confirmed. Check Playlists before creating again.")
+                response = self._playlist_write(client, "createplaylistfolder", name=name)
+                playlist_id = self._created_playlist_id(response, library)
                 expected = {"type": "folder", "name": name, "description": description, "tracks": [], "artwork_id": 0}
             else:
                 playlist_id, row = self._folder_record(library, body)
@@ -514,15 +527,18 @@ class Collections:
                         raise LibraryError("Only an explicitly reviewed empty folder can be deleted. Its playlists are never deleted.")
                     if any(self.folder(p) and playlist_id in track_ids(p.get("tracks") or [], maximum=None) for p in library.playlists.values()):
                         raise LibraryError("Remove this folder from its parent folders first.")
-                client._jsonrequest("deleteplaylist" if action == "delete" else "updateplaylist", _retry=False, **fields)
+                self._playlist_write(client, "deleteplaylist" if action == "delete" else "updateplaylist", _retry=False, **fields)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 got = after.playlists.get(playlist_id)
                 confirmed = playlist_id not in after.playlists if action == "delete" else bool(got) and self.folder(got) and all(
                     (number(got.get(key)) if key == "artwork_id" else text(got.get(key)) if key in ("name", "description") else got.get(key)) == value
                     for key, value in expected.items())
-                return [{"id": str(playlist_id), "status": "saved" if confirmed else "unverified"}]
-            return {"id": str(playlist_id), "job": studio._check_later(client, studio.downloads, check, include_albums=False)}
+                return [{"id": str(playlist_id) if playlist_id else "", "status": "saved" if confirmed else "unverified"}]
+            return {"id": str(playlist_id) if playlist_id else "", **({"outcome": "unknown"} if not playlist_id else {}),
+                    "job": studio._check_later(client, studio.downloads, check, include_albums=False)}
         finally:
             studio.save_lock.release()
 
@@ -551,9 +567,11 @@ class Collections:
             if not current or not self.editable(current):
                 raise ConflictError("The playlist is no longer editable.")
             self.check_playlist_before(current, body)
-            client._jsonrequest("updateplaylist", playlist=playlist_id, artwork_id=new_id, _retry=False)
+            self._playlist_write(client, "updateplaylist", playlist=playlist_id, artwork_id=new_id, _retry=False)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 got = after.playlists.get(playlist_id, {})
                 confirmed = self.editable(got) and number(got.get("artwork_id")) == new_id and all(got.get(key) == value for key, value in before.items())
                 return [{"id": str(playlist_id), "status": "saved" if confirmed else "unverified"}]
@@ -673,9 +691,11 @@ class Collections:
             expected = {key: row.get(key) for key in
                         ("name", "description", "tracks", "type", "system_created", "artwork_id")}
             expected.update(changed)
-            client._jsonrequest("updateplaylist", playlist=playlist_id, _retry=False, **changed)
+            self._playlist_write(client, "updateplaylist", playlist=playlist_id, _retry=False, **changed)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 got = after.playlists.get(playlist_id, {})
                 matches = self.editable(got) and all(
                     (text(got.get(key)) == text(value) if key in ("name", "description")
@@ -761,9 +781,11 @@ class Collections:
                     raise LibraryError("The playlist order has not changed.")
                 metadata = {k: row.get(k) for k in
                             ("name", "description", "type", "system_created", "artwork_id")}
-            client._jsonrequest("updateplaylist", playlist=playlist_id, tracks=expected, _retry=False)
+            self._playlist_write(client, "updateplaylist", playlist=playlist_id, tracks=expected, _retry=False)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 got = after.playlists.get(playlist_id, {})
                 matches = self.editable(got) and got.get("tracks") == expected and all(
                     got.get(key) == value for key, value in metadata.items())
@@ -795,9 +817,11 @@ class Collections:
                 expected = original[:position] + original[position + 1:]
                 metadata = {k: row.get(k) for k in
                             ("name", "description", "type", "system_created", "artwork_id")}
-            client._jsonrequest("updateplaylist", playlist=playlist_id, tracks=expected, _retry=False)
+            self._playlist_write(client, "updateplaylist", playlist=playlist_id, tracks=expected, _retry=False)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 got = after.playlists.get(playlist_id, {})
                 matches = self.editable(got) and got.get("tracks") == expected and all(
                     got.get(key) == value for key, value in metadata.items())
@@ -834,11 +858,9 @@ class Collections:
                 raise LibraryError("The iBroadcast connection changed. Prepare a new review.")
             playlist_id = number(body.get("playlist"))
             if action == "create":
-                result = client._jsonrequest("createplaylist", name=name, description=description,
+                result = self._playlist_write(client, "createplaylist", name=name, description=description,
                                              make_public=False, tracks=ids)
-                playlist_id = number(result.get("playlist_id"))
-                if not playlist_id:
-                    raise LibraryError("iBroadcast returned no playlist ID. Check Playlists before creating again.")
+                playlist_id = self._created_playlist_id(result, library)
                 expected = ids
             else:
                 row = library.playlists.get(playlist_id)
@@ -857,15 +879,18 @@ class Collections:
                         payload["description"] = description
                     if ids == row.get("tracks"):
                         payload.pop("tracks")
-                client._jsonrequest("appendplaylist" if action == "append" else "updateplaylist", **payload)
+                self._playlist_write(client, "appendplaylist" if action == "append" else "updateplaylist", **payload)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 row = after.playlists.get(playlist_id, {})
-                matches = row.get("tracks") == expected and (action == "append" or (
+                matches = playlist_id > 0 and self.editable(row) and row.get("tracks") == expected and (action == "append" or (
                     text(row.get("name")) == name and text(row.get("description")) == description))
-                return [{"id": str(playlist_id), "status": "saved" if matches else "unverified"}]
+                return [{"id": str(playlist_id) if playlist_id else "", "status": "saved" if matches else "unverified"}]
 
-            return {"id": str(playlist_id), "job": studio._check_later(client, studio.downloads, check, include_albums=False)}
+            return {"id": str(playlist_id) if playlist_id else "", **({"outcome": "unknown"} if not playlist_id else {}),
+                    "job": studio._check_later(client, studio.downloads, check, include_albums=False)}
         finally:
             studio.save_lock.release()
 
@@ -885,9 +910,11 @@ class Collections:
             if client is not studio.client:
                 raise LibraryError("The iBroadcast connection changed. Prepare a new review.")
             # Delete only the playlist definition; never send track trash requests.
-            client._jsonrequest("deleteplaylist", playlist=playlist_id)
+            self._playlist_write(client, "deleteplaylist", playlist=playlist_id)
 
             def check(after):
+                if not after.playlists_loaded:
+                    raise LibraryError("Playlists were missing from the read-back. The outcome is unknown.")
                 return [{"id": str(playlist_id), "status": "saved" if playlist_id not in after.playlists else "unverified"}]
 
             return {"id": str(playlist_id), "job": studio._check_later(client, studio.downloads, check, include_albums=False)}

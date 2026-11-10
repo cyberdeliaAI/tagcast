@@ -126,6 +126,21 @@ class AlbumMergeTests(unittest.TestCase):
         self.assertEqual(set(lib.active_track_ids(22)), {101, 102, 103, 104})
         self.assertEqual(lib.album_view(22)["artist"], "B")
 
+    def test_applied_merge_with_uncertain_reply_reads_back_and_cannot_replay(self):
+        from tagcast.client import UncertainWrite
+
+        review = self.review()
+        original = self.studio._jsonrequest
+        def lost(mode, **fields):
+            original(mode, **fields)
+            raise UncertainWrite("Applied, reply lost")
+        with patch.object(self.studio, "_jsonrequest", side_effect=lost):
+            self.save(review)
+        self.assertEqual({r["status"] for r in self.studio.jobs["merge-job"]["results"]}, {"saved"})
+        self.assertEqual(len(self.studio.writes), 1)
+        with self.assertRaises(ConflictError):
+            self.save(review)
+
     def test_single_use_even_when_response_is_lost_or_partial(self):
         for flag in ("fail", "accept_then_fail", "partial", "ignore"):
             with self.subTest(flag=flag):

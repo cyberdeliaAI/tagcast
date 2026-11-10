@@ -311,3 +311,21 @@ made as part of this inventory.
 - Record explicit documented limits separately from conservative local caps.
 - Update this audit when changing API coverage or receiving written
   clarification from iBroadcast.
+
+### Append contract boundary — 2026-11-10 (F2-02)
+
+The [official playlist guide](https://help.ibroadcast.com/en/developer/components/playlists)
+documents suppressing incoming IDs already present in a destination. This does
+**not** establish whole-list deduplication or removal of intentional existing
+repeated positions. The current append verification and local mock both apply
+`dict.fromkeys(existing + incoming)`; that stronger assumption has not been
+verified against the service. Production request/verification semantics and mock
+behavior are unchanged in this investigation. The `playlist_id` versus `playlist`
+example discrepancy above also remains unresolved.
+
+Before changing this contract, separately authorized disposable-account checks
+must compare the receipt with a fresh library download for incoming overlap,
+existing repeated positions (with and without overlap), repeated incoming new IDs
+and an empty append. The exact cases and remaining risk are in the
+[data-integrity remediation record](audits/data-integrity-remediation-2026-11-10.md#f2-02--unresolved-contract-production-semantics-unchanged).
+No real-account writes were performed for this audit remediation.
