@@ -35,12 +35,28 @@ await p.evaluate(async()=>{
 });
 await p.waitForTimeout(300);
 console.log('initial',await p.evaluate(()=>({open:visualPlayer.open,paused:audio.paused,supported:visualizerSupported(),size:[innerWidth,innerHeight]})));
-for(const mode of ['aurora','orbit','ribbons','led','scope','off']){
+for(const mode of ['aurora','orbit','ribbons','led','scope','radial','stars','waterfall','off']){
  await p.selectOption('#music-visualization-mode',mode);await p.waitForTimeout(1000);
  const result=await p.evaluate(()=>({mode:musicVisualization.mode,failed:musicVisualization.failed,pending:musicVisualization.pending,last:musicVisualization.last,renderer:!!musicVisualization.renderer,message:musicVisualization.message,canvas:musicVisualization.canvas?{w:musicVisualization.canvas.width,h:musicVisualization.canvas.height}:null,rect:document.querySelector('.visual-player-content').getBoundingClientRect().toJSON(),audio:document.querySelectorAll('audio').length,paused:audio.paused}));
  report.modes.push(result);console.log(mode,result);assert.equal(result.failed,false);assert.equal(result.audio,1);assert.equal(result.paused,false);if(mode!=='off')assert.ok(result.last>0);
- if(['aurora','led','scope'].includes(mode))await p.screenshot({path:path.join(output,mode+".png")});
+ if(['aurora','led','scope','radial','stars','waterfall'].includes(mode))await p.screenshot({path:path.join(output,mode+".png")});
 }
+await p.selectOption('#music-visualization-mode','random');await p.waitForTimeout(500);
+await p.evaluate(()=>{globalThis.visualizationTestAudio=audio});
+report.random=[];
+for(let i=0;i<9;i++){
+ const result=await p.evaluate(()=>({effect:musicVisualization.effect,failed:musicVisualization.failed,canvas:!!musicVisualization.canvas,sameAudio:audio===globalThis.visualizationTestAudio,audio:document.querySelectorAll('audio').length,selection:localStorage.getItem('tagcast-fullscreen-visualization')}));
+ report.random.push(result);assert.equal(result.failed,false);assert.equal(result.canvas,true);assert.equal(result.sameAudio,true);assert.equal(result.audio,1);assert.equal(result.selection,'random');
+ if(i)assert.notEqual(result.effect,report.random[i-1].effect);
+ // Exercise automatic transitions without spending four minutes waiting for eight turns.
+ // The unit test separately measures the complete 30-second visible-playback clock.
+ await p.evaluate(()=>{musicVisualization.activeSeconds=29.99});await p.waitForTimeout(600);
+}
+assert.equal(new Set(report.random.slice(0,8).map(r=>r.effect)).size,8);
+await p.evaluate(()=>audio.pause());await p.waitForTimeout(300);
+const randomFrozen=await p.evaluate(()=>({effect:musicVisualization.effect,seconds:musicVisualization.activeSeconds}));await p.waitForTimeout(300);
+assert.deepEqual(await p.evaluate(()=>({effect:musicVisualization.effect,seconds:musicVisualization.activeSeconds})),randomFrozen);
+await p.evaluate(()=>audio.play());await p.waitForTimeout(300);
 await p.selectOption('#music-visualization-mode','scope');await p.waitForTimeout(300);
 await p.evaluate(()=>audio.pause());await p.waitForTimeout(250);
 const frozen=await p.evaluate(()=>musicVisualization.last);await p.waitForTimeout(250);assert.equal(await p.evaluate(()=>musicVisualization.last),frozen);
@@ -74,7 +90,7 @@ console.log('interaction checks passed');
 console.log('errors',errors,'external',network.filter(u=>!u.startsWith(origin+"/")));assert.deepEqual(errors,[]);
 assert.deepEqual(network.filter(u=>!u.startsWith(origin+"/")),[]);
 report.errors=errors;report.externalRequests=0;report.complete=true;
-report.interactions=['pause/resume','speed/seek','close/reopen','reduced motion','WebGL context loss/recovery'];
+report.interactions=['pause/resume','speed/seek','close/reopen','reduced motion','WebGL context loss/recovery','random eight-effect bag without adjacent repeats','automatic canvas/WebGL transitions preserve one audio element','random clock pauses with playback'];
 fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2)+'\n');
 } finally {await b.close();server.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -2,10 +2,41 @@
 
 // Presentation-only listeners of visualizer.js's existing captureStream graph.
 // Butterchurn receives sample arrays, never an AudioContext or an output node.
-const MUSIC_VISUAL_MODES = ["off", "aurora", "orbit", "ribbons", "led", "scope"];
+const MUSIC_VISUAL_EFFECTS = ["aurora", "orbit", "ribbons", "led", "scope", "radial", "stars", "waterfall"];
+const MUSIC_VISUAL_MODES = ["off", "random", ...MUSIC_VISUAL_EFFECTS];
+const MUSIC_VISUAL_CANVAS = ["led", "scope", "radial", "stars", "waterfall"];
 const musicVisualization = {mode: storedMusicVisualization(), canvas: null, renderer: null,
   generation: 0, pending: false, failed: false, loader: null, last: 0, width: 0, height: 0,
-  bytes: new Uint8Array(1024), samples: new Float32Array(2048), message: ""};
+  bytes: new Uint8Array(1024), samples: new Float32Array(2048), message: "",
+  effect: null, shuffle: [], activeSeconds: 0, phase: 0};
+
+// Shuffle a bounded local bag. Every effect gets a turn; avoid repeats across bags too.
+function nextMusicVisualization() {
+  if (!musicVisualization.shuffle.length) {
+    const bag = [...MUSIC_VISUAL_EFFECTS];
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    if (bag[0] === musicVisualization.effect) [bag[0], bag[1]] = [bag[1], bag[0]];
+    musicVisualization.shuffle = bag;
+  }
+  return musicVisualization.shuffle.shift();
+}
+
+function advanceMusicVisualization() {
+  const effect = nextMusicVisualization();
+  musicVisualization.activeSeconds = 0;
+  // MilkDrop-to-MilkDrop changes share one renderer with a gentle transition.
+  if (musicVisualization.renderer && !MUSIC_VISUAL_CANVAS.includes(effect)) {
+    musicVisualization.renderer.loadPreset(musicVisualizationPreset(effect), 2);
+    musicVisualization.effect = effect;
+  } else {
+    releaseMusicVisualization();
+    musicVisualization.effect = effect;
+    prepareMusicVisualization();
+  }
+}
 
 function storedMusicVisualization() {
   try {
@@ -107,12 +138,14 @@ function musicVisualizationSize() {
 
 async function prepareMusicVisualization() {
   if (musicVisualization.canvas || musicVisualization.pending || !musicVisualizationActive()) return;
-  const generation = ++musicVisualization.generation, mode = musicVisualization.mode;
+  if (!musicVisualization.effect) musicVisualization.effect = musicVisualization.mode === "random"
+    ? nextMusicVisualization() : musicVisualization.mode;
+  const generation = ++musicVisualization.generation, mode = musicVisualization.effect;
   musicVisualization.pending = true;
-  musicVisualization.message = ["led", "scope"].includes(mode) ? "" : "musicVisual.loading";
+  musicVisualization.message = MUSIC_VISUAL_CANVAS.includes(mode) ? "" : "musicVisual.loading";
   musicVisualizationLabels();
   try {
-    if (!["led", "scope"].includes(mode)) await loadMusicVisualizationLibrary();
+    if (!MUSIC_VISUAL_CANVAS.includes(mode)) await loadMusicVisualizationLibrary();
     if (generation !== musicVisualization.generation || !musicVisualizationActive()) return;
     const canvas = document.createElement("canvas");
     canvas.setAttribute("aria-hidden", "true");
@@ -120,7 +153,7 @@ async function prepareMusicVisualization() {
     $("#music-visualization-surface").append(canvas);
     const [width, height] = musicVisualizationSize();
     canvas.width = width; canvas.height = height;
-    if (!["led", "scope"].includes(mode)) {
+    if (!MUSIC_VISUAL_CANVAS.includes(mode)) {
       canvas.addEventListener("webglcontextlost", event => {
         event.preventDefault();
         if (musicVisualization.canvas === canvas) failMusicVisualization();
@@ -128,7 +161,11 @@ async function prepareMusicVisualization() {
       musicVisualization.renderer = globalThis.butterchurn.default.createVisualizer(null, canvas,
         {width, height, pixelRatio: 1, textureRatio: 1, meshWidth: 32, meshHeight: 24});
       musicVisualization.renderer.loadPreset(musicVisualizationPreset(mode), 0);
-    } else if (!canvas.getContext("2d")) throw new Error("Canvas unavailable");
+    } else {
+      const g = canvas.getContext("2d");
+      if (!g) throw new Error("Canvas unavailable");
+      g.fillStyle = "#080d0c"; g.fillRect(0, 0, width, height);
+    }
     musicVisualization.width = width; musicVisualization.height = height;
     musicVisualization.message = "";
   } catch {
@@ -162,21 +199,35 @@ function setMusicVisualization(mode) {
   if (!MUSIC_VISUAL_MODES.includes(mode)) return;
   releaseMusicVisualization();
   musicVisualization.mode = mode; musicVisualization.failed = false; musicVisualization.message = "";
+  musicVisualization.effect = mode === "random" ? null : mode;
+  musicVisualization.shuffle = []; musicVisualization.activeSeconds = 0; musicVisualization.phase = 0;
   try { localStorage.setItem("tagcast-fullscreen-visualization", mode); } catch { /* private window */ }
   syncMusicVisualization();
 }
 
 function drawMusicVisualization(time, listening) {
-  if (!musicVisualizationActive() || !listening || audio.seeking || audio.readyState < 3) return;
+  if (!musicVisualizationActive() || !listening || audio.seeking || audio.readyState < 3) {
+    musicVisualization.last = 0;
+    return;
+  }
   if (!musicVisualization.canvas) { prepareMusicVisualization(); return; }
   if (musicVisualization.last && time - musicVisualization.last < 1000 / 30) return;
   const elapsed = musicVisualization.last ? Math.min(.1, (time - musicVisualization.last) / 1000) : 1 / 30;
   musicVisualization.last = time;
   try {
+    musicVisualization.phase += elapsed;
+    if (musicVisualization.mode === "random") {
+      musicVisualization.activeSeconds += elapsed;
+      if (musicVisualization.activeSeconds >= 30) { advanceMusicVisualization(); return; }
+    }
     const canvas = musicVisualization.canvas, [width, height] = musicVisualizationSize();
     if (width !== musicVisualization.width || height !== musicVisualization.height) {
       if (musicVisualization.renderer) musicVisualization.renderer.setRendererSize(width, height);
-      else { canvas.width = width; canvas.height = height; }
+      else {
+        canvas.width = width; canvas.height = height;
+        const g = canvas.getContext("2d");
+        g.fillStyle = "#080d0c"; g.fillRect(0, 0, width, height);
+      }
       musicVisualization.width = width; musicVisualization.height = height;
     }
     if (musicVisualization.renderer) {
@@ -185,9 +236,45 @@ function drawMusicVisualization(time, listening) {
       musicVisualization.renderer.render({elapsedTime: elapsed,
         audioLevels: {timeByteArray: bytes, timeByteArrayL: bytes, timeByteArrayR: bytes}});
     } else {
-      const g = canvas.getContext("2d"), scope = musicVisualization.mode === "scope";
+      const g = canvas.getContext("2d"), mode = musicVisualization.effect;
+      if (mode === "waterfall") {
+        // A bounded canvas history, never retained samples or a second audio read.
+        const step = Math.max(1, Math.round(height * elapsed * .12));
+        g.drawImage(canvas, 0, 0, width, height - step, 0, step, width, height - step);
+        for (let i = 0; i < 96; i++) {
+          const level = Math.max(0, Math.min(1, visualizerLevelAt(i / 95)));
+          g.fillStyle = `hsl(${260 - level * 230} 85% ${4 + level * 60}%)`;
+          g.fillRect(i * width / 96, 0, Math.ceil(width / 96), step);
+        }
+        return;
+      }
       g.fillStyle = "#080d0c"; g.fillRect(0, 0, width, height);
-      if (scope) {
+      if (mode === "radial") {
+        const radius = Math.min(width, height) * .2, length = Math.min(width, height) * .26;
+        g.lineWidth = Math.max(2, Math.min(width, height) / 150);
+        g.lineCap = "round";
+        for (let i = 0; i < 96; i++) {
+          const angle = i / 96 * Math.PI * 2 - Math.PI / 2;
+          const level = Math.max(0, Math.min(1, visualizerLevelAt((i < 48 ? i : 95 - i) / 47)));
+          g.strokeStyle = `hsl(${i * 3.75 + musicVisualization.phase * 8} 85% 65%)`;
+          g.beginPath();
+          g.moveTo(width / 2 + Math.cos(angle) * radius, height / 2 + Math.sin(angle) * radius);
+          g.lineTo(width / 2 + Math.cos(angle) * (radius + 3 + level * length), height / 2 + Math.sin(angle) * (radius + 3 + level * length));
+          g.stroke();
+        }
+      } else if (mode === "stars") {
+        const energy = Math.max(0, Math.min(1, visualizerLevelAt(.1)));
+        // Deterministic positions avoid per-frame allocations and random flicker.
+        for (let i = 0; i < 160; i++) {
+          const angle = i * 2.399963, depth = (i / 160 + musicVisualization.phase * .09) % 1;
+          const reach = depth * depth * Math.hypot(width, height) * .55;
+          const x = width / 2 + Math.cos(angle) * reach, y = height / 2 + Math.sin(angle) * reach;
+          g.strokeStyle = `hsla(${200 + i % 85} 85% 80% / ${.15 + depth * .85})`;
+          g.lineWidth = 1 + depth * energy * 2;
+          g.beginPath();g.moveTo(x, y);
+          g.lineTo(x + Math.cos(angle) * depth * (3 + energy * 35), y + Math.sin(angle) * depth * (3 + energy * 35));g.stroke();
+        }
+      } else if (mode === "scope") {
         g.strokeStyle = "#14322a"; g.lineWidth = 1;
         g.beginPath();
         for (let x = 0; x <= width; x += width / 16) { g.moveTo(x, 0); g.lineTo(x, height); }
