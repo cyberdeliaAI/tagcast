@@ -70,11 +70,23 @@ class Handler(SimpleHTTPRequestHandler):
             logging.debug("Browser disconnected before receiving the JSON response")
 
     def _body(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_BODY:
+        values = self.headers.get_all("Content-Length", [])
+        value = values[0].strip(" \t") if values else "0"
+        if (len(values) > 1 or not value.isascii() or not value.isdecimal()
+                or self.headers.get("Transfer-Encoding") is not None):
+            self.close_connection = True  # Never reuse an ambiguously framed connection.
+            raise ApiError("Invalid or unsupported request body length.")
+        value = value.lstrip("0") or "0"
+        if len(value) > len(str(MAX_BODY)) or int(value) > MAX_BODY:
+            self.close_connection = True
             raise ApiError("Request too large.")
+        length = int(value)
+        raw = self.rfile.read(length)
+        if len(raw) != length:
+            self.close_connection = True
+            raise ApiError("Incomplete request body.")
         try:
-            data = json.loads(self.rfile.read(length) or b"{}")
+            data = json.loads(raw or b"{}")
         except ValueError:
             raise ApiError("Invalid JSON.") from None
         if not isinstance(data, dict):
@@ -142,6 +154,10 @@ class Handler(SimpleHTTPRequestHandler):
             return io.BytesIO(body)
         return super().send_head()
 
+    def list_directory(self, path):
+        self.send_error(403, "Directory listing is disabled.")
+        return None
+
     # -- routes --------------------------------------------------------------
 
     def _same_site(self):
@@ -151,6 +167,20 @@ class Handler(SimpleHTTPRequestHandler):
     def _work(self, phase):
         work = getattr(self.server, "request_work", None)
         return work(self.connection, phase) if work else nullcontext()
+
+    def do_HEAD(self):
+        if not self._host_ok():
+            self.send_error(403, "Open Tagcast via http://127.0.0.1")
+            return
+        if urlparse(self.path).path.startswith("/api/") and not self._same_site():
+            self.send_error(403, "Forbidden.")
+            return
+        # HEAD serves static metadata only: never execute GET API/OAuth actions.
+        try:
+            with self._work("read"):
+                super().do_HEAD()
+        except ServerClosing as error:
+            self.send_error(503, str(error))
 
     def do_GET(self):
         self.connection.settimeout(None)  # Headers are complete; upstream work has its own limits.
