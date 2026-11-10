@@ -83,6 +83,56 @@ class MusicUploadsTests(unittest.TestCase):
             with self.assertRaises(ApiError):
                 studio.save_settings({"music_uploads": value})
 
+    def test_shutdown_waits_for_interrupted_upload_and_retains_uncertain_result(self):
+        entered = threading.Event()
+        def send(_item, transfer, **_kwargs):
+            transfer.begin()
+            transfer.body_started = True
+            entered.set()
+            transfer.stop.wait(5)
+            raise engine.Stopped()
+        self.service.upload.side_effect = send
+        view = self.prepare()
+        self.uploads.start(self.body(review=view["review"]))
+        self.assertTrue(entered.wait(3))
+        result = self.uploads.shutdown()
+        self.assertTrue(result, "A body already sent must not be reported as cancelled safely")
+        self.assertFalse(self.uploads.job._thread.is_alive())
+        self.assertEqual(self.uploads.view("upload-session")["job"]["counts"], {"uncertain": 1})
+        self.assertEqual(self.service.upload.call_count, 1)
+        self.assertEqual(self.studio.playback_session, "upload-session")
+        self.assertIsNone(self.uploads.review)
+
+    def test_shutdown_retains_active_upload_after_account_view_invalidation(self):
+        entered, release = threading.Event(), threading.Event()
+        def send(_item, transfer, **_kwargs):
+            transfer.begin()
+            transfer.body_started = True
+            entered.set()
+            release.wait(5)
+            raise engine.Stopped()
+        self.service.upload.side_effect = send
+        view = self.prepare()
+        self.uploads.start(self.body(review=view["review"]))
+        self.assertTrue(entered.wait(3))
+        old = self.uploads.job
+        self.uploads.close()  # Account replacement clears the account-scoped view.
+        self.assertIsNone(self.uploads.job)
+        results = []
+        closing = threading.Thread(target=lambda: results.append(self.uploads.shutdown()))
+        closing.start()
+        try:
+            self.assertTrue(old._thread.is_alive())
+            release.set()
+            closing.join(timeout=3)
+            self.assertFalse(closing.is_alive())
+            self.assertFalse(old._thread.is_alive())
+            self.assertEqual(results, [True])
+            self.assertEqual(self.service.upload.call_count, 1)
+        finally:
+            release.set()
+            closing.join(timeout=3)
+
     def test_preparation_requires_enabled_setting_granted_scope_and_current_session(self):
         self.assertTrue(upload_authorized(self.studio.client))
         for flag, scope, session in ((False, ["user.upload"], "upload-session"),

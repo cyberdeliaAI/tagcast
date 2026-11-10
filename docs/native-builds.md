@@ -22,6 +22,18 @@ is reused and left running. Other versions or occupied foreign ports are rejecte
 **Stop the older Tagcast before upgrading.** Closing a browser tab alone does not
 stop a browser-based server.
 
+Development main keeps a **Finishing Tagcast** window visible while an owned server
+drains accepted changes, read-backs and local storage. Idle sockets, playback,
+download/upload transfers and the download folder chooser are stopped separately.
+An interrupted upload can still have reached iBroadcast; unknown outcomes are
+reported before closing and never automatically retried. A second launch focuses
+the finishing window. **Keep Tagcast open** cancels closing and restores the same
+backend and drafts; playback, transfers and cleanup stay stopped. It does not
+cancel an accepted metadata write or start another one. There is no deadline that
+kills a protected operation. If a provider read remains stuck, keep Tagcast open
+and allow the operation to settle; OS-forced termination cannot provide a clean
+shutdown guarantee. Reused servers remain owned by their original launcher.
+
 Settings, tokens, cache and local account favourites remain in `~/.tagcast/`, or
 `TAGCAST_HOME`. Electron's Chromium profile is separate from your browser's
 preferences, local Change history and remembered queue; those are not migrated.
@@ -99,6 +111,16 @@ signing is not enabled by this override. Explicit `--sign-macos` builds addition
 require Developer ID signing, Apple notarization, a stapled ticket and Gatekeeper
 verification of the extracted ZIP; see [Code signing](code-signing.md). These checks
 never sign in to a live account or issue iBroadcast writes.
+
+Extracted app checks also run `tools/check_shutdown.py` against a disposable
+loopback iBroadcast fixture: real native close/second launch, idle TCP, active
+synthetic audio, stalled reads, accepted writes, pending read-backs, a lost write
+answer, cleanup, uploads/downloads, folder selection, History after restart, and
+recovery after an idle backend crash. Fixture writes never reach the real service.
+The native folder chooser can be unavailable on a headless Linux host; its result
+is recorded explicitly. Reports are retained in `build/reports/electron-shutdown.json`.
+See [shutdown validation](audits/reliable-shutdown-2026-11-10.md) for the safety
+model, original reproduction and platform limitations.
 
 ## Earlier downloads
 

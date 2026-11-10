@@ -271,9 +271,9 @@ class MetadataExport:
                 job["timer"].cancel()
                 self._retire(job)
 
-    def close(self):
+    def close(self, permanent=True):
         with self.lock:
-            self.closed = True
+            self.closed = self.closed or permanent
             for job in self.jobs.values():
                 job["timer"].cancel()
                 self._retire(job)

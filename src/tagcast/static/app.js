@@ -1731,6 +1731,16 @@ async function saveDraft() {
 }
 
 // Poll the background read-back of a save and update its history entry.
+function readbackDelay() {
+  return new Promise(resolve => {
+    const done = () => { clearTimeout(timer); window.removeEventListener("tagcast-shutdown-ready", done); resolve(); };
+    const timer = setTimeout(done, 2000);
+    // A desktop close may flush already-completed jobs without waiting for the
+    // normal polling interval. This event never sends or retries a mutation.
+    window.addEventListener("tagcast-shutdown-ready", done, {once: true});
+  });
+}
+
 async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   const order = ++saveOrder;
   rememberHistory();
@@ -1738,7 +1748,7 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   let job, shownError = "";
   try {
     for (;;) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await readbackDelay();
       job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
       if (job.state !== "checking") break;
     }

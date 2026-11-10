@@ -10,17 +10,86 @@ const {createDesktopText, menuTemplate} = require("./desktop-text.cjs");
 const {installMiniPlayer} = require("./mini-player.cjs");
 const {installSignIn} = require("./sign-in.cjs");
 const {installUploadPicker} = require("./upload-picker.cjs");
+const {installShutdownWindow} = require("./shutdown-window.cjs");
 const {windowSize, rememberWindowSize} = require("./window-size.cjs");
 const packageInfo = require("./package.json");
 
 app.setName("Tagcast");
 if (process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.resolve(process.env.TAGCAST_ELECTRON_PROFILE));
 app.enableSandbox();
-let window, backend, origin, miniPlayer, signIn, stopping, finished = false;
+let window, backend, origin, miniPlayer, signIn, stopping, closeChecking, rendererFailed = false, finished = false;
 // Menus, titles and dialogs in the interface language the main window last reported.
 const desktop = createDesktopText(path.join(app.getPath("userData"), "interface.json"));
 const t = name => desktop.text(name);
 const errorText = error => error?.textKey ? t(error.textKey) : error?.message;
+
+const shutdownView = installShutdownWindow(t, () => backend?.resume());
+const canReopen = () => Boolean(backend?.control && backend.child?.stdin.writable && !backend.child.stdin.writableEnded && !backend.resuming);
+async function bounded(work, fallback) {
+  let timer;
+  try { return await Promise.race([work, new Promise(resolve => { timer = setTimeout(() => resolve(fallback), 1500); })]); }
+  finally { clearTimeout(timer); }
+}
+async function finishRenderer(status) {
+  // The backend has finished all mutations/read-backs. Let existing job polling
+  // persist History before closing; a stalled renderer never holds this safe phase.
+  if(window&&!window.isDestroyed())await bounded(window.webContents.executeJavaScript(`new Promise(resolve=>{
+    const check=()=>{if(!saving&&!checking)resolve();else {
+      window.dispatchEvent(new Event('tagcast-shutdown-ready'));setTimeout(check,50);
+    }};check();})`).catch(()=>{}),undefined);
+  if(status.uncertain){
+    const choice=dialog.showMessageBoxSync(shutdownView.window,{type:"warning",buttons:[t("shutdown.reopen"),t("close.close")],defaultId:0,cancelId:0,
+      title:t("shutdown.title"),message:t("shutdown.uncertain"),detail:t("shutdown.detail")});
+    return choice===1;
+  }
+  return true;
+}
+function beginShutdown(){
+  if(stopping){shutdownView.show();return;}
+  miniPlayer?.beginShutdown();
+  signIn?.window?.destroy();
+  if(window&&!window.isDestroyed()){
+    window.webContents.executeJavaScript("document.querySelector('audio')?.pause()").catch(()=>{});
+    window.hide();
+  }
+  shutdownView.show({phase:"reads",elapsed:0},canReopen());
+  stopping=(async()=>{
+    const result=await backend?.stop();
+    if(result?.stopped===false){
+      stopping=null;
+      if (!window) await openMainWindow();
+      if (rendererFailed && window && !window.isDestroyed()) {
+        rendererFailed = false;
+        window.reload();
+      }
+      miniPlayer?.resume();
+      if(window&&!window.isDestroyed()){
+        window.show();window.focus();
+        window.webContents.executeJavaScript('toast(TagcastI18n.text("desktop.shutdown.reopened"))').catch(()=>{});
+      }
+      shutdownView.destroy();
+      return;
+    }
+    if(result?.code||result?.signal)dialog.showErrorBox(t("shutdown.title"),t("shutdown.interrupted"));
+    finished=true;shutdownView.destroy();window?.destroy();app.quit();
+  })();
+}
+function requestShutdown(){
+  if (!app.isReady() && !backend) { finished = true; app.quit(); return; }
+  if(stopping){shutdownView.show();return;}
+  if(closeChecking)return;
+  closeChecking=(async()=>{
+    let clean=true;
+    if(window&&!window.isDestroyed())clean=await bounded(window.webContents.executeJavaScript(
+      'window.dispatchEvent(new Event("beforeunload",{cancelable:true}))').catch(()=>false),false);
+    if(!clean){
+      const choice=dialog.showMessageBoxSync(window,{type:"question",buttons:[t("close.keepOpen"),t("close.close")],defaultId:0,cancelId:0,
+        title:t("close.title"),message:t("close.message"),detail:t("close.detail")});
+      if(choice!==1)return;
+    }
+    beginShutdown();
+  })().finally(()=>{closeChecking=null;});
+}
 
 function readPage(url) {
   return new Promise((resolve, reject) => {
@@ -78,10 +147,20 @@ function createWindow() {
       defaultId: 0, cancelId: 0, title: t("close.title"), message: t("close.message"), detail: t("close.detail")});
     if (choice === 1) event.preventDefault();
   });
-  contents.on("render-process-gone", () => { if (!stopping) dialog.showErrorBox(t("error.windowStoppedTitle"), t("error.windowStoppedText")); app.quit(); });
-  window.once("ready-to-show", () => { if (!miniPlayer?.window) window.show(); });
-  window.on("closed", () => { window = null; app.quit(); });
-  window.loadURL(origin).catch(() => { dialog.showErrorBox(t("error.openTitle"), t("error.openText")); window?.destroy(); app.quit(); });
+  contents.on("render-process-gone", () => { rendererFailed = true; if (!stopping) dialog.showErrorBox(t("error.windowStoppedTitle"), t("error.windowStoppedText")); app.quit(); });
+  window.once("ready-to-show", () => { if (!stopping && !miniPlayer?.window) window.show(); });
+  window.on("close", event => { if (!finished) { event.preventDefault(); requestShutdown(); } });
+  window.on("closed", () => { window = null; if (!stopping) app.quit(); });
+  window.loadURL(origin).catch(() => { rendererFailed = true; dialog.showErrorBox(t("error.openTitle"), t("error.openText")); app.quit(); });
+}
+
+async function openMainWindow() {
+  origin = backend.ready.url;
+  const policy = contentPolicy(await readPage(origin));
+  if (stopping || window) return;
+  installSession(session.fromPartition("persist:tagcast"), policy);
+  installMenu();
+  createWindow();
 }
 
 function installMenu() {
@@ -102,28 +181,25 @@ ipcMain.on("desktop:interface", (event, value) => {
 app.on("before-quit", event => {
   if (finished) return;
   event.preventDefault();
-  if (window && !window.isDestroyed()) { miniPlayer?.showMain(); window.close(); return; }
-  stopping ||= (async () => { await backend?.stop(); finished = true; app.quit(); })();
+  requestShutdown();
 });
 app.on("window-all-closed", () => app.quit());
 if (!app.requestSingleInstanceLock()) { finished = true; app.quit(); }
 else {
-  app.on("second-instance", () => miniPlayer?.showMain());
+  app.on("second-instance", () => { if(stopping)shutdownView.show();else miniPlayer?.showMain(); });
   app.whenReady().then(async () => {
     const sourceRoot = app.isPackaged ? null : path.resolve(__dirname, "..");
     backend = new Backend(backendCommand({packaged: app.isPackaged, resourcesPath: process.resourcesPath, sourceRoot, python: process.env.TAGCAST_PYTHON}),
-      {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot, onExit: () => {
+      {version: packageInfo.version.replace(/-beta\.(\d+)$/, "b$1"), sourceRoot,
+        onShutdown: status => shutdownView.update(status, status.phase !== "ready" && canReopen()), onShutdownReady: finishRenderer, onExit: () => {
         if (!stopping) { dialog.showErrorBox(t("error.serverStoppedTitle"), t("error.serverStoppedText")); window?.destroy(); app.quit(); }
       }});
-    const ready = await backend.start();
+    await backend.start();
     if (stopping) return;
-    origin = ready.url;
-    const policy = contentPolicy(await readPage(origin));
-    if (stopping) return;
-    installSession(session.fromPartition("persist:tagcast"), policy);
-    installMenu();
-    createWindow();
+    await openMainWindow();
+    if (stopping || !window) return;
     if (process.env.TAGCAST_ELECTRON_SMOKE_REPORT) require("./smoke.cjs").check({app, window, origin, backend, miniPlayer});
     if (process.env.TAGCAST_SIGN_IN_SMOKE_REPORT) require("./sign-in-smoke.cjs").check({app, window, origin, signIn});
+    if (process.env.TAGCAST_SHUTDOWN_SMOKE_REPORT) require("./shutdown-smoke.cjs").check({app, window, origin, backend, shutdownView});
   }).catch(error => { dialog.showErrorBox(t("error.startTitle"), errorText(error) + "\n" + t("error.startHint")); app.quit(); });
 }

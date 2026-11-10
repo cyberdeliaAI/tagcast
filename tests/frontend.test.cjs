@@ -461,7 +461,9 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     }, querySelectorAll() { return []; }};
   document.querySelector("#sort").value = "artist";
   document.querySelector("#now-playing-panel").hidden = true;
-  const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; }, addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); }};
+  const window = {scrollY: 0, scrollTo({top}) { this.scrollY = top; },
+    addEventListener(type, handler) { const handlers = windowEvents.get(type) || []; handlers.push(handler); windowEvents.set(type, handlers); },
+    removeEventListener(type, handler) { windowEvents.set(type, (windowEvents.get(type) || []).filter(fn => fn !== handler)); }};
   if (signInBridge) window.tagcastSignIn = signInBridge;
   if (openWindow) window.open = openWindow;
   if (setupAudio) setupAudio(document.querySelector("#audio"));
@@ -791,6 +793,24 @@ test("History cannot be cleared during read-back, even if confirmation was alrea
   assert.equal(p.nodes.get("#history-clear-confirm").disabled, false);
   await p.nodes.get("#history-clear-confirm").emit("click");
   assert.equal(p.run("state.history.length"), 0);
+});
+
+test("desktop shutdown flushes a completed read-back to History without a mutation or polling delay", async () => {
+  const storage = {}, p = page({storage});
+  await settle();
+  p.run(`state.history = [{status:"sent",source:"ibroadcast",selection:[],changes:[{kind:"track",id:"900",status:"sent",fields:{}}]}]`);
+  p.setFetch(async () => ({ok:true,json:async()=>({state:"done",results:[{kind:"track",id:"900",status:"saved"}]})}));
+  const before = p.requests.length;
+  const done = p.run('followJob("closing-job",state.history[0])');
+  assert.equal(p.run("checking"),1);
+  await p.emitWindow("tagcast-shutdown-ready");
+  await done;
+  assert.equal(p.run("checking"),0);
+  assert.equal(JSON.parse(storage["tagcast-history"])[0].status,"saved");
+  assert.deepEqual(p.requests.slice(before).map(r=>r.url),["/api/jobs/closing-job"]);
+  assert.ok(p.requests.slice(before).every(r=>!r.options?.body));
+  p.flushTimers(2000);await p.emitWindow("tagcast-shutdown-ready");
+  assert.equal(p.requests.length-before,1,"The wake listener is removed after completion");
 });
 
 test("History clearing reports a storage failure without losing the entries", async () => {

@@ -177,6 +177,11 @@ class StudioClient(ibroadcast.iBroadcast):
         self._refresh_lock = threading.Lock()
         self._refreshing = None
         self._token_generation = 0
+        self._refresh_activity_lock = threading.Lock()
+        self._refresh_active = 0
+        self._refresh_closing = False
+        self.refresh_idle = threading.Event()
+        self.refresh_idle.set()
 
     def _post(self, url, args, retry=True, access_token=None):
         """Retry only known reads. Even setting the same value can overwrite a later edit.
@@ -264,7 +269,27 @@ class StudioClient(ibroadcast.iBroadcast):
         except (oauth.OAuthError, requests.RequestException, KeyError, ValueError, TypeError):
             raise ConnectionUnavailable("iBroadcast sign-in renewal is temporarily unavailable. Try again later; your sign-in is retained.") from None
 
+    def quiesce_refresh(self, closing=True):
+        """Freeze new renewal only after HTTP actions/read-backs have drained."""
+        with self._refresh_activity_lock:
+            self._refresh_closing = closing
+            return self._refresh_active == 0
+
     def _refresh(self, generation=None, *, expired_only=False):
+        with self._refresh_activity_lock:
+            if self._refresh_closing:
+                raise ConnectionUnavailable("Tagcast is closing; sign-in renewal was not started.")
+            self._refresh_active += 1
+            self.refresh_idle.clear()
+        try:
+            return self._refresh_shared(generation, expired_only=expired_only)
+        finally:
+            with self._refresh_activity_lock:
+                self._refresh_active -= 1
+                if not self._refresh_active:
+                    self.refresh_idle.set()
+
+    def _refresh_shared(self, generation=None, *, expired_only=False):
         """Share an in-flight refresh; late failures must not rotate a newer token."""
         with self._refresh_lock:
             if generation is not None and generation != self._token_generation:
@@ -432,6 +457,7 @@ class Studio:
         self.cache_lock = threading.Lock()
         self.download_lock = threading.Lock()  # one full library download at a time
         self.jobs = {}  # background read-backs after a save, by job ID
+        self.readbacks = {}  # Active workers survive account/job-view invalidation until settled.
         self.device = None
         self._device_gen = 0
         self._device_request_id = None
@@ -1094,6 +1120,7 @@ class Studio:
         with self.lock:
             owner = (self.client, self.library_user, self.playback_session)
             self.jobs[job_id] = marker
+            self.readbacks[job_id] = marker
 
         def run():
             try:
@@ -1113,9 +1140,13 @@ class Studio:
                 log.exception("Read-back failed")
                 result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
+                if owner != (self.client, self.library_user, self.playback_session):
+                    result = {"state": "error", "error": "The account or session changed. The write outcome is unknown; check iBroadcast before any new review."}
+                # A drainer can retain this marker even if logout cleared the
+                # account-scoped job view. Never publish old account data there.
+                marker.update(result)
+                self.readbacks.pop(job_id, None)
                 if self.jobs.get(job_id) is marker:
-                    if owner != (self.client, self.library_user, self.playback_session):
-                        result = {"state": "error", "error": "The account or session changed. The write outcome is unknown; check iBroadcast before any new review."}
                     self.jobs[job_id] = result
                     finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
                     for old in finished[:-20]:
