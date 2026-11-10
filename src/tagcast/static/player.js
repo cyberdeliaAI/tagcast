@@ -5,8 +5,10 @@
 
 const player = {queue: [], index: -1, album: null, epoch: 0, pending: Promise.resolve(), randomRequest: 0, randomLoading: false, repeat: "none", shuffle: false, quality: "128", fallback: false};
 const audio = $("#audio");
-const playerTrackPosition = () => typeof gaplessPosition === "function" ? gaplessPosition() : Number(audio.currentTime) || 0;
-const playerTrackDuration = () => typeof gaplessDuration === "function" ? gaplessDuration() : audio.duration;
+const playerTrackPosition = () => (typeof audioRecoveryPosition === "function" ? audioRecoveryPosition() : undefined)
+  ?? (typeof gaplessPosition === "function" ? gaplessPosition() : Number(audio.currentTime) || 0);
+const playerTrackDuration = () => (typeof audioRecoveryDuration === "function" ? audioRecoveryDuration() : undefined)
+  ?? (typeof gaplessDuration === "function" ? gaplessDuration() : audio.duration);
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null, status: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null, row: null};
@@ -115,6 +117,7 @@ function playbackWatchCurrent(watch) {
 function samplePlayback() {
   const watch = playReporting.watch;
   if (!playbackWatchCurrent(watch)) { playReporting.watch = null; return; }
+  if (typeof audioRecoveryCurrent === "function" && audioRecoveryCurrent()) watch.active = false;
   const clock = performance.now(), position = playerTrackPosition();
   // Count actual progress, bounded by elapsed listening time. Seek jumps and pauses
   // never turn currentTime into listening time, and a stalled stream adds nothing.
@@ -139,6 +142,7 @@ function samplePlayback() {
 }
 
 audio.addEventListener("playing", () => {
+  if (typeof audioRecoveryPlaying === "function" && !audioRecoveryPlaying()) return;
   if (!playReporting.watch || playReporting.watch.completed) beginPlaybackWatch();
   const watch = playReporting.watch;
   if (watch) { watch.clock = performance.now(); watch.position = playerTrackPosition(); watch.active = true; }
@@ -152,9 +156,12 @@ audio.addEventListener("stalled", samplePlayback); // network stalls can occur w
 audio.addEventListener("seeking", () => { if (playReporting.watch) playReporting.watch.active = false; });
 audio.addEventListener("seeked", () => {
   const watch = playReporting.watch;
-  if (watch) { watch.clock = performance.now(); watch.position = playerTrackPosition(); watch.active = !audio.paused; }
+  if (watch) { watch.clock = performance.now(); watch.position = playerTrackPosition(); watch.active = !audio.paused
+    && !(typeof audioRecoveryCurrent === "function" && audioRecoveryCurrent()); }
 });
-audio.addEventListener("emptied", () => { if (!player.fallback) playReporting.watch = null; });
+audio.addEventListener("emptied", () => {
+  if (!player.fallback && !player.continuing && !(typeof audioRecoveryCurrent === "function" && audioRecoveryCurrent())) playReporting.watch = null;
+});
 
 // The existing audio element stays in place; fullscreen changes only the presentation.
 function renderVisualPlayer() {
@@ -371,10 +378,13 @@ function playableAlbum(id) {
   return discs.every(Boolean) ? joinDiscs(discs) : state.details.get(String(id));
 }
 
-function playCurrent(autoPlay = true) {
+function playCurrent(autoPlay = true, continuation = false) {
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) { toast(TagcastI18n.text("player.devices.playback")); return; }
   const track = player.queue[player.index];
   if (!track) return;
+  if (typeof selectAudioRecovery === "function") selectAudioRecovery(autoPlay);
+  player.continuing = continuation;
+  if (continuation && playReporting.watch) { samplePlayback(); playReporting.watch.active = false; }
   player.resumePending = false;
   player.album = track.album;
   if (visualPlayer.open) setVisualPlayerStatus(null);
@@ -383,12 +393,13 @@ function playCurrent(autoPlay = true) {
   player.fallback = false;
   const prepared = typeof gaplessBegin === "function" && gaplessBegin(track, autoPlay);
   if (!prepared) {
-    audio.src = `/api/stream/${encodeURIComponent(track.id)}?quality=${player.quality}`;
+    audio.src = typeof normalStreamUrl === "function" ? normalStreamUrl(track, player.quality)
+      : `/api/stream/${encodeURIComponent(track.id)}?quality=${player.quality}`;
     const offset = typeof gaplessTrial !== "undefined" ? gaplessTrial.offset : 0;
     if (typeof gaplessTrial !== "undefined") gaplessTrial.offset = 0;
     if (offset) audio.addEventListener("loadedmetadata", () => { if (player.queue[player.index] === track) audio.currentTime = Math.min(offset, audio.duration || offset); }, {once: true});
-    if (autoPlay) { beginPlaybackWatch(); audio.play().catch(() => { /* reported by the error event */ }); }
-    else playReporting.watch = null;
+    if (autoPlay) { if (!continuation) beginPlaybackWatch(); audio.play().catch(() => { /* reported by the error event */ }); }
+    else if (!continuation) playReporting.watch = null;
   }
   renderCurrentPlayerTrack();
 }
@@ -524,7 +535,7 @@ function removeQueueEntry(index, revision) {
       || !Number.isInteger(index) || index < 0 || index >= player.queue.length
       || player.queue[index] !== nowPlayingRows.entries[index]) return;
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
-  const current = index === player.index, wasPlaying = !audio.paused && !audio.ended;
+  const current = index === player.index, wasPlaying = !audioRecoveryPaused() && !audio.ended;
   const removed = player.queue.splice(index, 1)[0];
   if (index < player.index) player.index -= 1;
   if (current) {
@@ -735,6 +746,7 @@ function step(delta) {
 }
 
 function stopPlayer() {
+  if (typeof clearAudioRecovery === "function") { clearAudioRecovery(); audioRecovery.generation++; }
   if (typeof gaplessCancel === "function") gaplessCancel();
   if (typeof closePlaybackOutput === "function") closePlaybackOutput(false);
   closeQueueActions();
@@ -750,6 +762,7 @@ function stopPlayer() {
 }
 
 audio.addEventListener("ended", () => {
+  if (typeof audioRecoveryCurrent === "function" && (audioRecoveryCurrent() || audioRecovery.holdEnded)) return;
   if (typeof gaplessAdvance === "function") gaplessAdvance();
   samplePlayback();
   if (playReporting.watch) { playReporting.watch.active = false; playReporting.watch.completed = true; }
@@ -764,15 +777,11 @@ audio.addEventListener("ended", () => {
 audio.addEventListener("play", markPlaying);
 audio.addEventListener("pause", markPlaying);
 audio.addEventListener("error", () => {
+  if (!audio.error || audio.error.code === 1) return;
   if (typeof gaplessAudioError === "function" && gaplessAudioError()) return;
   if (!audio.getAttribute("src")) return;
-  if (player.quality === "orig" && !player.fallback) {
-    player.fallback = true; player.quality = "128";
-    audio.src = `/api/stream/${encodeURIComponent(player.queue[player.index].id)}?quality=128`;
-    renderStreamQuality(); audio.play().catch(() => {});
-    toast(TagcastI18n.text("player.error.originalFallback")); return;
-  }
-  playReporting.watch = null;
+  if (typeof recoverAudio === "function" && recoverAudio(audio.error.code)) return;
+  samplePlayback(); if (playReporting.watch) playReporting.watch.active = false;
   const title = player.queue[player.index]?.title;
   toast(title ? TagcastI18n.text("player.error.track", {title}) : TagcastI18n.text("player.error.trackUnknown"));
   if (visualPlayer.open) setVisualPlayerStatus(() => TagcastI18n.text("player.error.trackStatus"));
@@ -850,7 +859,7 @@ document.addEventListener("click", async event => {
   cancelRandomPlay();
   const id = play?.dataset.play;
   if (id && player.queue[player.index]?.id === id && player.album?.id === album.id) {
-    if (audio.paused) playSystemPlayback(); else audio.pause();
+    if (audioRecoveryPaused()) playSystemPlayback(); else pauseSystemPlayback();
     return;
   }
   playTracks(album, id || album.tracks[0]?.id, Boolean(shuffle));

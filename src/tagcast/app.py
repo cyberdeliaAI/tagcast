@@ -16,6 +16,8 @@ from socketserver import TCPServer
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
+import requests
+
 from . import __version__
 from .album_info import AlbumInformationRetryError
 from .artist_bios import BiographyRetryError
@@ -169,8 +171,10 @@ class Handler(SimpleHTTPRequestHandler):
     def _get(self, url):
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path.startswith("/api/stream/"):
-            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"))
+            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"), query.get("request"), query.get("session"))
             return
+        if url.path == "/api/playback/stream-status":
+            return self._run(lambda: self.studio.stream_status(query.get("request"), query.get("session")))
         if url.path == "/api/app":
             self._json(200, {"application": "Tagcast", "version": __version__,
                              "desktop_protocol": 1,
@@ -413,10 +417,11 @@ class Handler(SimpleHTTPRequestHandler):
                     raise failure
                 self._run(failed)
 
-    def _stream(self, track_id, quality=None):
+    def _stream(self, track_id, quality=None, request_id=None, session=None):
         """Pass a track's audio through, so the access token never reaches the page."""
         try:
-            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"), quality)
+            tracking = {"request_id": request_id, "playback_session": session} if request_id else {}
+            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"), quality, **tracking)
         except NotConnected as error:
             self._json(401, {"error": str(error)})
             return
@@ -435,8 +440,14 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 for chunk in upstream.iter_content(65536):
                     self.wfile.write(chunk)
+            except requests.RequestException as error:
+                state = "security" if isinstance(error, requests.exceptions.SSLError) else "network"
+                self.studio.record_stream_result(request_id, session, state)
+                logging.debug("Audio stream interrupted: %s", type(error).__name__)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
-                pass  # the player skipped, stopped, or the local server is closing
+                # A cancellation is not itself a network diagnosis; retain the
+                # known header outcome for the browser's own MediaError code.
+                self.studio.record_stream_result(request_id, session, "available")
 
     def _callback(self, query):
         error = (query.get("error_description") or query.get("error") or [""])[0]

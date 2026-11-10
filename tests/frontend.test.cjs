@@ -4663,6 +4663,289 @@ test("update preferences share the settings save without changing source lookup 
   assert.doesNotMatch(p.nodes.get("#settings-content").innerHTML, /name="auto_updates" checked/);
 });
 
+async function recoveryPage(options = {}) {
+  let loads = 0;
+  const p = livePage({...options, setupAudio(audio) {
+    audio.duration = 180; audio.currentTime = 0; audio.readyState = 4; audio.playbackRate = 1;
+    audio.load = function () {
+      loads++; this.error = null; this.paused = true; this.currentTime = 0; this.readyState = 0;
+      this.emit("pause"); this.emit("emptied");
+    };
+  }}); await settle();
+  p.run('state.connection.playback_session="recovery-session";state.connection.premium=true;applyPlaybackSettings({record_plays:true});playTracks(state.details.get("1"));globalThis.recoveryEntry=player.queue[player.index]');
+  await p.nodes.get("#audio").emit("playing");
+  p.setPlaybackClock(5000); p.run('audio.currentTime=23'); await p.nodes.get("#audio").emit("timeupdate");
+  p.run('globalThis.recoveryWatch=playReporting.watch');
+  p.setFetch(url => ({ok:true,json:async()=>url.startsWith("/api/playback/stream-status") ? {state:"network"} : {status:"sent"}}));
+  return {p, audio:p.nodes.get("#audio"), loads:() => loads};
+}
+async function failRecovery(p, code = 2) {
+  p.run(`audio.error={code:${code}};audio.paused=true`);
+  await p.nodes.get("#audio").emit("error");
+  p.flushTimers(500); await settle();
+}
+async function readyRecovery(p) {
+  p.run('audio.error=null;audio.duration=180;audio.readyState=4');
+  for (const event of ["loadedmetadata", "seeked", "canplay"]) await p.nodes.get("#audio").emit(event);
+  if (p.run('!audio.paused')) await p.nodes.get("#audio").emit("playing");
+}
+
+test("recovery waits once for online after simulated sleep without counting wall time", async () => {
+  const {p, loads} = await recoveryPage({browserNavigator:{onLine:true}});
+  p.run('navigator.onLine=false'); await failRecovery(p);
+  assert.equal(p.run('audioRecovery.pending.stage'), "offline");
+  p.setPlaybackClock(600000);
+  assert.equal(loads(), 0);
+  p.run('navigator.onLine=true'); await p.emitWindow("online"); await settle();
+  await p.emitWindow("online"); await settle();
+  assert.equal(loads(), 1);
+  await readyRecovery(p);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+  assert.equal(p.run('playReporting.watch.listened'), 5);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/playback/stream-status')).length, 1);
+});
+
+test("pause during recovery prepares the saved position without resuming, including Mini Player state", async () => {
+  const {p, audio, loads} = await recoveryPage();
+  let release;
+  p.setFetch(() => new Promise(resolve => { release = resolve; }));
+  await failRecovery(p);
+  assert.equal(p.run('miniSnapshot().paused'), false, 'Automatic media pause is not a user pause');
+  p.run('pauseSystemPlayback()');
+  release({ok:true,json:async()=>({state:"network"})}); await settle();
+  await readyRecovery(p);
+  assert.equal(loads(), 1); assert.equal(audio.paused, true); assert.equal(audio.currentTime, 23);
+  assert.equal(p.run('miniSnapshot().paused'), true);
+  assert.equal(p.run('playReporting.watch.listened'), 5);
+  assert.equal(p.run('audioRecovery.pending'), null);
+});
+
+test("seeking during recovery wins over the captured position without counting the seek", async () => {
+  const {p, audio} = await recoveryPage(); await failRecovery(p);
+  p.run('seekSystemPlayback(82)');
+  await readyRecovery(p);
+  assert.equal(audio.currentTime, 82);
+  assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
+  assert.equal(p.run('playReporting.watch.listened'), 5);
+});
+
+test("an unknown-duration recovery still offers Pause without inventing a seek duration", async () => {
+  const {p, audio} = await recoveryPage();
+  p.run('audio.duration=NaN;player.queue[player.index].length=0'); await failRecovery(p);
+  assert.equal(p.nodes.get('#gapless-play').disabled, false);
+  assert.equal(p.nodes.get('#gapless-position').disabled, true);
+  await p.nodes.get('#gapless-play').emit('click'); await readyRecovery(p);
+  assert.equal(audio.paused, true);
+});
+
+test("a superseded play rejection after a user seek cannot fail the newer recovery position", async () => {
+  const {p, audio, loads} = await recoveryPage(); await failRecovery(p);
+  const rejects = [];
+  audio.play = function () { this.paused=false;return new Promise((_resolve,reject) => rejects.push(reject)); };
+  p.run('audio.readyState=4'); await audio.emit('loadedmetadata');
+  assert.equal(rejects.length, 1);
+  p.run('seekSystemPlayback(57)');
+  assert.equal(rejects.length, 2);
+  rejects[0](new Error('Old play was interrupted by seeking')); await settle();
+  assert.equal(p.run('audioRecovery.failed'), null);
+  assert.equal(p.run('audioRecovery.pending.position'), 57);
+  await audio.emit('playing');
+  assert.equal(p.run('audioRecovery.pending'), null);assert.equal(loads(),1);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+});
+
+test("track changes, Stop, account and library replacement cancel a pending recovery and late replies", async () => {
+  for (const change of ['step(1)', 'stopPlayer()', 'state.connection.playback_session="replacement"', 'state.details=new Map(state.details)']) {
+    const {p, audio, loads} = await recoveryPage(); let release, signal;
+    p.setFetch((_url, options) => { signal = options.signal; return new Promise(resolve => { release = resolve; }); });
+    await failRecovery(p);
+    p.run(change); const source = audio.src, index = p.run('player.index');
+    release({ok:true,json:async()=>({state:"network"})}); await settle();
+    assert.equal(signal.aborted, true, change);
+    assert.equal(audio.src, source, change);
+    assert.equal(p.run('player.index'), index, change);
+    assert.equal(loads(), change === 'stopPlayer()' ? 1 : 0, change);
+    assert.equal(p.run('audioRecovery.pending'), null, change);
+  }
+});
+
+test("duplicate errors coalesce and a repeated network error exhausts recovery without skipping", async () => {
+  const {p, audio, loads} = await recoveryPage();
+  p.run('player.repeat="queue";player.shuffle=true'); const order = p.json('player.queue.map(t=>t.id)');
+  p.run('audio.error={code:2}'); await audio.emit('error'); await audio.emit('error');
+  p.flushTimers(500); await settle(); await readyRecovery(p);
+  await failRecovery(p);
+  assert.equal(loads(), 1);
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'), order);
+  assert.equal(p.run('player.repeat'), 'queue'); assert.equal(p.run('player.shuffle'), true);
+  assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
+  assert.match(p.nodes.get('#toast').textContent, /Could not reconnect audio/);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/playback/stream-status')).length, 1);
+});
+
+test("Original network recovery keeps its quality; codec fallback is separately limited to one", async () => {
+  const {p, audio, loads} = await recoveryPage();
+  p.run('lookup.streamQuality="orig";playCurrent();audio.currentTime=23');
+  await failRecovery(p);
+  assert.equal(p.run('player.quality'), 'orig'); assert.equal(p.run('player.fallback'), false);
+  p.setFetch(() => ({ok:true,json:async()=>({state:'available'})}));
+  await failRecovery(p, 3);
+  assert.equal(loads(), 2); assert.equal(p.run('player.quality'), '128');
+  await readyRecovery(p);
+  assert.equal(audio.currentTime, 23);
+  await failRecovery(p, 3);
+  assert.equal(loads(), 2, 'No repeated codec fallback');
+});
+
+test("authorization, TLS, unavailable and unknown outcomes never reload or downgrade Original", async () => {
+  for (const state of ['auth','security','unavailable','unknown']) for (const code of [2,4]) {
+    const {p, loads} = await recoveryPage(); p.run('lookup.streamQuality="orig";playCurrent()');
+    p.setFetch(() => ({ok:true,json:async()=>({state})}));
+    await failRecovery(p, code);
+    assert.equal(loads(), 0, state); assert.equal(p.run('player.quality'), 'orig', state);
+    assert.equal(p.run('player.fallback'), false, state);
+  }
+});
+
+test("ordinary decode failures, deliberate aborts and errors without a source do not recover", async () => {
+  for (const code of [1,3]) {
+    const {p, audio, loads} = await recoveryPage(); const count = p.requests.length;
+    await failRecovery(p, code);
+    assert.equal(loads(), 0); assert.equal(p.requests.length, count);
+    assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
+    audio.removeAttribute('src'); await failRecovery(p);
+    assert.equal(loads(), 0);
+  }
+});
+
+test("recovery keeps speed, volume, the same audio element and current quality when settings change", async () => {
+  const {p, audio} = await recoveryPage();
+  p.run('audio.playbackRate=1.25;audio.volume=.65;audio.muted=true');
+  await failRecovery(p);
+  p.run('lookup.streamQuality="320"'); await readyRecovery(p);
+  assert.equal(p.nodes.get('#audio'), audio);
+  assert.equal(audio.playbackRate, 1.25); assert.equal(audio.volume, .65); assert.equal(audio.muted, true);
+  assert.equal(p.run('player.quality'), '128'); assert.match(audio.src, /quality=128/);
+});
+
+test("seeking to the end while reconnecting pauses there instead of selecting another occurrence", async () => {
+  const {p, audio} = await recoveryPage(); await failRecovery(p);
+  p.run('seekSystemPlayback(180)'); await readyRecovery(p);
+  audio.ended=true; await audio.emit('ended');
+  assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
+  assert.equal(audio.currentTime, 180); assert.equal(audio.paused, true);
+});
+
+test("stale and deliberate-abort media events cannot make a newly selected Gapless track fall back", async () => {
+  const {p, audio} = await recoveryPage();
+  p.run('let staleFallbacks=0;gaplessAudioError=()=>{staleFallbacks++;return true}');
+  for (const error of [null,{code:1}]) {audio.error=error;await audio.emit('error');}
+  assert.equal(p.run('staleFallbacks'), 0);
+});
+
+test("recovery keeps a sent or uncertain play event single-use and excludes recovery time", async () => {
+  for (const result of ['sent','unconfirmed','lost']) {
+    const {p, audio} = await recoveryPage(); const reports = [];
+    p.setFetch((url, options) => {
+      if (url.startsWith('/api/playback/stream-status')) return {ok:true,json:async()=>({state:'network'})};
+      reports.push(JSON.parse(options.body));
+      if (result === 'lost') throw Error('Lost history response');
+      return {ok:true,json:async()=>({status:result})};
+    });
+    p.setPlaybackClock(12000); p.run('audio.currentTime=30'); await audio.emit('timeupdate'); await settle();
+    assert.equal(reports.length, 1);
+    await failRecovery(p); p.setPlaybackClock(600000); await readyRecovery(p);
+    p.setPlaybackClock(615000); p.run('audio.currentTime=45'); await audio.emit('timeupdate'); await settle();
+    assert.equal(reports.length, 1, result);
+    assert.equal(p.run('playReporting.watch===recoveryWatch'), true, result);
+    assert.equal(p.run('playReporting.watch.attempted'), true, result);
+    assert.equal(p.run('playReporting.watch.listened'), 27, result);
+  }
+});
+
+test("Gapless fallback retains the play event and owns the failure episode without an ordinary retry", async () => {
+  const {p, audio, loads} = await recoveryPage();
+  p.run('gaplessTrial.active={session:state.connection.playback_session,quality:"128",ready:true,controllers:new Set(),current:{entry:player.queue[0],start:0,end:180}}');
+  audio.error={code:2}; await audio.emit('error');
+  assert.equal(p.run('gaplessTrial.active'), null);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+  assert.equal(p.run('audioRecovery.networkUsed'), true);
+  await failRecovery(p);
+  assert.equal(loads(), 0);
+  assert.equal(p.requests.filter(r => r.url.startsWith('/api/playback/stream-status')).length, 0);
+});
+
+test("shutdown and page departure abort recovery; reopening never resumes it automatically", async () => {
+  for (const event of ['pagehide','tagcast-playback-shutdown']) {
+    const {p, audio, loads} = await recoveryPage(); let signal;
+    p.setFetch((_url, options) => { signal = options.signal; return new Promise(() => {}); });
+    await failRecovery(p); await p.emitWindow(event);
+    assert.equal(signal.aborted, true); assert.equal(audio.paused, true);
+    await p.emitWindow('tagcast-playback-resume'); await p.emitWindow('online');
+    p.flushTimers(30000); await settle();
+    assert.equal(loads(), 0); assert.equal(p.run('audioRecovery.pending'), null);
+  }
+});
+
+test("a stalled recovery has one deadline, retains its event and permits only explicit retry", async () => {
+  const {p, audio, loads} = await recoveryPage(); await failRecovery(p);
+  p.flushTimers(30000); await settle();
+  assert.equal(p.run('audioRecovery.pending'), null);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+  assert.equal(audio.paused, true);
+  p.run('playSystemPlayback()'); p.flushTimers(0); await settle(); await readyRecovery(p);
+  assert.equal(loads(), 3, 'One recovery load, timeout cancellation and one explicit retry');
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+});
+
+test("an unknown observation requires explicit Play and retains the same reporting event", async () => {
+  const {p, loads} = await recoveryPage();
+  p.setFetch(() => ({ok:true,json:async()=>({state:'unknown'})}));
+  await failRecovery(p); assert.equal(loads(), 0);
+  p.run('playSystemPlayback()'); p.flushTimers(0); await settle(); await readyRecovery(p);
+  assert.equal(loads(), 1);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+});
+
+test("Mini Player pause, play and seek commands retain the current occurrence during recovery", async () => {
+  const {p, audio} = await recoveryPage(); await failRecovery(p);
+  assert.equal(p.run('miniApplyCommand({...miniSnapshot(),action:"pause"})'), true);
+  assert.equal(p.run('miniSnapshot().paused'), true);
+  assert.equal(p.run('miniApplyCommand({...miniSnapshot(),action:"seek",position:48})'), true);
+  assert.equal(p.run('miniApplyCommand({...miniSnapshot(),action:"play"})'), true);
+  await readyRecovery(p);
+  assert.equal(audio.currentTime, 48); assert.equal(audio.paused, false);
+  assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
+});
+
+test("a transient audio network error recovers the same occurrence and listening event at its saved position", async () => {
+  let loads = 0;
+  const p = livePage({setupAudio(audio) {
+    audio.duration = 180; audio.currentTime = 0; audio.readyState = 4;
+    audio.load = function () { loads++; this.error = null; this.currentTime = 0; this.readyState = 0; this.emit("emptied"); };
+  }}); await settle();
+  p.run('state.connection.playback_session="session-123";applyPlaybackSettings({record_plays:true});playTracks(state.details.get("1"));globalThis.recoveryEntry=player.queue[player.index]');
+  const audio = p.nodes.get("#audio");
+  await audio.emit("playing");
+  p.setPlaybackClock(5000); p.run('audio.currentTime=23'); await audio.emit("timeupdate");
+  p.run('globalThis.recoveryWatch=playReporting.watch');
+  const reads = [];
+  p.setFetch(url => { reads.push(url); return {ok:true,json:async()=>({state:"network"})}; });
+  p.run('audio.error={code:2}'); await audio.emit("error");
+  p.flushTimers(500); await settle();
+  assert.equal(reads.length, 1, "Classify the existing failed request without another upstream read");
+  assert.match(reads[0], /^\/api\/playback\/stream-status\?/);
+  assert.equal(loads, 1, "One ordinary-source reload");
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+  p.run('audio.duration=180;audio.readyState=4'); await audio.emit("loadedmetadata");
+  await audio.emit("seeked"); await audio.emit("canplay"); await audio.emit("playing");
+  assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
+  assert.equal(audio.currentTime, 23);
+  assert.equal(audio.paused, false);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'), true);
+  assert.equal(p.run('playReporting.watch.listened'), 5);
+});
+
 test("queue appends albums and single tracks without interrupting audio, and changes album metadata at the boundary", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1"), "100")');
@@ -4865,7 +5148,9 @@ test("compact player display choices act independently without changing playback
   await p.run("closeVisualPlayer(); openAlbum('1')");
   assert.match(p.nodes.get("#album-page").innerHTML, /Guest Artist/);
   assert.match(p.nodes.get("#album-page").innerHTML, /FLAC/);
-  await p.nodes.get("#audio").emit("error");
+  p.setFetch(() => ({ok:true,json:async()=>({state:"available"})}));
+  p.run('audio.error={code:3}'); await p.nodes.get("#audio").emit("error");
+  p.flushTimers(500); await settle();
   assert.match(p.nodes.get("#player-quality").textContent, /fallback/);
   assert.equal(p.nodes.get("#player-quality").hidden, true, "A stream fallback keeps the display preference");
   p.run("step(1)");
@@ -6045,7 +6330,7 @@ test("Play next keeps whole albums in FIFO order, consumes Up next and preserves
 
 test("Quality changes apply on the next song, label file and stream separately, and Original falls back once", async () => {
   const p = livePage(); await settle();
-  p.run('state.connection.premium = true; state.details.get("1").tracks[0].format = "FLAC"; lookup.streamQuality = "320"; playTracks(state.details.get("1"), "100")');
+  p.run('state.connection.playback_session="quality-test-session";state.connection.premium = true; state.details.get("1").tracks[0].format = "FLAC"; lookup.streamQuality = "320"; playTracks(state.details.get("1"), "100")');
   const audio = p.nodes.get('#audio');
   assert.match(audio.src, /quality=320/);
   assert.equal(p.nodes.get('#player-quality').textContent, 'File: FLAC · Stream: MP3 320 kbps');
@@ -6053,7 +6338,8 @@ test("Quality changes apply on the next song, label file and stream separately, 
   assert.match(audio.src, /quality=320/, 'Settings do not interrupt playback');
   p.run('playCurrent()');
   assert.match(audio.src, /quality=orig/);
-  await audio.emit('error');
+  p.setFetch(() => ({ok:true,json:async()=>({state:"available"})}));
+  audio.error={code:3}; await audio.emit('error'); p.flushTimers(500); await settle();
   assert.match(audio.src, /quality=128/);
   assert.match(p.nodes.get('#player-quality').textContent, /fallback/);
   await audio.emit('error');
