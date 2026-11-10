@@ -6073,6 +6073,26 @@ test("Playlist review keeps order, escapes labels and sends nothing before the s
   assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 1);
 });
 
+test("lost playlist creation ID refreshes the catalogue, warns against another copy and consumes review", async () => {
+  const p = livePage(); await settle();
+  p.setFetch(url => ({ok: true, json: async () => url.startsWith('/api/playlists') ? {playlists: []} : {}}));
+  await p.run('openPlaylistSave(queueTracks(state.details.get("1")))');
+  await p.run(`reviewPlaylist({elements: {destination: {value: "new"}, name: {value: "Created remotely"}, description: {value: ""}}, querySelectorAll: () => playlistDraft.tracks.map(t => ({value: t.id, checked: true}))})`);
+  p.run('state.screen = "playlists"; globalThis.refreshes = 0; renderCollections = async () => { globalThis.refreshes++; }; toast = message => { globalThis.warning = message; }');
+  p.setFetch(url => ({ok: true, json: async () => url === '/api/playlist'
+    ? {id: '', job: 'lost-receipt', outcome: 'unknown'}
+    : {state: 'done', playlists_count: 1, results: [{id: '', status: 'unverified'}]}}));
+  await p.run('savePlaylistDraft()');
+  assert.equal(p.run('playlistDraft.body'), null);
+  assert.equal(p.run('globalThis.refreshes'), 1);
+  assert.match(p.run('globalThis.warning'), /outcome is unknown/);
+  assert.match(p.run('globalThis.warning'), /do not create another copy/);
+  assert.equal(p.nodes.get('#playlist-dialog').open, false);
+  await p.run('savePlaylistDraft()');
+  assert.equal(p.requests.filter(r => r.url === '/api/playlist').length, 1);
+  assert.ok(p.requests.some(r => r.url === '/api/jobs/lost-receipt'));
+});
+
 test("description-only playlist review sends only changed text and preserves playback and revised input", async () => {
   const p=livePage(); await settle();
   p.run('playTracks(state.details.get("1")); state.connection.playback_session="text-session"; const textEdit={id:"81",name:"My list",description:"Before",before_token:"text-snapshot"};');
@@ -8387,7 +8407,8 @@ test('an ambiguous playlist cover save cannot repeat and stale account targets c
   p.setFetch(()=>({ok:false,status:503,json:async()=>({error:'Uncertain request'})}));
   await p.run('saveArtwork()'); await p.run('saveArtwork()');
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist/artwork').length,1);
-  assert.match(p.nodes.get('#art-status').textContent,/Check the playlist before retrying/);
+  assert.match(p.nodes.get('#art-status').textContent,/Check the playlist cover result/);
+  assert.doesNotMatch(p.nodes.get('#art-status').textContent,/retrying|trying again/, 'Unknown results do not encourage another mutation');
   p.run('state.connection.playback_session="other-account"; art.submitted=false'); await p.run('saveArtwork()');
   assert.equal(p.requests.filter(r=>r.url==='/api/playlist/artwork').length,1);
 });

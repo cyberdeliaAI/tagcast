@@ -135,6 +135,39 @@ class WriteReliabilityTests(unittest.TestCase):
         self.assertEqual(post.call_count, 1)
         self.assertEqual(self.checked[0]["status"], "unverified")
 
+    def test_applied_trash_with_lost_reply_is_read_back_without_resending(self):
+        def lost(_url, **kwargs):
+            body = json.loads(kwargs["data"])
+            self.assertEqual(body["mode"], "trash")
+            for track_id in body["tracks"]:
+                self.remote["library"]["tracks"].pop(str(track_id))
+            raise requests.ReadTimeout("Applied trash, reply lost")
+        with patch.object(client.requests, "post", side_effect=lost) as post:
+            result = self.studio._trash_checked(self.transport, {100: (10, "Song One")})
+        self.assertEqual(post.call_count, 1)
+        self.assertTrue(result["job"])
+        self.assertEqual(self.checked[0]["status"], "saved")
+
+    def test_readback_never_confirms_after_account_or_session_replacement(self):
+        for field in ("client", "library_user", "playback_session"):
+            with self.subTest(field=field):
+                before = getattr(self.studio, field)
+                def replaced(*_args, **_kwargs):
+                    setattr(self.studio, field, object() if field == "client" else "replaced")
+                    return Library(copy.deepcopy(self.remote)), "download"
+                self.studio._current.side_effect = replaced
+                check = Mock(return_value=[{"status": "saved"}])
+                job = client.Studio._check_later(self.studio, self.transport, 0, check)
+                for _ in range(100):
+                    result = self.studio.job(job)
+                    if result["state"] != "checking":
+                        break
+                    time.sleep(.01)
+                self.assertEqual(result["state"], "error")
+                self.assertNotIn("results", result)
+                check.assert_not_called()
+                setattr(self.studio, field, before)
+
     def test_failed_readback_does_not_claim_saved(self):
         self.studio._current.side_effect = client.ApiError("synthetic read timeout")
         job = client.Studio._check_later(self.studio, self.transport, 0, lambda _after: [])

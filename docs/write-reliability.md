@@ -48,3 +48,14 @@ operation later; certificate validation is never bypassed. Only an explicit
 OAuth credential rejection (or a repeated authenticated API rejection) requires
 reconnection. A shared failed renewal still wakes all waiting requests without
 resending ambiguous writes or persisting replacement credentials.
+
+### Audit follow-up: ambiguous collection, merge, trash and lyrics writes
+
+The thirteen missing uncertainty/read-back call sites identified in the November
+2026 audit now continue read-only verification after `UncertainWrite`, without
+replaying the mutation. Playlist/folder/import creation without a confirmed new
+ID refreshes the catalogue but remains unknown; matching a name or even the whole
+definition does not identify a lost creation receipt. The UI consumes the review
+and warns against creating another copy. Failed reads and replaced accounts or
+sessions never produce a confirmed result. See the [remediation record](audits/data-integrity-remediation-2026-11-10.md)
+for the complete call-site inventory, regressions and unresolved append contract.
