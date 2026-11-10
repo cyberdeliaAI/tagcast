@@ -25,6 +25,9 @@ a release or alter `v1.6.5` (`3eaab0e77083b24e98a894c0c515e1bbd6dca9ab`).
   `requests.Response` can itself wait on a blocked buffered read.
   Worker registries now also retain in-flight transfers after their account view
   is invalidated, so replacement cannot hide an old executor from shutdown.
+- Windows CI independently reproduced that Winsock shutdown does not wake an
+  already blocked parser/audio read. Idle connections and an active synthetic
+  stream stayed alive past the test deadline on both supported Python versions.
 - Account replacement clears the account-scoped job view. That view alone cannot
   prove that every old read-back worker has finished. OAuth renewal also releases
   its shared request gate before its credential-persistence callback completes.
@@ -97,9 +100,10 @@ on a desktop close notification without sending a mutation or waiting for its
 ordinary polling interval.
 
 Local full suites: Python 3.11 and 3.13 each passed 953 tests / 2,562 subtests
-before the final HTTP-delivery cases. The final full Python 3.13 run passed
-956 tests / 2,562 subtests; the final Python 3.11 shutdown/security/transfer subset
-passed 57 tests / 23 subtests, including the added HTTP-delivery cases.
+before the final HTTP-delivery/I/O cases. The final full Python 3.13 run passed
+957 tests / 2,562 subtests; the final Python 3.11 I/O/host/download/upload subset
+passed 167 tests / 61 subtests, including cancellation with socket shutdown disabled
+and the original body read timeout.
 Frontend/media: 775 passed. Electron: 58 passed.
 Ruff, generated translations, release consistency and diff
 whitespace checks passed. The initial HTTP health test used an incomplete Studio
@@ -164,9 +168,16 @@ isolated smoke entry point. Production retains native confirmation dialogs.
   cancellation/arrival semantics are not established here; no real-account write
   was performed.
 - `requests`/urllib3's underlying socket is used to wake a buffered audio read
-  before closing it. Both supported Python versions and real packaged readers
-  exercise this path. An unrecognised future adapter may fall back to its normal
-  read timeout, with feedback and reopening still available.
+  before closing it on POSIX. For Windows-compatible cancellation, audio/download
+  body reads cooperate through short waits below SocketIO/BufferedReader while
+  preserving the original read deadline and bytes. No timeout is retried above a
+  possibly poisoned buffer. No mutation socket uses this adapter. Incoming idle
+  header/body parsing has a two-second inactivity bound, cleared before any
+  admitted action/result; it is not an upstream or backend-kill deadline.
+  A regression disables socket shutdown entirely and still requires cancellation
+  before the peer sends EOF; another delays data across several cooperative waits
+  and verifies both byte identity and the original timeout. An unrecognised future
+  adapter retains its original timeout, visible feedback and reopening.
 - OS shutdown, power loss, an externally killed parent/backend and Windows task
   termination can bypass UI feedback or cleanup. The smoke crash case only kills
   an idle synthetic backend, never an accepted mutation. Existing no-retry,
@@ -183,3 +194,11 @@ Machine-readable native evidence is `build/reports/electron-shutdown.json`.
 The source baseline and complete local logs are retained under the root checkout's
 ignored `build/audit-reliable-shutdown-2026-11-10/`. Existing worktrees and their
 modified/untracked files are preserved. This PR is not automatically merged.
+
+Socket ownership/buffering references: [CPython socket file-object lifetime and
+timeout caveats](https://docs.python.org/3.11/library/socket.html#socket.socket.makefile)
+and [Winsock closesocket concurrency rules](https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-closesocket).
+The implementation deliberately avoids concurrent handle close/detach and does
+not change the upload engine's existing no-retry transport. Its native Windows
+fixture supplies the delayed upload answer after shutdown feedback appears;
+production keeps waiting for the existing response/timeout and reports uncertainty.

@@ -16,6 +16,7 @@ from urllib3.exceptions import SSLError as RawSSLError
 
 from . import download_engine as engine
 from .library import ConflictError, LibraryError, number, text
+from .server_lifecycle import interruptible_response
 
 MAX_ALBUMS = 200
 MAX_TRACKS = 10000
@@ -80,6 +81,7 @@ class DownloadResponse:
     """Bounded requests transport exposed as the engine's streaming reader."""
 
     def __init__(self, response, owner):
+        interruptible_response(response)
         self.response, self.owner = response, owner
         self.headers, self.status = response.headers, response.status_code
         with owner.response_lock:

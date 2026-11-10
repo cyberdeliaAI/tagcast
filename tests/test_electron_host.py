@@ -146,7 +146,7 @@ class ElectronHostTests(unittest.TestCase):
                 server.server_close()
 
     def test_shutdown_stops_batches_and_waits_for_writes_and_readback(self):
-        with patch.dict(os.environ, TAGCAST_HOME=self.home.name):
+        with patch.dict(os.environ, TAGCAST_HOME=self.home.name), patch.object(app, "_log_to_file"):
             server = app.open_server(0)
         studio = server.RequestHandlerClass.func.studio
         studio.jobs["job"] = {"state": "checking"}

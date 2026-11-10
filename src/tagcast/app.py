@@ -32,6 +32,9 @@ MAX_BODY = 24 * 1024 * 1024  # an uploaded image arrives base64-encoded
 class Handler(SimpleHTTPRequestHandler):
     studio = None
     port = 8912
+    # Bound only idle request parsing/body reception, before mutation admission.
+    # Winsock shutdown cannot wake a reader already blocked on a silent peer.
+    timeout = 2
     # Fixed types: on Windows the registry can map .js to text/plain, and with nosniff
     # the browser would then refuse to run the page's scripts.
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".js": "text/javascript",
@@ -129,6 +132,7 @@ class Handler(SimpleHTTPRequestHandler):
         return work(self.connection, phase) if work else nullcontext()
 
     def do_GET(self):
+        self.connection.settimeout(None)  # Headers are complete; upstream work has its own limits.
         if not self._host_ok():
             self.send_error(403, "Open Tagcast via http://127.0.0.1")
             return
@@ -345,6 +349,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         def action():
             body = self._body()  # An incomplete upload/body is not an accepted mutation.
+            self.connection.settimeout(None)  # No local I/O deadline on an accepted action/result.
             stopped = getattr(self.server, "services_stopped", None)
             if stopped is not None and not stopped.is_set() and path.startswith((
                     "/api/downloads/", "/api/uploads/", "/api/metadata-export", "/api/queue-sync")):
