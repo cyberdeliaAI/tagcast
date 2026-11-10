@@ -15,6 +15,7 @@ import shutil
 import threading
 import time
 from concurrent.futures import Future
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -857,8 +858,8 @@ class Studio:
             raise ApiError("Choose a valid favourites page.") from None
         if len(query) > 200 or offset < 0 or limit not in (50, 100, 200):
             raise ApiError("Choose a valid favourites page and a search of at most 200 characters.")
-        library, _ = self._current(self._require_client())
-        return library.favourites(query, offset, limit)
+        with self._browse_library() as library:
+            return library.favourites(query, offset, limit)
 
     def recently_played(self, query="", offset="0", limit="50", refresh=False):
         query = str(query or "").strip()
@@ -907,10 +908,8 @@ class Studio:
                         or owner != (self.library_user, self.playback_session):
                     raise ConflictError("The library changed. Open the upload group again.")
             return result
-        library, _ = self._current(self._require_client())
-        if kind == "tags" and not library.tags_loaded:
-            _, library = self.tags.library()
-        return library.browse(kind, key, query, offset, limit, sort)
+        with self._browse_library(tags=kind == "tags") as library:
+            return library.browse(kind, key, query, offset, limit, sort)
 
     def record_play(self, body):
         """Send one opted-in play, using cached membership and no ambiguous retries.
@@ -1277,6 +1276,30 @@ class Studio:
             with self.lock:
                 user_id = self.library_user
         return library, user_id
+
+    @contextmanager
+    def _browse_library(self, tags=False):
+        """Read the loaded snapshot; fresh remote checks belong to reloads and writes."""
+        client = self._require_client()
+        library, account = self._library()
+        with self.lock:
+            owner = client, account, self.playback_session
+
+        def check_owner():
+            with self.lock:
+                if not account or library is not self.library or owner != (
+                        self.client, self.library_user, self.playback_session):
+                    raise ConflictError("The account or library changed. Reload the library.")
+
+        check_owner()
+        if tags and not library.tags_loaded:
+            # Older disk snapshots can omit tags. Upgrade only when this feature is read.
+            library, _ = self._current(client, refresh=True)
+            check_owner()
+            if not library.tags_loaded:
+                raise LibraryError("Tags were not returned by iBroadcast. Reload the library.")
+        yield library
+        check_owner()  # A late response must not expose a replaced account/snapshot.
 
     def lookup_album(self, source, album_id=None, artist=None, album=None):
         if album_id and not (artist and album):

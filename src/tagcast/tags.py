@@ -41,20 +41,20 @@ class Tags:
                 **({"selected": len(selected.intersection(tag["tracks"]))} if selected is not None else {})}
 
     def catalogue(self, query="", offset="0", tag_id=None):
-        _, library = self.library()
-        if tag_id is not None:
-            return self.row(library, number(tag_id))
-        try:
-            offset = int(offset)
-        except (TypeError, ValueError):
-            raise LibraryError("Choose a valid tag page.") from None
-        if offset < 0 or len(text(query)) > 200:
-            raise LibraryError("Choose a valid tag page and a shorter search.")
-        words = fold(query).split()
-        ids = sorted((i for i, t in library.tags.items() if all(w in fold(t["name"]) for w in words)),
-                     key=lambda i: (fold(library.tags[i]["name"]), i))
-        return {"tags": [self.row(library, i) for i in ids[offset:offset + 50]],
-                "total": len(ids), "offset": offset}
+        with self.studio._browse_library(tags=True) as library:
+            if tag_id is not None:
+                return self.row(library, number(tag_id))
+            try:
+                offset = int(offset)
+            except (TypeError, ValueError):
+                raise LibraryError("Choose a valid tag page.") from None
+            if offset < 0 or len(text(query)) > 200:
+                raise LibraryError("Choose a valid tag page and a shorter search.")
+            words = fold(query).split()
+            ids = sorted((i for i, t in library.tags.items() if all(w in fold(t["name"]) for w in words)),
+                         key=lambda i: (fold(library.tags[i]["name"]), i))
+            return {"tags": [self.row(library, i) for i in ids[offset:offset + 50]],
+                    "total": len(ids), "offset": offset}
 
     def target(self, library, target):
         if not isinstance(target, dict):
@@ -110,12 +110,12 @@ class Tags:
     def selection(self, albums, track=None, multiple=False):
         if type(multiple) is not bool:
             raise LibraryError("Choose a valid album tag selection mode.")
-        _, library = self.library()
-        target = {"albums": albums, "track": track, **({"multiple": True} if multiple else {})}
-        ids, label, before, summaries = self.target(library, target)
-        return {"target": target, "label": label, "tracks": len(ids), "before": before,
-                **({"albums": summaries} if multiple else {}),
-                "tags": [self.row(library, i, ids) for i, t in library.tags.items() if ids.intersection(t["tracks"])]}
+        with self.studio._browse_library(tags=True) as library:
+            target = {"albums": albums, "track": track, **({"multiple": True} if multiple else {})}
+            ids, label, before, summaries = self.target(library, target)
+            return {"target": target, "label": label, "tracks": len(ids), "before": before,
+                    **({"albums": summaries} if multiple else {}),
+                    "tags": [self.row(library, i, ids) for i, t in library.tags.items() if ids.intersection(t["tracks"])]}
 
     @staticmethod
     def name(value):

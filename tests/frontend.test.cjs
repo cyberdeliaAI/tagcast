@@ -12742,6 +12742,26 @@ test('group history restores the revealed prefix and switching search or library
   assert.equal(p.run('browseGroupContinuous.get("composers").items.length'),0);
 });
 
+test('deep group history restores forty bounded pages without a library reload or losing sort and scroll',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p,2631);
+  p.run('browseGroupContinuous.get("track-artists").setEnabled(true);showBrowse("track-artists")');await settle();
+  for(let page=1;page<40;page++)await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseView.rows.length'),2400);
+  assert.equal(new Set(p.json('browseView.rows.map(r=>r.key)')).size,2400);
+  p.run('window.scrollY=18000;rememberNavigationScroll();showBrowse("track-artists","0")');await settle();
+  const before=p.requests.length;
+  p.history.back();await settle();p.flushTimers(0);
+  assert.equal(p.run('browseView.rows.length'),2400);
+  assert.equal(p.run('browseContinuous().count'),2400);
+  assert.equal(p.run('window.scrollY'),18000);
+  const restored=p.requests.slice(before).filter(r=>r.url.startsWith('/api/browse?'));
+  assert.equal(restored.length,40);
+  assert.deepEqual(restored.map(r=>Number(new URL(r.url,'http://localhost').searchParams.get('offset'))),Array.from({length:40},(_,i)=>i*60));
+  assert.ok(restored.every(r=>new URL(r.url,'http://localhost').searchParams.get('limit')==='60'));
+  assert.ok(p.requests.slice(before).every(r=>!r.url.startsWith('/api/library')&&!r.url.startsWith('/api/albums')));
+  assert.equal(p.run('browseView.sort'),'az');
+});
+
 test('all ordinary group album shelves scroll locally while the decade random sample remains unchanged',async()=>{
   const p=livePage();await settle();continuousGroupServer(p);
   p.run('state.albums=Array.from({length:173},(_,i)=>({...state.albums[0],id:String(i+1),name:"Album "+i}));browseAlbumContinuous.setEnabled(true)');
