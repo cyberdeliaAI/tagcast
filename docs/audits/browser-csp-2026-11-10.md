@@ -105,6 +105,12 @@ Safari WebDriver cannot start because Allow Remote Automation is disabled. No
 system security setting was changed. Its manual results are narrower than the
 automated WebKit matrix: no claim of full Safari console/negative-probe coverage,
 gapless support or visualization support. Playwright WebKit is not Safari.
+An additional complete mocked device-login probe succeeded in Chromium and Firefox
+without page errors or CSP violations. In WebKit the mock login still completed,
+but the provider popup produced a same-origin/opener navigation warning. The same
+warning was reproduced against **unmodified main without CSP**; it is an existing
+WebKit sign-in limitation, not a policy denial. The normal sign-in-dialog matrix
+above does not include this full provider-popup probe.
 Firefox initially hit the macOS protected default app-data startup error; a fresh
 `CFFIXED_USER_HOME` for that test process resolved it without touching the personal
 profile ([upstream issue](https://github.com/microsoft/playwright/issues/42768)).
@@ -141,6 +147,20 @@ assertion. The unchanged check passed on a repeat without simultaneous manual UI
 activity, including restart and the shutdown matrix. No timeout/assertion was
 weakened and no focus/product change was made. This single intermittent result is
 retained in `native.log`; successful evidence is in `native-recheck.log`.
+
+Initial PR CI found two additional issues:
+
+- Windows' default stdin code page corrupted the Unicode-only sample passed from
+  Node to Python in the new parity test. The application already explicitly decodes
+  HTTP HTML as UTF-8 and its packaged Windows smoke passed. The test now decodes
+  its JSON input bytes explicitly as UTF-8 too; Unicode and newline assertions are
+  unchanged. This was a test transport defect, not a changed policy/hash algorithm.
+- The first macOS ARM64 build failed the existing `420/light/theme` pointer test
+  because `#toast` covered a choice. The same hit-test was reproduced on unmodified
+  main (`d497741`, no CSP), at 420×656 with an explicit synthetic toast. The CSS and
+  hit-test are unchanged by this PR. This is a genuine, pre-existing notification
+  overlap, whose timing makes the native smoke intermittent. It remains a separate
+  UI follow-up; no sleep, timeout, hidden toast or weaker hit-test was added here.
 
 Remaining limits: synthetic fixtures cannot prove every user artwork host, OAuth
 provider flow, device or audio format. Browser behaviour depends on supported

@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,"../.."),python=process.env.TAGCAST_PYTHON||(p
 
 test("Electron and Python derive the same policy and exact inline hashes from one bundled rule file",()=>{
   const pages=["",'<script>const x = "é";</script>',"<SCRIPT>\r\nconst x = 1;\r</SCRIPT>",'<script src="a.js"></script><script> </script>',readFileSync(path.join(root,"src/tagcast/static/index.html"),"utf8")];
-  const result=spawnSync(python,["-c","import json,sys; from tagcast.content_security import content_policy; print(json.dumps([content_policy(p) for p in json.load(sys.stdin)]))"],
+  const result=spawnSync(python,["-c","import json,sys; from tagcast.content_security import content_policy; print(json.dumps([content_policy(p) for p in json.loads(sys.stdin.buffer.read().decode('utf-8'))]))"],
     {cwd:root,env:{...process.env,PYTHONPATH:path.join(root,"src")},input:JSON.stringify(pages),encoding:"utf8"});
   assert.equal(result.status,0,result.stderr);
   assert.deepEqual(JSON.parse(result.stdout),pages.map(contentPolicy));
