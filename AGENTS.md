@@ -736,6 +736,13 @@ their shared browsing/player state; a fast local response can otherwise race the
   Show queue position/next-track context, the shared Follow switch and readable source attribution;
   fade lyric edges without hiding errors or retry. Hide the stop/close button only while expanded;
   both exit controls restore the existing view without stopping audio.
+- Optional continuous browsing uses `continuous-browse.js` over compact summaries,
+  in 60-item chunks with measured placeholders and focus retention. Keep numeric
+  pagination as the default, explicit Show more, independent saved display choices,
+  history restoration and loaded-only selections. Group pages may request bounded
+  summary prefixes; never load tracks or audio for scrolling. Decades keeps its
+  existing bounded sample. The Albums Random order shortcut reshuffles the existing
+  random sort, resets the visible prefix and preserves filters, selections and playback.
 - Browsing search/filter toolbars stay at the viewport top during document scrolling;
   do not introduce a second page scrollbar. Very short windows retain normal scrolling.
   Explicit pagination scrolls to the toolbar's original document position, including
@@ -817,6 +824,13 @@ their shared browsing/player state; a fast local response can otherwise race the
   off per launch and never record identifiers, URLs, credentials or audio.
   Production Electron retains its normal app/profile/home and stable default port; do not
   carry the isolated listening app's temporary port or write restrictions into releases.
+- Expanded-player effects in `music-visualizations.js` share the existing analyser and animation
+  loop, remain off by default and preserve the same audio element. Keep the eight
+  local effects, bounded Canvas/WebGL resources and shuffled 30-second visible-playback
+  rotation. Pauses, stalls, seeks and hidden views freeze the clock. Release hidden
+  surfaces; reduced motion or rendering failure returns to artwork. Butterchurn is
+  bundled with its MIT license, accepts precompiled function presets only and receives
+  sample arrays without another audio graph, external service or CSP relaxation.
 - The optional player spectrum lives in `visualizer.js` and `visualizer.css`. It only listens
   through `captureStream()` on the same audio element and never connects the analyser to an output,
   so playback, volume, `setSinkId` output selection and gapless MediaSource stay untouched. The
