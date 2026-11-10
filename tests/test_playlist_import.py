@@ -129,6 +129,37 @@ class PlaylistImportTests(unittest.TestCase):
         parsed = self.read(content)
         return self.importer.match(self.body(parsed, mapping=parsed['mapping'], **fields))
 
+    def test_creation_with_lost_or_missing_id_refreshes_without_claiming_a_matching_name(self):
+        from tagcast.client import UncertainWrite
+
+        for receipt in ("lost", "missing", "existing"):
+            with self.subTest(receipt=receipt):
+                baseline = fixture()
+                if receipt == "existing":
+                    baseline["library"]["playlists"]["500"] = {
+                        "name": "Imported", "description": "Notes", "tracks": [102], "type": "playlist"}
+                self.studio.library = Library(baseline)
+                matched = self.matched()
+                review = self.importer.review(self.body(matched, name="Imported", description="Notes"))
+                body = self.body(review, review_token=review["review_token"], approved=True)
+                remote = fixture()
+                remote["library"]["playlists"]["500"] = {
+                    "name": "Imported", "description": "Notes", "tracks": [102], "type": "playlist"}
+                def lost(*_args, **_kwargs):
+                    if receipt == "lost":
+                        raise UncertainWrite("Created, receipt lost")
+                    return {"playlist_id": 500} if receipt == "existing" else {"result": True}
+                self.studio._current.return_value = (self.studio.library, "memory")
+                self.studio.client._jsonrequest.side_effect = lost
+                self.studio.client._jsonrequest.reset_mock()
+                response = self.importer.save(body)
+                self.assertEqual((response["id"], response["outcome"]), ("", "unknown"))
+                callback = self.studio._check_later.call_args.args[2]
+                self.assertEqual(callback(Library(remote))[0]["status"], "unverified")
+                self.assertEqual(self.studio.client._jsonrequest.call_count, 1)
+                with self.assertRaises(LibraryError):
+                    self.importer.save(body)
+
     def test_parsing_and_matching_only_read_loaded_metadata_and_keep_bounded_responses(self):
         parsed = self.read('\ufeffTrack Name,Artist Name(s),Album Name,Duration (ms),Release Date\nCloudbusting,Kate Bush,Hounds of Love,310100,1985-09-16\n')
         self.assertEqual(parsed['mapping']['title'], 0)

@@ -23,6 +23,11 @@ async function collectionJob(response, current) {
   // A server message stays as reported; only Tagcast's own fallback is interface text.
   if (job.state !== "done") throw job.error ? Error(job.error) : playlistFailure("errors.playlists.readback_failed");
   if (Object.hasOwn(job, "playlists_count")) updatePlaylistCount(job.playlists_count);
+  if (response.outcome === "unknown") {
+    // The refreshed catalogue may contain the creation; its name cannot identify our request.
+    if (state.screen === "playlists") renderCollections();
+    throw playlistFailure("errors.playlists.creation_unknown");
+  }
   return job;
 }
 

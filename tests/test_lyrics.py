@@ -356,6 +356,29 @@ class LyricsTests(unittest.TestCase):
         with self.assertRaises(LibraryError):
             self.service.save({'id': review['id']})
 
+    def test_applied_lyrics_with_lost_reply_verify_all_userdata_without_retry(self):
+        from tagcast.client import UncertainWrite
+
+        for modified in (False, True):
+            with self.subTest(custom_metadata_changed=modified):
+                self.studio.client._jsonrequest.side_effect = self.request
+                review = self.prepare("Reviewed text changed" if modified else "Reviewed text")
+                sent = []
+                def lost(mode, **fields):
+                    result = self.request(mode, **fields)
+                    if mode == "update_track":
+                        sent.append(mode)
+                        if modified:
+                            self.rows[0]["value"] = "External change"
+                        raise UncertainWrite("Applied, reply lost")
+                    return result
+                self.studio.client._jsonrequest.side_effect = lost
+                result = self.service.save({"id": review["id"], "approved": True})
+                self.assertEqual(result["status"], "unverified" if modified else "saved")
+                self.assertEqual(sent, ["update_track"])
+                with self.assertRaises(ConflictError):
+                    self.service.save({"id": review["id"], "approved": True})
+
     def test_uncertain_write_and_unconfirmed_readback_are_not_retried(self):
         review = self.prepare()
         original = self.request
