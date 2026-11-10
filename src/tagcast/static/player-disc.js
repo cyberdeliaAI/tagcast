@@ -62,11 +62,12 @@ function renderVisualDisc() {
   const readable = expandedTextColours(colours.link, colours.paper, accent);
   stage.style.setProperty("--expanded-link", readable.text);
   stage.style.setProperty("--expanded-source-backing", readable.backing);
+  const effect = typeof musicVisualizationActive === "function" && musicVisualizationActive();
   const button = $("#visual-player-disc-toggle");
-  button.setAttribute("aria-pressed", String(cd));
+  button.setAttribute("aria-pressed", String(cd && !effect));
   button.textContent = TagcastI18n.text("player.disc.cdTab");
   button.setAttribute("aria-label", TagcastI18n.text("player.disc.toggle"));
-  $("#visual-player-cover-toggle").setAttribute("aria-pressed", String(!cd));
+  $("#visual-player-cover-toggle").setAttribute("aria-pressed", String(!cd && !effect));
   const setting = $("#player-artwork-style");
   if (setting) setting.value = visualDisc.style;
 }

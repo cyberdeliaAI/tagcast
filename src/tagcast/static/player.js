@@ -179,6 +179,7 @@ function renderVisualPlayer() {
   }
   if (typeof renderPlaybackLyrics === "function") renderPlaybackLyrics();
   if (typeof renderVisualDisc === "function") renderVisualDisc();
+  if (typeof syncMusicVisualization === "function") syncMusicVisualization();
 }
 
 // Interface text of the open large view only: artwork, lyrics and playback stay untouched.
@@ -197,6 +198,7 @@ function hideVisualPlayer() {
   if (typeof closeCoverLightbox === "function") closeCoverLightbox();
   if (!visualPlayer.open) return;
   visualPlayer.open = false; visualPlayer.native = false; visualPlayer.request += 1;
+  if (typeof syncMusicVisualization === "function") syncMusicVisualization();
   if (typeof renderVisualDisc === "function") renderVisualDisc();
   if (typeof suspendPlaybackLyrics === "function") suspendPlaybackLyrics();
   visualPlayer.artwork = null;

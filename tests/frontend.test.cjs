@@ -3291,6 +3291,53 @@ test("Random album order spans every page, preserves filtered subsets and leaves
   assert.match(p.nodes.get('#albums-browse-options').innerHTML, /Random album order/);
 });
 
+
+test("Random order shortcut reshuffles the filtered shelf and preserves playback and selections", async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get("1"), "100");
+    state.albums=Array.from({length:150},(_,i)=>({...state.albums[0],id:String(i),
+      name:"Album "+String(i).padStart(3,"0"),artist:i%2?"Other":"Test artist",disc:1}));
+    state.artist="Test artist"; state.selected.add("1");
+    $("#search").value="Album"; $("#filter").value="all"; $("#sort").value="title";
+    Math.random=()=>0; showScreen("albums"); state.page=2; render()`);
+  const queue=p.json("player.queue"), audio=p.nodes.get("#audio"), requests=p.requests.length;
+  assert.equal(p.nodes.get("#albums-random-order").disabled,false);
+  await p.nodes.get("#albums-random-order").emit("click");
+  const first=p.json("filteredAlbums().map(a=>a.id)");
+  assert.equal(first.length,75);
+  assert.equal(p.nodes.get("#sort").value,"random");
+  assert.equal(p.run("state.page"),0);
+  assert.match(p.nodes.get("#albums-browse-options").innerHTML,/Random album order/);
+  p.run("Math.random=()=>0.999");
+  await p.nodes.get("#albums-random-order").emit("click");
+  assert.notDeepEqual(p.json("filteredAlbums().map(a=>a.id)"),first,"Clicking again reshuffles immediately");
+  assert.deepEqual(p.json("[state.artist,$('#search').value,$('#filter').value,[...state.selected]]"),["Test artist","Album","all",["1"]]);
+  assert.deepEqual(p.json("player.queue"),queue);
+  assert.equal(p.nodes.get("#audio"),audio);
+  assert.equal(audio.src,"/api/stream/100?quality=128");
+  assert.equal(audio.paused,false);
+  assert.equal(p.requests.length,requests,"The shortcut only sorts loaded summaries");
+  p.nodes.get("#per-page").value="continuous";
+  await p.nodes.get("#per-page").emit("change",{target:p.nodes.get("#per-page")});
+  p.run("albumContinuous.more();Math.random=()=>0");
+  assert.equal(p.run("albumContinuous.count"),75);
+  await p.nodes.get("#albums-random-order").emit("click");
+  assert.equal(p.run("albumContinuous.count"),60,"Reshuffling resets continuous browsing to its first chunk");
+  assert.equal(p.nodes.get("#per-page").value,"continuous");
+});
+
+test("Random order shortcut is unavailable for loading, empty and single-album results", async () => {
+  const p=page(); await settle();
+  p.run("const shortcutAlbums=[...state.albums]");
+  for(const setup of ['state.albums=[]','state.albums=shortcutAlbums.slice(0,1)','state.albums=shortcutAlbums;state.loading=true']) {
+    p.run(`${setup};render()`);
+    assert.equal(p.nodes.get("#albums-random-order").disabled,true,setup);
+    const before=p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])");
+    await p.nodes.get("#albums-random-order").emit("click");
+    assert.equal(p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])"),before);
+  }
+});
+
 test("Random album order restores each history shuffle, follows metadata read-backs and resets across libraries", async () => {
   const p = page(); await settle();
   await p.nodes.get("#all-albums").emit("click");
@@ -12542,5 +12589,196 @@ test('confirmed split read-back updates summaries without changing the audio que
     assert.equal(p.nodes.get('#audio'),audio);assert.deepEqual(p.json('player.queue'),before);
     if(close)assert.equal(p.run('document.activeElement === $("#search")'),true,'Completion does not steal focus');
     else assert.match(p.nodes.get('#album-split-status').textContent,/confirmed/);
+  }
+});
+
+test("continuous album/artist browsing is optional, independently persisted and keeps numeric paging choices", async () => {
+  const storage = {"tagcast-per-page":"50", "tagcast-artists-per-page":"100"};
+  const p = page({storage}); await settle();
+  p.run(`state.albums=Array.from({length:230},(_,i)=>({...state.albums[0],id:String(i+1000),artist:"Artist "+String(i).padStart(3,"0")})); setArtist(null)`);
+  assert.equal(p.run("albumContinuous.enabled"), false);
+  assert.equal(p.nodes.get("#per-page").value, "50");
+  p.nodes.get("#per-page").value = "continuous";
+  await p.nodes.get("#per-page").emit("change", {target:p.nodes.get("#per-page")});
+  assert.equal(p.run("albumContinuous.count"), 60);
+  p.run("albumContinuous.more(); albumContinuous.more()");
+  assert.equal(p.run("albumContinuous.count"), 180);
+  assert.match(p.nodes.get("#pagination").innerHTML, /Showing 180 of 230/);
+  assert.equal(storage["tagcast-per-page"], "50");
+  p.run("showArtistBrowse()");
+  assert.equal(p.nodes.get("#artists-per-page").value, "100");
+  p.nodes.get("#artists-per-page").value="continuous";
+  await p.nodes.get("#artists-per-page").emit("change", {target:p.nodes.get("#artists-per-page")});
+  assert.equal(p.run("artistContinuous.count"), 60);
+  const again=page({storage}); await settle();
+  assert.equal(again.run("albumContinuous.enabled && artistContinuous.enabled"), true);
+  assert.equal(again.run("pageSize()"), 50);
+  assert.equal(again.run("artistBrowse.pageSize"), 100);
+  p.nodes.get("#per-page").value="50";
+  await p.nodes.get("#per-page").emit("change", {target:p.nodes.get("#per-page")});
+  assert.equal(p.run("albumContinuous.enabled"),false);
+  assert.equal(p.run("artistContinuous.enabled"),true);
+  assert.match(p.nodes.get("#pagination").innerHTML,/Page 1 of 5/);
+});
+
+test("select loaded albums never implicitly selects later results or changes playback or requests", async () => {
+  const p=page(); await settle();
+  p.run(`state.albums=Array.from({length:230},(_,i)=>({...state.albums[0],id:String(i+1000),artist:"Artist "+String(i).padStart(3,"0")}));
+    albumContinuous.setEnabled(true);setArtist(null)`);
+  const requests=p.requests.length, audio=p.nodes.get("#audio");
+  await p.change({id:"select-page",checked:true,matches:()=>false});
+  assert.equal(p.run("state.selected.size"),60);
+  p.run("albumContinuous.more()");
+  assert.equal(p.run("state.selected.size"),60);
+  assert.equal(p.nodes.get("#select-page").indeterminate,true);
+  assert.match(p.nodes.get("#select-page-label").textContent,/Select loaded albums \(120\)/);
+  p.nodes.get("#search").value="Artist 229"; p.run("render()");
+  assert.equal(p.run("albumContinuous.count"),1);
+  assert.equal(p.run("state.selected.size"),60,"Filtered-out selections remain available for review");
+  assert.equal(p.requests.length,requests,"Scrolling and filtering only use the loaded summaries");
+  assert.equal(p.nodes.get("#audio"),audio);
+  assert.equal(p.run("player.queue.length"),0);
+});
+
+test("continuous browsing restores revealed scope and scroll on Back from a cached album", async () => {
+  const p=page(); await settle();
+  p.run(`const first=state.albums[0]; state.albums=Array.from({length:230},(_,i)=>({...first,id:i?String(i+1000):first.id,artist:"Artist "+String(i).padStart(3,"0")}));
+    albumContinuous.setEnabled(true);setArtist(null);albumContinuous.more();albumContinuous.more();window.scrollY=3200;rememberNavigationScroll()`);
+  const id=p.run("state.albums[0].id");
+  await p.run(`openAlbum(${JSON.stringify(id)})`);
+  assert.equal(p.run("state.screen"),"album");
+  p.history.back(); await settle(); p.flushTimers(0);
+  assert.equal(p.run("state.screen"),"albums");
+  assert.equal(p.run("albumContinuous.count"),180);
+  assert.equal(p.run("window.scrollY"),3200);
+  assert.equal(p.nodes.get("#per-page").value,"continuous");
+});
+
+function continuousGroupServer(p, total = 173) {
+  p.setFetch(url => {
+    const params = new URL(url, 'http://localhost').searchParams;
+    if (params.has('key')) return {ok:true,json:async()=>({group:{key:params.get('key'),label:'Group'},album_ids:p.json('state.albums.map(a=>a.id)')})};
+    const offset=Number(params.get('offset')),limit=Number(params.get('limit'));
+    return {ok:true,json:async()=>({groups:Array.from({length:Math.min(limit,total-offset)},(_,i)=>({key:String(offset+i),label:'Group '+(offset+i),tracks:1,albums:1})),total,offset})};
+  });
+}
+
+test('continuous group overviews fetch bounded pages, remember independent choices and retain ordinary pagination',async()=>{
+  const storage={},p=livePage({storage});await settle();continuousGroupServer(p);
+  p.run('showBrowse("track-artists")');await settle();
+  assert.equal(p.run('browseView.rows.length'),24);
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 1 of 8/);
+  await p.nodes.get('#browse-per-page').emit('change',{target:{value:'continuous'}});await settle();
+  assert.equal(p.run('browseContinuous().count'),60);
+  const before=p.requests.length,audio=p.nodes.get('#audio'),queue=p.json('player.queue');
+  await p.run('browseContinuous().more()');await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseContinuous().count'),173);
+  assert.equal(p.requests.length,before+2);
+  for(const r of p.requests.slice(before))assert.match(r.url,/limit=60/);
+  assert.match(p.requests.at(-1).url,/offset=120/);
+  assert.equal(new Set(p.json('browseView.rows.map(r=>r.key)')).size,173);
+  p.run('showBrowse("composers")');await settle();assert.equal(p.run('continuousBrowseEnabled()'),false);
+  p.run('showBrowse("track-artists")');await settle();assert.equal(p.run('continuousBrowseEnabled()'),true);
+  await p.nodes.get('#browse-per-page').emit('change',{target:{value:'50'}});await settle();
+  assert.equal(p.run('continuousBrowseEnabled()'),false);
+  assert.equal(p.run('browseView.rows.length'),50);
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Page 1 of 4/);
+  assert.equal(p.nodes.get('#audio'),audio);assert.deepEqual(p.json('player.queue'),queue);
+});
+
+test('group load-more failures stop automatic loading, permit explicit recovery and reject late replies',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p);
+  p.run('browseGroupContinuous.get("composers").setEnabled(true);showBrowse("composers")');await settle();
+  p.setFetch(()=>({ok:false,status:503,json:async()=>({error:'Temporary failure'})}));
+  await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseView.moreLoading'),false);
+  assert.equal(p.run('browseContinuous().auto'),false);
+  assert.equal(p.run('browseView.rows.length'),60);
+  assert.match(p.nodes.get('#browse-pagination').innerHTML,/Temporary failure/);
+  const requests=p.requests.length;p.run('browseContinuous().scheduleMore()');p.flushTimers(80);await settle();
+  assert.equal(p.requests.length,requests);
+  continuousGroupServer(p);await p.run('browseContinuous().more()');
+  assert.equal(p.run('browseContinuous().count'),120);assert.equal(p.run('browseView.moreError'),null);
+  let finish;p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=p.run('browseContinuous().more()');
+  continuousGroupServer(p);p.run('showBrowse("genres")');await settle();
+  finish({ok:true,json:async()=>({groups:[{key:'old',label:'STALE'}],total:173,offset:120})});await pending;
+  assert.equal(p.run('browseView.kind'),'genres');assert.doesNotMatch(p.nodes.get('#browse-list').innerHTML,/STALE/);
+  assert.equal(p.run('browseView.moreLoading'),false);
+});
+
+test('group history restores the revealed prefix and switching search or library releases obsolete results',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p,250);
+  p.run('browseGroupContinuous.get("composers").setEnabled(true);showBrowse("composers")');await settle();
+  await p.run('browseContinuous().more()');await p.run('browseContinuous().more()');
+  p.run('window.scrollY=2300;rememberNavigationScroll();showBrowse("composers","0")');await settle();
+  p.history.back();await settle();p.flushTimers(0);
+  assert.equal(p.run('browseView.rows.length'),180);assert.equal(p.run('browseContinuous().count'),180);
+  assert.equal(p.run('window.scrollY'),2300);
+  p.run('$("#browse-search").value="different"');await p.nodes.get('#browse-search').emit('input');p.flushTimers(250);await settle();
+  assert.equal(p.run('browseContinuous().count'),60);assert.match(p.requests.at(-1).url,/q=different/);
+  p.run('useLocal(demoLibrary(),"demo")');
+  assert.equal(p.run('browseGroupContinuous.get("composers").items.length'),0);
+});
+
+test('all ordinary group album shelves scroll locally while the decade random sample remains unchanged',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p);
+  p.run('state.albums=Array.from({length:173},(_,i)=>({...state.albums[0],id:String(i+1),name:"Album "+i}));browseAlbumContinuous.setEnabled(true)');
+  for(const kind of ['track-artists','composers','genres','tags','years','upload-folders','uploaded']){
+    p.run(`showBrowse(${JSON.stringify(kind)},"group")`);await settle();
+    assert.equal(p.run('browseAlbumContinuous.count'),60,kind);
+    const before=p.requests.length;p.run('browseAlbumContinuous.more()');
+    assert.equal(p.run('browseAlbumContinuous.count'),120,kind);assert.equal(p.requests.length,before,kind);
+    assert.match(p.nodes.get('#browse-pagination').innerHTML,/Showing 120 of 173/);
+  }
+  p.run('showBrowse("decades","1980")');await settle();
+  assert.equal(p.run('continuousBrowseEnabled()'),false);
+  assert.match(p.nodes.get('#browse-results').textContent,/24 random albums/);
+});
+
+test('preview group overviews and favourite albums use the same local window and retain pagination',async()=>{
+  const p=page();await settle();
+  p.run(`useLocal(Array.from({length:173},(_,i)=>({id:String(i+1),name:"Album "+i,artist:"A",disc:1,tracks:[{id:String(i+1000),title:"Song",artist:"Singer "+i,track:1,composers:["Composer "+i]}]})),"demo");
+    browseGroupContinuous.get("track-artists").setEnabled(true);showBrowse("track-artists")`);await settle();
+  const before=p.requests.length;
+  p.run('browseContinuous().more();browseContinuous().more()');assert.equal(p.run('browseContinuous().count'),173);
+  assert.equal(p.requests.length,before);
+  p.run('state.mode="live";state.albumFavourites=new Set(state.albums.map(a=>a.id));showCollections("album-favourites")');await settle();
+  assert.equal(p.run('favouriteAlbumContinuous.enabled'),false);
+  await p.change({id:'favourite-albums-display',value:'continuous',matches:()=>false});
+  assert.equal(p.run('favouriteAlbumContinuous.count'),60);
+  p.run('favouriteAlbumContinuous.more()');assert.equal(p.run('favouriteAlbumContinuous.count'),120);
+  await p.change({id:'favourite-albums-display',value:'50',matches:()=>false});
+  assert.equal(p.run('favouriteAlbumContinuous.enabled'),false);
+  assert.match(p.nodes.get('#collections-page').innerHTML,/data-collection-page/);
+});
+
+test('continuous groups reject overlapping or misplaced pages and ignore replies after library replacement',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p);
+  p.run('browseGroupContinuous.get("composers").setEnabled(true);showBrowse("composers")');await settle();
+  for(const response of [{offset:0,groups:[{key:'new'}]},{offset:60,groups:[{key:'0'}]},{offset:60,groups:[]}]){
+    p.setFetch(()=>({ok:true,json:async()=>response}));await p.run('browseContinuous().more()');
+    assert.equal(p.run('browseView.rows.length'),60);
+    assert.equal(p.run('browseContinuous().auto'),false);
+    assert.equal(p.run('browseView.moreLoading'),false);
+  }
+  let finish;p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=p.run('browseContinuous().more()');
+  p.run('useLocal(demoLibrary(),"demo")');
+  finish({ok:true,json:async()=>({offset:60,groups:[{key:'obsolete',label:'OBSOLETE'}]})});await pending;await settle();
+  assert.equal(p.run('browseGroupContinuous.get("composers").items.length'),0);
+  assert.doesNotMatch(p.nodes.get('#browse-list').innerHTML,/OBSOLETE/);
+});
+
+
+test('continuous group blocks fill every supported grid width without intermediate empty cells',async()=>{
+  const p=livePage();await settle();continuousGroupServer(p,241);
+  for(const kind of ['genres','composers','track-artists','tags','years']){
+    p.run(`browseGroupContinuous.get(${JSON.stringify(kind)}).setEnabled(true);showBrowse(${JSON.stringify(kind)})`);await settle();
+    const batch=p.run('browseContinuous().batch');
+    for(const columns of [2,3,4,5])assert.equal(batch%columns,0,`${kind}: incomplete ${columns}-column row`);
+    await p.run('browseContinuous().more()');
+    assert.equal(p.run('browseView.rows.length'),batch*2);
+    assert.equal(p.run('browseContinuous().count'),batch*2);
   }
 });

@@ -1,0 +1,636 @@
+{
+  "date": "2026-11-10",
+  "release_baseline": "3eaab0e77083b24e98a894c0c515e1bbd6dca9ab",
+  "tested_application_commit": "ae80d25f8e61da8ae6d92eb1043e8527e963e928",
+  "platform": "macOS Apple Silicon",
+  "tests": {
+    "python311": {
+      "python": "3.11.17",
+      "passed": 916,
+      "subtests": 2518,
+      "failed": 0
+    },
+    "python313": {
+      "python": "3.13.16",
+      "passed": 916,
+      "subtests": 2518,
+      "failed": 0
+    },
+    "frontend": {
+      "passed": 772,
+      "failed": 0
+    },
+    "electron": {
+      "passed": 47,
+      "failed": 0
+    },
+    "targeted_visualization_continuous_i18n": {
+      "passed": 61,
+      "failed": 0
+    }
+  },
+  "browser": {
+    "continuous_layouts": 120,
+    "group_and_favourite_layouts": 240,
+    "random_order_layouts": 60,
+    "music_visualizations": {
+      "browser": "156.0.8078.4",
+      "platform": "darwin",
+      "architecture": "arm64",
+      "chromiumSandbox": true,
+      "syntheticAudio": true,
+      "modes": [
+        {
+          "mode": "aurora",
+          "failed": false,
+          "pending": false,
+          "last": 1928.6,
+          "renderer": true,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "orbit",
+          "failed": false,
+          "pending": false,
+          "last": 3028.5,
+          "renderer": true,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "ribbons",
+          "failed": false,
+          "pending": false,
+          "last": 4128.5,
+          "renderer": true,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "led",
+          "failed": false,
+          "pending": false,
+          "last": 5145.1,
+          "renderer": false,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "scope",
+          "failed": false,
+          "pending": false,
+          "last": 6178.4,
+          "renderer": false,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "radial",
+          "failed": false,
+          "pending": false,
+          "last": 7245,
+          "renderer": false,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "stars",
+          "failed": false,
+          "pending": false,
+          "last": 8278.3,
+          "renderer": false,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "waterfall",
+          "failed": false,
+          "pending": false,
+          "last": 9311.6,
+          "renderer": false,
+          "message": "",
+          "canvas": {
+            "w": 1120,
+            "h": 605
+          },
+          "rect": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        },
+        {
+          "mode": "off",
+          "failed": false,
+          "pending": false,
+          "last": 0,
+          "renderer": false,
+          "message": "",
+          "canvas": null,
+          "rect": {
+            "x": 80,
+            "y": 66,
+            "width": 1120,
+            "height": 645,
+            "top": 66,
+            "right": 1200,
+            "bottom": 711,
+            "left": 80
+          },
+          "audio": 1,
+          "paused": false
+        }
+      ],
+      "layouts": [
+        {
+          "width": 420,
+          "theme": "light",
+          "w": 420,
+          "scroll": 420,
+          "canvas": {
+            "x": 25.1875,
+            "y": 103,
+            "width": 369.625,
+            "height": 440,
+            "top": 103,
+            "right": 394.8125,
+            "bottom": 543,
+            "left": 25.1875
+          },
+          "audio": 1
+        },
+        {
+          "width": 420,
+          "theme": "dark",
+          "w": 420,
+          "scroll": 420,
+          "canvas": {
+            "x": 25.1875,
+            "y": 103,
+            "width": 369.625,
+            "height": 440,
+            "top": 103,
+            "right": 394.8125,
+            "bottom": 543,
+            "left": 25.1875
+          },
+          "audio": 1
+        },
+        {
+          "width": 760,
+          "theme": "light",
+          "w": 760,
+          "scroll": 760,
+          "canvas": {
+            "x": 45.59375,
+            "y": 109,
+            "width": 668.8125,
+            "height": 590,
+            "top": 109,
+            "right": 714.40625,
+            "bottom": 699,
+            "left": 45.59375
+          },
+          "audio": 1
+        },
+        {
+          "width": 760,
+          "theme": "dark",
+          "w": 760,
+          "scroll": 760,
+          "canvas": {
+            "x": 45.59375,
+            "y": 109,
+            "width": 668.8125,
+            "height": 590,
+            "top": 109,
+            "right": 714.40625,
+            "bottom": 699,
+            "left": 45.59375
+          },
+          "audio": 1
+        },
+        {
+          "width": 1280,
+          "theme": "light",
+          "w": 1280,
+          "scroll": 1280,
+          "canvas": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1
+        },
+        {
+          "width": 1280,
+          "theme": "dark",
+          "w": 1280,
+          "scroll": 1280,
+          "canvas": {
+            "x": 80,
+            "y": 86,
+            "width": 1120,
+            "height": 605,
+            "top": 86,
+            "right": 1200,
+            "bottom": 691,
+            "left": 80
+          },
+          "audio": 1
+        },
+        {
+          "width": 420,
+          "lyrics": {
+            "x": 41.1875,
+            "y": 347,
+            "width": 337.625,
+            "height": 300
+          }
+        },
+        {
+          "width": 760,
+          "lyrics": {
+            "x": 392,
+            "y": 133,
+            "width": 298.40625,
+            "height": 542
+          }
+        },
+        {
+          "width": 1280,
+          "lyrics": {
+            "x": 652,
+            "y": 110,
+            "width": 524,
+            "height": 557
+          }
+        }
+      ],
+      "random": [
+        {
+          "effect": "waterfall",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "led",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "scope",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "ribbons",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "stars",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "aurora",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "radial",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "orbit",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        },
+        {
+          "effect": "aurora",
+          "failed": false,
+          "canvas": true,
+          "sameAudio": true,
+          "audio": 1,
+          "selection": "random"
+        }
+      ],
+      "errors": [],
+      "externalRequests": 0,
+      "complete": true,
+      "interactions": [
+        "pause/resume",
+        "speed/seek",
+        "close/reopen",
+        "reduced motion",
+        "WebGL context loss/recovery",
+        "random eight-effect bag without adjacent repeats",
+        "automatic canvas/WebGL transitions preserve one audio element",
+        "random clock pauses with playback"
+      ]
+    }
+  },
+  "media": {
+    "media-smoke": {
+      "passed": 24,
+      "failed": 0,
+      "complete": true
+    },
+    "media-diagnostics": {
+      "passed": 7,
+      "failed": 0,
+      "complete": true
+    },
+    "media-application": {
+      "passed": 10,
+      "failed": 0,
+      "complete": true
+    },
+    "media-application-random": {
+      "passed": 10,
+      "failed": 0,
+      "complete": true
+    },
+    "media-negative": {
+      "passed": 6,
+      "failed": 0,
+      "complete": true
+    }
+  },
+  "package": {
+    "ok": true,
+    "version": "1.6.5",
+    "electron": "44.9.3",
+    "chromium": "152.0.7977.167",
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "sharedInterface": true,
+    "restarted": true,
+    "certificates": {
+      "certifi": "2026.10.23",
+      "ca_sha256": "2ef52ad56b4803e264045c915e55c236cbfa045b84b81efefc218a19eb44bd2b",
+      "root_count": 118,
+      "compromised_root_present": false
+    }
+  },
+  "startup_regression": {
+    "before_fix": {
+      "loads_before_failure": 4,
+      "failure": "Script net::ERR_CONNECTION_RESET; update functions unavailable"
+    },
+    "after_fix_packaged": {
+      "loads": 30,
+      "failed_scripts": 0
+    },
+    "regression_test": "LoopbackBindTests.test_startup_asset_burst_survives_a_delayed_accept_loop fails before and passes after bounded backlog correction"
+  },
+  "assets": {
+    "static_files": 89,
+    "app_mismatches": [],
+    "wheel_mismatches": [],
+    "strict_signature": true,
+    "signing": "local ad-hoc; not notarized",
+    "source_sha256": {
+      "src/tagcast/static/ibroadcast-dark-compact-powered.svg": "c5f16e662434b59a4385d1783d4194403ca3f782cd39cc412d9e4b7bc3e60f7e",
+      "src/tagcast/static/theme-editor.css": "e662e24af54b7982b079b55ce21e3d4a3737b8faefeed130a2719691da4f24bc",
+      "src/tagcast/static/lookup.js": "09850d43378f346018313165b1b576b5bd4a663d61aff49b2922776e21a662f5",
+      "src/tagcast/static/queue-memory.js": "0d265968fcd43ba4c831bac97c2cf188691569f9e36291b731fc12ccb0e5f160",
+      "src/tagcast/static/1001-album-notes.json": "189099e0853af87309e1faef1a01ce0577a7f4f4470c5a5211c3431bd3ae5fa0",
+      "src/tagcast/static/gapless-controls.css": "ec0c7affbb540fa2bad23d77f75a83a24cfd979306d5f17005cd7afd8b7e8043",
+      "src/tagcast/static/queue-sync.js": "7bc862f132e81de597c0d0f8a679b5cf815369a41fbd81851e4b9611a95733ea",
+      "src/tagcast/static/updates.js": "18689017515154cc2adf13d5324dcf11a5456c33f4a56f371bad5dcc442e0038",
+      "src/tagcast/static/music-visualizations.css": "6c260b311c60de231fa45ce706b95db26aff900b66bb5ffdc77416a3053f05dd",
+      "src/tagcast/static/gapless-controls.js": "50bec73c2d17a5fff57662f1c36195d16f9108369be0de4025fccb2d04b8d369",
+      "src/tagcast/static/i18n-en.js": "0c2e9d36d3923dfc7bb0785b92c16ba0e7f397fb63cea4ed373afbc8dc6a32e6",
+      "src/tagcast/static/cleanup.js": "6fa3e98b4561e8ec0bd86c41e1c1cb53f0c84c60ad27603ef6fc366f8d828fc7",
+      "src/tagcast/static/index.html": "3b3da5509698a131aba33bde64a199b8ba48b06c21a2134c222194b07000e8c9",
+      "src/tagcast/static/now-playing.js": "be4e6d18240805d1d4db0f7ab7ae4b2029ea81da7048da8307cab2f4c62c9324",
+      "src/tagcast/static/downloads.js": "738816afc864df09add4a2b7832acb95e5415830eac8d51812cdf1e533d8f3be",
+      "src/tagcast/static/service-status.js": "1dc63b42f191072bebee6a87c31a9dbc089ed1c7bee0435bdc7789906f85b981",
+      "src/tagcast/static/1001-albums.json": "b587e491b00026149b76611482bc15d7d447479ca3154b2ac7621b666cce1c4f",
+      "src/tagcast/static/theme-editor.js": "27dc9bf5c1bde2a77bbaf9aebd160b3b9e392d5cc71d421cb1959db106064768",
+      "src/tagcast/static/player-disc.css": "4e4c0473cf14d6362eaefd809b03640988219e9e81fdefc0b184796c2ff8f7f5",
+      "src/tagcast/static/browse-controls.css": "cfe70c5eb85e00ed20e90353bd2d0b436a5eb4852ceec93b55ec5392ce22ea94",
+      "src/tagcast/static/lyrics.js": "20c7b6af5d397e84a679bac2a6112253b5f1d65e4d532f8d455c17d4a608e3c5",
+      "src/tagcast/static/1001-album-notes-LICENSE.txt": "b98fa62e836437de878ef489cea52aef6d68539e632f9de194771eafbecc0bef",
+      "src/tagcast/static/playback.js": "890084e199249b9c0b2c1150d9ce42e94752f5085967ea811747075fc1f26384",
+      "src/tagcast/static/player-disc.js": "751e0b469183f11c5d3a19898ac4a2cb8a9f3f060aa80c16976d9d89fe788875",
+      "src/tagcast/static/playlist-tools.js": "0651aedae8815e17d72e0a9caefdc34e8a84c7727c1ec37aa3a22f80dd889c77",
+      "src/tagcast/static/album-guide.js": "fab363c1afd8f95c5794edd5456918866ab0a7d2613ddb136bf029a94fc8e917",
+      "src/tagcast/static/fullscreen-player.css": "f8c744a259b6816347f858b039c91318fa8d199f8098f3c1cf25cbb4270a204b",
+      "src/tagcast/static/artwork.js": "6b35e854a6a3011642f2614b73ebd439393387e1f64482902312b0d098b04f0d",
+      "src/tagcast/static/playlist-order.js": "aff9b425832bd6c3dcb10d29426feb49f46b4eae0983023b4d9291abb4e428f3",
+      "src/tagcast/static/browse.js": "7e5e73e80002e50477b398b4780d8b6856343d5d704d56f5bb5b36794333cc3c",
+      "src/tagcast/static/tags.js": "27693caec77bf03a51fc9119bc7405c34980db7f2341327a54378e1e20c1f1ff",
+      "src/tagcast/static/lyrics-import.js": "ba39f541f626bd95b59ef28d145fc5ae2dce0edc36b67eab9d99fd0d5f3dc3a9",
+      "src/tagcast/static/album-merge.js": "8557b9f21e98e840f433c65866b43880d148790d35275ee55f5fc7d1f7576330",
+      "src/tagcast/static/favourites.js": "5261b7292d833d9f6e493c7a3a177042eb162806178206050b5d24c2d3e99472",
+      "src/tagcast/static/themes.js": "7e2ea215e93300f097daebdfcdac4abc8e40aa019da9a2d3e4567800bbd2f006",
+      "src/tagcast/static/dark.css": "85921df96f3f8531f7c5cf7aff84ffb091144d93418dab114cd4d3766fa553cd",
+      "src/tagcast/static/mini-player.js": "12b35da3a46ad906db5ef86d45e62b7a75c2157a4c42705e94b575e1a63ce2ea",
+      "src/tagcast/static/now-playing.css": "bd22b92b243da05756bb6ec4495ceba20f8d6d3ba3a61f1c0cd67134d164b0b6",
+      "src/tagcast/static/tracks.js": "e923b4078e68e2575ead41c450b9425317ea8ca20e87bd131747fb583d346cb4",
+      "src/tagcast/static/year-review.js": "69ea92293c2cdc0ad01e8e670bf542b8c02b7ef066464afe42aa7d257d9e09f5",
+      "src/tagcast/static/playback-lyrics.js": "b3e0ce043c50b5bf33c34404c138afbbd8d5353bd0ed5df92e72a338ba0c211c",
+      "src/tagcast/static/ibroadcast-light-compact-powered.svg": "811b44b183e6481d8710806f8cc2f01bcab24613ba7bbf8ca9b834f14fdcd431",
+      "src/tagcast/static/help.js": "598054e20b75ff96484c31ebe6e5a25e799c84e758d9943b52ed8e203374ee58",
+      "src/tagcast/static/gapless-diagnostics.js": "f1d96513c7545722dc195bc061ea034b33362248aa8c2af8fca61ea58f9faa27",
+      "src/tagcast/static/sign-in.js": "14803dbf620ba7477052defdb4fc70a2ca45ea81502f81bdc6dd033ac46398e5",
+      "src/tagcast/static/tagcast-mark.svg": "ec5602430df6008805edb32da9a989b9156409ade71b5c395160f8019e6d5c4f",
+      "src/tagcast/static/navigation.js": "971299744f239fadf1db86528d8fdaf07a8eb22d8f2eeff2ebee68b93470fb39",
+      "src/tagcast/static/visualizer.css": "3a1a1bdfc642b2e55922074824529efec1dd727a8aa17edb77826187fe57531b",
+      "src/tagcast/static/uploads.js": "00adc9c1289b3921be5428b8c10197d751a564c87ebe8399f6baee2a3631624c",
+      "src/tagcast/static/playlist-import.js": "ac836dbc6751065983a175d4cf47858620b919f3f94a959d49263809f18c080f",
+      "src/tagcast/static/album-info.js": "725f16ef01a1b081a8cdb149019b97a7a877f431a9a6929341831d30c8e592fe",
+      "src/tagcast/static/visualizer.js": "e7c16b75b5847247b13a51906483a26fa1a5cd086b27cfa23d1e2c1806ac79fd",
+      "src/tagcast/static/gapless.js": "e83a24cf2cff3f732f8fe68955a2d0366b2e0a658fcee008684b2f1954978933",
+      "src/tagcast/static/genres.js": "8f13662c700c5a7f616d0f5389198ecea0a0bb4e86c6a7c687e14fc130e42f8c",
+      "src/tagcast/static/playback-lyrics.css": "3f0cdb28052ae8d45f740bae7969d85b20b290a1509ceaca12f702167a84be16",
+      "src/tagcast/static/style.css": "86e39a0b5541cf27aa5ac532f4ab6abeb54c9be3879ba0e3ca592465a4e08eb7",
+      "src/tagcast/static/artists.js": "1c6c90c64cd128eac46197e250559b199f6c887f665769d542e2f4028b3a5297",
+      "src/tagcast/static/gapless-media.js": "3b98574b09f3c34bae8328f409b66cb9fcdcbd1f8cf9a16b56b7c0c5ebb7d1ab",
+      "src/tagcast/static/credits.js": "5b91d1608079d4086adac1608db1df60951c0ea99c5c8c174bf0cb088ad70237",
+      "src/tagcast/static/player.js": "4570ac77a8769ca813a47fac6344497f86ce79cd3c7c6d4878e5fcb57901a794",
+      "src/tagcast/static/collections.js": "f78e40212b82c175d6b0f2c779fda6153b7379ed7c366cc5f7fbbcdf7b8dea00",
+      "src/tagcast/static/palettes.css": "27376f787fb56369169c99aa15c28de30e7b176093e8e0aabdb4e572f1a99c07",
+      "src/tagcast/static/overview.js": "c4c7c40d2b2e6e9fe75626919cf67f079aa8f49581a705d27d76ff58bbd82b0d",
+      "src/tagcast/static/trash.js": "c3e637b6504d3382a16fca56cfe94f2fe1e7c0ad05dc110c4c050ce8ea2acbee",
+      "src/tagcast/static/album-split.js": "b6bd038f3cab96d6583ee49f05d4ed682db49c132ac68e43d80b22bf6bc60a5b",
+      "src/tagcast/static/album.js": "6787240ef71c6ba3a7311167ec9a85170a777831720a1e530cf2500603fcd9a5",
+      "src/tagcast/static/continuous-browse.js": "b872f5d55a34ece4a8bda6a4707c7dfb244c945220ac428f0bf4fe69b109eb68",
+      "src/tagcast/static/i18n.js": "fb758d0a0347d43cbfd1b6b4bbeb5e7e051f3efaa0ef4e2dacbf3712339583a5",
+      "src/tagcast/static/music-visualizations.js": "e3b62dd794cf30fdd2a494a5c80d798271b12502685b8b44fee6fdf70a645705",
+      "src/tagcast/static/browse-preferences.js": "944238d753a1988579a30b2d9d1a69ee1fe5827a639fd17c324b32112a2fb7ce",
+      "src/tagcast/static/app.js": "bfd8d8323d608a5f752fa36d082dc32b54804966587a38d8bb698d5ca76fefae",
+      "src/tagcast/static/settings.js": "b7a1ba438b8f099f7779150abdcc441e88af00025d9e99302f176cb2dd15d4f3",
+      "src/tagcast/static/favicon.svg": "ec5602430df6008805edb32da9a989b9156409ade71b5c395160f8019e6d5c4f",
+      "src/tagcast/static/language.js": "f1577cc95a3301b5859acd82a9ee61e19e486c0673a4428dc384bebd9fa1722e",
+      "src/tagcast/static/metadata-export.js": "8d6b2a61eee718d11ea7a5a25f5d2b126e46eff7c0b69ffe1bc9af9cf214f080",
+      "src/tagcast/static/licenses/ibfetch.txt": "af0c9c631529e8944099309d865a7c9980902f52614382029658fd4f471fc85c",
+      "src/tagcast/static/i18n/nl.json": "a7395baad0725cc18092e0ae3fb11b30c4e318667e367944406ee9e8511945f4",
+      "src/tagcast/static/i18n/ja.json": "02f018e5d123d53cedcea7605b7186813664646dbc1155387edf273642e43c5b",
+      "src/tagcast/static/i18n/de.json": "759982abde5298c94da7d90167a0f222c09ffd6f48a283e1862b0b3dded2130d",
+      "src/tagcast/static/i18n/en.json": "40053a5c9751f19c1aae9464ffc32d200bc8244b9db420789e756a4b255d35aa",
+      "src/tagcast/static/i18n/fr.json": "1b9a2bf44f1a127d180707e808fabc80b713675d7aa61504bdd0cc85f8704416",
+      "src/tagcast/static/i18n/manifest.json": "eb7844fb74e3d744d923c68f24b15a010bf98535c45084c91a5e92d4d75d4a47",
+      "src/tagcast/static/i18n/es.json": "8eb3cd29c4b3db3237a3f386920927bea5f23d882c842c6509a6f5f18088fdd6",
+      "src/tagcast/static/mini-player/index.html": "e6e21aeab758994fd99279abea4bff13f18251f8693cc567dea5ad3ab12874ce",
+      "src/tagcast/static/mini-player/view.js": "75159cfc864056c37feb85de35f7f39c82bc43be2019f34704245b9777af8b6f",
+      "src/tagcast/static/mini-player/mini.css": "6090a8627d99a6e777dd1b118a2c93f9f456e769ae0833e018d3c1dc6fd8be2d",
+      "src/tagcast/static/vendor/butterchurn/LICENSE": "e5c204814d7119c939d9f111691e0c2008607d09c2f4679691e6dc5a10f24b98",
+      "src/tagcast/static/vendor/butterchurn/butterchurn.js": "204ef8d6ab3bca12ee74736d659c7baf26614e09481899def69c5ed1ab580790",
+      "src/tagcast/static/vendor/butterchurn/README.md": "27c25d887cee48b218618f1f1f79fa876ae8608651185932f751ab171538be7f"
+    }
+  },
+  "limits": [
+    "Only macOS arm64 executed locally; remote platform CI is separate.",
+    "Local test app uses ad-hoc integrity signing; no notarization, public binary, tag or release.",
+    "Historical Python 3.14 upload test failure retained; the same test passes in complete 3.11/3.13 suites."
+  ],
+  "evidence_location": "build/repository-integration-2026-11-10 in the primary checkout; original logs and recovery archives retained"
+}

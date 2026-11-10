@@ -36,6 +36,19 @@ single-use lyrics reviews and writes sequentially, checking exact album
 membership, matching identities and the full native userdata before each write.
 Unknown custom userdata is preserved. Every accepted write is read back.
 
+The fresh full-userdata snapshot from **Review linked lyrics…** can be reused
+when preparing that same track's single-use review, for up to 15 minutes. It is
+bound to the account, session and exact track identity, stays in bounded memory,
+and must match the review token. Expired or unavailable snapshots are read again.
+This avoids one redundant request per track; it never replaces the fresh
+pre-write conflict check or the read-back after each write.
+
+Import can still take time for a large library. If iBroadcast reports a changed
+library revision after saving lyrics, the next track's membership check may need
+a fresh library download. Tagcast does not mark an old library current or defer
+all verification until the end: an unconfirmed write must stop the remaining
+tracks before they are sent.
+
 **Stop after current request** finishes that request and its confirmation, then
 leaves remaining changes unsent. Conflicts, request failures or unconfirmed
 results stop subsequent writes. Results distinguish saved/confirmed, kept,
