@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/tagcast-icon.svg" width="96" alt=""></p>
+<p align="center"><img src="media/social/tagcast-social-preview.png" width="800" height="400" alt="Tagcast — your iBroadcast library. Your way."></p>
 
 <h1 align="center">Tagcast</h1>
 <p align="center"><b>Metadata editor &amp; player for iBroadcast.</b></p>
