@@ -72,7 +72,7 @@ jobs:
               raise SystemExit("CI scope is missing or invalid.")
           print("Full verification required." if full == "true" else
                 "Documentation checks passed; application tests/builds are not needed.")
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.scope.outputs.full == 'true'
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
@@ -80,13 +80,13 @@ jobs:
       - name: Keep older releases on their one-file recipe
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         run: git checkout 805bbeba3cec10a8b41fbb8672d0a8f34d23a87c -- tools/build_binary.py tools/pyinstaller_entry.py
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         if: needs.scope.outputs.full == 'true'
         with:
           python-version: "3.13"
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         if: needs.scope.outputs.full == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: needs.scope.outputs.full == 'true' && (hashFiles('electron/package.json') != '')
         with:
           node-version: "24"
@@ -129,7 +129,7 @@ jobs:
         if: needs.scope.outputs.full == 'true' && (runner.os != 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == '')
         shell: bash
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') != '')
         with:
           name: tagcast-${{ matrix.target }}
@@ -138,13 +138,13 @@ jobs:
       - name: Build legacy console download
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         run: uv run --frozen --python python --with pyinstaller==6.22.3 python tools/build_binary.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         with:
           name: tagcast-${{ matrix.target }}
           path: dist/*.zip
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && needs.scope.outputs.full == 'true'
         with:
           name: smoke-reports-${{ matrix.target }}
@@ -171,17 +171,17 @@ jobs:
               raise SystemExit('CI scope is missing or invalid.')
           print('Install and launch the Debian package.' if os.environ['CI_FULL'] == 'true'
                 else 'Documentation checks passed; no Debian installation needed.')
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.scope.outputs.full == 'true'
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         if: needs.scope.outputs.full == 'true'
         with:
           python-version: "3.13"
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         if: needs.scope.outputs.full == 'true'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         if: needs.scope.outputs.full == 'true'
         with:
           name: tagcast-linux-x64
@@ -216,7 +216,7 @@ jobs:
               report.write_text(json.dumps(data, indent=2) + '\n')
           finally:
               marker.unlink(missing_ok=True)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && needs.scope.outputs.full == 'true'
         with:
           name: deb-reports-${{ matrix.os }}
@@ -234,21 +234,21 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag || github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: smoke-reports-*
           path: reports
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: deb-reports-*
           path: reports
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: tagcast-*
           path: downloads
