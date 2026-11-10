@@ -7,6 +7,7 @@ import logging.handlers
 import os
 import sys
 import webbrowser
+from contextlib import nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,9 +19,10 @@ from . import __version__
 from .album_info import AlbumInformationRetryError
 from .artist_bios import BiographyRetryError
 from .artwork import ArtworkError
-from .client import ApiError, NotConnected, Studio
+from .client import ApiError, NotConnected, Studio, UncertainWrite
 from .errors import error_payload
 from .library import ConflictError, LibraryError
+from .server_lifecycle import RequestDrain, ServerClosing, drain_server
 from .sources import SourceError
 
 STATIC = Path(__file__).parent / "static"
@@ -78,6 +80,8 @@ class Handler(SimpleHTTPRequestHandler):
     def _run(self, action):
         try:
             self._json(200, action())
+        except ServerClosing as error:
+            self._json(503, error_payload(error))
         except ConflictError as error:
             self._json(409, error_payload(error, conflict=True))
         except NotConnected as error:
@@ -120,21 +124,34 @@ class Handler(SimpleHTTPRequestHandler):
         # Browsers say where a request comes from; other websites may not read or embed /api/.
         return self.headers.get("Sec-Fetch-Site", "same-origin") in ("same-origin", "none")
 
+    def _work(self, phase):
+        work = getattr(self.server, "request_work", None)
+        return work(self.connection, phase) if work else nullcontext()
+
     def do_GET(self):
         if not self._host_ok():
             self.send_error(403, "Open Tagcast via http://127.0.0.1")
             return
         url = urlparse(self.path)
-        query = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path.startswith("/api/") and not self._same_site():
             self._json(403, {"error": "Forbidden."})
             return
+        phase = "write" if url.path == "/callback" else "poll" if url.path.startswith("/api/jobs/") else "identity" if url.path == "/api/app" else "read"
+        try:
+            with self._work(phase):
+                self._get(url)
+        except ServerClosing as error:
+            self._json(503, error_payload(error))
+
+    def _get(self, url):
+        query = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path.startswith("/api/stream/"):
             self._stream(url.path.rsplit("/", 1)[1], query.get("quality"))
             return
         if url.path == "/api/app":
             self._json(200, {"application": "Tagcast", "version": __version__,
-                             "desktop_protocol": 1})
+                             "desktop_protocol": 1,
+                             **({"closing": True} if getattr(self.server, "closing", None) and self.server.closing.is_set() else {})})
         elif url.path == "/api/status":
             self._run(self.studio.status)
         elif url.path == "/api/library":
@@ -326,7 +343,24 @@ class Handler(SimpleHTTPRequestHandler):
         if path not in routes:
             self._json(404, {"error": "Unknown endpoint."})
             return
-        self._run(lambda: routes[path](self._body()))
+        def action():
+            body = self._body()  # An incomplete upload/body is not an accepted mutation.
+            stopped = getattr(self.server, "services_stopped", None)
+            if stopped is not None and not stopped.is_set() and path.startswith((
+                    "/api/downloads/", "/api/uploads/", "/api/metadata-export", "/api/queue-sync")):
+                raise ApiError("Local transfers are still stopping. Wait before preparing them again.", code="app.transfers_stopping")
+            with self._work("write"):
+                try:
+                    result = routes[path](body)
+                except UncertainWrite:
+                    if getattr(self.server, "closing", None) and self.server.closing.is_set():
+                        self.server.shutdown_uncertain = True
+                    raise
+                note = getattr(self.server, "note_outcome", None)
+                if note:
+                    note(result)
+                return result
+        self._run(action)
 
     def _metadata_download(self, job_id, session):
         """Stream the prepared private file without buffering it in a JSON response."""
@@ -365,7 +399,8 @@ class Handler(SimpleHTTPRequestHandler):
         except (ApiError, LibraryError) as error:
             self._json(404 if isinstance(error, LibraryError) else 502, {"error": str(error)})
             return
-        with upstream:
+        reader = getattr(self.server, "stream_reader", None)
+        with upstream, reader(self.connection, upstream) if reader else nullcontext():
             self.send_response(upstream.status_code)
             self.send_header("Content-Type", upstream.headers.get("Content-Type") or mime or "audio/mpeg")
             for name in ("Content-Length", "Content-Range", "Accept-Ranges"):
@@ -376,8 +411,8 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 for chunk in upstream.iter_content(65536):
                     self.wfile.write(chunk)
-            except (BrokenPipeError, ConnectionResetError):
-                pass  # the player skipped or stopped
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass  # the player skipped, stopped, or the local server is closing
 
     def _callback(self, query):
         error = (query.get("error_description") or query.get("error") or [""])[0]
@@ -418,7 +453,7 @@ def _log_to_file(home):
     logging.getLogger().addHandler(handler)
 
 
-class Server(ThreadingHTTPServer):
+class Server(RequestDrain, ThreadingHTTPServer):
     # Chromium opens several script connections together. Keep a bounded backlog
     # through cold-start scheduling pauses instead of resetting queued assets.
     request_queue_size = 64
@@ -437,6 +472,8 @@ class Server(ThreadingHTTPServer):
         handler = self.RequestHandlerClass
         studio = getattr(getattr(handler, "func", handler), "studio", None)
         if studio:
+            if not self.shutdown_drained:
+                drain_server(self)
             studio.queue_sync.disconnect()
             studio.metadata_export.close()
             studio.audio_downloads.close()

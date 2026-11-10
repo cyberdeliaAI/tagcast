@@ -1377,7 +1377,7 @@ class Transfer:
             }
 
 
-def choose_folder(start):
+def choose_folder(start, cancel=None):
     """Show the system's folder picker. Returns a path, "" when cancelled, None when unavailable."""
     prompt = "Choose where Tagcast saves your music"
     if sys.platform == "darwin":
@@ -1396,8 +1396,22 @@ def choose_folder(start):
     else:
         return None
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=900,
-                                env={**os.environ, "IBFETCH_START": start})
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                   env={**os.environ, "IBFETCH_START": start})
+        deadline = time.monotonic() + 900
+        while True:
+            if (cancel is not None and cancel.is_set()) or time.monotonic() >= deadline:
+                process.terminate()
+                try:
+                    process.communicate(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()  # Only the local chooser, never Tagcast or a mutation worker.
+                    process.communicate()
+                return ""
+            try:
+                stdout, _ = process.communicate(timeout=.1)
+                return stdout.strip().rstrip("/\\") if process.returncode == 0 else ""
+            except subprocess.TimeoutExpired:
+                continue
     except (OSError, subprocess.SubprocessError):
         return None
-    return result.stdout.strip().rstrip("/\\") if result.returncode == 0 else ""

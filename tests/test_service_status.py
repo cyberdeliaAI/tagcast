@@ -8,7 +8,7 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from urllib.error import URLError
 from urllib.request import HTTPSHandler
 
@@ -168,11 +168,13 @@ class StatusTests(unittest.TestCase):
         from functools import partial
         from http.client import HTTPConnection
         from tempfile import TemporaryDirectory
-        from types import SimpleNamespace
 
         from tagcast.app import Handler, Server
-        handler = type("StatusHandler", (Handler,), {"studio": SimpleNamespace(service_status=self.status, queue_sync=Mock(), metadata_export=Mock(), music_uploads=Mock(), audio_downloads=Mock()), "port": 0})
+        from tagcast.client import Studio
         with TemporaryDirectory() as directory:
+            studio = Studio(directory)
+            studio.service_status = self.status
+            handler = type("StatusHandler", (Handler,), {"studio": studio, "port": 0})
             server = Server(("127.0.0.1", 0), partial(handler, directory=directory))
             handler.port = server.server_port
             thread = threading.Thread(target=server.serve_forever, daemon=True)
