@@ -34,7 +34,7 @@ transitions safely use ordinary playback. See the
 
 [Website](https://tagcast.app/) · [Install](#install) · [Wiki and user guide](https://github.com/cyberdeliaAI/tagcast/wiki) · [Community](#community) · [Screenshots](#screenshots) · [Updates](#updating) · [Media kit](media/README.md)
 
-**Offline guide:** [Download the illustrated Tagcast 1.4.0 manual (PDF)](https://raw.githubusercontent.com/wiki/cyberdeliaAI/tagcast/manuals/Tagcast-1.4.0-User-Manual.pdf) — English, 38 pages, with screenshots and clickable contents.
+**Offline guide:** [Download the illustrated Tagcast 1.7.0 manual (PDF)](https://raw.githubusercontent.com/wiki/cyberdeliaAI/tagcast/manuals/Tagcast-1.7.0-User-Manual.pdf) — English, 52 pages, with screenshots and clickable contents.
 
 ![Pet Shop Boys in Now playing with album artwork, stereo meters, synchronised LRCLIB lyrics, the queue and compact player.](docs/screenshots/2026-11-11-interface/now-playing-lyrics-queue.png)
 
@@ -233,7 +233,7 @@ for all eight visualizations and other workflows. The
 [capture inventory](docs/screenshots/2026-11-11-interface/README.md) records the unchanged originals.
 [Earlier interface captures](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshot-history)
 remain archived. The [refresh checklist](docs/screenshot-checklist.md) tracks the
-remaining capture work for the Wiki and a future PDF edition.
+optional future replacements. The illustrated 1.7.0 PDF uses current captures and labelled older examples.
 
 ## Updating
 
