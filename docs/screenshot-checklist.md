@@ -1,5 +1,103 @@
 # Screenshot refresh checklist
 
+## Tagcast 1.7.0 — current capture plan, 11 November 2026
+
+This is the current plan for refreshing the website, repository README, Wiki and
+a future illustrated PDF. The dated sections below are historical inventories;
+their statements that a capture round is complete apply to that round only.
+The published PDF is still the explicitly labelled **1.4.0 edition**. A 1.7.0
+PDF has not been created. Do not relabel old screenshots or the old PDF as 1.7.0.
+
+### Already supplied — do not repeat
+
+**19 original captures are available**, all from 11 November:
+
+| Available set | Coverage | Source |
+| --- | --- | --- |
+| Ten interface captures | Albums with Continuous scroll and Random order; Full House album details and attributed background text; Wes Montgomery artist page; Album artists; artist image comparison; album editor; metadata Before/After review; Now playing with lyrics, meters and queue; fullscreen CD with lyrics; fullscreen cover with lyrics | [Originals and inventory](screenshots/2026-11-11-interface/README.md) |
+| Nine visualization captures | Aurora, Orbit, Ribbons, LED spectrum, Oscilloscope, Neon ring, Starfield and Waterfall, plus Aurora with lyrics | [Originals and inventory](screenshots/2026-11-11-visualizations/README.md) |
+
+The new review image shows proposed changes, not a completed save. The artist
+image chooser shows a selected suggestion, not confirmation that it was saved.
+The artist biography is collapsed. Still images do not prove rotation, recovery,
+successful streaming or safe shutdown; retain automated validation evidence for those.
+
+### Next captures — core illustrated guide
+
+The list follows the current Wiki's workflows. Counts below are a recommended
+small set, not a demand to photograph every button or every page. Reuse a capture
+across channels when it explains the same interface. The website needs only a
+representative selection; the Wiki and PDF can explain the remaining steps in text.
+
+| ID | Capture | What must be visible | Suggested images |
+| --- | --- | --- | ---: |
+| C01 | Connect iBroadcast | Current code sign-in/connection dialog; use a mock or an expired example, never a usable code, token or account secret | 1 |
+| C02 | Edit tracks and credits | Edit tracks tab, scrolling track list, selected track fields and a composer/additional credit; retain review context | 1 |
+| C03 | Reviewed save result | Change history with sent/confirmed/not-sent distinctions and a completed read-back; synthetic/disposable data only | 1 |
+| C04 | Album artwork | Now/New album-cover comparison with the separate explicit Save control and source credit | 1 |
+| C05 | Artist biography | About this artist expanded with attribution; the supplied Wes Montgomery image already covers the rest of the page | 1 |
+| C06 | Favourites | Current Favourites page, tabs and at least one meaningful album/track/artist example; one tab is enough when the other layouts add nothing | 1 |
+| C07 | Tags | Assignment chooser and its final Add/Remove review; no need to repeat the already supplied album tag chips | 2 |
+| C08 | Playlists | Playlist detail with search/positions; an unsaved reorder; the exact reviewed order/removal decision, retaining duplicate positions | 3 |
+| C09 | CSV playlist import | Column mapping; unresolved/manual matching; final creation review; explicitly paused/resumed import with a retained choice | 4 |
+| C10 | Public playlist URL import | URL/source chooser and fetched snapshot/mapping; use the supported mock/example, do not claim live ListenBrainz success | 2 |
+| C11 | Track lyrics and sidecar import | Known-lyrics label/viewer or individual editor/review; album LRC/TXT matching; per-track import review with replacement choices | 3 |
+| C12 | Cleanup and year comparison | Cleanup entry/results; explicit album/track year choice and review; a paused/completed report with checkpoint/results | 3 |
+| C13 | Trash and duplicate copies | Album track comparison/selection; final trash review; cross-library duplicate analysis/review with exclusions and keeper context | 3 |
+| C14 | Merge and split albums | One complete merge review; split selection and final membership review. Earlier split captures lack the final review image | 3 |
+| C15 | Album downloads | Reviewed source/quality, destination and filenames; running/stopped queue with its explicit outcome | 2 |
+| C16 | Music uploads | Permission/options and reviewed local selection; queue/progress with its explicit outcome. Never send real audio just to take screenshots | 2 |
+| C17 | 1001 Albums | Found/missing results with one explicit manual match example; background excerpts must retain Wikipedia/license attribution | 2 |
+| C18 | Settings, appearance and language | Interface/Appearance with palette and theme controls; Playback with the experimental Gapless option; Sources/Discovery with consent; Data/export and About/update information | 4 |
+| C19 | Overview and history | Metadata health/service status with safe account details; do not expose account identifiers. C03 supplies save history | 1 |
+| C20 | Small-player controls | Desktop Mini Player; Sound/output control or Devices/queue synchronisation with the connection/controller state clear | 2 |
+| C21 | Narrow layout and light appearance | A real narrow album/track/editor view; a light-theme browse view with the Theme or Language menu. Do not stretch a desktop screenshot to imitate mobile | 2 |
+
+This is **44 suggested follow-up images** for a broadly illustrated, current
+guide. It is not a release requirement. Start with **C01–C04, C07–C09, C11 and
+C18–C21**; the supplied 19 images already cover the main website presentation.
+For an exhaustive illustrated walkthrough, add steps only where text plus the
+existing images leaves a distinct decision unclear.
+
+### Optional detail for a fully current reference
+
+- CSV file input, playlist text-only edits/cover/folders, single-position removal
+  and paused-copy removal can have separate images if those dialogs need illustration.
+- Native lyrics refresh/conflict, a separate lyrics save confirmation, Various
+  Artists review, semicolon cleanup and duplicate-cleanup Stop/resume can be
+  captured using a controlled fixture. Do not turn an uncertain result into success.
+- Explicit metadata export preparation/download, Upload folders/Date uploaded,
+  all Favourites tabs, queue controller roles and keyboard/contextual Help can
+  remain text unless their current appearance is needed in the PDF.
+- A controlled playback recovery message, failed/pending read-back and the
+  finishing-operations shutdown window are useful troubleshooting illustrations.
+  Simulate faults; never interrupt a real accepted mutation for a screenshot.
+- One native Windows and Linux example can illustrate platform differences if
+  available. Do not present macOS captures as Windows/Linux validation. Physical
+  Wayland testing and hardware/audio compatibility remain separate validation work.
+
+### Capture and handoff rules
+
+Use the published 1.7.0 app, English interface labels and a consistent readable
+desktop size; the supplied 2836 × 1828 originals are suitable. Keep separate real
+narrow-window captures at approximately 420–768 CSS pixels. One light and one
+dark example suffice; do not repeat every workflow in all palettes/languages.
+Keep complete dialogs, final decision buttons and third-party attribution in
+frame. Save original PNGs, with capture time, version/platform, purpose and a
+short note identifying a draft, review, running operation or confirmed result.
+
+Use synthetic or explicitly approved disposable data for mutation workflows.
+Preparing/reviewing is sufficient when no safe disposable service is available;
+label the image accordingly. Never execute real iBroadcast writes merely for
+documentation. Do not expose tokens, active sign-in codes, email addresses,
+private paths or account identifiers. Avoid provider text without attribution.
+Capture a successful completion only when it actually happened.
+
+For the new PDF, select one clear image per decision and reuse the originals
+already available. Keep version/date/platform captions and a snapshot of its
+source Wiki revision, then validate the rendered pages, links and contents.
+Retain the 1.4.0 PDF as a historical edition when a new manual is published.
+
 ## Tagcast 0.80.0 — 23 October 2026
 
 Five current screenshots cover the album editor, track editor, album lyrics import,
