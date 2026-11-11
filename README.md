@@ -225,6 +225,9 @@ Online lyrics are temporary display; a review is not a confirmed save.
 
 </details>
 
+The [32 additional guide captures](docs/screenshots/2026-11-11-guide/README.md)
+illustrate track editing, imports, settings, confirmed history and the Mini Player.
+
 See the [full Wiki gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots)
 for all eight visualizations and other workflows. The
 [capture inventory](docs/screenshots/2026-11-11-interface/README.md) records the unchanged originals.
