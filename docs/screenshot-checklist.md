@@ -76,6 +76,25 @@ existing images leaves a distinct decision unclear.
   available. Do not present macOS captures as Windows/Linux validation. Physical
   Wayland testing and hardware/audio compatibility remain separate validation work.
 
+### Other publication assets
+
+- The media kit now reuses six of the current interface originals. Its playlist,
+  tag and 1001 Albums examples still need the corresponding C07/C08/C17 captures;
+  keep their historical labels until replacements arrive.
+- The website's separate downloadable-theme gallery contains five Light/Dark
+  pairs (Nord, Solarized, Gruvbox, Catppuccin and Rosé Pine). For an entirely
+  current screenshot collection, replace these **ten previews** with the same
+  safe demo library in 1.7.0 after importing each existing theme. These are colour
+  demonstrations, so no real account or writes are needed. The ten supplied
+  general images are not substitutes for these named theme colours.
+- The existing November walkthrough remains a dated recording. Updating that
+  video to show 1.7.0 browsing and visualizations is a separate media task; neither
+  the screenshots nor the PDF establish that its recording has been refreshed.
+- The **44** count above covers the core follow-up guide set. Add the ten theme
+  previews for a total of **54 recommended still images** when refreshing every
+  website theme example as well. Optional reference/error/platform states remain
+  listed separately; reused media-kit images need no duplicate capture.
+
 ### Capture and handoff rules
 
 Use the published 1.7.0 app, English interface labels and a consistent readable
