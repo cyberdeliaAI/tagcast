@@ -36,9 +36,9 @@ transitions safely use ordinary playback. See the
 
 **Offline guide:** [Download the illustrated Tagcast 1.4.0 manual (PDF)](https://raw.githubusercontent.com/wiki/cyberdeliaAI/tagcast/manuals/Tagcast-1.4.0-User-Manual.pdf) — English, 38 pages, with screenshots and clickable contents.
 
-![Tagcast 1.5.5 Now playing with Federale's All the Colours of the Dark, artwork, retro stereo meters, synchronised LRCLIB lyrics and the play queue](docs/screenshots/2026-11-06-1.5.5/now-playing-federale.jpg)
+![Pet Shop Boys in Now playing with album artwork, stereo meters, synchronised LRCLIB lyrics, the queue and compact player.](docs/screenshots/2026-11-11-interface/now-playing-lyrics-queue.png)
 
-*Tagcast 1.5.5 — the Now playing workspace, captured on 6 November 2026. [See fullscreen and album views below](#screenshots).*
+*Tagcast 1.7.0 — Now playing, captured on 11 November 2026. [See browsing, editing and fullscreen views below](#screenshots).*
 
 ## Watch the walkthrough
 
@@ -179,64 +179,58 @@ organised into focused pages:
 
 ## Screenshots
 
-The latest captures show **Tagcast 1.5.5** on macOS. The Now playing workspace
-appears above; expand the gallery below for fullscreen CD and cover views with
-lyrics, and the album page. Online lyrics are displayed temporarily and are not
-saved automatically to iBroadcast.
+The latest captures show **Tagcast 1.7.0** on macOS, captured on 11 November 2026.
+Now playing appears above. The gallery below covers browsing, album and artist
+details, image comparison, metadata editing/review and fullscreen CD/cover views.
+Online lyrics are temporary display; a review is not a confirmed save.
 
 <details>
-<summary>Tagcast 1.5.5 — fullscreen lyrics, CD view and album details</summary>
+<summary>Tagcast 1.7.0 — browsing, editing, review and fullscreen lyrics</summary>
 
-![Tagcast 1.5.5 fullscreen CD view showing Federale's album cover, printed disc and synchronised LRCLIB lyrics](docs/screenshots/2026-11-06-1.5.5/fullscreen-cd-lyrics-federale.jpg)
+![Tagcast 1.7.0 album grid with Continuous scroll, Random order and album selection controls.](docs/screenshots/2026-11-11-interface/albums-continuous-random.png)
 
-*CD view keeps the cover upright while the disc rotates during playback.*
+*Browse your albums.*
 
-![Tagcast 1.5.5 fullscreen cover view with synchronised LRCLIB lyrics and a cover-coloured background](docs/screenshots/2026-11-06-1.5.5/fullscreen-cover-lyrics-federale.jpg)
+![Full House by Wes Montgomery with genres, a native tag, ratings, album actions and attributed TheAudioDB background information.](docs/screenshots/2026-11-11-interface/album-full-house.png)
 
-*Cover view with lyrics following the current track against a cover-coloured background.*
+*Album details.*
 
-![Tagcast 1.5.5 album page for All the Colours of the Dark with album actions, track listing and compact playback controls](docs/screenshots/2026-11-06-1.5.5/album-federale.jpg)
+![Wes Montgomery's artist page with photograph, ratings and a continuous album shelf.](docs/screenshots/2026-11-11-interface/artist-wes-montgomery.png)
 
-*Album details and the compact player in the Apple Music Classic Dark palette.*
+*An artist's albums.*
+
+![Album artists in Tagcast 1.7.0 with artist photographs, album counts, Random ordering and Continuous scroll.](docs/screenshots/2026-11-11-interface/album-artists.png)
+
+*Explore album artists.*
+
+![The O'Jays artist image chooser comparing no current image with a source-labelled suggestion; selection alone does not save.](docs/screenshots/2026-11-11-interface/artist-image-review.png)
+
+*Compare artist images.*
+
+![The Back On Top album editor with album fields, additional artist credits and online metadata suggestions.](docs/screenshots/2026-11-11-interface/editor-album.png)
+
+*Edit album metadata.*
+
+![Before/After review of album and track years and genres, with an explicit Save button; this is not a confirmed save.](docs/screenshots/2026-11-11-interface/metadata-review.png)
+
+*Review before saving.*
+
+![Expanded CD view with Pet Shop Boys artwork, track information, synchronised LRCLIB lyrics and the shared playback controls.](docs/screenshots/2026-11-11-interface/fullscreen-cd-lyrics.png)
+
+*CD view and lyrics.*
+
+![Expanded cover view with synchronised LRCLIB lyrics and an album-coloured background; provider attribution remains visible.](docs/screenshots/2026-11-11-interface/fullscreen-cover-lyrics.png)
+
+*Cover view and lyrics.*
 
 </details>
 
-The [full Wiki gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots)
-also covers browsing, tags, editing, cleanup, Settings and mobile views.
-[This batch's capture notes](docs/screenshots/2026-11-06-1.5.5/README.md) and the
-[earlier capture inventory](docs/screenshot-checklist.md) record the originals.
-
-<details>
-<summary>Earlier interface examples — Tagcast 1.3.0, editor, lyrics import, playlists and cleanup</summary>
-
-![Tagcast 1.3.0 showing Billy Joel's Storm Front album in the Apple Music Classic Dark palette, with album actions, tracks and the compact player](docs/screenshots/2026-11-02-readme/album-storm-front.png)
-
-*Tagcast 1.3.0 — album details and playback in the Apple Music Classic Dark palette, captured on 2 November 2026.*
-
-![Tagcast 1.3.0 showing Big Iron by Marty Robbins with synchronised LRCLIB lyrics, a highlighted active line and a cover-coloured background](docs/screenshots/2026-11-02-readme/now-playing-big-iron.png)
-
-*Tagcast 1.3.0 — lyrics follow the current track in Now playing, against an optional cover-coloured background. Online lyrics are displayed temporarily.*
-
-*The following editor and lyrics-import examples show 0.80.0 with a separate sample library; other retained captures show earlier interface versions.*
-
-![Edit album tab with metadata fields and online source suggestions](docs/screenshots/2026-10-23/editor-album.jpg)
-
-![Edit tracks tab with an independently scrolling track list and selected track details](docs/screenshots/2026-10-23/editor-tracks.jpg)
-
-![Album lyrics import with album tracks and matched LRC files](docs/screenshots/2026-10-23/lyrics-import.jpg)
-
-![Playlist cards with track counts and total duration](docs/screenshots/2026-10-22/playlists.png)
-
-![Playlist order editor with search and separate Save order and Cancel controls](docs/screenshots/2026-10-22/playlist-order.png)
-
-**Album artist cleanup:** reviewed semicolon splitting into a primary
-artist and separate additional artists. This capture shows an approved run in progress.
-
-![Album artist cleanup in progress with checked disc counts and primary/additional artist names](docs/screenshots/cleanup-album-artists-running.png)
-
-![Fullscreen Now playing with cover and playback controls](docs/screenshots/fullscreen.png)
-
-</details>
+See the [full Wiki gallery](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshots)
+for all eight visualizations and other workflows. The
+[capture inventory](docs/screenshots/2026-11-11-interface/README.md) records the unchanged originals.
+[Earlier interface captures](https://github.com/cyberdeliaAI/tagcast/wiki/Screenshot-history)
+remain archived. The [refresh checklist](docs/screenshot-checklist.md) tracks the
+remaining capture work for the Wiki and a future PDF edition.
 
 ## Updating
 
