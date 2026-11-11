@@ -10,17 +10,19 @@ PDF has not been created. Do not relabel old screenshots or the old PDF as 1.7.0
 
 ### Already supplied — do not repeat
 
-**19 original captures are available**, all from 11 November:
+**51 original captures are available**, all from 11 November. The latest round adds 32 guide captures:
 
 | Available set | Coverage | Source |
 | --- | --- | --- |
 | Ten interface captures | Albums with Continuous scroll and Random order; Full House album details and attributed background text; Wes Montgomery artist page; Album artists; artist image comparison; album editor; metadata Before/After review; Now playing with lyrics, meters and queue; fullscreen CD with lyrics; fullscreen cover with lyrics | [Originals and inventory](screenshots/2026-11-11-interface/README.md) |
 | Nine visualization captures | Aurora, Orbit, Ribbons, LED spectrum, Oscilloscope, Neon ring, Starfield and Waterfall, plus Aurora with lyrics | [Originals and inventory](screenshots/2026-11-11-visualizations/README.md) |
+| Thirty-two guide captures | Track editor, Saved history, artwork comparison, artist biography, Favourites, tags, playlist and import stages, lyrics import, download/upload reviews, settings, Overview, Mini Player and a narrower album window | [Originals and exact-state inventory](screenshots/2026-11-11-guide/README.md) |
 
-The new review image shows proposed changes, not a completed save. The artist
-image chooser shows a selected suggestion, not confirmation that it was saved.
-The artist biography is collapsed. Still images do not prove rotation, recovery,
-successful streaming or safe shutdown; retain automated validation evidence for those.
+Reviews and ready-to-transfer states remain separate from confirmed results.
+The new history image shows Saved labels; upload/download reviews explicitly say
+nothing has been transferred. The new iBroadcast login is the external service,
+not Tagcast's own connection dialog. The narrower album capture has 1742 × 1612
+physical pixels; it is not evidence of a 420px mobile viewport.
 
 ### Next captures — core illustrated guide
 
@@ -29,35 +31,35 @@ small set, not a demand to photograph every button or every page. Reuse a captur
 across channels when it explains the same interface. The website needs only a
 representative selection; the Wiki and PDF can explain the remaining steps in text.
 
-| ID | Capture | What must be visible | Suggested images |
-| --- | --- | --- | ---: |
-| C01 | Connect iBroadcast | Current code sign-in/connection dialog; use a mock or an expired example, never a usable code, token or account secret | 1 |
-| C02 | Edit tracks and credits | Edit tracks tab, scrolling track list, selected track fields and a composer/additional credit; retain review context | 1 |
-| C03 | Reviewed save result | Change history with sent/confirmed/not-sent distinctions and a completed read-back; synthetic/disposable data only | 1 |
-| C04 | Album artwork | Now/New album-cover comparison with the separate explicit Save control and source credit | 1 |
-| C05 | Artist biography | About this artist expanded with attribution; the supplied Wes Montgomery image already covers the rest of the page | 1 |
-| C06 | Favourites | Current Favourites page, tabs and at least one meaningful album/track/artist example; one tab is enough when the other layouts add nothing | 1 |
-| C07 | Tags | Assignment chooser and its final Add/Remove review; no need to repeat the already supplied album tag chips | 2 |
-| C08 | Playlists | Playlist detail with search/positions; an unsaved reorder; the exact reviewed order/removal decision, retaining duplicate positions | 3 |
-| C09 | CSV playlist import | Column mapping; unresolved/manual matching; final creation review; explicitly paused/resumed import with a retained choice | 4 |
-| C10 | Public playlist URL import | URL/source chooser and fetched snapshot/mapping; use the supported mock/example, do not claim live ListenBrainz success | 2 |
-| C11 | Track lyrics and sidecar import | Known-lyrics label/viewer or individual editor/review; album LRC/TXT matching; per-track import review with replacement choices | 3 |
-| C12 | Cleanup and year comparison | Cleanup entry/results; explicit album/track year choice and review; a paused/completed report with checkpoint/results | 3 |
-| C13 | Trash and duplicate copies | Album track comparison/selection; final trash review; cross-library duplicate analysis/review with exclusions and keeper context | 3 |
-| C14 | Merge and split albums | One complete merge review; split selection and final membership review. Earlier split captures lack the final review image | 3 |
-| C15 | Album downloads | Reviewed source/quality, destination and filenames; running/stopped queue with its explicit outcome | 2 |
-| C16 | Music uploads | Permission/options and reviewed local selection; queue/progress with its explicit outcome. Never send real audio just to take screenshots | 2 |
-| C17 | 1001 Albums | Found/missing results with one explicit manual match example; background excerpts must retain Wikipedia/license attribution | 2 |
-| C18 | Settings, appearance and language | Interface/Appearance with palette and theme controls; Playback with the experimental Gapless option; Sources/Discovery with consent; Data/export and About/update information | 4 |
-| C19 | Overview and history | Metadata health/service status with safe account details; do not expose account identifiers. C03 supplies save history | 1 |
-| C20 | Small-player controls | Desktop Mini Player; Sound/output control or Devices/queue synchronisation with the connection/controller state clear | 2 |
-| C21 | Narrow layout and light appearance | A real narrow album/track/editor view; a light-theme browse view with the Theme or Language menu. Do not stretch a desktop screenshot to imitate mobile | 2 |
+| ID | Subject | Current coverage | Remaining useful view | Suggested images |
+| --- | --- | --- | --- | ---: |
+| C01 | Tagcast connection dialog | Partial: external iBroadcast sign-in supplied | Tagcast connection/code fallback itself | 1 |
+| C02 | Track editing and credits | Track fields supplied | An expanded composer/additional-credit example | 1 |
+| C03 | Confirmed save history | Covered: Saved labels and individual changes | No repeat needed | 0 |
+| C04 | Album artwork | Now/New comparison supplied | A view including the separate final Save control | 1 |
+| C05 | Artist biography | Covered: expanded attributed text | No repeat needed | 0 |
+| C06 | Favourites | Covered: Light track list and all tab names | Other tabs only if their layout adds useful detail | 0 |
+| C07 | Tags | Catalogue and tag shelf supplied | Assignment chooser and Add/Remove review | 2 |
+| C08 | Playlists | Details, unchanged order and empty creation draft supplied | An actual unsaved move and its order/removal review | 2 |
+| C09 | CSV import | File input, mapping, unresolved records and candidates supplied | Final creation review and paused/resumed retained choice | 2 |
+| C10 | Public URL import | URL input supplied | A fetched source snapshot/mapping; do not claim ListenBrainz success | 1 |
+| C11 | Track lyrics and import | LRC/TXT matching and per-track Ready review supplied | Current individual lyrics editor/review or known-text viewer | 1 |
+| C12 | Cleanup and year comparison | Normal metadata year review supplied | Cleanup results, explicit year choice and checkpoint/report | 3 |
+| C13 | Trash and duplicates | More-menu entry supplied | Selection/comparison, final trash review and cross-library duplicate review | 3 |
+| C14 | Merge and split | Earlier labelled examples retained | One merge review, split selection and final membership review | 3 |
+| C15 | Downloads | Ready review supplied; no transfer shown | Running/stopped queue with its explicit outcome | 1 |
+| C16 | Uploads | Ready review supplied; no transfer shown | Running/stopped queue with its explicit outcome | 1 |
+| C17 | 1001 Albums | Found results and attributed album background supplied | Not found and an explicit manual match | 2 |
+| C18 | Settings | Interface, lower Playback, Discovery and Appearance supplied | Upper Playback/Gapless, Sources, Data/export and About/update | 4 |
+| C19 | Overview | Covered: supplied account redaction retained | No repeat needed | 0 |
+| C20 | Small-player controls | Mini Player supplied | Sound/output or Devices/controller state | 1 |
+| C21 | Narrow and Light | Light pages and a narrower desktop album supplied | One real 420–768 CSS-pixel album/editor view | 1 |
 
-This is **44 suggested follow-up images** for a broadly illustrated, current
-guide. It is not a release requirement. Start with **C01–C04, C07–C09, C11 and
-C18–C21**; the supplied 19 images already cover the main website presentation.
-For an exhaustive illustrated walkthrough, add steps only where text plus the
-existing images leaves a distinct decision unclear.
+The revised recommendation is **30 follow-up guide images**, plus the ten theme
+previews below: **40 recommended stills** in total. This is a capture plan, not a
+release requirement. The previous 54-image proposal is superseded. New images
+can show several stages of one topic or additional views, so the remaining count
+is not calculated by simply subtracting 32 from 54. Do not repeat covered views.
 
 ### Optional detail for a fully current reference
 
@@ -90,8 +92,8 @@ existing images leaves a distinct decision unclear.
 - The existing November walkthrough remains a dated recording. Updating that
   video to show 1.7.0 browsing and visualizations is a separate media task; neither
   the screenshots nor the PDF establish that its recording has been refreshed.
-- The **44** count above covers the core follow-up guide set. Add the ten theme
-  previews for a total of **54 recommended still images** when refreshing every
+- The **30** count above covers the remaining core follow-up guide set. Add the ten theme
+  previews for a total of **40 recommended still images** when refreshing every
   website theme example as well. Optional reference/error/platform states remain
   listed separately; reused media-kit images need no duplicate capture.
 
