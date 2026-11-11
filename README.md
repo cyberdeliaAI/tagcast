@@ -1,6 +1,5 @@
 <p align="center"><img src="media/social/tagcast-social-preview.png" width="800" height="400" alt="Tagcast — your iBroadcast library. Your way."></p>
 
-<h1 align="center">Tagcast</h1>
 <p align="center"><b>Metadata editor &amp; player for iBroadcast.</b></p>
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="src/tagcast/static/ibroadcast-dark-compact-powered.svg"><img src="src/tagcast/static/ibroadcast-light-compact-powered.svg" width="220" alt="Powered by iBroadcast"></picture><br><small>Independent app by Cyberdelia</small></p>
 <p align="center"><a href="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml"><img src="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml/badge.svg" alt="Tests"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2e7d4f" alt="MIT license"></a></p>
