@@ -48,6 +48,15 @@ actions retain their hover/focus behavior. Only known, loaded fields are shown;
 opening Details never starts a provider lookup, a metadata fetch or a write.
 Opening an album itself retains its existing lazy detail/cache reads.
 
+The accordions include loaded artist credits, disc/track numbers, genres, tags and
+native ratings, with mixed disc ratings distinguished from unrated albums. Album
+duration and file-size totals appear only when every loaded track has a known
+value. Last upload means the latest track upload, not an album creation date;
+dates use the interface locale without inventing a timezone. Optional library
+size, play-count and stored ReplayGain values are bounded metadata only. ReplayGain
+is not applied to playback here. No bit depth or sample rate is inferred from a
+format label, and no audio is downloaded to inspect technical properties.
+
 Arrow Left/Right and Home/End switch tabs. Escape closes the side panel and returns
 focus to the opening control. Accordion state survives read-only refreshes. A
 library or session replacement clears captured selections and rendered old details,

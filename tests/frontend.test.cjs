@@ -13247,3 +13247,31 @@ test('closing the listening page returns focus outside collapsed navigation',asy
   p.run('navigationCollapsed=true;syncNavigationToggle();showScreen("now-playing");workspacePanel.focus=null;$("#player-queue").getClientRects=()=>[];$("#workspace-panel-toggle").getClientRects=()=>[];$("#navigation-toggle").getClientRects=()=>[{}];closeNowPlayingView()');
   assert.equal(p.run('document.activeElement === $("#navigation-toggle")'),true);
 });
+
+test('expanded Details shows only loaded metadata, readable upload dates and valid zero values',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run(`globalThis.detailAlbum=state.details.get('1');
+    detailAlbum.rating=4;detailAlbum.disc=2;
+    detailAlbum.tracks.forEach((t,i)=>Object.assign(t,{length:60,size:2048,genres:['Rock; Pop'],tags:[{id:'9',name:'Listen <later>'}],uploaded_at:'2026-11-12T09:00:00'}));
+    Object.assign(detailAlbum.tracks[0],{plays:0,replay_gain:0,performers:[{name:'Guest <artist>'}],credits:[{name:'Writer <name>',type:'lyricist',phrase:'with'}]});
+    openWorkspaceDetails('1',detailAlbum.tracks[0].id);`);
+  const before=p.requests.length,html=p.nodes.get('#workspace-details').innerHTML;
+  assert.match(html,/Last upload/);assert.doesNotMatch(html,/2026-11-12T09:00:00/);
+  assert.match(html,/Rock; Pop/);assert.match(html,/Listen &lt;later&gt;/);
+  assert.match(html,/Guest &lt;artist&gt;/);assert.match(html,/Writer &lt;name&gt;/);
+  assert.match(html,/4 \/ 5/);assert.match(html,/<dt>Plays<\/dt><dd>0<\/dd>/);
+  assert.match(html,/<dt>Stored ReplayGain<\/dt><dd>0 dB<\/dd>/);
+  assert.doesNotMatch(html,/sample.?rate|bit.?depth|44\.1|96 kHz/i);
+  p.run('renderWorkspaceDetails()');assert.equal(p.requests.length,before);
+});
+
+test('Details never advertises incomplete duration or size totals and distinguishes mixed ratings',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run(`const a=state.details.get('1');a.tracks[0].length=60;a.tracks[0].size=2048;
+    a.tracks[1].length=0;delete a.tracks[1].size;
+    workspacePanel.selection=null;setWorkspaceTab('details');setNowPlaying(true);`);
+  const album=p.nodes.get('#workspace-details').innerHTML.split('data-workspace-section="track"')[0];
+  assert.doesNotMatch(album,/<dt>Duration<\/dt>|<dt>File size<\/dt>/);
+  assert.equal(p.run('workspaceRating([{rating:4},{rating:2}])'),'Mixed ratings');
+  assert.equal(p.run('workspaceRating([{rating:0}])'),'Not rated');
+});
