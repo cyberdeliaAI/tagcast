@@ -631,7 +631,6 @@ function renderLibrary(relabel = false) {
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
-  $("#albums-random-order").disabled = state.loading || items.length < 2;
   $("#per-page").value = albumContinuous.enabled ? "continuous" : String(size);
   state.page = Math.min(state.page, maxPage);
   $("#results-count").textContent = state.artist ? TagcastI18n.text("library.results.byArtist", {count: items.length, artist: state.artist})
@@ -1314,14 +1313,6 @@ $("#all-albums").addEventListener("click", () => setArtist(null));
 for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
   if (id === "#sort") albumOrder.ids = [];
   state.page = 0; render();
-});
-// This shortcut also reshuffles an already random shelf, without changing playback or filters.
-$("#albums-random-order").addEventListener("click", () => {
-  if (state.loading || filteredAlbums().length < 2) return;
-  $("#sort").value = "random";
-  albumOrder.ids = [];
-  state.page = 0;
-  render();
 });
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {

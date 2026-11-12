@@ -67,7 +67,7 @@ const HELP_TOPICS = {
     ["help.albums.artistRating.title", "help.albums.artistRating.body", ["#artist-rating"], "help.albums.artistRating.hint"],
     ["help.albums.search.title", "help.albums.search.body", ["#albums-page .toolbar"]],
     ["help.albums.open.title", "help.albums.open.body", ["#albums-page .album-card"]],
-    ["help.albums.select.title", "help.albums.select.body", ["#albums-page .album-select", "#albums-page .selection-bar", "#albums-random"]],
+    ["help.albums.select.title", "help.albums.select.body", ["#albums-page .album-select", "#albums-page .selection-bar"]],
   ]},
   album: {title: "help.album.title", scope: "#album-page", steps: [
     ["help.album.intro.title", "help.album.intro.body", ["#album-page .album-detail-header"]],

@@ -22,16 +22,22 @@ Albums and Album artists have a second row beneath the search controls. It stays
 in the existing sticky toolbar during ordinary document scrolling. Very short
 windows retain the existing normal-scroll fallback.
 
-Albums offers Artist, Title, Year, Added and Rating. Clicking a new choice selects
-its initial direction; clicking it again reverses that direction. Artist and Title
+Albums offers Artist, Title, Year, Added, Rating and Random. For the first five,
+clicking a new choice selects its initial direction; clicking it again reverses
+that direction. Artist and Title
 start A–Z; Year and Added start newest first; Rating starts highest first. The
 pressed state and arrow identify the current ordering. Unknown dates and unrated
 albums keep their established ordering rules. Added means iBroadcast's stored
 upload date, not a new Tagcast import timestamp.
 
-Album artists offers Name, Rating and its existing Random ordering. The Albums
-Random order shortcut stays separate from Play random album. Filters is now a
-compact, single-column menu without duplicate headings or a close button. Close
+Random shuffles the existing complete album shelf; another click reshuffles it.
+The active Random choice has a trailing shuffle icon in the same slot as the
+direction arrow, for both Albums and Album artists.
+Artist scope, search, filters and selection stay intact. It never starts playback
+or replaces the queue. The album browser no longer offers a separate Play random
+album shortcut; each album retains its explicit Play action. Random playback in
+discovery groups is unchanged. Album artists retains its existing Random ordering.
+Filters is a compact, single-column menu without duplicate headings or a close button. Close
 it through its trigger, an outside click or Escape; Escape returns keyboard focus
 to the trigger. All existing nonempty filters, counts and selected zero-result
 filters retain their behavior. Changing order preserves the independent filter,
