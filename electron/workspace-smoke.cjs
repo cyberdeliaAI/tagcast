@@ -60,7 +60,8 @@ async function checkWorkspace(window) {
       assert.ok(await run('document.documentElement.scrollWidth-innerWidth<=1'), `${width}/${appearance}: no horizontal overflow`);
       samples.push({width, appearance, pointer:true, keyboard:true, sameAudio:true});
     }
-    return samples;
+    const restored = await require("./restored-details-smoke.cjs").checkRestoredDetails({window,run,click,frame});
+    return [...samples, {restored}];
   } finally {
     window.setBounds(bounds);
     await run(`setNowPlaying(false);workspacePanel.selection=null;workspacePanel.focus=null;

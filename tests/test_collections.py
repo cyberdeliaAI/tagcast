@@ -175,6 +175,25 @@ class CollectionTests(unittest.TestCase):
         with self.assertRaises(ConflictError):
             self.studio.collections.playback_profile(copy.copy(library))
 
+    def test_queue_restore_retains_details_from_loaded_metadata_only(self):
+        library = self.studio.library
+        profile = self.studio.collections.playback_profile(library)
+        with patch.object(self.studio.client, "fetch_library", side_effect=AssertionError("No download")), \
+                patch.object(self.studio.client, "_jsonrequest", side_effect=AssertionError("No remote read")), \
+                patch.object(library, "album_view", side_effect=AssertionError("No full album expansion")):
+            rows = self.studio.collections.queue_tracks({"tracks": ["900", "999999", "900"],
+                "restore": True, "profile": profile, "session": self.studio.playback_session})["tracks"]
+        self.assertEqual([r["position"] for r in rows], [0, 2])
+        expected = library.track_view(900)
+        for row in rows:
+            self.assertEqual(row["details"]["track"], expected)
+            album = library.albums[library.active_track_album(900)]
+            self.assertEqual(row["details"]["album"]["credits"], library.credits_view(album, library.albums))
+            self.assertNotIn("tracks", row["details"]["album"])
+        rows[0]["details"]["track"]["genres"].append("Browser-only change")
+        self.assertEqual(library.track_view(900), expected)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
     def test_sidebar_playlist_count_includes_nested_and_empty_lists_once_without_extra_reads(self):
         mock_ibroadcast.STATE['playlists'].update({
             880: {'name': 'Empty', 'tracks': []},

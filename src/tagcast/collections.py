@@ -619,6 +619,9 @@ class Collections:
             if restore:
                 rows[-1].update(position=position, year=t["year"], composers=t["composers"])
                 rows[-1]["album"]["year"] = number(a.get("year"))
+                # Only the requested track's public metadata, never all tracks of its album.
+                rows[-1]["details"] = {"track": t, "album": {
+                    "credits": library.credits_view(a, library.albums)}}
         return {"tracks": rows}
 
     def rate_album(self, body):
