@@ -50,6 +50,12 @@ async function checkWorkspace(window) {
       await click('#albums-browse-options');
       await click('[data-browse-choice="filter:all"]');
       await run("openAlbum('1')"); await frame();
+      assert.equal(await run("document.querySelector('[data-play-album]').textContent.trim()"), '▶ Play');
+      assert.equal(await run("document.querySelector('[data-shuffle-album]').getAttribute('aria-label')"), 'Shuffle album');
+      assert.equal(await run("document.querySelectorAll('[data-shuffle-album] svg[aria-hidden=true]').length"), 1);
+      assert.equal(await run("document.querySelector('[data-shuffle-album]').textContent.trim()"), '');
+      assert.equal(await run("document.querySelectorAll('.album-detail-actions [data-playlist-album]').length"), 0);
+
       const hover = await run(`(()=>{const node=document.querySelector('[data-workspace-track]');
         node.scrollIntoView({block:'center'});const r=node.closest('tr').getBoundingClientRect();return {x:r.x+15,y:r.y+r.height/2};})()`);
       owner.sendInputEvent({type:"mouseMove", ...hover}); await frame();
