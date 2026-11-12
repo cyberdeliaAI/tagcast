@@ -356,8 +356,7 @@ function closeBrowseOptions(restoreFocus = false) {
 
 function paintBrowseOptions() {
   const menu = $("#browse-options-menu"), options = browseChoices.views.get(browseChoices.kind) || [];
-  const html = `<div class="browse-options-title" role="presentation"><span>${TagcastI18n.html("library.browse.title")}</span><button type="button" role="menuitem" data-browse-close aria-label="${TagcastI18n.html("library.browse.close")}" tabindex="-1">×</button></div>`
-    + [["filter", "library.browse.show"]].map(([kind, label]) => `<div role="group" aria-label="${TagcastI18n.html(label)}"><div class="browse-options-heading" role="presentation">${TagcastI18n.html(label)}</div>${options.filter(option => option.key.startsWith(`${kind}:`)).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`).join("");
+  const html = options.filter(option => option.key.startsWith("filter:")).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("");
   if (menu.innerHTML === html) return;
   const focused = document.activeElement?.getAttribute?.("data-browse-choice"), scroll = menu.scrollTop;
   menu.innerHTML = html;
@@ -403,8 +402,7 @@ function chooseBrowseOption(key) {
 
 document.addEventListener("click", event => {
   const trigger = event.target.closest("[data-browse-options]"), option = event.target.closest("[data-browse-choice]");
-  if (event.target.closest("[data-browse-close]")) closeBrowseOptions(true);
-  else if (trigger) openBrowseOptions(trigger);
+  if (trigger) openBrowseOptions(trigger);
   else if (option) chooseBrowseOption(option.dataset.browseChoice);
   else if (!event.target.closest("#browse-options-menu")) closeBrowseOptions();
 });

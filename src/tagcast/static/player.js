@@ -300,7 +300,14 @@ function performerLinks(track, additionalOnly = false) {
 function queueTracks(album, tracks = album.tracks) {
   const source = {id: album.id, name: album.name, artist: album.artist, artist_id: album.artist_id || 0, year: album.year || 0, album_artists: albumArtistEntries(album), artwork: album.artwork, color: album.color || "#839e8d"};
   return tracks.map(t => ({id: String(t.id), title: t.title, artist: t.artist, artistId: t.artist_id, performers: t.performers || [],
-    composers: [...(t.composers || [])], year: t.year || 0, format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source}));
+    composers: [...(t.composers || [])], year: t.year || 0, format: t.format || "", rating: t.rating || 0, length: t.length || 0, album: source})).map((entry, index) => {
+    if (typeof rememberWorkspaceQueueDetails === "function") {
+      const track = tracks[index], native = state.details.get(String(track.album_id || album.id));
+      const original = native || (!track.album_id || String(track.album_id) === String(album.id) ? album : {});
+      rememberWorkspaceQueueDetails(entry, {track, album: {credits: original.credits}});
+    }
+    return entry;
+  });
 }
 
 function playTracks(album, startId, shuffle = false, options = {}) {

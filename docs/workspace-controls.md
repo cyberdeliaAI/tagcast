@@ -5,11 +5,12 @@ These controls are development changes after 1.7.0; no release version is change
 ## Navigation
 
 The sidebar button in the desktop header hides or shows the left navigation.
-Its preference is local to this browser origin or Electron profile. The button
+Navigation starts open. Its manual preference is local to this browser origin or Electron profile. The button
 remains outside the hidden sidebar so Settings and the connection controls stay
 reachable after reopening it. Narrow windows retain the existing mobile menu.
 Resizing between the two layouts never leaves mobile navigation hidden by a
-desktop preference. Collapsing navigation does not change the page or playback.
+desktop preference. Opening Playlist or Details never collapses it automatically.
+Collapsing navigation does not change the page or playback.
 
 Settings → Interface still controls which optional shortcuts are visible and
 their order. This is separate from collapsing the whole sidebar. Existing
@@ -30,16 +31,24 @@ upload date, not a new Tagcast import timestamp.
 
 Album artists offers Name, Rating and its existing Random ordering. The Albums
 Random order shortcut stays separate from Play random album. Filters is now a
-dedicated menu; all existing nonempty filters, counts and selected zero-result
+compact, single-column menu without duplicate headings or a close button. Close
+it through its trigger, an outside click or Escape; Escape returns keyboard focus
+to the trigger. All existing nonempty filters, counts and selected zero-result
 filters retain their behavior. Changing order preserves the independent filter,
 selection, playback and existing history/continuous-browsing state rules.
 
 ## One Playlist / Details side panel
 
-The right-panel button opens the existing side panel. Playlist shows Tagcast's
+The right-panel button at the far right of the header, after Live, opens the existing
+side panel. Compact segmented Playlist/Details tabs keep larger touch targets on
+mobile. Playlist shows Tagcast's
 current local play queue, with the existing row actions and Save as playlist
 workflow. It is separate from the native Playlists page. The full Now playing
-page remains available, sharing the same queue and audio element.
+page remains available, sharing the same queue and audio element. Devices now lives
+beside the Play queue heading in this shared view, including with an empty queue.
+It retains the existing queue-sync opt-in gate, dialog and account/session guards;
+moving it does not connect a device or start playback. It is also reachable in the
+full Now playing page. The header no longer contains a Devices shortcut.
 
 Details uses read-only Album and Track accordions. It shows the open album or the
 current queued track. The information button beside an album track selects that
@@ -47,6 +56,25 @@ track without playing it. The button stays visible; existing queue, tag and rati
 actions retain their hover/focus behavior. Only known, loaded fields are shown;
 opening Details never starts a provider lookup, a metadata fetch or a write.
 Opening an album itself retains its existing lazy detail/cache reads.
+
+The accordions include loaded artist credits, disc/track numbers, genres, tags and
+native ratings, with mixed disc ratings distinguished from unrated albums. Album
+duration and file-size totals appear only when every loaded track has a known
+value. Last upload means the latest track upload, not an album creation date;
+dates use the interface locale without inventing a timezone. Optional library
+size, play-count and stored ReplayGain values are bounded metadata only. ReplayGain
+is not applied to playback here. No bit depth or sample rate is inferred from a
+format label, and no audio is downloaded to inspect technical properties.
+
+Restored local queues retain the requested tracks' public metadata in the existing
+account/session-bound restore response. This never expands all album tracks or
+adds upstream requests. Details combines that bounded, memory-only metadata with
+the current loaded album summary (count, native disc, genres, rating and last upload),
+so the album need not have been opened after restart. The metadata follows queued
+occurrences through a weak map and is excluded from playback storage and Queue Sync.
+A library/session replacement invalidates it; fresh cached membership takes priority.
+Unknown ratings are omitted; a confirmed zero remains Not rated. A partial queue,
+including repeated occurrences, never establishes complete-album duration or size.
 
 Arrow Left/Right and Home/End switch tabs. Escape closes the side panel and returns
 focus to the opening control. Accordion state survives read-only refreshes. A
@@ -58,12 +86,30 @@ playback engine, source, library cache or account session.
 
 Frontend tests cover sorting and persistence, independent filters, sidebar/mobile
 access, read-only track inspection, tab keyboard navigation, metadata escaping and
-replacement invalidation. Existing browsing, playback, lyrics, settings and history
+replacement invalidation, restored queues before album visits, duplicate positions,
+unknown ratings and stale cached membership. Existing browsing, playback, lyrics, settings and history
 regressions continue to exercise the shared implementation. All six interface
 catalogues include the new text.
 
 The packaged Electron smoke check uses real pointer and keyboard events for the
-new controls at 420, 768 and 1280 pixels in Light and Dark. It verifies hit targets,
+new controls at 420, 760, 768 and 1280 pixels in Light and Dark. It verifies hit targets,
 the original audio element, focus restoration and absence of horizontal overflow.
 It uses synthetic demo metadata only. Browser validation and native startup/restart
 checks remain separate from real-account or hardware-audio compatibility claims.
+
+### Restored-queue regression validation (2026-11-12)
+
+The new startup-restore regression fails against the original #73 implementation
+with the same missing album fields and false Not rated result. The correction
+passes four frontend cases covering startup without an album visit, unknown ratings,
+replacement/membership invalidation and original-disc identity. Backend coverage
+confirms duplicate occurrence positions, unchanged ownership checks, no remote
+reads/writes and no full-album expansion in the existing restore response.
+
+Python 3.13: 985 tests / 2,640 subtests passed. Frontend/i18n, media and Electron:
+819 tests passed. Chromium/WebKit passed 16 real startup/restore viewport-theme
+cases with CSP, unchanged queue/audio/history, no autoplay and no extra Details
+requests. The extracted macOS ARM64 package passed eight synthetic restore cases
+using pointer input plus the existing application/shutdown checks. Normal Playlist
+native-lyrics reading remains separate; the Details request invariant is measured
+without first opening that lyrics view. No timeout or assertion was relaxed.
