@@ -1,6 +1,6 @@
 /* Shared colours, one document scrollbar, and independent navigation/panel controls. */
 .workspace-icon-button{display:inline-grid;place-items:center;width:38px;height:38px;padding:8px;flex:none}
-.workspace-icon-button svg,.workspace-track-details svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.workspace-icon-button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .page-breadcrumbs{display:flex;align-items:center;gap:0;min-width:0}
 .workspace-location{display:flex;align-items:center;gap:12px;min-width:0;flex:1 1 260px}
 .workspace-location .page-breadcrumbs{margin-right:0}
@@ -30,11 +30,7 @@ body:not(.listening-page-open) .now-playing-header .listening-heading{display:no
 .workspace-facts>div{display:grid;grid-template-columns:90px minmax(0,1fr);gap:12px;margin:10px 0}
 .workspace-facts dt{color:var(--muted)}
 .workspace-facts dd{margin:0;overflow-wrap:anywhere}
-.workspace-track-details{border:0;background:transparent;color:var(--muted);display:inline-grid;place-items:center;padding:4px;min-width:28px;min-height:28px}
-.workspace-track-details:hover{color:var(--palette-link,#2d654d)}
-/* Inspection is always discoverable; the existing write/queue actions retain hover behavior. */
-.album-tracklist:not(.trash-mode) .track-row-actions>.workspace-track-details{opacity:1;pointer-events:auto}
-.workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline:2px solid var(--palette-focus,#759345);outline-offset:2px}
+.workspace-icon-button:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline:2px solid var(--palette-focus,#759345);outline-offset:2px}
 @media(max-width:760px){#navigation-toggle{display:none}.workspace-location{flex:initial;width:100%}.browse-sort-buttons{gap:2px}.browse-sort-button{padding:7px 8px;min-height:44px}.now-playing-panel{width:min(360px,calc(100vw - 20px))}}
 @media(max-width:760px),(pointer:coarse){#workspace-panel-tabs button,#devices-button{min-height:44px}body:not(.listening-page-open) #now-playing-close{width:44px;height:44px}.browse-sort-button{min-height:44px}}
-@media(forced-colors:active){.browse-sort-button[aria-pressed="true"],#workspace-panel-tabs button[aria-selected="true"]{border-color:Highlight}.workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline-color:Highlight}}
+@media(forced-colors:active){.browse-sort-button[aria-pressed="true"],#workspace-panel-tabs button[aria-selected="true"]{border-color:Highlight}.workspace-icon-button:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline-color:Highlight}}

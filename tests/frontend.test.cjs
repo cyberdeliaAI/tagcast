@@ -13226,12 +13226,12 @@ test('Playlist Devices retains the opt-in gate and opens an empty queue without 
   assert.equal(p.nodes.get('#devices-button').hidden,true);
 });
 
-test('Details inspects a loaded track without requests, history, playback or metadata changes',async()=>{
+test('Details shows the current loaded track without requests, history, playback or metadata changes',async()=>{
   const p=page();await settle();await p.run('openAlbum("1")');await settle();
-  const track=p.run('String(state.details.get("1").tracks[0].id)');
+  p.run('player.queue=queueTracks(state.details.get("1"));player.index=0');
   const requests=p.requests.length,history=p.history.length;
   const before=p.run('JSON.stringify({albums:state.albums,queue:player.queue,src:audio.src,index:player.index})');
-  p.run(`openWorkspaceDetails("1",${JSON.stringify(track)})`);
+  p.run('setWorkspaceTab("details");setNowPlaying(true)');
   assert.equal(p.run('workspacePanel.tab'),'details');
   assert.equal(p.nodes.get('#workspace-details').hidden,false);assert.equal(p.nodes.get('#workspace-playlist').hidden,true);
   assert.match(p.nodes.get('#workspace-details').innerHTML,/data-workspace-section="album"/);
@@ -13240,15 +13240,15 @@ test('Details inspects a loaded track without requests, history, playback or met
   assert.equal(p.requests.length,requests);assert.equal(p.history.length,history);
   assert.equal(p.run('JSON.stringify({albums:state.albums,queue:player.queue,src:audio.src,index:player.index})'),before);
   const markup=p.nodes.get('#workspace-details').innerHTML;
-  p.run('openWorkspaceDetails("1","not-a-member")');assert.equal(p.nodes.get('#workspace-details').innerHTML,markup);
+  p.run('showScreen("tracks");syncWorkspacePanel()');assert.equal(p.nodes.get('#workspace-details').innerHTML,markup);
 });
 
 test('Details clears replaced account/library data even while the panel is closed',async()=>{
   const p=page();await settle();await p.run('openAlbum("1")');await settle();
-  p.run('openWorkspaceDetails("1",state.details.get("1").tracks[0].id);setNowPlaying(false)');
+  p.run('player.queue=queueTracks(state.details.get("1"));player.index=0;setWorkspaceTab("details");setNowPlaying(true);setNowPlaying(false)');
   const requests=p.requests.length;
   p.run('state.details=new Map();state.albums=[];state.connection.playback_session="replacement";syncWorkspacePanel()');
-  assert.equal(p.run('workspacePanel.selection'),null);assert.equal(p.nodes.get('#workspace-details').innerHTML,'');
+  assert.equal(p.run('workspacePanel.scope===state.details'),true);assert.equal(p.nodes.get('#workspace-details').innerHTML,'');
   assert.equal(p.requests.length,requests);
 });
 
@@ -13265,17 +13265,19 @@ test('side-panel tabs use keyboard navigation and keep the dedicated listening p
 
 test('Details escapes untrusted metadata and exposes only supplied fields',async()=>{
   const p=page();await settle();await p.run('openAlbum("1")');await settle();
-  p.run('state.details.get("1").tracks[0].title="<img src=x onerror=alert(1)>";openWorkspaceDetails("1",state.details.get("1").tracks[0].id)');
+  p.run('state.details.get("1").tracks[0].title="<img src=x onerror=alert(1)>";player.queue=queueTracks(state.details.get("1"));player.index=0;setWorkspaceTab("details");setNowPlaying(true)');
   const markup=p.nodes.get('#workspace-details').innerHTML;
   assert.match(markup,/&lt;img src=x onerror=alert\(1\)&gt;/);assert.doesNotMatch(markup,/<img src=x/);
   assert.doesNotMatch(markup,/bit-depth|44\.1 kHz/,'Do not invent audio properties absent from loaded metadata');
 });
 
-test('Details retains its explicit opener when pointer activation does not focus it',async()=>{
-  const p=page();await settle();await p.run('openAlbum("1")');await settle();
-  p.run('globalThis.detailOpener={isConnected:true,focus(){globalThis.detailFocusReturned=true}};document.activeElement=document.body;openWorkspaceDetails("1",state.details.get("1").tracks[0].id,detailOpener)');
-  assert.equal(p.run('workspacePanel.focus === detailOpener'),true);
-  p.run('closeNowPlayingView()');assert.equal(p.run('detailFocusReturned'),true);
+test('Details returns focus to the panel toggle when pointer activation does not focus it',async()=>{
+  const p=page();await settle();
+  p.run('document.activeElement=document.body;setWorkspaceTab("details")');
+  await p.nodes.get('#workspace-panel-toggle').emit('click');
+  assert.equal(p.run('workspacePanel.focus === $("#workspace-panel-toggle")'),true);
+  p.run('closeNowPlayingView()');
+  assert.equal(p.run('document.activeElement === $("#workspace-panel-toggle")'),true);
 });
 
 test('closing the listening page returns focus outside collapsed navigation',async()=>{
@@ -13391,7 +13393,7 @@ test('expanded Details shows only loaded metadata, readable upload dates and val
     detailAlbum.rating=4;detailAlbum.disc=2;
     detailAlbum.tracks.forEach((t,i)=>Object.assign(t,{length:60,size:2048,genres:['Rock; Pop'],tags:[{id:'9',name:'Listen <later>'}],uploaded_at:'2026-11-12T09:00:00'}));
     Object.assign(detailAlbum.tracks[0],{plays:0,replay_gain:0,performers:[{name:'Guest <artist>'}],credits:[{name:'Writer <name>',type:'lyricist',phrase:'with'}]});
-    openWorkspaceDetails('1',detailAlbum.tracks[0].id);`);
+    player.queue=queueTracks(detailAlbum);player.index=0;setWorkspaceTab('details');setNowPlaying(true);`);
   const before=p.requests.length,html=p.nodes.get('#workspace-details').innerHTML;
   assert.match(html,/Last upload/);assert.doesNotMatch(html,/2026-11-12T09:00:00/);
   assert.match(html,/Rock; Pop/);assert.match(html,/Listen &lt;later&gt;/);
@@ -13406,7 +13408,7 @@ test('Details never advertises incomplete duration or size totals and distinguis
   const p=page();await settle();await p.run('openAlbum("1")');await settle();
   p.run(`const a=state.details.get('1');a.tracks[0].length=60;a.tracks[0].size=2048;
     a.tracks[1].length=0;delete a.tracks[1].size;
-    workspacePanel.selection=null;setWorkspaceTab('details');setNowPlaying(true);`);
+    player.queue=queueTracks(a);player.index=0;setWorkspaceTab('details');setNowPlaying(true);`);
   const album=p.nodes.get('#workspace-details').innerHTML.split('data-workspace-section="track"')[0];
   assert.doesNotMatch(album,/<dt>Duration<\/dt>|<dt>File size<\/dt>/);
   assert.equal(p.run('workspaceRating([{rating:4},{rating:2}])'),'Mixed ratings');
@@ -13429,14 +13431,19 @@ test('restored queue Details uses loaded summaries and fresh track metadata befo
     }));
     return {ok:true,json:async()=>({tracks})};
   });
-  await p.run('restoreQueueMemory()');const requests=p.requests.length,queue=p.json('player.queue'),history=p.history.length;
+  await p.run('restoreQueueMemory()');
+  p.run(`state.albums.push({id:'visited',name:'Visited album',artist:'Another artist',track_count:1});
+    state.details.set('visited',{id:'visited',name:'Visited album',artist:'Another artist',tracks:[{id:'visited-track',title:'Visited track'}]});
+    albumView.id='visited';albumView.loading=false;showScreen('album');`);
+  const requests=p.requests.length,queue=p.json('player.queue'),history=p.history.length;
   p.run('setWorkspaceTab("details");setNowPlaying(true)');
   const html=p.nodes.get('#workspace-details').innerHTML,album=html.split('data-workspace-section="track"')[0];
+  assert.doesNotMatch(html,/Visited album|Visited track/,'Restored Details follows the queue even on another album page');
   assert.match(album,/<dt>Tracks<\/dt><dd>6<\/dd>/);assert.match(album,/<dt>Rating<\/dt><dd>4 \/ 5<\/dd>/);assert.match(album,/Last upload/);assert.match(album,/Jazz/);assert.match(album,/Guest/);
   assert.doesNotMatch(album,/<dt>Duration<\/dt>|<dt>File size<\/dt>/,'Never total only the queued subset or duplicate occurrences');
   assert.match(html,/<dt>Track number<\/dt><dd>3<\/dd>/);assert.match(html,/Jazz; Fusion/);assert.match(html,/Listen &lt;later&gt;/);assert.match(html,/<dt>Plays<\/dt><dd>0<\/dd>/);assert.match(html,/0 dB/);
   assert.equal(p.requests.length,requests);assert.deepEqual(p.json('player.queue'),queue);assert.equal(p.history.length,history);assert.equal(p.run('audio===originalAudio && audio.paused'),true);
-  assert.equal(p.run('state.details.size'),0);assert.equal(p.run('player.queue[1].upNext'),true);assert.deepEqual(p.json('player.queue.map(t=>t.id)'),['900','900']);
+  assert.equal(p.run('state.details.has("72")'),false);assert.equal(p.run('state.details.size'),1);assert.equal(p.run('player.queue[1].upNext'),true);assert.deepEqual(p.json('player.queue.map(t=>t.id)'),['900','900']);
   assert.equal(JSON.stringify(storage).includes('Restored album'),false,'Only queue IDs and position preferences are persisted');
 });
 
@@ -13468,4 +13475,48 @@ test('queue Details resolves the original native disc of a combined album',()=>{
     state.screen='albums';state.details.delete(second.id);renderWorkspaceDetails()`);
   const html=p.nodes.get('#workspace-details').innerHTML;
   assert.match(html,/Second native disc/);assert.match(html,/<dt>Rating<\/dt><dd>2 \/ 5<\/dd>/);assert.match(html,/Second credit/);assert.match(html,/Second disc genre/);
+});
+
+test('Details follows the playing track while browsing another album and changing tracks',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run('state.mode="live";playTracks(state.details.get("1"));setWorkspaceTab("details");setNowPlaying(true)');await settle();
+  const current=p.json('({album:player.queue[player.index].album.id,track:player.queue[player.index].id})');
+  const before=p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,paused:audio.paused})');
+  await p.run('openAlbum("2")');await settle();
+  const requests=p.requests.length;p.run('renderWorkspaceDetails();syncWorkspacePanel()');
+  assert.equal(p.run('String(workspaceDetailsData().album.id)'),String(current.album));
+  assert.equal(p.run('String(workspaceDetailsData().track.id)'),current.track);
+  assert.equal(p.requests.length,requests,'Details never adds requests after navigation');
+  assert.equal(p.run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,paused:audio.paused})'),before);
+  p.run('step(1)');await settle();
+  assert.equal(p.run('String(workspaceDetailsData().track.id)'),p.run('player.queue[player.index].id'));
+  assert.notEqual(p.run('String(workspaceDetailsData().track.id)'),current.track);
+  p.nodes.get('#audio').pause();
+  assert.equal(p.run('String(workspaceDetailsData().track.id)'),p.run('player.queue[player.index].id'),'Pausing keeps the current track');
+  p.run('stopPlayer()');
+  assert.equal(p.run('workspaceDetailsData()'),null,'Stopping never falls back to the visited album');
+  assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/data-workspace-section/);
+});
+
+test('Details stays empty without a current track even when an album is open',async()=>{
+  const p=page();await settle();await p.run('openAlbum("2")');await settle();
+  const requests=p.requests.length;
+  p.run('setWorkspaceTab("details");setNowPlaying(true)');
+  assert.equal(p.run('workspaceDetailsData()'),null);
+  assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/data-workspace-section/);
+  assert.equal(p.requests.length,requests);
+});
+
+test('Details follows cross-album queue transitions while the browsed album stays open',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run(`player.queue=[...queueTracks(state.details.get('1')),...queueTracks(state.details.get('2'))];
+    player.index=0;setWorkspaceTab('details');setNowPlaying(true);`);
+  assert.equal(p.run('String(workspaceDetailsData().album.id)'),'1');
+  const requests=p.requests.length;
+  p.run(`player.index=player.queue.length-1;markPlaying()`);
+  assert.equal(p.run('albumView.id'),'1');
+  assert.equal(p.run('String(workspaceDetailsData().album.id)'),'2');
+  assert.equal(p.run('String(workspaceDetailsData().track.id)'),p.run('player.queue[player.index].id'));
+  assert.equal(p.requests.length,requests);
+  assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/data-workspace-track/,'Browsing no longer selects a different Details subject');
 });

@@ -1,7 +1,7 @@
 "use strict";
 
 // Presentation only. Reuse the shared queue; details read loaded metadata, never providers.
-const workspacePanel = {tab: "playlist", selection: null, focus: null, markup: "", scope: state.details,
+const workspacePanel = {tab: "playlist", focus: null, markup: "", scope: state.details,
   session: state.connection.playback_session};
 let navigationCollapsed = false;
 try { navigationCollapsed = localStorage.getItem("tagcast-navigation-collapsed") === "true"; } catch { /* private window */ }
@@ -77,24 +77,8 @@ function workspaceQueueOwner() {
 function rememberWorkspaceQueueDetails(entry, metadata) {
   workspaceQueueDetails.set(entry, {metadata, generation: workspaceQueueOwner(), session: state.connection.playback_session});
 }
-function workspaceAlbumDetails() {
-  if (state.screen !== "album" || !albumViewReady()) return null;
-  const albums = shelfIds(albumView.id).map(id => state.details.get(id));
-  const album = joinDiscs(albums);
-  return albums.length > 1 ? {...album, discs: albums} : album;
-}
 function workspaceDetailsData() {
-  const selected = workspacePanel.selection;
-  if (selected && (selected.details !== state.details || selected.screen !== state.screen
-      || selected.openAlbum !== albumView.id || selected.session !== state.connection.playback_session)) workspacePanel.selection = null;
-  if (workspacePanel.selection) {
-    const album = state.details.get(selected.album);
-    const track = album?.tracks.find(t => String(t.id) === selected.track);
-    if (album && track) return {album, track};
-    workspacePanel.selection = null;
-  }
-  const album = workspaceAlbumDetails();
-  if (album) return {album, track: album.tracks.find(t => String(t.id) === albumView.found) || null};
+  // Follow the player's current occurrence, independently of the browsing route.
   const track = player.queue[player.index], captured = track && workspaceQueueDetails.get(track);
   const current = captured && captured.generation === workspaceQueueOwner() && captured.session === state.connection.playback_session;
   const metadata = current ? captured.metadata : null;
@@ -167,7 +151,7 @@ function renderWorkspaceDetails() {
   ] : [];
   const markup = album ? `<div class="workspace-detail-cover">${cover(album, true)}<div><strong>${escapeHtml(track?.title || album.name)}</strong><p>${escapeHtml(track?.artist || album.artist)}</p></div></div>
     <details data-workspace-section="album" open><summary>${TagcastI18n.html("workspace.field.album")}</summary>${workspaceFacts(albumRows)}</details>
-    <details data-workspace-section="track" open><summary>${TagcastI18n.html("workspace.track")}</summary>${track ? workspaceFacts(trackRows) : `<p class="muted">${TagcastI18n.html("workspace.selectTrack")}</p>`}</details>`
+    <details data-workspace-section="track" open><summary>${TagcastI18n.html("workspace.track")}</summary>${track ? workspaceFacts(trackRows) : `<p class="muted">${TagcastI18n.html("workspace.trackUnavailable")}</p>`}</details>`
     : `<p class="empty">${TagcastI18n.html("workspace.empty")}</p>`;
   if (markup !== workspacePanel.markup) {
     const focused = host.contains?.(document.activeElement)
@@ -181,7 +165,7 @@ function renderWorkspaceDetails() {
 function syncWorkspacePanel() {
   workspaceQueueOwner();
   if (workspacePanel.scope !== state.details || workspacePanel.session !== state.connection.playback_session) {
-    workspacePanel.selection = null; workspacePanel.markup = "";
+    workspacePanel.markup = "";
     $("#workspace-details").innerHTML = "";
     workspacePanel.scope = state.details; workspacePanel.session = state.connection.playback_session;
   }
@@ -216,16 +200,6 @@ function setWorkspaceTab(tab, focus = false) {
   if (typeof renderLyrics === "function") renderLyrics("player");
   if (focus) $(`#workspace-tab-${tab}`).focus({preventScroll: true});
 }
-function openWorkspaceDetails(albumId, trackId, trigger = null) {
-  const album = state.details.get(String(albumId));
-  if (!album || !album.tracks.some(t => String(t.id) === String(trackId))) return;
-  workspacePanel.selection = {album: String(albumId), track: String(trackId), details: state.details,
-    screen: state.screen, openAlbum: albumView.id, session: state.connection.playback_session};
-  // Safari/WebKit does not necessarily focus a button when it is clicked.
-  workspacePanel.focus = trigger || $("#workspace-panel-toggle");
-  setWorkspaceTab("details"); setNowPlaying(true);
-  $("#workspace-tab-details").focus({preventScroll: true});
-}
 $("#workspace-panel-toggle").addEventListener("click", () => {
   workspacePanel.focus = $("#workspace-panel-toggle");
   if (typeof closeSidebarMenu === "function") closeSidebarMenu();
@@ -240,10 +214,6 @@ $("#workspace-panel-tabs").addEventListener("keydown", event => {
   event.preventDefault();
   setWorkspaceTab(event.key === "Home" ? "playlist" : event.key === "End" ? "details"
     : workspacePanel.tab === "playlist" ? "details" : "playlist", true);
-});
-document.addEventListener("click", event => {
-  const button = event.target.closest("[data-workspace-track]");
-  if (button) openWorkspaceDetails(button.dataset.workspaceAlbum, button.dataset.workspaceTrack, button);
 });
 TagcastI18n.subscribe(() => { workspacePanel.markup = ""; syncWorkspacePanel(); syncNavigationToggle(); });
 syncNavigationToggle(); syncWorkspacePanel();
