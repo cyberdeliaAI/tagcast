@@ -620,9 +620,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   ignore unknown/duplicate stored IDs. Routine updates preserve focus and scroll.
 - The existing right side panel has Playlist and Details tabs; Playlist is the current
   local play queue, separate from the native Playlists page. Reuse that same queue/audio
-  view and preserve the full Now playing page. Details inspects only loaded album/track
-  metadata in read-only accordions, without provider/API requests or playback changes.
-  Retire captured selections and old rendered details on library/session replacement,
+  view and preserve the full Now playing page. Details follows the current queued track and its
+  original native album, independently of browsing, in read-only accordions. Use only loaded
+  metadata, without provider/API requests or playback changes; pause retains the subject and
+  an empty/cleared queue shows no album fallback. Retire old rendered details on library/session replacement,
   even when closed. Keep tab keyboard navigation, Escape and opening-control focus return.
   Its header toggle follows Live at the far right. Keep desktop sorting and segmented
   tabs compact, with larger mobile/coarse-pointer targets. Devices belongs beside the

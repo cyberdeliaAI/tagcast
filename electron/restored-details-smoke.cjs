@@ -5,16 +5,16 @@ const assert = require("node:assert/strict");
 async function checkRestoredDetails({window, run, click, frame}) {
   const bounds=window.getBounds(),samples=[];
   // Establish the browsing route before measuring restore/panel history invariants.
-  await run("setNowPlaying(false);showScreen('albums');render()");await frame();
+  await run("setNowPlaying(false);openAlbum('2')");await frame();
   await run(`globalThis.restoredDetailsSmoke={details:state.details,albums:state.albums,connection:state.connection,
-    mode:state.mode,loading:state.loading,queue:player.queue,index:player.index,album:player.album,epoch:player.epoch,
+    mode:state.mode,loading:state.loading,view:{...albumView},queue:player.queue,index:player.index,album:player.album,epoch:player.epoch,
     resume:player.resumePending,repeat:player.repeat,shuffle:player.shuffle,memory:{...queueMemory},fetch:globalThis.fetch,
     audio,src:audio.src,history:history.length,stored:localStorage.getItem('tagcast-queue-'+ 'a'.repeat(64))};void 0;`);
   try {
     for(const width of [420,760,768,1280])for(const appearance of ["light","dark"]){
       window.setContentSize(width,800);
       await run(`(async()=>{
-        setNowPlaying(false);showScreen('albums');document.documentElement.dataset.theme=${JSON.stringify(appearance)};
+        setNowPlaying(false);document.documentElement.dataset.theme=${JSON.stringify(appearance)};
         state.details=new Map();state.albums=[{id:'restored-album',name:'Restored album',artist:'Album artist',year:1972,
           disc:2,rating:4,track_count:6,genres:['Jazz'],uploaded_at:'2026-11-12T09:00:00'}];
         state.mode='live';state.loading=false;state.connection={connected:true,premium:true,playback_session:'synthetic-restore'};
@@ -28,13 +28,17 @@ async function checkRestoredDetails({window, run, click, frame}) {
             details:{track:{id,album_id:'restored-album',title:'Restored track',artist:'Performer',rating:0,track:3,length:60,format:'FLAC',
               genres:['Private restored genre'],uploaded_at:'2026-11-11T09:00:00',size:2048,plays:0,replay_gain:0},album:{credits:[]}}}))})};
         };
-        await restoreQueueMemory();workspacePanel.selection=null;setWorkspaceTab('details');
+        await restoreQueueMemory();
+        state.albums.push({id:'2',name:'Visited album',artist:'Other artist',track_count:1});
+        state.details.set('2',{id:'2',name:'Visited album',artist:'Other artist',tracks:[{id:'visited-track',title:'Visited track'}]});
+        albumView.id='2';albumView.loading=false;setWorkspaceTab('details');
       })()`);await frame();
       await click('#workspace-panel-toggle');await click('#workspace-tab-details');
       const result=await run(`(()=>{const album=$('[data-workspace-section="album"]'),track=$('[data-workspace-section="track"]');
         return {album:album.innerText,track:track.innerText,fields:[...album.querySelectorAll('dt')].map(n=>n.textContent),
           restored:player.queue.map(t=>[t.id,t.upNext]),index:player.index,requests:restoredDetailRequests,
           sameAudio:restoredDetailsSmoke.audio===audio,src:audio.src,history:history.length,overflow:document.documentElement.scrollWidth-innerWidth};})()`);
+      assert.ok(result.album.includes('Restored album')&&!result.album.includes('Visited album'),'Restored Details follows the current track across browsing');
       assert.ok(result.album.includes('Tracks')&&result.album.includes('6')&&result.album.includes('4 / 5')&&result.album.includes('Last upload'));
       assert.ok(result.track.includes('Private restored genre')&&result.track.includes('Track number')&&result.track.includes('0 dB'));
       assert.ok(!result.fields.includes('Duration')&&!result.fields.includes('File size'),'A partial restored queue never establishes album totals');
@@ -50,9 +54,9 @@ async function checkRestoredDetails({window, run, click, frame}) {
   } finally {
     window.setBounds(bounds);
     await run(`(()=>{const s=restoredDetailsSmoke;globalThis.fetch=s.fetch;Object.assign(state,{details:s.details,albums:s.albums,connection:s.connection,mode:s.mode,loading:s.loading});
-      Object.assign(player,{queue:s.queue,index:s.index,album:s.album,epoch:s.epoch,resumePending:s.resume,repeat:s.repeat,shuffle:s.shuffle});Object.assign(queueMemory,s.memory);
+      Object.assign(albumView,s.view);Object.assign(player,{queue:s.queue,index:s.index,album:s.album,epoch:s.epoch,resumePending:s.resume,repeat:s.repeat,shuffle:s.shuffle});Object.assign(queueMemory,s.memory);
       if(s.stored===null)localStorage.removeItem('tagcast-queue-'+'a'.repeat(64));else localStorage.setItem('tagcast-queue-'+'a'.repeat(64),s.stored);
-      setNowPlaying(false);workspacePanel.selection=null;syncWorkspacePanel();delete globalThis.restoredDetailsSmoke;})()`);
+      setNowPlaying(false);syncWorkspacePanel();delete globalThis.restoredDetailsSmoke;})()`);
   }
 }
 module.exports={checkRestoredDetails};
