@@ -33,5 +33,5 @@ body:not(.listening-page-open) .now-playing-header .listening-heading{display:no
 /* Inspection is always discoverable; the existing write/queue actions retain hover behavior. */
 .album-tracklist:not(.trash-mode) .track-row-actions>.workspace-track-details{opacity:1;pointer-events:auto}
 .workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline:2px solid var(--palette-focus,#759345);outline-offset:2px}
-@media(max-width:760px){#navigation-toggle{display:none}.browse-sort-buttons{gap:2px}.browse-sort-button{padding:7px 8px;min-height:40px}.now-playing-panel{width:min(360px,calc(100vw - 20px))}}
+@media(max-width:760px){#navigation-toggle{display:none}.workspace-location{flex:initial;width:100%}.browse-sort-buttons{gap:2px}.browse-sort-button{padding:7px 8px;min-height:40px}.now-playing-panel{width:min(360px,calc(100vw - 20px))}}
 @media(forced-colors:active){.browse-sort-button[aria-pressed="true"],#workspace-panel-tabs button[aria-selected="true"]{border-color:Highlight}.workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline-color:Highlight}}
