@@ -455,7 +455,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import", "#playlist-order"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import", "#playlist-order", "#track-comparison"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
@@ -6696,6 +6696,84 @@ test("track comparison opens locally, searches and selects explicitly, and never
   p.run('$("#track-comparison").close()');await p.nodes.get('#track-comparison').emit('close');
   assert.equal(p.run('trackComparison.tracks.length'),0);assert.equal(p.run('trackComparison.reference'),null);
   assert.equal(p.run('document.activeElement')===trigger,true);
+});
+
+async function comparisonDraftPage() {
+  const p=livePage();await settle();await p.run('openAlbum("1")');p.run('const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{};openTrackComparison()');
+  const response=comparisonResponse();
+  response.tracks[0].artist_credits=[{name:'Different primary',phrase:null},{name:'Guest',phrase:'feat.'}];
+  response.tracks[1].artist_credits=[{name:'Second primary',phrase:null}];
+  p.run(`lookup.sources=[{name:"musicbrainz",enabled:true}];trackComparison.reference=${JSON.stringify(response)};renderTrackComparison()`);
+  return p;
+}
+test("comparison corrections stage only explicitly chosen fields and hand them to the ordinary editor/review",async()=>{
+  const p=await comparisonDraftPage(),before=p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})');
+  const id=p.run('trackComparison.tracks[0].id'),count=p.requests.length;
+  assert.equal(p.run('comparisonDraft.choices.size'),0);
+  assert.equal(p.nodes.get('#comparison-draft-open').disabled,true);
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title');stageComparisonField(${JSON.stringify(id)},'artists')`);
+  assert.equal(p.requests.length,count,'Choosing makes no requests');
+  assert.equal(p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})'),before);
+  await p.run('openComparisonDraftEditor()');
+  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/lyrics?')&&!r.options?.body), 'Only the ordinary editor native-lyrics read is allowed; no provider/library lookup or write');
+  const editorRequests=p.requests.length;
+  assert.equal(p.nodes.get('#editor').open,true);
+  const patches=JSON.parse(p.run('JSON.stringify(editing.trackPatches)'));
+  assert.equal(patches[id].title,'Other <script>');assert.equal(patches[id].artist,'Different primary');
+  assert.ok(patches[id].credits.some(c=>c.name==='Guest'&&c.type==='artist'&&c.phrase==='feat.'&&c.artist_id===null));
+  assert.equal(Object.keys(patches).length,1);
+  // Model the rendered native inputs; the simulated DOM does not parse editor markup.
+  const pane=p.nodes.get('#track-inline');
+  pane.querySelectorAll=()=>['title','artist'].map(key=>({type:'text',dataset:{key},value:patches[id][key]}));
+  pane.querySelector=selector=>selector.includes('data-credit-editor')?{dataset:{dirty:'false'},querySelector:()=>null,
+    querySelectorAll:()=>patches[id].credits.map(entry=>({dataset:{original:JSON.stringify(entry)},querySelector:s=>({value:s.includes('data-credit-name')?entry.name:s.includes('data-credit-role')?entry.type||'artist':entry.phrase||''})}))}:null;
+  p.run('buildReview()');
+  const changes=JSON.parse(p.run('JSON.stringify(pending.changes)'));
+  assert.equal(changes.length,1);assert.equal(changes[0].kind,'track');
+  assert.equal(changes[0].fields.title.after,'Other <script>');
+  assert.deepEqual(Object.keys(changes[0].fields).sort(),['artist','credits','title']);
+  assert.equal(p.requests.length,editorRequests,'Review does not save');
+  assert.equal(p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})'),before);
+});
+test("comparison editor handoff rejects a session replaced while the editor is opening",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title');const normalOpenEditor=openEditor;openEditor=async(...args)=>{await normalOpenEditor(...args);state.connection.playback_session='replaced-during-open';}`);
+  await p.run('openComparisonDraftEditor()');
+  assert.equal(Boolean(p.nodes.get('#editor').open),false);
+  assert.equal(p.run('Object.keys(editing.trackPatches).length'),0);
+});
+test("comparison manual pairing retains the target ID and cannot implicitly copy number, year or duration",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  p.run(`comparisonDraft.mapping.set(${JSON.stringify(id)},1);stageComparisonField(${JSON.stringify(id)},'title')`);
+  const patches=JSON.parse(p.run('JSON.stringify(comparisonDraftPatches())'));
+  assert.deepEqual(patches,{[id]:{title:'Version (Live)'}});
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title')`);
+  assert.equal(p.run('comparisonDraft.choices.size'),0);
+});
+test("comparison artist adoption preserves native and unknown credits and never flattens guests into a new combined name",async()=>{
+  const p=await comparisonDraftPage();
+  const patch=JSON.parse(p.run(`JSON.stringify(comparisonArtistPatch({artist:'CARMEN RIZZO',credits:[{artist_id:9,name:'Composer',type:'composer',phrase:'original'},{artist_id:10,name:'Other',type:'custom_role',phrase:'keep'},{artist_id:11,name:'GUEST',type:'artist',phrase:'existing'}]}, {artist_credits:[{name:'Carmen Rizzo',phrase:null},{name:'Guest',phrase:'feat.'},{name:'New guest',phrase:'&'}]}))`));
+  assert.equal(patch.artist,undefined,'No implicit global case rename');
+  assert.deepEqual(patch.credits.slice(0,3),[{artist_id:9,name:'Composer',type:'composer',phrase:'original'},{artist_id:10,name:'Other',type:'custom_role',phrase:'keep'},{artist_id:11,name:'GUEST',type:'artist',phrase:'existing'}]);
+  assert.deepEqual(patch.credits[3],{artist_id:null,name:'New guest',type:'artist',phrase:'&'});
+  assert.deepEqual(JSON.parse(p.run(`JSON.stringify(comparisonArtistPatch({artist:'Old'}, {artist:'Artist feat. Guest'}))`)),{});
+});
+test("comparison corrections reject replaced or in-place changed sources before editor handoff",async()=>{
+  for(const change of ['state.details=new Map(state.details)','state.connection.playback_session="new"','state.details.get("1").tracks[0].title="Changed"','lookup.sources.find(s=>s.name==="musicbrainz").enabled=false']){
+    const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+    p.run(`stageComparisonField(${JSON.stringify(id)},'title');${change}`);
+    await p.run('openComparisonDraftEditor()');
+    assert.equal(Boolean(p.nodes.get('#editor').open),false,change);
+  }
+});
+test("comparison draft discard confirmation protects close, Escape and replacing an edition",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title');confirm=()=>false;requestCloseTrackComparison()`);
+  assert.equal(p.nodes.get('#track-comparison').open,true);
+  let prevented=false;await p.nodes.get('#track-comparison').emit('cancel',{preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);assert.equal(p.run('comparisonDraft.choices.size'),1);
+  p.run('confirm=()=>true;requestCloseTrackComparison()');await p.nodes.get('#track-comparison').emit('close');
+  assert.equal(p.nodes.get('#track-comparison').open,false);assert.equal(p.run('comparisonDraft.choices.size'),0);
 });
 
 test("track comparison preserves versions, duplicate positions, unknown values and the two-second observation threshold",async()=>{
