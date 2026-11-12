@@ -13284,6 +13284,107 @@ test('closing the listening page returns focus outside collapsed navigation',asy
   assert.equal(p.run('document.activeElement === $("#navigation-toggle")'),true);
 });
 
+test('first setup waits for settings and status, opens only for a new profile and never repeats after a later disconnect',async()=>{
+  const storage={},p=page({deferReady:true,storage});
+  p.run('initializeFirstSetup({setup_eligible:true})');assert.notEqual(p.nodes.get('#first-setup').open,true);
+  p.run('firstSetupBootReady()');assert.equal(p.nodes.get('#first-setup').open,true);
+  assert.equal(p.run('document.activeElement === $("#first-setup-title")'),true);
+  p.run('pauseFirstSetup();initializeFirstSetup({setup_eligible:true});firstSetupBootReady()');
+  assert.equal(p.nodes.get('#first-setup').open,false);assert.equal(JSON.parse(storage['tagcast-first-setup-v1']).status,'paused');
+  const existing=page({deferReady:true});existing.run('firstSetupBootReady();initializeFirstSetup({setup_eligible:false});initializeFirstSetup({setup_eligible:true})');
+  assert.notEqual(existing.nodes.get('#first-setup').open,true);
+  assert.equal(p.requests.length,0);assert.equal(existing.requests.length,0);
+});
+
+test('setup skip, pause, Back and completion preserve preferences and drafts without requests or audio/history changes',async()=>{
+  const storage={},p=page({deferReady:true,storage});
+  p.run('openFirstSetup();globalThis.setupAudio=audio;globalThis.setupBefore=JSON.stringify({queue:player.queue,src:audio.src,mode:playbackLyricsView.mode});firstSetupAdvance(2);$("#setup-lyrics").value="unison-first";pauseFirstSetup();openFirstSetup()');
+  assert.equal(p.run('firstSetup.step'),2);assert.match(p.nodes.get('#first-setup-content').innerHTML,/value="unison-first" selected/);
+  await p.click({'#first-setup':true,'[data-setup-back]':true});assert.equal(p.run('firstSetup.step'),1);
+  p.run('$("#setup-gapless").checked=false');await p.click({'#first-setup':true,'[data-setup-skip]':true});
+  assert.equal(p.run('firstSetup.step'),2);await p.click({'#first-setup':true,'[data-setup-skip]':true});
+  p.run('firstSetupAdvance(5);pauseFirstSetup(true)');
+  assert.equal(JSON.parse(storage['tagcast-first-setup-v1']).status,'done');
+  assert.deepEqual(Object.keys(JSON.parse(storage['tagcast-first-setup-v1'])).sort(),['status','step','version']);
+  assert.equal(p.run('audio===setupAudio && setupBefore===JSON.stringify({queue:player.queue,src:audio.src,mode:playbackLyricsView.mode})'),true);
+  assert.equal(p.requests.length,0);assert.equal(p.history.length,1);
+  const restarted=page({deferReady:true,storage});restarted.run('firstSetupBootReady();initializeFirstSetup({setup_eligible:true})');
+  assert.notEqual(restarted.nodes.get('#first-setup').open,true);
+});
+
+test('unchanged setup steps send no server writes and online lyrics apply only after Save',async()=>{
+  const p=page({deferReady:true});p.run('openFirstSetup();firstSetupAdvance(4);$("#setup-record").checked=lookup.recordPlays;$("#setup-sync").checked=lookup.queueSync');
+  await p.run('saveFirstSetup()');assert.equal(p.requests.length,0);assert.equal(p.run('firstSetup.step'),5);
+  p.run('firstSetupAdvance(2);$("#setup-lyrics").value="unison-first"');
+  assert.equal(p.run('playbackLyricsView.mode'),'native');await p.run('saveFirstSetup()');
+  assert.equal(p.run('playbackLyricsView.mode'),'unison-first');assert.equal(p.requests.length,0);
+});
+
+test('setup server preferences use a partial body, retain unrelated keys and leave local choices unchanged on failure',async()=>{
+  const p=page({deferReady:true});p.run('state.connection={connected:true,premium:true,account:{id:1},playback_session:"s1"};openFirstSetup();firstSetupAdvance(1);$("#setup-quality").value="orig";$("#setup-gapless").checked=true;gaplessSupported=()=>true');
+  p.setFetch(()=>({ok:false,status:500,json:async()=>({error:'Disk full'})}));
+  await p.run('saveFirstSetup()');assert.equal(p.run('firstSetup.step'),1);assert.equal(p.run('lookup.streamQuality'),'128');assert.equal(p.run('gaplessTrial.enabled'),false);
+  assert.equal(p.nodes.get('#setup-quality').value,'orig');assert.match(p.nodes.get('#first-setup-error').textContent,/Disk full/);
+  assert.deepEqual(JSON.parse(p.requests.at(-1).options.body),{stream_quality:'orig'});
+  p.setFetch(()=>({ok:true,json:async()=>({stream_quality:'orig',record_plays:false,queue_sync:false,sources:[],auto_updates:false})}));
+  await p.run('saveFirstSetup()');assert.equal(p.run('firstSetup.step'),2);assert.equal(p.run('lookup.streamQuality'),'orig');assert.equal(p.run('gaplessTrial.enabled'),true);
+  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,2);
+});
+
+test('setup account replacement and changed settings block stale saves, including a session change during persistence',async()=>{
+  const p=page({deferReady:true});p.run('state.connection={connected:true,premium:true,account:{id:1},playback_session:"s1"};openFirstSetup();firstSetupAdvance(4);$("#setup-record").checked=true;state.connection.playback_session="s2"');
+  await p.run('saveFirstSetup()');assert.equal(p.requests.length,0);assert.equal(p.run('firstSetup.step'),4);assert.match(p.nodes.get('#first-setup-error').textContent,/session/);
+  p.run('pauseFirstSetup();openFirstSetup();firstSetupAdvance(1);$("#setup-quality").value="orig";$("#setup-gapless").checked=true;gaplessSupported=()=>true');
+  p.setFetch(()=>{p.run('state.connection.playback_session="s3"');return {ok:true,json:async()=>({stream_quality:'orig',sources:[],auto_updates:false})};});
+  await p.run('saveFirstSetup()');assert.equal(p.run('firstSetup.step'),1);assert.equal(p.run('gaplessTrial.enabled'),false);
+  p.run('pauseFirstSetup();openFirstSetup();firstSetupAdvance(4);$("#setup-record").checked=true;lookup.recordPlays=true');
+  const before=p.requests.length;await p.run('saveFirstSetup()');assert.equal(p.requests.length,before);assert.equal(p.run('firstSetup.step'),4);
+});
+
+test('Free and disconnected setup never exposes Premium quality or changes it implicitly',async()=>{
+  const p=page({deferReady:true});p.run('state.connection={connected:true,premium:false,account:{id:1},playback_session:"s1"};openFirstSetup();firstSetupAdvance(1)');
+  assert.doesNotMatch(p.nodes.get('#first-setup-content').innerHTML,/id="setup-quality"/);
+  await p.run('saveFirstSetup()');assert.equal(p.requests.length,0);assert.equal(p.run('lookup.streamQuality'),'128');
+  p.run('pauseFirstSetup();state.connection={connected:false};openFirstSetup();firstSetupAdvance(1)');
+  assert.match(p.nodes.get('#first-setup-content').innerHTML,/Connect to iBroadcast/);
+});
+
+test('workspace setup validates every choice and restores language after persistence failure without applying other preferences',async()=>{
+  const p=page({deferReady:true});p.run('openFirstSetup();firstSetupAdvance(3);$("#setup-language").value="nl";$("#setup-appearance").value="dark";$("#setup-palette").value="warm";$("#setup-browsing").value="continuous";$("#setup-view").value="window";globalThis.setupAppearance=document.documentElement.dataset.theme');
+  p.setFetch(()=>({ok:false,status:500,json:async()=>({error:'Cannot persist language'})}));
+  await p.run('saveFirstSetup()');assert.equal(p.run('firstSetup.step'),3);assert.equal(p.run('TagcastI18n.choice'),'auto');assert.equal(p.run('document.documentElement.dataset.theme'),p.run('setupAppearance'));
+  assert.equal(p.run('albumContinuous.enabled'),false);assert.equal(p.run('visualPlayerMode'),'fullscreen');
+  p.run('$("#setup-language").value="invalid"');const count=p.requests.length;
+  await p.run('saveFirstSetup()');assert.equal(p.requests.length,count);
+  p.run('$("#setup-language").value="auto"');await p.run('saveFirstSetup()');
+  assert.equal(p.run('firstSetup.step'),4);assert.equal(p.run('document.documentElement.dataset.theme'),'dark');assert.equal(p.run('albumContinuous.enabled && artistContinuous.enabled'),true);assert.equal(p.run('visualPlayerMode'),'window');
+});
+
+test('setup uses existing sign-in and guards open editing drafts and cancellation while saving',async()=>{
+  const p=page({deferReady:true});p.run('settingsView.dirty=true;openFirstSetup()');assert.notEqual(p.nodes.get('#first-setup').open,true);
+  p.run('settingsView.dirty=false;openFirstSetup()');await p.click({'#first-setup':true,'[data-setup-connect]':true});
+  assert.equal(p.nodes.get('#connect').open,true);assert.equal(p.run('firstSetup.connecting'),true);
+  p.run('state.connection={connected:true,premium:false,account:{id:1},playback_session:"s1"}');await p.nodes.get('#connect').emit('close');
+  assert.equal(p.run('firstSetup.step'),1);assert.equal(p.run('firstSetup.scope===firstSetupScope()'),true);
+  p.run('firstSetup.saving=true');let prevented=false;await p.nodes.get('#first-setup').emit('cancel',{preventDefault(){prevented=true}});
+  assert.equal(prevented,true);assert.equal(p.nodes.get('#first-setup').open,true);
+  p.run('firstSetup.saving=false');await p.nodes.get('#first-setup').emit('cancel',{preventDefault(){}});assert.equal(p.nodes.get('#first-setup').open,false);
+});
+
+test('setup handles status-first startup and preserves an existing gapless preference on unsupported browsers',async()=>{
+  const p=page({deferReady:true,storage:{'tagcast-gapless-test':'on'}});
+  p.run('firstSetupBootReady();initializeFirstSetup({setup_eligible:true});firstSetupAdvance(1);gaplessSupported=()=>false');
+  assert.equal(p.nodes.get('#first-setup').open,true);
+  await p.run('saveFirstSetup()');assert.equal(p.run('gaplessTrial.enabled'),true);assert.equal(p.requests.length,0);
+});
+
+test('setup blocks a capability change while quality controls are open without dropping its draft',async()=>{
+  const p=page({deferReady:true});p.run('state.connection={connected:true,premium:false,account:{id:1},playback_session:"s1"};openFirstSetup();firstSetupAdvance(1);state.connection.premium=true');
+  await p.run('saveFirstSetup()');assert.equal(p.requests.length,0);assert.equal(p.run('firstSetup.step'),1);assert.match(p.nodes.get('#first-setup-error').textContent,/changed/);
+  p.run('pauseFirstSetup();openFirstSetup()');assert.match(p.nodes.get('#first-setup-content').innerHTML,/id="setup-quality"/);
+  assert.equal(p.run('firstSetup.scope===firstSetupScope()'),true);
+});
+
 test('expanded Details shows only loaded metadata, readable upload dates and valid zero values',async()=>{
   const p=page();await settle();await p.run('openAlbum("1")');await settle();
   p.run(`globalThis.detailAlbum=state.details.get('1');
