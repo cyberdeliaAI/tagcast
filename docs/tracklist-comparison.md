@@ -1,0 +1,109 @@
+# Read-only album track-list comparison
+
+The album's More menu offers **Compare track list…**. This is development work
+on main `e05b828685e75e9a4da17911abed131f8a5b83da`, without a release/version change.
+
+## User flow
+
+Opening shows the already loaded complete displayed album/disc set and prefilled
+artist/title fields. It makes no comparison/provider request. **Search MusicBrainz**
+is explicit and editable, so a mixed album can be inspected against more than one
+reference. No edition is selected automatically. Choose a specific release using
+its title/artist, date, country, formats, disc/track totals, label/catalogue number,
+status and disambiguation. A direct HTTPS link retains source attribution.
+
+Search reads 20 editions per page, up to 200 per query. Refine the artist/title for
+more results. Paging retains the submitted query even if the input fields were
+edited without submitting. Only choosing an edition reads its track list. The
+loaded reference can be replaced by another explicit choice/search; it is not a
+library-wide scan or a retained account cache.
+
+The columns compare displayed positions in the complete local set and chosen
+release, retaining disc/track numbering, vinyl labels, duplicate positions/titles
+and version text. They never infer an audio match. Differences show titles,
+disc/track labels and known duration differences over two seconds. Unknown values
+are identified separately. A title also appearing elsewhere is only a navigation
+observation, not a proposed mapping. Extra displayed positions mean there is no
+corresponding row, not proof of a missing/wrong song. The differences-only checkbox
+also retains unknown fields. No title, order, membership, playlist or audio changes
+are offered or sent. There is no Apply/Save button or automatic matching/splitting.
+
+MusicBrainz can have incomplete metadata. Missing media/track positions, mismatched
+track counts and additional pregap/data sections are flagged as an incomplete audio
+track list; the linked release remains authoritative for inspection. Those additional
+sections are not silently treated as ordinary audio positions. Native and reference
+lists are limited to 1,000 audio tracks; oversized lists are rejected rather than
+silently compared in part. Unavailable lengths are not borrowed from recording
+lengths or interpreted as zero-length audio.
+
+## Ownership, transport and UI
+
+Two GET-only local endpoints, `/api/tracklist/search` and `/api/tracklist/release`,
+retain the server's Host/Fetch Metadata/shutdown admission protections. They require
+an active client, loaded library, available album and current playback session.
+They never call `_current()`, download/refresh the iBroadcast library, read audio,
+prepare a review or mutate anything. Capture/recheck client, account, session,
+library identity and the album snapshot around public I/O. MusicBrainz's source
+switch is checked before and after the request. The Studio lock is not held during
+network/pacing waits. Uncertain-write/read-back and fresh-write checks are untouched.
+
+Only the entered public artist/title search and public release ID go to fixed
+MusicBrainz HTTPS endpoints, without iBroadcast credentials, native IDs or session
+data. Release IDs are validated UUIDs; remote fields/links are bounded and
+whitelisted. Reuse the existing User-Agent, shared host pacing and bounded public
+HTTP cache. Errors are visible/retryable by a new explicit read, never polled or
+retried automatically. Closing/navigation/replacement/source changes discard local
+comparison data and invalidate late replies. A provider read already in progress
+can finish within its existing timeout; closing does not create another request.
+
+The modal preserves input drafts on language/appearance changes, ordinary playback,
+the same audio element, history and scrolling. All six languages include its labels,
+status and errors. Escape/Close return focus and scroll only to the same still-current
+album. Navigation/account/library invalidation never restores an old scroll position.
+Local Help explains search privacy, edition selection and positional observations.
+
+## Contract references
+
+- [MusicBrainz Release](https://musicbrainz.org/doc/Release): editions and ordered
+  media track lists are distinct from a release group; lists may be incomplete.
+- [MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API): explicit release
+  search with limit/offset, then release lookup with `recordings artist-credits labels`.
+
+No iBroadcast write or playlist append contract is changed or tested against a real
+account. Public service availability and data quality remain external limitations.
+
+## Validation (2026-11-12)
+
+- Full local Python 3.13: 995 tests / 2,660 subtests passed. Final focused provider /
+  ownership cases also pass after stricter structural/count validation. They cover
+  literal queries, selected UUIDs, disc/track order, repeats, unknown lengths,
+  incomplete/oversized references, no iBroadcast reads/writes, source gating,
+  account/session/library/in-place album replacement and no lock during public I/O.
+- Frontend/media/Electron: 889 tests passed. Tests include explicit requests only,
+  positional/version/duration semantics, escaped metadata, query paging, close/focus,
+  active playback time/state preservation, stale answers and visible no-retry errors.
+- Chromium/WebKit: 16 width/appearance combinations passed using actual pointer and
+  keyboard input at 420/760/768/1280 px in Light/Dark, with the existing CSP.
+- The real packaged macOS ARM64 app passed all eight native comparison width/theme
+  combinations in a separate isolated process, plus ordinary startup, same-profile
+  restart, CLI/security checks and all 15 shutdown/recovery cases. The new native
+  check does not extend the existing full-application smoke deadline.
+- An initial native fixture returned a non-cloneable function; the fixture now
+  returns no value. One subsequent local Mini Player native-focus check failed;
+  its production/test code was unchanged, and the exact same package passed on
+  recheck without simultaneous browser automation. Keep this as a native-focus
+  validation limitation, not a silently suppressed product failure.
+- Playwright automatic scrolling can dismiss the More menu after its click on
+  unmodified main too (420px reproduction retained). The browser harness now waits
+  for completed scroll frames before the pointer click, like the native harness;
+  no menu dismissal assertion, timeout or production scroll behavior was weakened.
+- A public MusicBrainz request initially returned busy/503. One later explicit
+  validation succeeded: 152 search results, 20 editions on the page, then the
+  selected public release `a538a1f0-7d61-46a0-b2c7-c0249773cf4c` with one disc / five
+  audio tracks. This used no iBroadcast account or writes. Automatic retries are
+  not added to Tagcast. Availability and community metadata remain external limits.
+
+Local logs/reports are retained under the root checkout's ignored
+`build/tracklist-comparison-20261112/` and the development worktree's `build/reports/`.
+Ruff, generated translations/CSS, version consistency and diff checks pass. Native
+CI on all supported targets remains an independent gate. No assertion was relaxed.

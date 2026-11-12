@@ -6645,6 +6645,78 @@ test("breadcrumbs restore a decade's sampled order and reject a stale branch", a
   assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/1980s/);
 });
 
+const comparisonRelease = {id:'12345678-1234-1234-1234-123456789abc',title:'Edition (Live)',artist:'Artist',date:'1990',country:'DE',formats:['CD'],labels:[{name:'Label',catalogue:'CAT'}],discs:1,track_count:2,url:'https://musicbrainz.org/release/12345678-1234-1234-1234-123456789abc'};
+function comparisonResponse() { return {release:comparisonRelease,tracks:[{disc:1,number:'1',position:1,title:'Other <script>',artist:'Artist',length:123},{disc:2,number:'1',position:1,title:'Version (Live)',artist:'Other',length:null}],incomplete:true}; }
+
+test("track comparison opens locally, searches and selects explicitly, and never changes playback or metadata",async()=>{
+  const p=livePage();await settle();await p.run('openAlbum("1");playTracks(state.details.get("1"))');
+  p.run('audio.currentTime=18.5');
+  const before=p.run('JSON.stringify({albums:state.albums,details:[...state.details],queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime,paused:audio.paused,history:history.length,changes:state.history})');
+  const count=p.requests.length;
+  const trigger=p.run('document.querySelector("[data-album-more]")');
+  await p.click({'[data-album-more]':trigger});await p.nodes.get('#album-action-compare').emit('click');
+  assert.equal(p.requests.length,count);assert.equal(p.nodes.get('#track-comparison').open,true);
+  assert.equal(p.nodes.get('#track-comparison-artist').value,p.run('state.details.get("1").artist'));
+  assert.equal(p.run('trackComparison.tracks.length'),p.run('state.details.get("1").tracks.length'));
+  assert.doesNotMatch(p.nodes.get('#track-comparison-table').innerHTML,/data-play=|data-edit|<input/);
+  p.setFetch(async(url,options)=>{assert.ok(!options?.body);return {ok:true,json:async()=>url.includes('/search?')?{releases:[comparisonRelease],total:1,offset:0,more:false,limit:200}:comparisonResponse()};});
+  await p.run('requestTrackComparison()');
+  assert.equal(p.requests.length,count+1);assert.equal(p.run('trackComparison.reference'),null);
+  assert.match(p.nodes.get('#track-comparison-results').innerHTML,/Edition \(Live\)/);
+  await p.run('requestTrackComparison("'+comparisonRelease.id+'")');
+  assert.equal(p.requests.length,count+2);assert.match(p.nodes.get('#track-comparison-table').innerHTML,/Other &lt;script&gt;/);
+  assert.match(p.nodes.get('#track-comparison-reference').innerHTML,/complete audio track list/);
+  assert.doesNotMatch(p.nodes.get('#track-comparison-table').innerHTML,/<script>/);
+  p.run('$("#track-comparison-only").checked=true;renderTrackComparison()');
+  assert.equal(p.run('JSON.stringify({albums:state.albums,details:[...state.details],queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime,paused:audio.paused,history:history.length,changes:state.history})'),before);
+  p.run('$("#track-comparison").close()');await p.nodes.get('#track-comparison').emit('close');
+  assert.equal(p.run('trackComparison.tracks.length'),0);assert.equal(p.run('trackComparison.reference'),null);
+  assert.equal(p.run('document.activeElement')===trigger,true);
+});
+
+test("track comparison preserves versions, duplicate positions, unknown values and the two-second observation threshold",async()=>{
+  const p=page();await settle();
+  assert.deepEqual(p.json('trackComparisonDifferences({title:"Song (Live)",disc:1,number:"1",length:100},{title:"Song",disc:2,number:"1",length:102.001})'),['titleDiff','positionDiff','durationDiff']);
+  assert.deepEqual(p.json('trackComparisonDifferences({title:" Song  (Live) ",disc:1,number:"1",length:100},{title:"song (live)",disc:1,number:"1",length:102})'),[]);
+  assert.deepEqual(p.json('trackComparisonDifferences({title:"Song",disc:0,number:"",length:null},{title:"Song",disc:1,number:"1",length:100})'),['unknown']);
+  assert.deepEqual(p.json('trackComparisonDifferences(null,{title:"Song"})'),['unpaired']);
+});
+
+test("track comparison rejects late results after close, navigation, account/library replacement or source disable",async()=>{
+  for(const change of ['$("#track-comparison").close()','showScreen("albums")','state.details=new Map(state.details)','state.connection.playback_session="replacement"','applyLookupSources([{name:"musicbrainz",enabled:false}])']){
+    const p=livePage();await settle();await p.run('openAlbum("1")');p.run('lookup.sources=[{name:"musicbrainz",enabled:true}];openTrackComparison()');
+    let resolve;p.setFetch(()=>new Promise(r=>{resolve=r;}));
+    const pending=p.run('requestTrackComparison()');assert.ok(resolve);
+    p.run(change);if(change.includes('.close()'))await p.nodes.get('#track-comparison').emit('close');
+    resolve({ok:true,json:async()=>({releases:[comparisonRelease],total:1,offset:0,more:false,limit:200})});await pending;
+    assert.equal(p.run('trackComparison.results'),null);assert.equal(p.run('trackComparison.tracks.length'),0);
+    assert.notEqual(p.nodes.get('#track-comparison').open,true);
+  }
+});
+
+test("track comparison paging retains the submitted query and does not search edited text until Search",async()=>{
+  const p=livePage();await settle();await p.run('openAlbum("1")');p.run('openTrackComparison()');
+  p.setFetch(async url=>({ok:true,json:async()=>({releases:[comparisonRelease],total:50,offset:Number(new URL('http://test'+url).searchParams.get('offset')),more:true,limit:200})}));
+  await p.run('requestTrackComparison()');const artist=p.nodes.get('#track-comparison-artist').value;
+  p.nodes.get('#track-comparison-artist').value='Changed query';
+  await p.run('requestTrackComparison(null,20)');await p.run('requestTrackComparison(null,0)');
+  assert.equal(new URL('http://test'+p.requests.at(-1).url).searchParams.get('artist'),artist);
+  await p.run('requestTrackComparison()');assert.equal(new URL('http://test'+p.requests.at(-1).url).searchParams.get('artist'),'Changed query');
+});
+
+test("track comparison bounds large albums and exposes source failures without automatic retry",async()=>{
+  const p=livePage();await settle();await p.run('openAlbum("1")');
+  p.run('state.details.get("1").tracks=Array.from({length:1001},()=>({id:"100",title:"Song"}));openTrackComparison()');
+  const count=p.requests.length;await p.run('requestTrackComparison()');
+  assert.equal(p.requests.length,count);assert.equal(p.run('trackComparison.tracks.length'),0);
+  assert.equal(p.nodes.get('#track-comparison-search').disabled,true);
+  p.run('$("#track-comparison").close();state.details.get("1").tracks.length=2;openTrackComparison()');
+  p.setFetch(async()=>({ok:false,status:503,json:async()=>({error:'Synthetic outage'})}));
+  await p.run('requestTrackComparison()');await settle();
+  assert.equal(p.requests.length,count+1);assert.equal(p.run('trackComparison.busy'),false);
+  assert.match(p.nodes.get('#track-comparison-status').textContent,/Synthetic outage/);
+});
+
 test("More album actions only starts an empty reviewed trash selection after an explicit choice", async () => {
   const p=livePage(); await settle(); await p.run('openAlbum("1")');
   const trigger=p.run('document.querySelector("[data-album-more]")'); trigger.disabled=false;
@@ -9711,6 +9783,8 @@ test('album lyrics check starts explicitly, runs serially and keeps results unti
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics-import'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-download'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-compare'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-split'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
