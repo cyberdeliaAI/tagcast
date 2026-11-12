@@ -9,14 +9,16 @@
 body.navigation-collapsed main{margin-left:0}
 body.navigation-collapsed .player{left:0}
 .browse-sort-buttons{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.browse-sort-button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font-size:12px}
+.browse-sort-button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 10px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--muted);font-size:12px;line-height:20px}
 .browse-sort-button:hover{background:var(--palette-tint,#eef4e2);color:var(--ink)}
 .browse-sort-button[aria-pressed="true"],#albums-random-order[aria-pressed="true"]{background:var(--palette-tint,#eef4e2);color:var(--palette-link,#2d654d);border-color:var(--line)}
 .browse-sort-button span{width:1em}
-.browse-options-menu{grid-template-columns:minmax(190px,320px);min-width:0}
-#workspace-panel-tabs{display:flex;gap:3px;flex:1;min-width:0}
-#workspace-panel-tabs button{flex:1;border:1px solid transparent;border-radius:6px;min-height:38px;background:transparent;color:var(--muted);font-weight:600;padding:8px 10px}
-#workspace-panel-tabs button[aria-selected="true"]{background:var(--palette-tint,#eef4e2);border-color:var(--line);color:var(--ink)}
+#workspace-panel-tabs{display:flex;gap:0;flex:1;min-width:0;padding:2px;border-radius:6px;background:var(--palette-surface,#f3f5f0)}
+#workspace-panel-tabs button{flex:1;border:1px solid transparent;border-radius:4px;min-height:30px;background:transparent;color:var(--muted);font-weight:600;padding:4px 10px;font-size:12px;line-height:20px}
+#workspace-panel-tabs button[aria-selected="true"]{background:var(--palette-primary,var(--green));color:var(--palette-primary-ink,#fff)}
+body:not(.listening-page-open) .now-playing-header{padding:8px 12px;gap:8px}
+body:not(.listening-page-open) #now-playing-close{width:30px;height:30px;padding:0;flex:none;font-size:20px}
+#devices-button{min-height:30px;padding:4px 10px;font-size:12px;line-height:20px}
 body:not(.listening-page-open) .now-playing-header .listening-heading{display:none}
 #workspace-details{overflow:auto;overscroll-behavior:contain;padding:20px;min-height:0}
 #workspace-details details{border-top:1px solid var(--line);padding:14px 0}
@@ -33,5 +35,6 @@ body:not(.listening-page-open) .now-playing-header .listening-heading{display:no
 /* Inspection is always discoverable; the existing write/queue actions retain hover behavior. */
 .album-tracklist:not(.trash-mode) .track-row-actions>.workspace-track-details{opacity:1;pointer-events:auto}
 .workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline:2px solid var(--palette-focus,#759345);outline-offset:2px}
-@media(max-width:760px){#navigation-toggle{display:none}.workspace-location{flex:initial;width:100%}.browse-sort-buttons{gap:2px}.browse-sort-button{padding:7px 8px;min-height:40px}.now-playing-panel{width:min(360px,calc(100vw - 20px))}}
+@media(max-width:760px){#navigation-toggle{display:none}.workspace-location{flex:initial;width:100%}.browse-sort-buttons{gap:2px}.browse-sort-button{padding:7px 8px;min-height:44px}.now-playing-panel{width:min(360px,calc(100vw - 20px))}}
+@media(max-width:760px),(pointer:coarse){#workspace-panel-tabs button,#devices-button{min-height:44px}body:not(.listening-page-open) #now-playing-close{width:44px;height:44px}.browse-sort-button{min-height:44px}}
 @media(forced-colors:active){.browse-sort-button[aria-pressed="true"],#workspace-panel-tabs button[aria-selected="true"]{border-color:Highlight}.workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline-color:Highlight}}
