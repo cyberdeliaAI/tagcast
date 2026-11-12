@@ -12,6 +12,7 @@ where the other edit came from.
 """
 
 import hashlib
+import math
 import re
 import unicodedata
 from collections import OrderedDict
@@ -415,7 +416,7 @@ class Library:
         track = self.tracks.get(track_id)
         if not track or track.get("trashed"):
             raise LibraryError("This track is no longer available. Reload the library.")
-        return {
+        view = {
             "id": str(track_id),
             "album_id": str(number(track.get("album_id"))),
             "title": text(track.get("title")) or "Untitled track",
@@ -437,6 +438,23 @@ class Library:
             "rating": number(track.get("rating")),
             "tags": self.track_tags(track_id),
         }
+        # Optional library metadata only: never read audio or infer technical properties.
+        for field in ("size", "plays", "replay_gain"):
+            raw = track.get(field)
+            if raw is None or isinstance(raw, bool):
+                continue
+            try:
+                value = float(raw)
+            except (ValueError, TypeError, OverflowError):
+                continue
+            if not math.isfinite(value):
+                continue
+            if field == "replay_gain":
+                if -100 <= value <= 100:
+                    view[field] = value
+            elif value.is_integer() and 0 <= value <= 9007199254740991:
+                view[field] = int(value)
+        return view
 
     def track_tags(self, track_id):
         if self._track_tags is None:

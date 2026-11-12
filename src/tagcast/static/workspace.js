@@ -65,9 +65,23 @@ document.addEventListener("click", event => {
   if (button) chooseWorkspaceSort(button.dataset.sortKind, button.dataset.sortValue);
 });
 
+// Presentation metadata is bounded by live queued occurrences, never persisted or published.
+const workspaceQueueDetails = new WeakMap();
+let workspaceQueueScope = state.details, workspaceQueueGeneration = 0;
+function workspaceQueueOwner() {
+  if (workspaceQueueScope !== state.details) {
+    workspaceQueueScope = state.details; workspaceQueueGeneration += 1;
+  }
+  return workspaceQueueGeneration;
+}
+function rememberWorkspaceQueueDetails(entry, metadata) {
+  workspaceQueueDetails.set(entry, {metadata, generation: workspaceQueueOwner(), session: state.connection.playback_session});
+}
 function workspaceAlbumDetails() {
   if (state.screen !== "album" || !albumViewReady()) return null;
-  return joinDiscs(shelfIds(albumView.id).map(id => state.details.get(id)));
+  const albums = shelfIds(albumView.id).map(id => state.details.get(id));
+  const album = joinDiscs(albums);
+  return albums.length > 1 ? {...album, discs: albums} : album;
 }
 function workspaceDetailsData() {
   const selected = workspacePanel.selection;
@@ -81,10 +95,17 @@ function workspaceDetailsData() {
   }
   const album = workspaceAlbumDetails();
   if (album) return {album, track: album.tracks.find(t => String(t.id) === albumView.found) || null};
-  const track = player.queue[player.index];
-  if (track && state.albums.some(a => String(a.id) === String(track.album.id))) {
-    const cached = state.details.get(String(track.album.id));
-    return {album: cached || track.album, track: cached ? cached.tracks.find(t => String(t.id) === String(track.id)) || null : track};
+  const track = player.queue[player.index], captured = track && workspaceQueueDetails.get(track);
+  const current = captured && captured.generation === workspaceQueueOwner() && captured.session === state.connection.playback_session;
+  const metadata = current ? captured.metadata : null;
+  const albumId = metadata?.track?.album_id || track?.album?.id;
+  const summary = state.albums.find(a => String(a.id) === String(albumId));
+  if (track && summary) {
+    const cached = state.details.get(String(albumId));
+    // A current cached membership is authoritative, including a removed queued track.
+    if (cached) return {album: cached, track: cached.tracks.find(t => String(t.id) === String(track.id)) || null};
+    return {album: {...track.album, ...metadata?.album, ...summary},
+      track: captured && !current ? null : metadata?.track || track};
   }
   return null;
 }
@@ -92,20 +113,57 @@ function workspaceFacts(rows) {
   return `<dl class="workspace-facts">${rows.filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== 0)
     .map(([key, value]) => `<div><dt>${TagcastI18n.html(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
 }
+function workspaceNames(values) {
+  return [...new Set(values.filter(value => typeof value === "string" && value.trim()))].join(" · ");
+}
+function workspaceCredits(record) {
+  return (record.credits || []).map(entry => TagcastI18n.text("workspace.credit", {
+    name: entry.name, role: Object.hasOwn(creditRoleLabels, entry.type) ? creditRoleLabels[entry.type] : entry.type || creditRoleLabels.artist,
+    phrase: entry.phrase ? ` · ${entry.phrase}` : ""})).join("; ");
+}
+function workspaceUploaded(value) {
+  return value && Number.isFinite(Date.parse(value)) ? TagcastI18n.dateTime(value) : "";
+}
+function workspaceRating(records) {
+  if (!records.length || records.some(record => !Number.isInteger(record.rating) || record.rating < 0 || record.rating > 5)) return "";
+  const values = [...new Set(records.map(record => record.rating))];
+  return values.length > 1 ? TagcastI18n.text("workspace.rating.mixed")
+    : values[0] ? TagcastI18n.text("workspace.rating.value", {value: values[0]}) : TagcastI18n.text("workspace.rating.unset");
+}
 function renderWorkspaceDetails() {
   const host = $("#workspace-details"), data = workspaceDetailsData();
   const {album, track} = data || {};
+  const tracks = album?.tracks || [], discs = album?.discs || (album ? [album] : []);
+  const completeDuration = tracks.length && tracks.every(t => Number.isFinite(t.length) && t.length > 0);
+  const completeSize = tracks.length && tracks.every(t => Number.isSafeInteger(t.size) && t.size > 0);
+  const bytes = value => Number.isSafeInteger(value) && value > 0 ? TagcastI18n.text("workspace.bytes", {value}) : "";
   const albumRows = album ? [
-    ["workspace.field.title", album.name], ["workspace.field.artist", album.artist],
+    ["workspace.field.title", album.name], ["workspace.field.artist", workspaceNames(discs.flatMap(disc => albumArtistEntries(disc).map(entry => entry.name)))],
     ["workspace.field.year", album.year], ["workspace.field.tracks", album.tracks ? TagcastI18n.number(album.tracks.length) : album.track_count ? TagcastI18n.number(album.track_count) : ""],
-    ["workspace.field.added", album.uploaded_at],
+    ["workspace.field.disc", workspaceNames(discs.map(disc => disc.disc ? TagcastI18n.number(disc.disc) : ""))],
+    ["workspace.field.duration", completeDuration ? trackDuration(tracks.reduce((sum, t) => sum + t.length, 0)) : ""],
+    ["workspace.field.genres", workspaceNames(tracks.length ? tracks.flatMap(t => t.genres || (t.genre ? [t.genre] : [])) : album.genres || [])],
+    ["workspace.field.tags", workspaceNames(tracks.flatMap(t => (t.tags || []).map(tag => tag.name)))],
+    ["workspace.field.rating", workspaceRating(discs)],
+    ["workspace.field.credits", workspaceNames(discs.map(workspaceCredits))],
+    ["workspace.field.size", completeSize ? bytes(tracks.reduce((sum, t) => sum + t.size, 0)) : ""],
+    ["workspace.field.lastUpload", workspaceUploaded(tracks.map(t => t.uploaded_at || "").sort().at(-1) || album.uploaded_at)],
   ] : [];
   const trackRows = track ? [
     ["workspace.field.title", track.title], ["workspace.field.artist", track.artist],
     ["workspace.field.album", album.name], ["workspace.field.year", track.year],
+    ["workspace.field.trackNumber", track.track ? TagcastI18n.number(track.track) : ""],
     ["workspace.field.duration", track.length ? trackDuration(track.length) : ""],
     ["workspace.field.format", track.format], ["workspace.field.composer", (track.composers || []).join(", ")],
-    ["workspace.field.added", track.uploaded_at],
+    ["workspace.field.genres", workspaceNames(track.genres || (track.genre ? [track.genre] : []))],
+    ["workspace.field.tags", workspaceNames((track.tags || []).map(tag => tag.name))],
+    ["workspace.field.performers", workspaceNames((track.performers || []).map(entry => entry.name))],
+    ["workspace.field.credits", workspaceCredits(track)],
+    ["workspace.field.rating", workspaceRating([track])],
+    ["workspace.field.size", bytes(track.size)],
+    ["workspace.field.plays", Number.isSafeInteger(track.plays) && track.plays >= 0 ? TagcastI18n.number(track.plays) : ""],
+    ["workspace.field.gain", Number.isFinite(track.replay_gain) ? TagcastI18n.text("workspace.gain", {value: track.replay_gain}) : ""],
+    ["workspace.field.added", workspaceUploaded(track.uploaded_at)],
   ] : [];
   const markup = album ? `<div class="workspace-detail-cover">${cover(album, true)}<div><strong>${escapeHtml(track?.title || album.name)}</strong><p>${escapeHtml(track?.artist || album.artist)}</p></div></div>
     <details data-workspace-section="album" open><summary>${TagcastI18n.html("workspace.field.album")}</summary>${workspaceFacts(albumRows)}</details>
@@ -121,6 +179,7 @@ function renderWorkspaceDetails() {
   }
 }
 function syncWorkspacePanel() {
+  workspaceQueueOwner();
   if (workspacePanel.scope !== state.details || workspacePanel.session !== state.connection.playback_session) {
     workspacePanel.selection = null; workspacePanel.markup = "";
     $("#workspace-details").innerHTML = "";
