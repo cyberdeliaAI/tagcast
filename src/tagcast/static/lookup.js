@@ -10,7 +10,9 @@ function applyLookupSources(sources) {
   const choices = rows => JSON.stringify(rows.map(s => [s.name, s.enabled, s.selected]));
   const changed = lookup.sources.length && choices(lookup.sources) !== choices(sources);
   const lyricsChanged = lookup.sources.length && lookup.sources.find(s => s.name === "lrclib")?.enabled !== sources.find(s => s.name === "lrclib")?.enabled;
+  const musicBrainzChanged = lookup.sources.find(s => s.name === "musicbrainz")?.enabled !== sources.find(s => s.name === "musicbrainz")?.enabled;
   lookup.sources = sources;
+  if (musicBrainzChanged && typeof resetTrackComparison === "function") resetTrackComparison();
   if (lyricsChanged && typeof invalidateLyricsSource === "function") invalidateLyricsSource();
   if (!changed) return;
   // Do not let answers started before a settings change repopulate either chooser.

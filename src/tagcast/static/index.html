@@ -47,6 +47,7 @@
   <script src="playback.js" defer></script>
   <script src="album.js" defer></script>
   <script src="album-info.js" defer></script>
+  <script src="track-comparison.js" defer></script>
   <script src="trash.js" defer></script>
   <script src="artists.js" defer></script>
   <script src="tracks.js" defer></script>
@@ -273,6 +274,14 @@
       <p id="audio-output-error" class="error-text" role="alert"></p>
       <p class="muted" data-i18n="playback.output.footnote">Your selection applies to this player in this browser. Available outputs depend on your browser and operating system. Network speakers need a supported browser picker or your system's sound settings.</p>
     </dialog>
+    <dialog id="track-comparison" class="track-comparison-dialog" aria-labelledby="track-comparison-title" aria-describedby="track-comparison-hint">
+      <div class="dialog-heading"><h2 id="track-comparison-title" data-i18n="trackComparison.heading">Compare track list</h2><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="track-comparison" aria-label="Help with track list comparison" data-i18n-attr="aria-label=trackComparison.help">?</button><button type="button" class="close" data-close="track-comparison" aria-label="Close track list comparison" data-i18n-attr="aria-label=trackComparison.close">×</button></div></div>
+      <p id="track-comparison-hint" class="muted" data-i18n="trackComparison.hint">Choose a specific edition. Comparison never changes your library, track titles, order or playback.</p>
+      <form id="track-comparison-form" class="track-comparison-search"><label class="field"><span data-i18n="trackComparison.artist">Artist</span><input id="track-comparison-artist" required maxlength="200"></label><label class="field"><span data-i18n="trackComparison.album">Album</span><input id="track-comparison-album" required maxlength="200"></label><button type="submit" class="button" id="track-comparison-search" data-i18n="trackComparison.search">Search MusicBrainz</button></form>
+      <p class="muted" data-i18n="trackComparison.privacy">Only Search sends the entered artist and album to MusicBrainz. Choose an edition to read its track list. No audio or account data is sent.</p>
+      <p id="track-comparison-status" role="status" aria-live="polite"></p>
+      <div class="track-comparison-layout"><section id="track-comparison-results" aria-label="MusicBrainz editions" data-i18n-attr="aria-label=trackComparison.editions"></section><section class="track-comparison-main"><div id="track-comparison-reference"></div><label class="checkline"><input type="checkbox" id="track-comparison-only"><span data-i18n="trackComparison.only">Show differences and unknown fields only</span></label><p class="muted" data-i18n="trackComparison.positional">Rows are compared by displayed position, not matched automatically. Different editions and incomplete data can explain differences. Duration differences are flagged only above two seconds.</p><div id="track-comparison-table" class="track-comparison-table"></div></section></div>
+    </dialog>
     <dialog id="cover-lightbox" class="cover-lightbox" aria-labelledby="cover-lightbox-title" aria-describedby="cover-lightbox-help">
       <div class="dialog-heading"><div><h2 id="cover-lightbox-title">Album cover</h2><p class="muted" id="cover-lightbox-artist"></p></div><button type="button" class="close" id="cover-lightbox-close" aria-label="Close enlarged cover" data-i18n-attr="aria-label=page.coverLightbox.close">×</button></div>
       <div class="cover-lightbox-picture"><img id="cover-lightbox-image" alt="" referrerpolicy="no-referrer"><p id="cover-lightbox-status" class="muted" role="status"></p></div>
@@ -286,6 +295,7 @@
     <button type="button" id="album-action-playlist" role="menuitem" data-i18n="playlists.album.addToPlaylist">Add to playlist…</button>
     <button type="button" id="album-action-lyrics-import" role="menuitem" data-i18n="page.albumActions.importLyrics">Import lyrics…</button>
     <button type="button" id="album-action-download" role="menuitem" data-i18n="page.albumActions.download">Download album…</button>
+    <button type="button" id="album-action-compare" role="menuitem" data-i18n="trackComparison.action">Compare track list…</button>
     <button type="button" id="album-action-split" role="menuitem" data-i18n="albumSplit.action">Split album…</button>
     <button type="button" id="album-action-trash" role="menuitem" data-i18n="page.albumActions.trash">Move to trash…</button>
   </div>

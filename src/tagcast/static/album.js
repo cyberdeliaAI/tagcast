@@ -66,7 +66,7 @@ $("#album-action-menu").addEventListener("keydown", event => {
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     event.preventDefault();
-    const items = [$("#album-action-lyrics"), $("#album-action-playlist"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
+    const items = [$("#album-action-lyrics"), $("#album-action-playlist"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-compare"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
     const index = items.indexOf(document.activeElement);
     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
       : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
@@ -289,6 +289,7 @@ function albumViewReady() {
 }
 
 function renderAlbumView() {
+  if (typeof trackComparisonCurrent === "function" && $("#track-comparison").open && !trackComparisonCurrent()) resetTrackComparison();
   if (state.screen !== "album" || albumView.loading) return;
   if (!state.albums.some(a => String(a.id) === albumView.id)) { resetAlbumView(); return; }
   const ids = shelfIds(albumView.id), discs = ids.map(i => state.details.get(i));

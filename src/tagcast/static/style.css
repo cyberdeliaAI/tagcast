@@ -1187,3 +1187,13 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 #browse-toolbar select { max-width: 100%; }
 #collections-page .sticky-search:has(#favourite-albums-display) { display: flex; gap: 12px; flex-wrap: wrap; }
 #collections-page .sticky-search:has(#favourite-albums-display) > .clearable-search { flex: 1; min-width: min(100%, 220px); }
+
+/* Explicit read-only edition comparison; native document/dialog scrolling remains intact. */
+.track-comparison-dialog{width:min(1240px,96vw);max-height:92vh}
+.track-comparison-search{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.track-comparison-search .field{flex:1;min-width:180px}
+.track-comparison-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:22px;margin-top:16px}
+.track-comparison-main{min-width:0}.track-comparison-choices{display:grid;gap:8px}.track-comparison-edition{text-align:left;white-space:normal;overflow-wrap:anywhere;width:100%}.track-comparison-edition[aria-pressed="true"]{border-color:var(--green);background:var(--palette-tint,var(--paper))}
+.track-comparison-dialog strong,.track-comparison-dialog small,.track-comparison-edition span,#track-comparison-reference span{display:block}.track-comparison-dialog small{color:var(--muted);line-height:1.5}.track-comparison-pages{display:flex;justify-content:space-between;margin:12px 0;gap:8px}
+#track-comparison-reference{margin-bottom:16px;overflow-wrap:anywhere}#track-comparison-reference a{color:var(--green)}
+.track-comparison-table table{width:100%;border-collapse:collapse;table-layout:fixed}.track-comparison-table th,.track-comparison-table td{text-align:left;vertical-align:top;padding:12px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.track-comparison-table th:nth-child(1),.track-comparison-table th:nth-child(2){width:39%}.track-comparison-table td span{display:block;margin-top:4px}.track-comparison-table td:last-child{font-size:11px;color:var(--muted)}.track-comparison-different{background:var(--palette-tint,var(--white))}
+@media(max-width:760px){.track-comparison-layout{grid-template-columns:minmax(0,1fr)}.track-comparison-search .field{min-width:140px}.track-comparison-table th,.track-comparison-table td{padding:9px 4px;font-size:12px}.track-comparison-table th:nth-child(1),.track-comparison-table th:nth-child(2){width:36%}}
