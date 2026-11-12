@@ -1,7 +1,6 @@
 # Read-only album track-list comparison
 
-The album's More menu offers **Compare track list…**. This is development work
-on main `e05b828685e75e9a4da17911abed131f8a5b83da`, without a release/version change.
+Tagcast 1.8.0 offers **Compare track list…** in the album's More menu.
 
 ## User flow
 
