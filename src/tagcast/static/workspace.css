@@ -11,8 +11,9 @@ body.navigation-collapsed .player{left:0}
 .browse-sort-buttons{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .browse-sort-button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 10px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--muted);font-size:12px;line-height:20px}
 .browse-sort-button:hover{background:var(--palette-tint,#eef4e2);color:var(--ink)}
-.browse-sort-button[aria-pressed="true"],#albums-random-order[aria-pressed="true"]{background:var(--palette-tint,#eef4e2);color:var(--palette-link,#2d654d);border-color:var(--line)}
+.browse-sort-button[aria-pressed="true"]{background:var(--palette-tint,#eef4e2);color:var(--palette-link,#2d654d);border-color:var(--line)}
 .browse-sort-button span{width:1em}
+.browse-sort-button svg{display:block;width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #workspace-panel-tabs{display:flex;gap:0;flex:1;min-width:0;padding:2px;border-radius:6px;background:var(--palette-surface,#f3f5f0)}
 #workspace-panel-tabs button{flex:1;border:1px solid transparent;border-radius:4px;min-height:30px;background:transparent;color:var(--muted);font-weight:600;padding:4px 10px;font-size:12px;line-height:20px}
 #workspace-panel-tabs button[aria-selected="true"]{background:var(--palette-primary,var(--green));color:var(--palette-primary-ink,#fff)}
