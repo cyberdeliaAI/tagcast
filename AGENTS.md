@@ -774,6 +774,18 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
   fullscreen focus handling when a lightbox is above Now playing.
+- Album More → Compare track list is explicit and read-only (`track_comparison.py` /
+  `track-comparison.js`). Opening uses loaded album/disc-set details only. Search
+  sends only the entered artist/title to MusicBrainz; an explicit edition choice
+  fetches that release's bounded track list through the existing paced public HTTP
+  cache. Respect source selection and capture/recheck account, session, library and
+  album ownership around I/O without holding Studio.lock. Never refresh iBroadcast,
+  scan audio, match/reorder automatically or add an Apply/Save action. Preserve
+  repeats, version text, known/unknown disc/track positions and duration. Positional
+  differences are observations, not proof of incorrect/missing music; incomplete
+  references remain visibly incomplete. Bound to 200 search results and 1,000 audio
+  tracks. Invalidate and clear on close, navigation, source/account/library changes;
+  preserve audio/history/focus, and do not restore an old route's scroll after navigation.
 - Album details offer Play in disc/track order and an accessible icon-only Shuffle in a newly mixed
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;
