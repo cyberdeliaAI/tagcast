@@ -50,12 +50,14 @@ It retains the existing queue-sync opt-in gate, dialog and account/session guard
 moving it does not connect a device or start playback. It is also reachable in the
 full Now playing page. The header no longer contains a Devices shortcut.
 
-Details uses read-only Album and Track accordions. It shows the open album or the
-current queued track. The information button beside an album track selects that
-track without playing it. The button stays visible; existing queue, tag and rating
-actions retain their hover/focus behavior. Only known, loaded fields are shown;
-opening Details never starts a provider lookup, a metadata fetch or a write.
-Opening an album itself retains its existing lazy detail/cache reads.
+Details uses read-only Album and Track accordions for the player's current queued
+track and its original native album. Browsing or opening another album never
+changes this subject. Track transitions update both sections; pausing retains the
+current track. An empty or cleared queue shows a playback hint, even on an album
+page. There is no separate browsing-track selection in this panel.
+Only known, loaded fields are shown; opening Details never starts a provider
+lookup, a metadata fetch or a write. Opening an album itself retains its existing
+lazy detail/cache reads.
 
 The accordions include loaded artist credits, disc/track numbers, genres, tags and
 native ratings, with mixed disc ratings distinguished from unrated albums. Album
@@ -78,15 +80,16 @@ including repeated occurrences, never establishes complete-album duration or siz
 
 Arrow Left/Right and Home/End switch tabs. Escape closes the side panel and returns
 focus to the opening control. Accordion state survives read-only refreshes. A
-library or session replacement clears captured selections and rendered old details,
+library or session replacement clears rendered old details,
 including while the panel is closed. Details does not introduce another editor,
 playback engine, source, library cache or account session.
 
 ## Validation
 
 Frontend tests cover sorting and persistence, independent filters, sidebar/mobile
-access, read-only track inspection, tab keyboard navigation, metadata escaping and
-replacement invalidation, restored queues before album visits, duplicate positions,
+access, current-track details across browsing, cross-album transitions, pause/stop,
+tab keyboard navigation, metadata escaping and replacement invalidation, restored
+queues before visiting their albums, duplicate positions,
 unknown ratings and stale cached membership. Existing browsing, playback, lyrics, settings and history
 regressions continue to exercise the shared implementation. All six interface
 catalogues include the new text.
@@ -113,3 +116,14 @@ requests. The extracted macOS ARM64 package passed eight synthetic restore cases
 using pointer input plus the existing application/shutdown checks. Normal Playlist
 native-lyrics reading remains separate; the Details request invariant is measured
 without first opening that lyrics view. No timeout or assertion was relaxed.
+
+### Current-playback subject correction (2026-11-12)
+
+The visited album previously took priority over the player's current occurrence.
+Details now follows only the current queued track and its original album, including
+restored queues while browsing another album. Regression coverage includes actual
+play/next/pause/stop events, cross-album transitions, an empty queue on an album
+page, read-only rendering and the existing session/membership invalidation guards.
+The packaged pointer/keyboard matrix now exercises the current-track subject and
+restoration while a different album is open, retaining its audio, history, focus,
+request-count and overflow assertions.

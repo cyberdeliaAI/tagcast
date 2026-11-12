@@ -18,6 +18,7 @@ async function checkWorkspace(window) {
     owner.sendInputEvent({type:"mouseUp", ...point, button:"left", clickCount:1}); await frame();
   };
   const before = await run(`(()=>{globalThis.workspaceSmokeAudio=audio;
+    globalThis.workspaceSmokePlayback={queue:player.queue,index:player.index,album:player.album};
     return {screen:state.screen,sort:$('#sort').value,filter:$('#filter').value,tab:workspacePanel.tab,
       collapsed:navigationCollapsed,appearance:document.documentElement.dataset.theme,
       navigation:localStorage.getItem('tagcast-navigation-collapsed'),sorts:localStorage.getItem('tagcast-browse-sorts'),queueSync:queueSync.enabled};})()`);
@@ -50,10 +51,16 @@ async function checkWorkspace(window) {
       await click('#albums-browse-options');
       await click('[data-browse-choice="filter:all"]');
       await run("openAlbum('1')"); await frame();
-      const hover = await run(`(()=>{const node=document.querySelector('[data-workspace-track]');
-        node.scrollIntoView({block:'center'});const r=node.closest('tr').getBoundingClientRect();return {x:r.x+15,y:r.y+r.height/2};})()`);
-      owner.sendInputEvent({type:"mouseMove", ...hover}); await frame();
-      await click('[data-workspace-track]');
+      await run(`player.queue=queueTracks(state.details.get('1'));player.index=0;player.album=player.queue[0].album;
+        setWorkspaceTab('playlist');openAlbum('2')`);await frame();
+      assert.equal(await run("document.querySelector('[data-workspace-track]')===null"), true, 'Browsing cannot select a different Details subject');
+      await click('#workspace-panel-toggle');await click('#workspace-tab-details');
+      const current = await run(`({album:String(workspaceDetailsData().album.id),track:String(workspaceDetailsData().track.id),
+        expected:player.queue[0].id,visited:albumView.id,visible:$('#workspace-details').textContent.includes(player.queue[0].title)})`);
+      assert.equal(current.album, '1');assert.equal(current.visited, '2');assert.equal(current.track,current.expected);
+      assert.equal(current.visible,true,'Details describes the current track while browsing another album');
+      await run('player.index=1;markPlaying()');await frame();
+      assert.equal(await run("$('#workspace-details').textContent.includes(player.queue[1].title)"),true,'Details follows a track transition');
       assert.equal(await run("$('#workspace-details').hidden"), false);
       assert.equal(await run("$('#workspace-playlist').hidden"), true);
       assert.equal(await run("document.querySelectorAll('#workspace-details input,#workspace-details textarea').length"), 0);
@@ -78,7 +85,7 @@ async function checkWorkspace(window) {
       assert.equal(await run('workspacePanel.tab'), 'details');
       owner.sendInputEvent({type:"keyDown", keyCode:"Escape"}); owner.sendInputEvent({type:"keyUp", keyCode:"Escape"}); await frame();
       assert.equal(await run("$('#now-playing-panel').hidden"), true);
-      assert.equal(await run("document.activeElement.matches('[data-workspace-track]')"), true);
+      assert.equal(await run("document.activeElement === $('#workspace-panel-toggle')"), true);
       assert.equal(await run('workspaceSmokeAudio===audio'), true);
       assert.ok(await run('document.documentElement.scrollWidth-innerWidth<=1'), `${width}/${appearance}: no horizontal overflow`);
       samples.push({width, appearance, pointer:true, keyboard:true, sameAudio:true});
@@ -87,7 +94,7 @@ async function checkWorkspace(window) {
     return [...samples, {restored}];
   } finally {
     window.setBounds(bounds);
-    await run(`setNowPlaying(false);workspacePanel.selection=null;workspacePanel.focus=null;
+    await run(`setNowPlaying(false);workspacePanel.focus=null;Object.assign(player,workspaceSmokePlayback);delete globalThis.workspaceSmokePlayback;
       workspacePanel.tab=${JSON.stringify(before.tab)};navigationCollapsed=${before.collapsed};syncNavigationToggle();applyQueueSettings({queue_sync:${before.queueSync}});
       ${before.appearance ? `document.documentElement.dataset.theme=${JSON.stringify(before.appearance)}` : "delete document.documentElement.dataset.theme"};
       for(const [key,value]of ${JSON.stringify([["tagcast-navigation-collapsed", before.navigation], ["tagcast-browse-sorts", before.sorts]])}){
