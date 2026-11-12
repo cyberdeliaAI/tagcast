@@ -3308,7 +3308,7 @@ test("Random album order spans every page, preserves filtered subsets and leaves
   assert.deepEqual(p.json("player.queue"), queue);
   assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
-  assert.match(p.nodes.get('#albums-browse-options').innerHTML, /Random album order/);
+  assert.equal(p.nodes.get('#albums-random-order').getAttribute('aria-pressed'), 'true');
 });
 
 
@@ -3327,7 +3327,7 @@ test("Random order shortcut reshuffles the filtered shelf and preserves playback
   assert.equal(first.length,75);
   assert.equal(p.nodes.get("#sort").value,"random");
   assert.equal(p.run("state.page"),0);
-  assert.match(p.nodes.get("#albums-browse-options").innerHTML,/Random album order/);
+  assert.equal(p.nodes.get("#albums-random-order").getAttribute("aria-pressed"),"true");
   p.run("Math.random=()=>0.999");
   await p.nodes.get("#albums-random-order").emit("click");
   assert.notDeepEqual(p.json("filteredAlbums().map(a=>a.id)"),first,"Clicking again reshuffles immediately");
@@ -7786,7 +7786,7 @@ test('bulk editing accepts albums sharing an additional album artist and keeps m
   assert.match(p.nodes.get('#editor-content').innerHTML,/credit-editor disabled/);
 });
 
-test('the artist menu combines independent filter and sort choices and omits empty filters without library reads', async () => {
+test('artist filters and fixed sort buttons keep independent choices without library reads', async () => {
   const p=livePage(); await settle();
   p.run(`state.albums=[
     {...state.albums[0],id:'a',artist:'Alpha',artist_id:11,artist_image:'https://example.test/a'},
@@ -7796,7 +7796,8 @@ test('the artist menu combines independent filter and sort choices and omits emp
   const requests=p.requests.length, entries=p.history.length;
   p.run('openBrowseOptions($("#artists-browse-options"))');
   let html=p.nodes.get('#browse-options-menu').innerHTML;
-  assert.match(html,/role="group" aria-label="Sort"/);
+  assert.doesNotMatch(html,/data-browse-choice="sort:/);
+  assert.match(p.nodes.get('#artists-sort-buttons').innerHTML,/data-sort-value="za"/);
   assert.match(html,/role="group" aria-label="Show"/);
   assert.match(html,/data-browse-choice="filter:no_image"[^>]*>[\s\S]*?Without image · 1/);
   assert.doesNotMatch(html,/filter:favourites/);
@@ -7809,7 +7810,7 @@ test('the artist menu combines independent filter and sort choices and omits emp
   assert.deepEqual(p.json('filteredArtistGroups().map(([name])=>name)'),['Beta']);
   p.run('openBrowseOptions($("#artists-browse-options"))');
   html=p.nodes.get('#browse-options-menu').innerHTML;
-  assert.match(html,/aria-checked="true" data-browse-choice="sort:za"/);
+  assert.match(p.nodes.get('#artists-sort-buttons').innerHTML,/aria-pressed="true"[^>]*>Name/);
   assert.match(html,/aria-checked="true" data-browse-choice="filter:no_image"/);
   assert.equal(p.requests.length,requests);
 });
@@ -13157,4 +13158,79 @@ test('continuous group blocks fill every supported grid width without intermedia
     assert.equal(p.run('browseView.rows.length'),batch*2);
     assert.equal(p.run('browseContinuous().count'),batch*2);
   }
+});
+
+test('fixed sorting reverses direction and retains filters, playback and stored order',async()=>{
+  const storage={},p=page({storage});await settle();
+  p.run('showScreen("albums");$("#filter").value="cover";render();audio.currentTime=31');
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,time:audio.currentTime})'), requests=p.requests.length;
+  p.run('chooseWorkspaceSort("albums","title_za")');
+  assert.equal(p.nodes.get('#sort').value,'title_za');assert.equal(p.nodes.get('#filter').value,'cover');
+  assert.match(p.nodes.get('#albums-sort-buttons').innerHTML,/data-sort-value="title" aria-pressed="true"/);
+  assert.equal(JSON.parse(storage['tagcast-browse-sorts']).sort,'title_za');
+  p.run('chooseWorkspaceSort("albums","title")');
+  assert.match(p.nodes.get('#albums-sort-buttons').innerHTML,/data-sort-value="title_za" aria-pressed="true"/);
+  assert.equal(p.requests.length,requests);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,time:audio.currentTime})'),before);
+  p.run('showScreen("artists");chooseWorkspaceSort("albums","newest")');
+  assert.equal(p.nodes.get('#sort').value,'title','Hidden listing controls cannot change another page');
+});
+
+test('sidebar collapse is independent of shortcut settings and restores access on mobile',async()=>{
+  const storage={'tagcast-sidebar':JSON.stringify({hidden:['show-composers'],order:[]})},p=page({storage});await settle();
+  const shortcuts=storage['tagcast-sidebar'],requests=p.requests.length,history=p.history.length;
+  await p.nodes.get('#navigation-toggle').emit('click');
+  assert.equal(p.nodes.get('#sidebar').hidden,true);
+  assert.equal(p.nodes.get('#navigation-toggle').getAttribute('aria-expanded'),'false');
+  assert.equal(storage['tagcast-navigation-collapsed'],'true');
+  p.run('globalThis.matchMedia=()=>({matches:false});syncNavigationToggle()');
+  assert.equal(p.nodes.get('#sidebar').hidden,false,'Mobile disclosure stays reachable');
+  p.run('globalThis.matchMedia=()=>({matches:true});syncNavigationToggle()');
+  assert.equal(p.nodes.get('#sidebar').hidden,true);
+  assert.equal(storage['tagcast-sidebar'],shortcuts);assert.equal(p.requests.length,requests);assert.equal(p.history.length,history);
+});
+
+test('Details inspects a loaded track without requests, history, playback or metadata changes',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  const track=p.run('String(state.details.get("1").tracks[0].id)');
+  const requests=p.requests.length,history=p.history.length;
+  const before=p.run('JSON.stringify({albums:state.albums,queue:player.queue,src:audio.src,index:player.index})');
+  p.run(`openWorkspaceDetails("1",${JSON.stringify(track)})`);
+  assert.equal(p.run('workspacePanel.tab'),'details');
+  assert.equal(p.nodes.get('#workspace-details').hidden,false);assert.equal(p.nodes.get('#workspace-playlist').hidden,true);
+  assert.match(p.nodes.get('#workspace-details').innerHTML,/data-workspace-section="album"/);
+  assert.match(p.nodes.get('#workspace-details').innerHTML,/data-workspace-section="track"/);
+  assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/<input|<textarea/);
+  assert.equal(p.requests.length,requests);assert.equal(p.history.length,history);
+  assert.equal(p.run('JSON.stringify({albums:state.albums,queue:player.queue,src:audio.src,index:player.index})'),before);
+  const markup=p.nodes.get('#workspace-details').innerHTML;
+  p.run('openWorkspaceDetails("1","not-a-member")');assert.equal(p.nodes.get('#workspace-details').innerHTML,markup);
+});
+
+test('Details clears replaced account/library data even while the panel is closed',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run('openWorkspaceDetails("1",state.details.get("1").tracks[0].id);setNowPlaying(false)');
+  const requests=p.requests.length;
+  p.run('state.details=new Map();state.albums=[];state.connection.playback_session="replacement";syncWorkspacePanel()');
+  assert.equal(p.run('workspacePanel.selection'),null);assert.equal(p.nodes.get('#workspace-details').innerHTML,'');
+  assert.equal(p.requests.length,requests);
+});
+
+test('side-panel tabs use keyboard navigation and keep the dedicated listening page intact',async()=>{
+  const p=page();await settle();p.run('setNowPlaying(true)');
+  await p.nodes.get('#workspace-panel-tabs').emit('keydown',{key:'End',preventDefault(){}});
+  assert.equal(p.run('workspacePanel.tab'),'details');
+  assert.equal(p.nodes.get('#workspace-tab-details').getAttribute('aria-selected'),'true');
+  assert.equal(p.run('document.activeElement === $("#workspace-tab-details")'),true);
+  p.run('showScreen("now-playing")');
+  assert.equal(p.nodes.get('#workspace-panel-tabs').hidden,true);assert.equal(p.nodes.get('#workspace-playlist').hidden,false);
+  assert.equal(p.nodes.get('#workspace-details').hidden,true);
+});
+
+test('Details escapes untrusted metadata and exposes only supplied fields',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run('state.details.get("1").tracks[0].title="<img src=x onerror=alert(1)>";openWorkspaceDetails("1",state.details.get("1").tracks[0].id)');
+  const markup=p.nodes.get('#workspace-details').innerHTML;
+  assert.match(markup,/&lt;img src=x onerror=alert\(1\)&gt;/);assert.doesNotMatch(markup,/<img src=x/);
+  assert.doesNotMatch(markup,/bit-depth|44\.1 kHz/,'Do not invent audio properties absent from loaded metadata');
 });

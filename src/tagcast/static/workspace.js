@@ -1,0 +1,190 @@
+"use strict";
+
+// Presentation only. Reuse the shared queue; details read loaded metadata, never providers.
+const workspacePanel = {tab: "playlist", selection: null, focus: null, markup: "", scope: state.details,
+  session: state.connection.playback_session};
+let navigationCollapsed = false;
+try { navigationCollapsed = localStorage.getItem("tagcast-navigation-collapsed") === "true"; } catch { /* private window */ }
+
+function syncNavigationToggle() {
+  const desktop = globalThis.matchMedia?.("(min-width: 761px)").matches ?? true;
+  const closed = desktop && navigationCollapsed;
+  if (closed && $("#sidebar").contains?.(document.activeElement)) $("#navigation-toggle").focus({preventScroll: true});
+  $("#sidebar").hidden = closed;
+  document.body.classList.toggle("navigation-collapsed", closed);
+  $("#navigation-toggle").setAttribute("aria-expanded", String(!closed));
+  $("#navigation-toggle").setAttribute("aria-label", TagcastI18n.text(closed ? "nav.menu.open" : "nav.menu.close"));
+}
+$("#navigation-toggle").addEventListener("click", () => {
+  navigationCollapsed = !navigationCollapsed;
+  try { localStorage.setItem("tagcast-navigation-collapsed", String(navigationCollapsed)); } catch { /* private/full storage */ }
+  syncNavigationToggle();
+});
+window.addEventListener("resize", syncNavigationToggle);
+
+const workspaceSortGroups = {
+  albums: [
+    ["workspace.sort.artist", "artist", "artist_za", "↑", "↓"],
+    ["workspace.sort.title", "title", "title_za", "↑", "↓"],
+    ["workspace.sort.year", "newest", "year", "↓", "↑"],
+    ["workspace.sort.added", "uploaded_newest", "uploaded_oldest", "↓", "↑"],
+    ["workspace.sort.rating", "rating_high", "rating_low", "↓", "↑"],
+  ],
+  artists: [
+    ["workspace.sort.name", "az", "za", "↑", "↓"],
+    ["workspace.sort.rating", "rating_high", "rating_low", "↓", "↑"],
+    ["library.sort.random", "random", "random", "", ""],
+  ],
+};
+function syncWorkspaceSort(kind) {
+  const host = $(`#${kind}-sort-buttons`), groups = workspaceSortGroups[kind];
+  if (!host || !groups) return;
+  const current = browseChoiceInputs(kind).sort.value;
+  const labels = kind === "albums" ? albumSortLabels : artistSortLabels;
+  const focused = host.contains?.(document.activeElement) ? document.activeElement.dataset.sortGroup : null;
+  const markup = groups.map(([key, first, second, up, down], index) => {
+    const selected = [first, second].includes(current), next = current === first ? second : first;
+    return `<button type="button" class="browse-sort-button" data-sort-kind="${kind}" data-sort-group="${index}" data-sort-value="${next}" aria-pressed="${selected}" aria-label="${escapeHtml(labels[next])}" title="${escapeHtml(labels[next])}">${TagcastI18n.html(key)}<span aria-hidden="true">${selected ? current === first ? up : down : ""}</span></button>`;
+  }).join("");
+  if (host.innerHTML !== markup) {
+    host.innerHTML = markup;
+    if (focused !== null) host.querySelector(`[data-sort-group="${focused}"]`)?.focus({preventScroll: true});
+  }
+  if (kind === "albums") $("#albums-random-order").setAttribute("aria-pressed", String(current === "random"));
+}
+function chooseWorkspaceSort(kind, value) {
+  if (state.screen !== kind || !workspaceSortGroups[kind]?.some(group => group[1] === value || group[2] === value)) return;
+  const input = browseChoiceInputs(kind).sort;
+  input.value = value;
+  closeBrowseOptions();
+  // Reuse reset, continuous-browse and persistence listeners on the original inputs.
+  input.dispatchEvent(new Event("change"));
+}
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-sort-kind]");
+  if (button) chooseWorkspaceSort(button.dataset.sortKind, button.dataset.sortValue);
+});
+
+function workspaceAlbumDetails() {
+  if (state.screen !== "album" || !albumViewReady()) return null;
+  return joinDiscs(shelfIds(albumView.id).map(id => state.details.get(id)));
+}
+function workspaceDetailsData() {
+  const selected = workspacePanel.selection;
+  if (selected && (selected.details !== state.details || selected.screen !== state.screen
+      || selected.openAlbum !== albumView.id || selected.session !== state.connection.playback_session)) workspacePanel.selection = null;
+  if (workspacePanel.selection) {
+    const album = state.details.get(selected.album);
+    const track = album?.tracks.find(t => String(t.id) === selected.track);
+    if (album && track) return {album, track};
+    workspacePanel.selection = null;
+  }
+  const album = workspaceAlbumDetails();
+  if (album) return {album, track: album.tracks.find(t => String(t.id) === albumView.found) || null};
+  const track = player.queue[player.index];
+  if (track && state.albums.some(a => String(a.id) === String(track.album.id))) {
+    const cached = state.details.get(String(track.album.id));
+    return {album: cached || track.album, track: cached ? cached.tracks.find(t => String(t.id) === String(track.id)) || null : track};
+  }
+  return null;
+}
+function workspaceFacts(rows) {
+  return `<dl class="workspace-facts">${rows.filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== 0)
+    .map(([key, value]) => `<div><dt>${TagcastI18n.html(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
+}
+function renderWorkspaceDetails() {
+  const host = $("#workspace-details"), data = workspaceDetailsData();
+  const {album, track} = data || {};
+  const albumRows = album ? [
+    ["workspace.field.title", album.name], ["workspace.field.artist", album.artist],
+    ["workspace.field.year", album.year], ["workspace.field.tracks", album.tracks ? TagcastI18n.number(album.tracks.length) : album.track_count ? TagcastI18n.number(album.track_count) : ""],
+    ["workspace.field.added", album.uploaded_at],
+  ] : [];
+  const trackRows = track ? [
+    ["workspace.field.title", track.title], ["workspace.field.artist", track.artist],
+    ["workspace.field.album", album.name], ["workspace.field.year", track.year],
+    ["workspace.field.duration", track.length ? trackDuration(track.length) : ""],
+    ["workspace.field.format", track.format], ["workspace.field.composer", (track.composers || []).join(", ")],
+    ["workspace.field.added", track.uploaded_at],
+  ] : [];
+  const markup = album ? `<div class="workspace-detail-cover">${cover(album, true)}<div><strong>${escapeHtml(track?.title || album.name)}</strong><p>${escapeHtml(track?.artist || album.artist)}</p></div></div>
+    <details data-workspace-section="album" open><summary>${TagcastI18n.html("workspace.field.album")}</summary>${workspaceFacts(albumRows)}</details>
+    <details data-workspace-section="track" open><summary>${TagcastI18n.html("workspace.track")}</summary>${track ? workspaceFacts(trackRows) : `<p class="muted">${TagcastI18n.html("workspace.selectTrack")}</p>`}</details>`
+    : `<p class="empty">${TagcastI18n.html("workspace.empty")}</p>`;
+  if (markup !== workspacePanel.markup) {
+    const focused = host.contains?.(document.activeElement)
+      ? document.activeElement.closest?.("[data-workspace-section]")?.dataset.workspaceSection : "";
+    const sections = new Map([...host.querySelectorAll("details")].map(node => [node.dataset.workspaceSection, node.open]));
+    host.innerHTML = markup; workspacePanel.markup = markup;
+    for (const node of host.querySelectorAll("details")) if (sections.has(node.dataset.workspaceSection)) node.open = sections.get(node.dataset.workspaceSection);
+    if (focused) host.querySelector(`[data-workspace-section="${focused}"] summary`)?.focus({preventScroll: true});
+  }
+}
+function syncWorkspacePanel() {
+  if (workspacePanel.scope !== state.details || workspacePanel.session !== state.connection.playback_session) {
+    workspacePanel.selection = null; workspacePanel.markup = "";
+    $("#workspace-details").innerHTML = "";
+    workspacePanel.scope = state.details; workspacePanel.session = state.connection.playback_session;
+  }
+  const page = state.screen === "now-playing", details = !page && workspacePanel.tab === "details";
+  const panel = $("#now-playing-panel");
+  panel.setAttribute("aria-label", TagcastI18n.text(page ? "player.nowPlaying.region" : "workspace.panel"));
+  $("#workspace-panel-tabs").hidden = page;
+  $("#workspace-details").hidden = !details;
+  $("#workspace-playlist").hidden = details;
+  $(".now-playing-footer").hidden = details || (page && !player.queue.length);
+  $("#workspace-panel-toggle").hidden = page;
+  $("#workspace-panel-toggle").setAttribute("aria-expanded", String(!panel.hidden && !page));
+  panel.dataset.workspaceTab = details ? "details" : "playlist";
+  for (const tab of ["playlist", "details"]) {
+    const button = $(`#workspace-tab-${tab}`), active = workspacePanel.tab === tab;
+    button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1;
+  }
+  if (page) {
+    $("#workspace-playlist").removeAttribute("role"); $("#workspace-playlist").removeAttribute("aria-labelledby");
+  } else {
+    $("#workspace-playlist").setAttribute("role", "tabpanel"); $("#workspace-playlist").setAttribute("aria-labelledby", "workspace-tab-playlist");
+  }
+  if (details && !panel.hidden) renderWorkspaceDetails();
+}
+function setWorkspaceTab(tab, focus = false) {
+  if (!["playlist", "details"].includes(tab)) return;
+  closeQueueActions();
+  workspacePanel.tab = tab;
+  syncWorkspacePanel();
+  if (tab === "playlist") renderNowPlaying();
+  // Existing native reads retire their player context when it is no longer visible.
+  if (typeof renderLyrics === "function") renderLyrics("player");
+  if (focus) $(`#workspace-tab-${tab}`).focus({preventScroll: true});
+}
+function openWorkspaceDetails(albumId, trackId) {
+  const album = state.details.get(String(albumId));
+  if (!album || !album.tracks.some(t => String(t.id) === String(trackId))) return;
+  workspacePanel.selection = {album: String(albumId), track: String(trackId), details: state.details,
+    screen: state.screen, openAlbum: albumView.id, session: state.connection.playback_session};
+  workspacePanel.focus = document.activeElement;
+  setWorkspaceTab("details"); setNowPlaying(true);
+  $("#workspace-tab-details").focus({preventScroll: true});
+}
+$("#workspace-panel-toggle").addEventListener("click", () => {
+  workspacePanel.focus = $("#workspace-panel-toggle");
+  if (typeof closeSidebarMenu === "function") closeSidebarMenu();
+  setNowPlaying($("#now-playing-panel").hidden);
+});
+$("#workspace-panel-tabs").addEventListener("click", event => {
+  const button = event.target.closest("[data-workspace-tab]");
+  if (button) setWorkspaceTab(button.dataset.workspaceTab);
+});
+$("#workspace-panel-tabs").addEventListener("keydown", event => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  setWorkspaceTab(event.key === "Home" ? "playlist" : event.key === "End" ? "details"
+    : workspacePanel.tab === "playlist" ? "details" : "playlist", true);
+});
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-workspace-track]");
+  if (button) openWorkspaceDetails(button.dataset.workspaceAlbum, button.dataset.workspaceTrack);
+});
+TagcastI18n.subscribe(() => { workspacePanel.markup = ""; syncWorkspacePanel(); syncNavigationToggle(); });
+syncNavigationToggle(); syncWorkspacePanel();
+for (const kind of Object.keys(workspaceSortGroups)) syncWorkspaceSort(kind);

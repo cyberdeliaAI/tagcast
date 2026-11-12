@@ -1,0 +1,34 @@
+/* Shared colours, one document scrollbar, and independent navigation/panel controls. */
+.workspace-icon-button{display:inline-grid;place-items:center;width:38px;height:38px;padding:8px;flex:none}
+.workspace-icon-button svg,.workspace-track-details svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.page-breadcrumbs{display:flex;align-items:center;gap:12px;min-width:0}
+#albums-page>.toolbar,#artists-page>.toolbar{flex-wrap:wrap}
+body.navigation-collapsed main{margin-left:0}
+body.navigation-collapsed .player{left:0}
+.browse-sort-buttons{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.browse-sort-button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font-size:12px}
+.browse-sort-button:hover{background:var(--palette-tint,#eef4e2);color:var(--ink)}
+.browse-sort-button[aria-pressed="true"],#albums-random-order[aria-pressed="true"]{background:var(--palette-tint,#eef4e2);color:var(--palette-link,#2d654d);border-color:var(--line)}
+.browse-sort-button span{width:1em}
+.browse-options-menu{grid-template-columns:minmax(190px,320px);min-width:0}
+#workspace-panel-tabs{display:flex;gap:3px;flex:1;min-width:0}
+#workspace-panel-tabs button{flex:1;border:1px solid transparent;border-radius:6px;min-height:38px;background:transparent;color:var(--muted);font-weight:600;padding:8px 10px}
+#workspace-panel-tabs button[aria-selected="true"]{background:var(--palette-tint,#eef4e2);border-color:var(--line);color:var(--ink)}
+body:not(.listening-page-open) .now-playing-header .listening-heading{display:none}
+#workspace-details{overflow:auto;overscroll-behavior:contain;padding:20px;min-height:0}
+#workspace-details details{border-top:1px solid var(--line);padding:14px 0}
+#workspace-details summary{cursor:pointer;font-weight:600;padding:3px 0}
+.workspace-detail-cover{display:flex;align-items:center;gap:14px;margin-bottom:20px;overflow-wrap:anywhere}
+.workspace-detail-cover .cover{width:78px;height:78px;flex:none}
+.workspace-detail-cover p{color:var(--muted);margin:6px 0 0}
+.workspace-facts{font-size:12px;line-height:1.5;margin:14px 0 0}
+.workspace-facts>div{display:grid;grid-template-columns:90px minmax(0,1fr);gap:12px;margin:10px 0}
+.workspace-facts dt{color:var(--muted)}
+.workspace-facts dd{margin:0;overflow-wrap:anywhere}
+.workspace-track-details{border:0;background:transparent;color:var(--muted);display:inline-grid;place-items:center;padding:4px;min-width:28px;min-height:28px}
+.workspace-track-details:hover{color:var(--palette-link,#2d654d)}
+/* Inspection is always discoverable; the existing write/queue actions retain hover behavior. */
+.album-tracklist:not(.trash-mode) .track-row-actions>.workspace-track-details{opacity:1;pointer-events:auto}
+.workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline:2px solid var(--palette-focus,#759345);outline-offset:2px}
+@media(max-width:760px){#navigation-toggle{display:none}.browse-sort-buttons{gap:2px}.browse-sort-button{padding:7px 8px;min-height:40px}.now-playing-panel{width:min(360px,calc(100vw - 20px))}}
+@media(forced-colors:active){.browse-sort-button[aria-pressed="true"],#workspace-panel-tabs button[aria-selected="true"]{border-color:Highlight}.workspace-icon-button:focus-visible,.workspace-track-details:focus-visible,.browse-sort-button:focus-visible,#workspace-panel-tabs button:focus-visible{outline-color:Highlight}}

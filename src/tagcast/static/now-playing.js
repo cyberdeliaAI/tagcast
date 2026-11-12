@@ -94,7 +94,9 @@ function syncNowPlayingPage() {
 function closeNowPlayingView() {
   if (state.screen === "now-playing") goBack("artists");
   else setNowPlaying(false);
-  $("#player-queue").focus();
+  const focus = typeof workspacePanel !== "undefined" ? workspacePanel.focus : null;
+  const fallback = $("#sidebar").hidden ? $("#workspace-panel-toggle") : $("#player-queue");
+  (focus?.isConnected ? focus : fallback).focus();
 }
 
 // Keep the same ratings beside the transport and Sound in the sidebar.
