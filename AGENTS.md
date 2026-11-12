@@ -795,6 +795,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   complete source snapshot/session before and after opening the editor, suppress extra
   automatic source suggestions, then use normal review/save/read-back. Confirm before
   discarding choices or replacing their reference; invalidate stale ownership outright.
+  Initial correction display defers native lyrics, including background repaints, until
+  explicit track/tab selection. Keep ordinary editor lyrics behavior and position the
+  initial draft without scroll animation so a late read cannot move Review under input.
 - Album details offer Play in disc/track order and an accessible icon-only Shuffle in a newly mixed
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;
