@@ -52,7 +52,7 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "album.actions.checkLyrics": "Check album lyrics",
   "album.actions.edit": "Edit",
   "album.actions.more": "More album actions",
-  "album.actions.play": "Play album",
+  "album.actions.play": "Play",
   "album.actions.shuffle": "Shuffle album",
   "album.actions.stopLyrics": "Stop checking lyrics",
   "album.background.label": "Album background",

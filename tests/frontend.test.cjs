@@ -2895,7 +2895,7 @@ test("Shuffle album replaces only the play queue and ordinary Play restores albu
   await p.run('openAlbum("1")');
   const original = p.json('state.details.get("1")'), ids = original.tracks.map(t => String(t.id));
   const history = p.history.length, audio = p.nodes.get("#audio");
-  assert.match(p.nodes.get("#album-page").innerHTML, /▶ Play album<\/button><button[^>]*data-shuffle-album[^>]*>Shuffle album/);
+  assert.match(p.nodes.get("#album-page").innerHTML, /▶ Play<\/button><button[^>]*data-shuffle-album[^>]*aria-label="Shuffle album"[^>]*title="Shuffle album"[^>]*><svg[^>]*aria-hidden="true"/);
   await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
   const shuffled = [...ids.slice(1), ids[0]];
   assert.deepEqual(p.json('player.queue.map(t => t.id)'), shuffled);
@@ -6645,6 +6645,38 @@ test("breadcrumbs restore a decade's sampled order and reject a stale branch", a
   assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/1980s/);
 });
 
+test("album playlist action is in More and opens the existing reviewed chooser for the complete set", async () => {
+  const p=setPage(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="album-menu-session"; playTracks(state.details.get("3"));');
+  await p.run('openAlbum("1")'); await settle();
+  const html=p.nodes.get('#album-page').innerHTML;
+  assert.doesNotMatch(html,/data-playlist-album/);
+  p.setFetch(async url=>{assert.equal(url,'/api/playlists');return {ok:true,json:async()=>({playlists:[]})};});
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,history:history.length})');
+  const count=p.requests.length;
+  p.run('openAlbumActions(document.querySelector("[data-album-more]"))');
+  assert.equal(p.requests.length,count);
+  await p.nodes.get('#album-action-playlist').emit('click'); await settle();
+  assert.equal(p.nodes.get('#album-action-menu').hidden,true);
+  assert.equal(p.nodes.get('#playlist-dialog').open,true);
+  assert.deepEqual(p.json('playlistDraft.tracks.map(t=>t.id)'),p.json('queueTracks(playableAlbum("1")).map(t=>t.id)'));
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,history:history.length})'),before);
+  assert.ok(p.requests.slice(count).every(r=>!r.options?.body),"no mutation before review and confirmation");
+});
+
+test("album playlist menu rejects replaced libraries, navigation and sessions during preparation", async () => {
+  for(const replacement of ['state.details=new Map(state.details)', 'showScreen("albums")', 'state.connection.playback_session="replacement"']){
+    const p=livePage(); await settle(); await p.run('openAlbum("1")');
+    p.run('openAlbumActions(document.querySelector("[data-album-more]"));'+replacement);
+    await p.nodes.get('#album-action-playlist').emit('click'); await settle();
+    assert.notEqual(p.nodes.get('#playlist-dialog').open,true);
+  }
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  p.run('globalThis.finishAlbumRead=null; albumDetails=()=>new Promise(resolve=>{finishAlbumRead=resolve}); openAlbumPlaylist("1"); state.connection.playback_session="replacement"; finishAlbumRead()');
+  await settle();
+  assert.notEqual(p.nodes.get('#playlist-dialog').open,true);
+});
+
 test("More album actions only starts an empty reviewed trash selection after an explicit choice", async () => {
   const p=livePage(); await settle(); await p.run('openAlbum("1")');
   const trigger=p.run('document.querySelector("[data-album-more]")'); trigger.disabled=false;
@@ -9707,6 +9739,8 @@ test('album lyrics check starts explicitly, runs serially and keeps results unti
   await p.click({'[data-album-more]':trigger});
   assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-playlist'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics-import'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});

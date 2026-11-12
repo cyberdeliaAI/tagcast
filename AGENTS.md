@@ -773,10 +773,13 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
   fullscreen focus handling when a lightbox is above Now playing.
-- Album details offer Play album in disc/track order and Shuffle album in a newly mixed
+- Album details offer Play in disc/track order and an accessible icon-only Shuffle in a newly mixed
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;
   ordinary Play restores disc/track order. Preserve Repeat and Play next semantics.
+  Add to playlist is in More and opens the existing chooser/review for the complete
+  displayed set. Preserve menu keyboard/focus behavior and reject stale album,
+  library and session captures before preparing the chooser.
 - Play random album uses all filtered merged albums, before paging or the decade
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play
@@ -1152,6 +1155,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   Reuse only matching application/version/protocol servers; reject occupied foreign
   ports and stop only owned servers. Close warns for unsaved state, stops cleanup
   between batches and waits for accepted writes/read-backs without forced killing.
+  The separate finishing window follows the current resolved interface colours,
+  including Auto and custom palettes, through a bounded colour-only report from the
+  active main frame. Keep a safe startup fallback and forced-colour accessibility;
+  appearance changes never affect the shutdown drain/accepted-write handshake.
   Keep renderer sandbox/context isolation/webSecurity enabled, Node integration and
   webviews disabled, and no generic preload/IPC bridge. Restrict navigation to the
   app entry pages, external opening to parsed credential-free HTTPS, and permissions
