@@ -7798,7 +7798,8 @@ test('artist filters and fixed sort buttons keep independent choices without lib
   let html=p.nodes.get('#browse-options-menu').innerHTML;
   assert.doesNotMatch(html,/data-browse-choice="sort:/);
   assert.match(p.nodes.get('#artists-sort-buttons').innerHTML,/data-sort-value="za"/);
-  assert.match(html,/role="group" aria-label="Show"/);
+  assert.match(html,/role="menuitemradio"/);
+  assert.doesNotMatch(html,/data-browse-close|browse-options-title|browse-options-heading/);
   assert.match(html,/data-browse-choice="filter:no_image"[^>]*>[\s\S]*?Without image · 1/);
   assert.doesNotMatch(html,/filter:favourites/);
   assert.equal(p.history.length,entries,'Opening does not add a history entry');
@@ -13188,6 +13189,41 @@ test('sidebar collapse is independent of shortcut settings and restores access o
   p.run('globalThis.matchMedia=()=>({matches:true});syncNavigationToggle()');
   assert.equal(p.nodes.get('#sidebar').hidden,true);
   assert.equal(storage['tagcast-sidebar'],shortcuts);assert.equal(p.requests.length,requests);assert.equal(p.history.length,history);
+});
+
+test('navigation starts open and panel tabs never change the saved manual choice',async()=>{
+  const storage={},p=page({storage});await settle();
+  assert.equal(p.nodes.get('#sidebar').hidden,false);
+  p.run('setNowPlaying(true);setWorkspaceTab("details");setWorkspaceTab("playlist")');
+  assert.equal(p.nodes.get('#sidebar').hidden,false);
+  assert.equal(storage['tagcast-navigation-collapsed'],undefined);
+  await p.nodes.get('#navigation-toggle').emit('click');
+  p.run('setNowPlaying(false);setNowPlaying(true);setWorkspaceTab("details")');
+  assert.equal(p.nodes.get('#sidebar').hidden,true);
+  const reloaded=page({storage});await settle();
+  assert.equal(reloaded.nodes.get('#sidebar').hidden,true);
+  await reloaded.nodes.get('#navigation-toggle').emit('click');
+  assert.equal(reloaded.nodes.get('#sidebar').hidden,false);
+});
+
+test('Playlist Devices retains the opt-in gate and opens an empty queue without writes or playback changes',async()=>{
+  const p=livePage();await settle();
+  p.run('applyQueueSettings({queue_sync:false})');
+  assert.equal(p.nodes.get('#devices-button').hidden,true);
+  p.run('applyQueueSettings({queue_sync:true});setNowPlaying(true);setWorkspaceTab("playlist")');
+  assert.equal(p.nodes.get('#devices-button').hidden,false);
+  assert.equal(p.run('player.queue.length'),0);
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/queue-sync'?{status:'disconnected',devices:[],state:null}: {}}));
+  const requests=p.requests.length,history=p.history.length;
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,paused:audio.paused})');
+  await p.nodes.get('#devices-button').emit('click');await settle();
+  assert.equal(p.nodes.get('#devices-dialog').open,true);
+  assert.equal(p.requests.slice(requests).filter(r=>r.url==='/api/queue-sync').length,1);
+  assert.ok(p.requests.slice(requests).every(r=>!r.options?.method || r.options.method==='GET'));
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,paused:audio.paused})'),before);
+  assert.equal(p.history.length,history);
+  p.run('$("#devices-dialog").close();applyQueueSettings({queue_sync:false})');
+  assert.equal(p.nodes.get('#devices-button').hidden,true);
 });
 
 test('Details inspects a loaded track without requests, history, playback or metadata changes',async()=>{
