@@ -42,6 +42,15 @@ async function checkWorkspace(window) {
       await click('#albums-sort-buttons [data-sort-group="1"]');
       assert.equal(await run("$('#sort').value"), 'title_za');
       const sortHeight = await run("$('#albums-sort-buttons button').getBoundingClientRect().height");
+      const randomPlayback=await run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,paused:audio.paused})');
+      assert.deepEqual(await run("[...$('#albums-sort-buttons').querySelectorAll('button')].map(node=>node.dataset.sortGroup)"),['0','1','2','3','4','5']);
+      assert.equal(await run("document.querySelector('#albums-random,#albums-random-order')===null"),true);
+      await click('#albums-sort-buttons [data-sort-group="5"]');
+      assert.equal(await run("$('#albums-sort-buttons [data-sort-group=\"5\"] svg')!==null"),true,'Active Random has a shuffle indicator');
+      assert.equal(await run("$('#sort').value"),'random');
+      assert.equal(await run("$('#albums-sort-buttons [data-sort-group=\"5\"]').getAttribute('aria-pressed')"),'true');
+      await click('#albums-sort-buttons [data-sort-group="5"]');
+      assert.equal(await run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,paused:audio.paused})'),randomPlayback,'Random ordering never starts or changes playback');
       await click('#albums-browse-options');
       assert.equal(await run("document.querySelectorAll('#browse-options-menu [data-browse-choice^=\"sort:\"]').length"), 0);
       assert.equal(await run("document.querySelectorAll('#browse-options-menu [data-browse-close]').length"), 0);
@@ -51,6 +60,12 @@ async function checkWorkspace(window) {
       await click('#albums-browse-options');
       await click('[data-browse-choice="filter:all"]');
       await run("openAlbum('1')"); await frame();
+      assert.equal(await run("document.querySelector('[data-play-album]').textContent.trim()"), '▶ Play');
+      assert.equal(await run("document.querySelector('[data-shuffle-album]').getAttribute('aria-label')"), 'Shuffle album');
+      assert.equal(await run("document.querySelectorAll('[data-shuffle-album] svg[aria-hidden=true]').length"), 1);
+      assert.equal(await run("document.querySelector('[data-shuffle-album]').textContent.trim()"), '');
+      assert.equal(await run("document.querySelectorAll('.album-detail-actions [data-playlist-album]').length"), 0);
+
       await run(`player.queue=queueTracks(state.details.get('1'));player.index=0;player.album=player.queue[0].album;
         setWorkspaceTab('playlist');openAlbum('2')`);await frame();
       assert.equal(await run("document.querySelector('[data-workspace-track]')===null"), true, 'Browsing cannot select a different Details subject');

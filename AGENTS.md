@@ -774,16 +774,43 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
   fullscreen focus handling when a lightbox is above Now playing.
-- Album details offer Play album in disc/track order and Shuffle album in a newly mixed
+- Album More → Compare track list is explicit and read-only (`track_comparison.py` /
+  `track-comparison.js`). Opening uses loaded album/disc-set details only. Search
+  sends only the entered artist/title to MusicBrainz; an explicit edition choice
+  fetches that release's bounded track list through the existing paced public HTTP
+  cache. Respect source selection and capture/recheck account, session, library and
+  album ownership around I/O without holding Studio.lock. Never refresh iBroadcast,
+  scan audio, match/reorder automatically or add an Apply/Save action. Preserve
+  repeats, version text, known/unknown disc/track positions and duration. Positional
+  differences are observations, not proof of incorrect/missing music; incomplete
+  references remain visibly incomplete. Bound to 200 search results and 1,000 audio
+  tracks. Invalidate and clear on close, navigation, source/account/library changes;
+  preserve audio/history/focus, and do not restore an old route's scroll after navigation.
+  Explicit per-track title/artist choices (`track-comparison-drafts.js`) may fill the
+  existing editor only; comparison/staging never sends a mutation. Pairing is manual,
+  with positional display not proof of identity, and one bounded reference selector at
+  a time. Preserve native track IDs, positions, versions and all existing/unknown credits;
+  add separate guest artist credits from structured provider data, never one combined
+  artist name. Reuse native names without global case renaming. Capture and recheck the
+  complete source snapshot/session before and after opening the editor, suppress extra
+  automatic source suggestions, then use normal review/save/read-back. Confirm before
+  discarding choices or replacing their reference; invalidate stale ownership outright.
+  Initial correction display defers native lyrics, including background repaints, until
+  explicit track/tab selection. Keep ordinary editor lyrics behavior and position the
+  initial draft without scroll animation so a late read cannot move Review under input.
+- Album details offer Play in disc/track order and an accessible icon-only Shuffle in a newly mixed
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;
   ordinary Play restores disc/track order. Preserve Repeat and Play next semantics.
-- Play random album uses all filtered merged albums, before paging or the decade
+  Add to playlist is in More and opens the existing chooser/review for the complete
+  displayed set. Preserve menu keyboard/focus behavior and reject stale album,
+  library and session captures before preparing the chooser.
+- Play random album in discovery groups uses all filtered merged albums, before paging or the decade
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play
   and library changes cancel pending random playback; previews cannot play.
-- On the album browser, hide random playback for every cleanup/edition filter and
-  while albums are selected. All albums and browse discovery groups retain it.
+- The album browser has no separate Play random album shortcut. Its Random sort
+  button follows Rating in the fixed search toolbar and never starts playback.
   Compact, aligned Play and + menu buttons on album cards/lists let the user play
   one chosen complete set without navigation. Load only that set, replace the queue
   explicitly and cancel pending playback on clear, another Play or library replacement.
@@ -912,7 +939,8 @@ their shared browsing/player state; a fast local response can otherwise race the
   Album Random album order shuffles the complete merged shelf once before search,
   artist scope, filters and pagination. Preserve it through metadata read-backs and
   Back/Forward within the same library; reset on library/account replacement or a
-  different sort choice. Keep random ordering separate from Play random album.
+  different sort choice. Clicking the fixed Random sort again explicitly reshuffles;
+  disable it while loading or with fewer than two matching albums.
   The separate Filters menu preserves keyboard dismissal/focus; fixed sorting buttons
   share the sticky search toolbar and preserve independent filtering and history.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
@@ -1153,6 +1181,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   Reuse only matching application/version/protocol servers; reject occupied foreign
   ports and stop only owned servers. Close warns for unsaved state, stops cleanup
   between batches and waits for accepted writes/read-backs without forced killing.
+  The separate finishing window follows the current resolved interface colours,
+  including Auto and custom palettes, through a bounded colour-only report from the
+  active main frame. Keep a safe startup fallback and forced-colour accessibility;
+  appearance changes never affect the shutdown drain/accepted-write handshake.
   Keep renderer sandbox/context isolation/webSecurity enabled, Node integration and
   webviews disabled, and no generic preload/IPC bridge. Restrict navigation to the
   app entry pages, external opening to parsed credential-free HTTPS, and permissions

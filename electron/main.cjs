@@ -178,6 +178,12 @@ ipcMain.on("desktop:interface", (event, value) => {
   if (desktop.update(value) && origin) installMenu();
 });
 
+ipcMain.on("desktop:appearance", (event, value) => {
+  const contents = window?.webContents;
+  if (!contents || contents.isDestroyed() || event.sender !== contents || event.senderFrame !== contents.mainFrame || !applicationUrl(contents.getURL(), origin)) return;
+  shutdownView.setAppearance(value);
+});
+
 app.on("before-quit", event => {
   if (finished) return;
   event.preventDefault();
@@ -199,6 +205,7 @@ else {
     await openMainWindow();
     if (stopping || !window) return;
     if (process.env.TAGCAST_ELECTRON_SMOKE_REPORT) require("./smoke.cjs").check({app, window, origin, backend, miniPlayer});
+    if (process.env.TAGCAST_TRACK_COMPARISON_SMOKE_REPORT) require("./track-comparison-smoke.cjs").check({app, window, origin});
     if (process.env.TAGCAST_SIGN_IN_SMOKE_REPORT) require("./sign-in-smoke.cjs").check({app, window, origin, signIn});
     if (process.env.TAGCAST_SHUTDOWN_SMOKE_REPORT) require("./shutdown-smoke.cjs").check({app, window, origin, backend, shutdownView});
   }).catch(error => { dialog.showErrorBox(t("error.startTitle"), errorText(error) + "\n" + t("error.startHint")); app.quit(); });

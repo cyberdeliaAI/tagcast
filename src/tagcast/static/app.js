@@ -198,6 +198,7 @@ function useLocal(albums, mode) {
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof resetAlbumSplit === "function") resetAlbumSplit();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
@@ -631,7 +632,6 @@ function renderLibrary(relabel = false) {
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
-  $("#albums-random-order").disabled = state.loading || items.length < 2;
   $("#per-page").value = albumContinuous.enabled ? "continuous" : String(size);
   state.page = Math.min(state.page, maxPage);
   $("#results-count").textContent = state.artist ? TagcastI18n.text("library.results.byArtist", {count: items.length, artist: state.artist})
@@ -873,7 +873,7 @@ function syncAlbumArtistControls() {
   }
 }
 
-async function openEditor(ids) {
+async function openEditor(ids, {onlineSuggestions = true} = {}) {
   if (opening) return;
   const chosen = ids.map(id => state.albums.find(a => String(a.id) === String(id))).filter(Boolean);
   if (!chosen.length) return;
@@ -927,13 +927,14 @@ async function openEditor(ids) {
   syncAlbumArtistControls();
   $("#editor").showModal();
   if (!bulk) setEditorTab("album");
-  if (!bulk) startLookups(album);
+  if (!bulk && onlineSuggestions) startLookups(album);
 }
 
-function setEditorTab(tab, focus = false) {
+function setEditorTab(tab, focus = false, {loadLyrics = true} = {}) {
   if (!editing || editing.bulk || !["album", "tracks"].includes(tab) || !$("#editor").open) return;
   closeEditorArtistChoices();
   editing.tab = tab;
+  if (tab === "tracks") editing.deferTrackLyrics = !loadLyrics;
   for (const kind of ["album", "tracks"]) {
     const selected = kind === tab, button = $(`#editor-tab-${kind}`);
     button.setAttribute("aria-selected", String(selected));
@@ -949,7 +950,7 @@ function setEditorTab(tab, focus = false) {
     help.setAttribute("aria-label", TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album"));
     help.title = TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album");
   }
-  if (tab === "tracks" && typeof renderLyrics === "function") renderLyrics("track");
+  if (tab === "tracks" && loadLyrics && typeof renderLyrics === "function") renderLyrics("track");
   if (focus) $(`#editor-tab-${tab}`).focus({preventScroll: true});
 }
 
@@ -1002,12 +1003,12 @@ function stashTrack() {
   editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => !sameValue(original[key], value)));
 }
 
-function editTrack(id) {
+function editTrack(id, {loadLyrics = true, scrollBehavior = "smooth"} = {}) {
   try { stashTrack(); } catch (error) { toast(TagcastI18n.errorText(error)); return; }
   showTrackGenres();
   const original = editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === id);
   if (!original) return;
-  setEditorTab("tracks");
+  setEditorTab("tracks", false, {loadLyrics});
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
   const fields = [["title", "editor.track.titleField", "text"], ["artist", "editor.track.artistField", "text"], ["year", "editor.track.yearField", "number"], ["track", "editor.track.numberField", "number"]];
@@ -1015,12 +1016,12 @@ function editTrack(id) {
     const label = TagcastI18n.html(labelKey);
     return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`;
   }).join("")}${genreField("track-genres", TagcastI18n.html("editor.track.genresField"), track.genres || [])}${creditsField(track)}</div><section id="track-lyrics" class="track-lyrics" hidden></section><p class="muted">${TagcastI18n.html("editor.track.note")}</p></div>`;
-  renderLyrics("track", lyricsSelection(original));
+  if (loadLyrics) renderLyrics("track", lyricsSelection(original));
   for (const button of document.querySelectorAll("#editor-tracks-panel button[data-track]")) {
     button.setAttribute("aria-pressed", String(button.dataset.track === id));
     button.closest("tr")?.classList.toggle("editing-track", button.dataset.track === id);
   }
-  pane.scrollIntoView({block: "start", behavior: "smooth"});
+  pane.scrollIntoView({block: "start", behavior: scrollBehavior});
 }
 
 function buildReview() {
@@ -1248,6 +1249,7 @@ document.addEventListener("click", event => {
       if (typeof requestClosePlaylistImport === "function") requestClosePlaylistImport();
       else toast(TagcastI18n.text("app.update.reloadImport"));
     }
+    else if (close.dataset.close === "track-comparison") requestCloseTrackComparison();
     else $(`#${close.dataset.close}`).close();
     return;
   }
@@ -1314,14 +1316,6 @@ $("#all-albums").addEventListener("click", () => setArtist(null));
 for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
   if (id === "#sort") albumOrder.ids = [];
   state.page = 0; render();
-});
-// This shortcut also reshuffles an already random shelf, without changing playback or filters.
-$("#albums-random-order").addEventListener("click", () => {
-  if (state.loading || filteredAlbums().length < 2) return;
-  $("#sort").value = "random";
-  albumOrder.ids = [];
-  state.page = 0;
-  render();
 });
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {
@@ -1498,6 +1492,7 @@ async function loadLive(refresh = false) {
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof resetAlbumSplit === "function") resetAlbumSplit();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);

@@ -1,7 +1,7 @@
 # First setup
 
-This guided view of existing preferences is a development change after 1.7.0.
-It does not change the release version, music metadata or iBroadcast write protocol.
+Introduced in Tagcast 1.8.0, this guided view reuses existing preferences.
+It does not change music metadata or the iBroadcast write protocol.
 
 ## Flow and ownership
 

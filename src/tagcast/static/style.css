@@ -360,6 +360,8 @@ body.has-player main{padding-bottom:80px}
 .album-genre-chip,.album-tag-add{font:inherit;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:16px;background:none;padding:5px 10px;overflow-wrap:anywhere}.album-tag-add{border-style:dashed}.album-genre-chip:hover,.album-tag-add:hover{color:var(--ink);background:var(--palette-tint,#edf3e7)}
 .album-tag-chip{display:inline-flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:12px}.album-tag-chip .tag-chip{padding:5px 10px;border-radius:16px}.album-tag-chip small{font-size:10px}
 .album-detail-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.album-shuffle{display:inline-flex;align-items:center;justify-content:center;min-width:40px}
+.album-shuffle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .album-detail .tracks-heading h2{font-size:16px;margin:0}
 .album-tracks{width:100%;border-collapse:collapse;background:var(--palette-surface,#fff);border:1px solid var(--line);font-size:13px}
 .album-tracks th{text-align:left;padding:12px 16px;font-size:10px;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line)}
@@ -570,14 +572,11 @@ body.has-player .now-playing-panel{bottom:76px}
 .brand-version{flex:none;letter-spacing:0;line-height:1;font-size:10px;color:var(--palette-shell-muted,#a5b6a8)}
 #sidebar .brand-version .pill{background:none;border:0;box-shadow:none;color:inherit;padding:0;font:inherit;letter-spacing:inherit}
 
-/* Playback actions stay apart from search and sort, with room on narrow screens. */
+/* Album selection controls retain room on narrow screens. */
 .results-line.album-actions{align-items:center;flex-wrap:wrap}
 .album-actions #selection-help{margin-left:auto}
 .album-actions .button{margin-left:auto;flex-shrink:0}
-.album-browse-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-left:auto}
-.album-actions .album-browse-actions>.button{margin-left:0}
-.album-actions #selection-help+.album-browse-actions{margin-left:0}
-@media(max-width:760px){.album-actions #selection-help{display:none}.album-actions #selection-help+.album-browse-actions{margin-left:auto}}
+@media(max-width:760px){.album-actions #selection-help{display:none}}
 
 /* Fullscreen Now playing reuses the same audio element and transport controls. */
 body.visual-player-open{overflow:hidden}
@@ -1188,3 +1187,14 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 #browse-toolbar select { max-width: 100%; }
 #collections-page .sticky-search:has(#favourite-albums-display) { display: flex; gap: 12px; flex-wrap: wrap; }
 #collections-page .sticky-search:has(#favourite-albums-display) > .clearable-search { flex: 1; min-width: min(100%, 220px); }
+
+/* Explicit read-only edition comparison; native document/dialog scrolling remains intact. */
+.track-comparison-dialog{width:min(1240px,96vw);max-height:92vh}
+.track-comparison-search{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.track-comparison-search .field{flex:1;min-width:180px}
+.track-comparison-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:22px;margin-top:16px}
+.track-comparison-main{min-width:0}.track-comparison-choices{display:grid;gap:8px}.track-comparison-edition{text-align:left;white-space:normal;overflow-wrap:anywhere;width:100%}.track-comparison-edition[aria-pressed="true"]{border-color:var(--green);background:var(--palette-tint,var(--paper))}
+.track-comparison-dialog strong,.track-comparison-dialog small,.track-comparison-edition span,#track-comparison-reference span{display:block}.track-comparison-dialog small{color:var(--muted);line-height:1.5}.track-comparison-pages{display:flex;justify-content:space-between;margin:12px 0;gap:8px}
+#track-comparison-reference{margin-bottom:16px;overflow-wrap:anywhere}#track-comparison-reference a{color:var(--green)}
+.track-comparison-table table{width:100%;border-collapse:collapse;table-layout:fixed}.track-comparison-table th,.track-comparison-table td{text-align:left;vertical-align:top;padding:12px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.track-comparison-table th:nth-child(1),.track-comparison-table th:nth-child(2){width:39%}.track-comparison-table td span{display:block;margin-top:4px}.track-comparison-table td:last-child{font-size:11px;color:var(--muted)}.track-comparison-different{background:var(--palette-tint,var(--white))}
+.comparison-draft-controls{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.comparison-draft-controls .button{white-space:normal;min-width:0;padding:5px 8px}.comparison-draft-controls [aria-pressed="true"]{color:var(--green);border-color:var(--green);background:var(--palette-tint,var(--white))}.comparison-draft-controls .field{flex-basis:100%;min-width:0}.comparison-draft-controls select{width:100%;min-width:0;max-width:100%}#comparison-draft-footer{flex-wrap:wrap;padding-top:12px}#comparison-draft-footer>p:first-child{flex-basis:100%;max-width:85ch}#comparison-draft-count{flex:1 1 220px;margin:0}
+@media(max-width:760px){.track-comparison-layout{grid-template-columns:minmax(0,1fr)}.track-comparison-search .field{min-width:140px}.track-comparison-table th,.track-comparison-table td{padding:9px 4px;font-size:12px}.track-comparison-table th:nth-child(1),.track-comparison-table th:nth-child(2){width:36%}}
