@@ -32,6 +32,22 @@ def credit(value):
                    for c in value[:100] if isinstance(c, dict))[:1000]
 
 
+def artist_credits(value):
+    """Keep credited names separate; a display string must never become one new artist."""
+    if not isinstance(value, list) or not 1 <= len(value) <= 100:
+        return None
+    result, phrase = [], ""
+    for row in value:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str) \
+                or not row["name"].strip() or len(row["name"]) > 1000:
+            return None
+        result.append({"name": row["name"].strip(), "phrase": phrase.strip() or None})
+        phrase = row.get("joinphrase", "")
+        if not isinstance(phrase, str) or len(phrase) > 1000:
+            return None
+    return result
+
+
 def edition(row):
     if not isinstance(row, dict) or not isinstance(row.get("id"), str) or not MBID.fullmatch(row["id"]):
         return None
@@ -105,6 +121,7 @@ def release(source, release_id):
             length = row.get("length")
             tracks.append({"title": plain(row.get("title")),
                            "artist": credit(row.get("artist-credit")) or credit(recording.get("artist-credit")) or result["artist"],
+                           "artist_credits": artist_credits(row.get("artist-credit") or recording.get("artist-credit")),
                            "disc": positive(medium.get("position")), "position": positive(row.get("position")),
                            "number": plain(row.get("number"), 40),
                            "length": length / 1000 if type(length) is int and 0 < length <= 604800000 else None})

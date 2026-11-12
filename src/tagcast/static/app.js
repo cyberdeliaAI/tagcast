@@ -874,7 +874,7 @@ function syncAlbumArtistControls() {
   }
 }
 
-async function openEditor(ids) {
+async function openEditor(ids, {onlineSuggestions = true} = {}) {
   if (opening) return;
   const chosen = ids.map(id => state.albums.find(a => String(a.id) === String(id))).filter(Boolean);
   if (!chosen.length) return;
@@ -928,7 +928,7 @@ async function openEditor(ids) {
   syncAlbumArtistControls();
   $("#editor").showModal();
   if (!bulk) setEditorTab("album");
-  if (!bulk) startLookups(album);
+  if (!bulk && onlineSuggestions) startLookups(album);
 }
 
 function setEditorTab(tab, focus = false) {
@@ -1249,6 +1249,7 @@ document.addEventListener("click", event => {
       if (typeof requestClosePlaylistImport === "function") requestClosePlaylistImport();
       else toast(TagcastI18n.text("app.update.reloadImport"));
     }
+    else if (close.dataset.close === "track-comparison") requestCloseTrackComparison();
     else $(`#${close.dataset.close}`).close();
     return;
   }
