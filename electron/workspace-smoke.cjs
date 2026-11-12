@@ -7,12 +7,17 @@ async function checkWorkspace(window) {
   const run = code => owner.executeJavaScript(code);
   const frame = () => run("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
   const click = async selector => {
+    // Native resize/sticky layout must settle before measuring a pointer target.
+    // Centre it above fixed player chrome rather than retaining a nearest-edge overlap.
+    await run(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})`);
+    await frame();
     const point = await run(`(()=>{const node=document.querySelector(${JSON.stringify(selector)});
-      node.scrollIntoView({block:'nearest',inline:'nearest'});const r=node.getBoundingClientRect();
+      const r=node.getBoundingClientRect();
       return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
     owner.sendInputEvent({type:"mouseMove", ...point}); await frame();
     const hit = await run(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),hit=document.elementFromPoint(${point.x},${point.y});
-      return {ok:node.contains(hit),hit:hit?.className,pointer:getComputedStyle(node).pointerEvents,rect:node.getBoundingClientRect().toJSON()};})()`);
+      return {ok:node.contains(hit),hit:hit?.className,pointer:getComputedStyle(node).pointerEvents,
+        point:${JSON.stringify(point)},viewport:{width:innerWidth,height:innerHeight},rect:node.getBoundingClientRect().toJSON()};})()`);
     assert.equal(hit.ok, true, selector + " receives pointer input " + JSON.stringify(hit));
     owner.sendInputEvent({type:"mouseDown", ...point, button:"left", clickCount:1});
     owner.sendInputEvent({type:"mouseUp", ...point, button:"left", clickCount:1}); await frame();
