@@ -132,6 +132,15 @@ see the [0.50.0 standalone guide](https://github.com/cyberdeliaAI/tagcast/blob/v
 
 ## Releases
 
+The native workspace and first-setup viewport matrices run in separate disposable
+application processes, just like track comparison. Their original pointer/keyboard
+matrix functions and 45-second deadlines are retained. `check_electron.py` requires
+all eight width/theme results from each matrix, the expected version and owned-server
+shutdown; a missing or failed report blocks distribution. This prevents cumulative
+mini-player/theme/workspace/setup runtime from exhausting one unrelated deadline on
+slower hosted Intel runners. The core startup/restart, CLI, CSP and security smoke
+checks retain their existing deadline and assertions.
+
 Keep `pyproject.toml`, `src/tagcast/__init__.py`, the version badge in `index.html`,
 the Tagcast entry in `uv.lock` and the Electron package/lockfile versions consistent.
 `python tools/release_info.py` checks them. Store release notes in

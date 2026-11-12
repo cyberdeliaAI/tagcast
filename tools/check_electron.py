@@ -102,6 +102,8 @@ def check_app(executable, version, restart=False):
         reports.mkdir(parents=True, exist_ok=True)
         (reports / "electron.json").write_text(json.dumps(data, indent=2) + "\n")
         print(f'Checked Electron {data["electron"]}, Tagcast {data["version"]}, CLI, sandbox and server shutdown')
+        from check_workspace import check_workspace
+        check_workspace(executable, inherited, reports, version)
         from check_track_comparison import check_track_comparison
         check_track_comparison(executable, inherited, reports)
         from check_shutdown import check_shutdown
