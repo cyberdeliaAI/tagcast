@@ -198,6 +198,7 @@ function useLocal(albums, mode) {
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof resetAlbumSplit === "function") resetAlbumSplit();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
@@ -1498,6 +1499,7 @@ async function loadLive(refresh = false) {
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof resetAlbumSplit === "function") resetAlbumSplit();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);

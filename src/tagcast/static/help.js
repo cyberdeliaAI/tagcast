@@ -5,6 +5,11 @@
 // Topic, step and hint texts are interface text keys. helpContentFor() resolves them in the
 // active language each time help opens or the language changes; ids, scopes and selectors stay logic.
 const HELP_TOPICS = {
+  "track-comparison": {title: "trackComparison.heading", scope: "#track-comparison", steps: [
+    ["trackComparison.search", "trackComparison.privacy", ["#track-comparison-form"]],
+    ["trackComparison.editions", "trackComparison.start", ["#track-comparison-results"]],
+    ["trackComparison.observations", "trackComparison.positional", ["#track-comparison-table"]],
+  ]},
   uploads: {title: "help.uploads.title", scope: "#uploads-page", steps: [
     ["help.uploads.prepare.title", "help.uploads.prepare.body", ["#music-upload-form"]],
     ["help.uploads.review.title", "help.uploads.review.body", ["#music-upload-results"]],
@@ -196,6 +201,7 @@ const HELP_TOPICS = {
 };
 
 function currentHelpContext() {
+  if ($("#track-comparison").open) return "track-comparison";
   if ($("#lyrics-import").open) return "lyrics-import";
   if ($("#playlist-order").open) return "playlist-order";
   if ($("#playlist-import").open) return "playlist-import";

@@ -10,12 +10,12 @@ const viewFailure = (key, params) => TagcastI18n.failure(key.replace(/^errors\./
 // quiet: a language repaint from memory, which never starts lookups.
 const albumView = {id: null, request: 0, loading: false, trash: null, found: "", failure: null, quiet: false};
 const coverLightbox = {open: false, focus: null, timer: null, fallback: "", fallbackTried: false, album: null, status: ""};
-const albumActions = {trigger: null, details: null, id: null};
+const albumActions = {trigger: null, details: null, id: null, session: null};
 
 function closeAlbumActions(restoreFocus = false) {
   const trigger = albumActions.trigger;
   $("#album-action-menu").hidden = true;
-  albumActions.trigger = null; albumActions.details = null; albumActions.id = null;
+  albumActions.trigger = null; albumActions.details = null; albumActions.id = null; albumActions.session = null;
   trigger?.setAttribute("aria-expanded", "false");
   if (restoreFocus && trigger?.isConnected) trigger.focus();
 }
@@ -26,6 +26,7 @@ function openAlbumActions(trigger) {
   if (same || trigger.disabled || !live() || state.loading || state.screen !== "album"
       || albumView.loading || albumView.trash || saving || checking) return;
   albumActions.trigger = trigger; albumActions.details = state.details; albumActions.id = albumView.id;
+  albumActions.session = state.connection.playback_session;
   trigger.setAttribute("aria-expanded", "true");
   const menu = $("#album-action-menu"); menu.hidden = false;
   $("#album-action-lyrics").textContent = TagcastI18n.text(albumLyricsCheck?.running ? "album.actions.stopLyrics" : "album.actions.checkLyrics");
@@ -59,7 +60,7 @@ $("#album-action-menu").addEventListener("keydown", event => {
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     event.preventDefault();
-    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
+    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-compare"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
     const index = items.indexOf(document.activeElement);
     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
       : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
@@ -282,6 +283,7 @@ function albumViewReady() {
 }
 
 function renderAlbumView() {
+  if (typeof trackComparisonCurrent === "function" && $("#track-comparison").open && !trackComparisonCurrent()) resetTrackComparison();
   if (state.screen !== "album" || albumView.loading) return;
   if (!state.albums.some(a => String(a.id) === albumView.id)) { resetAlbumView(); return; }
   const ids = shelfIds(albumView.id), discs = ids.map(i => state.details.get(i));
