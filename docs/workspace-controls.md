@@ -5,11 +5,12 @@ These controls are development changes after 1.7.0; no release version is change
 ## Navigation
 
 The sidebar button in the desktop header hides or shows the left navigation.
-Its preference is local to this browser origin or Electron profile. The button
+Navigation starts open. Its manual preference is local to this browser origin or Electron profile. The button
 remains outside the hidden sidebar so Settings and the connection controls stay
 reachable after reopening it. Narrow windows retain the existing mobile menu.
 Resizing between the two layouts never leaves mobile navigation hidden by a
-desktop preference. Collapsing navigation does not change the page or playback.
+desktop preference. Opening Playlist or Details never collapses it automatically.
+Collapsing navigation does not change the page or playback.
 
 Settings → Interface still controls which optional shortcuts are visible and
 their order. This is separate from collapsing the whole sidebar. Existing
@@ -30,16 +31,24 @@ upload date, not a new Tagcast import timestamp.
 
 Album artists offers Name, Rating and its existing Random ordering. The Albums
 Random order shortcut stays separate from Play random album. Filters is now a
-dedicated menu; all existing nonempty filters, counts and selected zero-result
+compact, single-column menu without duplicate headings or a close button. Close
+it through its trigger, an outside click or Escape; Escape returns keyboard focus
+to the trigger. All existing nonempty filters, counts and selected zero-result
 filters retain their behavior. Changing order preserves the independent filter,
 selection, playback and existing history/continuous-browsing state rules.
 
 ## One Playlist / Details side panel
 
-The right-panel button opens the existing side panel. Playlist shows Tagcast's
+The right-panel button at the far right of the header, after Live, opens the existing
+side panel. Compact segmented Playlist/Details tabs keep larger touch targets on
+mobile. Playlist shows Tagcast's
 current local play queue, with the existing row actions and Save as playlist
 workflow. It is separate from the native Playlists page. The full Now playing
-page remains available, sharing the same queue and audio element.
+page remains available, sharing the same queue and audio element. Devices now lives
+beside the Play queue heading in this shared view, including with an empty queue.
+It retains the existing queue-sync opt-in gate, dialog and account/session guards;
+moving it does not connect a device or start playback. It is also reachable in the
+full Now playing page. The header no longer contains a Devices shortcut.
 
 Details uses read-only Album and Track accordions. It shows the open album or the
 current queued track. The information button beside an album track selects that
@@ -83,7 +92,7 @@ regressions continue to exercise the shared implementation. All six interface
 catalogues include the new text.
 
 The packaged Electron smoke check uses real pointer and keyboard events for the
-new controls at 420, 768 and 1280 pixels in Light and Dark. It verifies hit targets,
+new controls at 420, 760, 768 and 1280 pixels in Light and Dark. It verifies hit targets,
 the original audio element, focus restoration and absence of horizontal overflow.
 It uses synthetic demo metadata only. Browser validation and native startup/restart
 checks remain separate from real-account or hardware-audio compatibility claims.

@@ -608,9 +608,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal, focus/scroll return and close Help on navigation or library replacement.
 - The mobile sidebar is a disclosure menu; its open/closed state adds no history
   entry. Keep connection and source settings reachable and support Escape.
-  Desktop navigation has a separate browser-local collapse preference and an external
+  Desktop navigation starts open and has a separate browser-local manual collapse preference and an external
   header button that remains reachable while collapsed. Restore mobile access on resize;
-  do not mix this state with shortcut visibility or change playback/history.
+  do not mix this state with shortcut visibility or change playback/history. Opening the
+  right panel never collapses navigation automatically.
   Browser-local `tagcast-sidebar` preferences hide optional shortcuts and reorder
   navigation in DOM/keyboard order. Album artists, Albums and Change history cannot
   be hidden; connection controls and Settings remain outside customization. Hiding
@@ -623,6 +624,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   metadata in read-only accordions, without provider/API requests or playback changes.
   Retire captured selections and old rendered details on library/session replacement,
   even when closed. Keep tab keyboard navigation, Escape and opening-control focus return.
+  Its header toggle follows Live at the far right. Keep desktop sorting and segmented
+  tabs compact, with larger mobile/coarse-pointer targets. Devices belongs beside the
+  Play queue heading in the shared Playlist/Now playing view, including an empty queue;
+  preserve its existing queue-sync opt-in, ownership checks and explicit connection actions.
 - Decades reuses the browse indexes and effective track/album years. Exclude unknown
   years, use full decade labels (1980s, 2020s), sample merged album summaries locally
   without duplicates, and preserve the random order on Back. Surprise me again
