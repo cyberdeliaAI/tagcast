@@ -6691,7 +6691,8 @@ test("comparison corrections stage only explicitly chosen fields and hand them t
   assert.equal(p.requests.length,count,'Choosing makes no requests');
   assert.equal(p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})'),before);
   await p.run('openComparisonDraftEditor()');
-  assert.ok(p.requests.slice(count).every(r=>r.url.startsWith('/api/lyrics?')&&!r.options?.body), 'Only the ordinary editor native-lyrics read is allowed; no provider/library lookup or write');
+  p.run('repaintLyrics()');await settle();
+  assert.equal(p.requests.length,count,'Initial correction handoff starts no lyrics, provider or library read');
   const editorRequests=p.requests.length;
   assert.equal(p.nodes.get('#editor').open,true);
   const patches=JSON.parse(p.run('JSON.stringify(editing.trackPatches)'));
@@ -6717,6 +6718,15 @@ test("comparison editor handoff rejects a session replaced while the editor is o
   await p.run('openComparisonDraftEditor()');
   assert.equal(Boolean(p.nodes.get('#editor').open),false);
   assert.equal(p.run('Object.keys(editing.trackPatches).length'),0);
+});
+test("normal track selection still loads lyrics after a quiet comparison draft handoff",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  const count=p.requests.length;
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title')`);await p.run('openComparisonDraftEditor()');
+  assert.equal(p.requests.length,count);
+  p.nodes.get('#track-inline').querySelectorAll=()=>[{type:'text',dataset:{key:'title'},value:'Other <script>'}];
+  p.run(`editTrack(${JSON.stringify(id)})`);await settle();
+  assert.ok(p.requests.slice(count).some(r=>r.url.startsWith('/api/lyrics?')&&!r.options?.body));
 });
 test("comparison manual pairing retains the target ID and cannot implicitly copy number, year or duration",async()=>{
   const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');

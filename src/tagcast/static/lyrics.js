@@ -230,6 +230,9 @@ function visibleLyricsSelection(context) {
 }
 
 function renderLyrics(context, selection = visibleLyricsSelection(context)) {
+  // A comparison correction draft is initially metadata-only. Background cache,
+  // language or player repaints must not start a read or expand its form either.
+  if (context === "track" && typeof editing !== "undefined" && editing?.deferTrackLyrics) selection = null;
   const box = $(context === "track" ? "#track-lyrics" : "#now-playing-lyrics");
   if (!box) return;
   box.hidden = !selection;

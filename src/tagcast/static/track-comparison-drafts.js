@@ -95,8 +95,10 @@ async function openComparisonDraftEditor() {
     }
     editing.trackPatches = patches;
     editing.dirty.add("comparison");
-    editTrack(Object.keys(patches)[0]);
-    $('#track-inline input[data-key="title"]')?.focus();
+    // Initial draft display must not start asynchronous lyrics expansion or scroll
+    // animation under the next pointer action. Normal explicit track selection does.
+    editTrack(Object.keys(patches)[0], {loadLyrics: false, scrollBehavior: "instant"});
+    $('#track-inline input[data-key="title"]')?.focus({preventScroll: true});
     toast(comparisonDraftText("ready"));
   } finally { comparisonDraft.transferring = false; }
 }

@@ -931,10 +931,11 @@ async function openEditor(ids, {onlineSuggestions = true} = {}) {
   if (!bulk && onlineSuggestions) startLookups(album);
 }
 
-function setEditorTab(tab, focus = false) {
+function setEditorTab(tab, focus = false, {loadLyrics = true} = {}) {
   if (!editing || editing.bulk || !["album", "tracks"].includes(tab) || !$("#editor").open) return;
   closeEditorArtistChoices();
   editing.tab = tab;
+  if (tab === "tracks") editing.deferTrackLyrics = !loadLyrics;
   for (const kind of ["album", "tracks"]) {
     const selected = kind === tab, button = $(`#editor-tab-${kind}`);
     button.setAttribute("aria-selected", String(selected));
@@ -950,7 +951,7 @@ function setEditorTab(tab, focus = false) {
     help.setAttribute("aria-label", TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album"));
     help.title = TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album");
   }
-  if (tab === "tracks" && typeof renderLyrics === "function") renderLyrics("track");
+  if (tab === "tracks" && loadLyrics && typeof renderLyrics === "function") renderLyrics("track");
   if (focus) $(`#editor-tab-${tab}`).focus({preventScroll: true});
 }
 
@@ -1003,12 +1004,12 @@ function stashTrack() {
   editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => !sameValue(original[key], value)));
 }
 
-function editTrack(id) {
+function editTrack(id, {loadLyrics = true, scrollBehavior = "smooth"} = {}) {
   try { stashTrack(); } catch (error) { toast(TagcastI18n.errorText(error)); return; }
   showTrackGenres();
   const original = editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === id);
   if (!original) return;
-  setEditorTab("tracks");
+  setEditorTab("tracks", false, {loadLyrics});
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
   const fields = [["title", "editor.track.titleField", "text"], ["artist", "editor.track.artistField", "text"], ["year", "editor.track.yearField", "number"], ["track", "editor.track.numberField", "number"]];
@@ -1016,12 +1017,12 @@ function editTrack(id) {
     const label = TagcastI18n.html(labelKey);
     return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`;
   }).join("")}${genreField("track-genres", TagcastI18n.html("editor.track.genresField"), track.genres || [])}${creditsField(track)}</div><section id="track-lyrics" class="track-lyrics" hidden></section><p class="muted">${TagcastI18n.html("editor.track.note")}</p></div>`;
-  renderLyrics("track", lyricsSelection(original));
+  if (loadLyrics) renderLyrics("track", lyricsSelection(original));
   for (const button of document.querySelectorAll("#editor-tracks-panel button[data-track]")) {
     button.setAttribute("aria-pressed", String(button.dataset.track === id));
     button.closest("tr")?.classList.toggle("editing-track", button.dataset.track === id);
   }
-  pane.scrollIntoView({block: "start", behavior: "smooth"});
+  pane.scrollIntoView({block: "start", behavior: scrollBehavior});
 }
 
 function buildReview() {

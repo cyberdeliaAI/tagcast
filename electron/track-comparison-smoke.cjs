@@ -13,7 +13,8 @@ function check({app,window,origin}){
   const click=async selector=>{
     const point=await run(`(()=>{const n=document.querySelector(${JSON.stringify(selector)});n.scrollIntoView({block:'nearest'});const r=n.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
     window.webContents.sendInputEvent({type:"mouseMove",...point});await frame();
-    assert.equal(await run(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${point.x},${point.y}))`),true,selector+" receives pointer input");
+    const hit=await run(`(()=>{const n=document.querySelector(${JSON.stringify(selector)}),h=document.elementFromPoint(${point.x},${point.y}),r=n.getBoundingClientRect();return {ok:n.contains(h),hit:h?.id||h?.tagName,point:${JSON.stringify(point)},current:{x:r.x+r.width/2,y:r.y+r.height/2},height:innerHeight};})()`);
+    assert.equal(hit.ok,true,selector+" receives pointer input: "+JSON.stringify(hit));
     for(const type of ["mouseDown","mouseUp"])window.webContents.sendInputEvent({type,...point,button:"left",clickCount:1});await frame();
   };
   window.webContents.once("did-finish-load",async()=>{
@@ -32,9 +33,9 @@ function check({app,window,origin}){
       }
       phase="fixture";
       await run(`document.querySelectorAll("dialog[open]").forEach(dialog=>dialog.close());globalThis.comparisonSmokeApi=api;globalThis.comparisonSmokeAudio=audio;globalThis.comparisonSmokeRequests=[];
-        globalThis.comparisonSmokeWrites=[];
+        globalThis.comparisonSmokeWrites=[];globalThis.comparisonSmokeLyricsReads=[];
         globalThis.comparisonSmokeRelease={id:'12345678-1234-1234-1234-123456789abc',title:'Synthetic edition',artist:'Synthetic',date:'1990',country:'DE',formats:['CD'],labels:[],discs:1,track_count:2,url:'https://musicbrainz.org/release/12345678-1234-1234-1234-123456789abc'};
-        api=async(path,body)=>{if(body){comparisonSmokeWrites.push(path);throw Error('Comparison attempted a write');}if(path.startsWith('/api/tracklist/')){comparisonSmokeRequests.push(path);return path.includes('/search?')?{releases:[comparisonSmokeRelease],total:1,offset:0,more:false,limit:200}:{release:comparisonSmokeRelease,tracks:[{disc:1,number:'1',title:'Different <title>',artist:'Synthetic',artist_credits:[{name:'Synthetic',phrase:null},{name:'Synthetic guest',phrase:'feat.'}],length:100},{disc:2,number:'1',title:'Bonus',artist:'Synthetic',artist_credits:[{name:'Synthetic',phrase:null}],length:null}],incomplete:true};}return comparisonSmokeApi(path,body);};void 0;`);
+        api=async(path,body)=>{if(path.startsWith('/api/lyrics?'))comparisonSmokeLyricsReads.push(path);if(body){comparisonSmokeWrites.push(path);throw Error('Comparison attempted a write');}if(path.startsWith('/api/tracklist/')){comparisonSmokeRequests.push(path);return path.includes('/search?')?{releases:[comparisonSmokeRelease],total:1,offset:0,more:false,limit:200}:{release:comparisonSmokeRelease,tracks:[{disc:1,number:'1',title:'Different <title>',artist:'Synthetic',artist_credits:[{name:'Synthetic',phrase:null},{name:'Synthetic guest',phrase:'feat.'}],length:100},{disc:2,number:'1',title:'Bonus',artist:'Synthetic',artist_credits:[{name:'Synthetic',phrase:null}],length:null}],incomplete:true};}return comparisonSmokeApi(path,body);};void 0;`);
       for(const width of [420,760,768,1280])for(const theme of ["light","dark"]){
         phase=width+"/"+theme;window.setContentSize(width,800);
         await run(`(async()=>{await openAlbum(${JSON.stringify(account.album_id)});document.documentElement.dataset.theme=${JSON.stringify(theme)};
@@ -65,18 +66,21 @@ function check({app,window,origin}){
         samples.push({width,theme,pointer:true,keyboard:true,noWrites:true,noPlaybackChanges:true});
       }
       phase="editor-review";
+      const initialLyricsReads=await run("comparisonSmokeLyricsReads.length");
       await click('[data-album-more]');await click('#album-action-compare');
       await click('#track-comparison-search');await until("!trackComparison.busy&&!!trackComparison.results");
       await click('[data-compare-release]');await until("!trackComparison.busy&&!!trackComparison.reference");
       const id=await run("trackComparison.tracks[0].id"),title=`[data-compare-track="${id}"][data-compare-field="title"]`;
           await click(title);await click(`[data-compare-track="${id}"][data-compare-field="artists"]`);
           await click('#comparison-draft-open');await until("$('#editor').open&&!!editing.trackPatches["+JSON.stringify(id)+"]");
+          await run("repaintLyrics()");await frame();
           await click('#review-button');await until("$('#review').open&&!!pending");
           assert.equal(await run("pending.changes.every(c=>c.kind==='track'&&String(c.id)==="+JSON.stringify(id)+")"),true,"Only explicitly chosen track enters ordinary review");
           assert.equal(await run("JSON.stringify(Object.keys(pending.changes[0].fields).sort())"),JSON.stringify(['artist','credits','title']));
           assert.equal(await run("pending.changes[0].fields.credits.after.some(c=>c.name==='Synthetic guest'&&c.phrase==='feat.')"),true);
           await run("$('#review').close();$('#editor').close()");
       assert.equal(await run("comparisonSmokeWrites.length"),0,"Editor/review never attempts a write");
+      assert.equal(await run("comparisonSmokeLyricsReads.length"),initialLyricsReads,"Initial correction handoff and review never start a native lyrics read");
       await run("api=comparisonSmokeApi;resetTrackComparison()");
       finish({ok:true,editorReview:true});
     }catch(error){await run("if(typeof comparisonSmokeApi==='function')api=comparisonSmokeApi;resetTrackComparison()").catch(()=>{});finish({ok:false,error:error.message});}

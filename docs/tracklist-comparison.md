@@ -152,7 +152,8 @@ can be explicitly used more than once without deduplicating local tracks.
 fields. It rechecks the complete loaded album/set snapshot and session before and
 after opening the existing editor. It never imports numbers, years, durations,
 membership or album fields. No public source suggestions start on this handoff;
-the ordinary editor can still perform its existing lazy native-lyrics read.
+initial lyrics reads are deferred until explicit track selection, which retains
+the ordinary editor's lazy native-lyrics behavior.
 Normal review, fresh save checks, partial/uncertain outcomes and read-back are
 unchanged. Choices, mapping and drafts are memory-only; closing/replacing a chosen
 reference asks before discarding, while invalid ownership clears stale work.
@@ -170,7 +171,7 @@ the release-artist display fallback is never imported as track-artist evidence.
 The ordinary review remains editable before saving.
 
 Follow-up validation (2026-11-12): full Python 3.13 **999 tests / 2,660 subtests**;
-**895 frontend/media/Electron tests**; Chromium and WebKit at 420/760/768/1280 px
+**896 frontend/media/Electron tests**; Chromium and WebKit at 420/760/768/1280 px
 in Light/Dark (16 cases), with actual pointer/keyboard input and CSP. The native
 macOS ARM64 app passes startup/restart, all eight comparison/choice cases plus an
 additional real DOM editor/review transfer with title, primary artist and guest
@@ -178,3 +179,17 @@ credit, both frozen Studio/HTTP guards and all 15 shutdown/recovery cases. The
 fixture refuses and records any attempted mutation; synthetic account writes stay
 zero. Existing deadlines, focus assertions and no-save checks remain intact.
 Source snapshots are checked once per render, rather than once per table row.
+
+The first follow-up CI found a real handoff layout race on macOS ARM64: a lazy
+native-lyrics response expanded the new editor and moved its Review button after
+pointer targeting. A controlled browser response reproduced a movement from
+y=739.86 to y=1151.47. Initial comparison correction display now defers native
+lyrics (including background/cache/language repaints) until explicit track/tab
+selection. Ordinary editor selections retain their existing lazy reads and smooth
+scrolling; initial handoff uses immediate positioning and focus without scroll.
+The same reproduction now keeps y=739.47 unchanged and hits Review. A new test
+proves ordinary track selection still loads lyrics, and the native fixture asserts
+zero handoff lyrics reads as well as zero writes. Pointer/focus assertions and
+deadlines are unchanged; diagnostics include hit element and current coordinates.
+The same CI run also had a separate unchanged first-setup smoke timeout on macOS
+Intel; it remains recorded and the new head must pass that original check.
