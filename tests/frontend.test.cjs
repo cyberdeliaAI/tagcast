@@ -13234,3 +13234,16 @@ test('Details escapes untrusted metadata and exposes only supplied fields',async
   assert.match(markup,/&lt;img src=x onerror=alert\(1\)&gt;/);assert.doesNotMatch(markup,/<img src=x/);
   assert.doesNotMatch(markup,/bit-depth|44\.1 kHz/,'Do not invent audio properties absent from loaded metadata');
 });
+
+test('Details retains its explicit opener when pointer activation does not focus it',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run('globalThis.detailOpener={isConnected:true,focus(){globalThis.detailFocusReturned=true}};document.activeElement=document.body;openWorkspaceDetails("1",state.details.get("1").tracks[0].id,detailOpener)');
+  assert.equal(p.run('workspacePanel.focus === detailOpener'),true);
+  p.run('closeNowPlayingView()');assert.equal(p.run('detailFocusReturned'),true);
+});
+
+test('closing the listening page returns focus outside collapsed navigation',async()=>{
+  const p=page();await settle();
+  p.run('navigationCollapsed=true;syncNavigationToggle();showScreen("now-playing");workspacePanel.focus=null;$("#player-queue").getClientRects=()=>[];$("#workspace-panel-toggle").getClientRects=()=>[];$("#navigation-toggle").getClientRects=()=>[{}];closeNowPlayingView()');
+  assert.equal(p.run('document.activeElement === $("#navigation-toggle")'),true);
+});

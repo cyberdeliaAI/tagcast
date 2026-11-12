@@ -157,12 +157,13 @@ function setWorkspaceTab(tab, focus = false) {
   if (typeof renderLyrics === "function") renderLyrics("player");
   if (focus) $(`#workspace-tab-${tab}`).focus({preventScroll: true});
 }
-function openWorkspaceDetails(albumId, trackId) {
+function openWorkspaceDetails(albumId, trackId, trigger = null) {
   const album = state.details.get(String(albumId));
   if (!album || !album.tracks.some(t => String(t.id) === String(trackId))) return;
   workspacePanel.selection = {album: String(albumId), track: String(trackId), details: state.details,
     screen: state.screen, openAlbum: albumView.id, session: state.connection.playback_session};
-  workspacePanel.focus = document.activeElement;
+  // Safari/WebKit does not necessarily focus a button when it is clicked.
+  workspacePanel.focus = trigger || $("#workspace-panel-toggle");
   setWorkspaceTab("details"); setNowPlaying(true);
   $("#workspace-tab-details").focus({preventScroll: true});
 }
@@ -183,7 +184,7 @@ $("#workspace-panel-tabs").addEventListener("keydown", event => {
 });
 document.addEventListener("click", event => {
   const button = event.target.closest("[data-workspace-track]");
-  if (button) openWorkspaceDetails(button.dataset.workspaceAlbum, button.dataset.workspaceTrack);
+  if (button) openWorkspaceDetails(button.dataset.workspaceAlbum, button.dataset.workspaceTrack, button);
 });
 TagcastI18n.subscribe(() => { workspacePanel.markup = ""; syncWorkspacePanel(); syncNavigationToggle(); });
 syncNavigationToggle(); syncWorkspacePanel();
