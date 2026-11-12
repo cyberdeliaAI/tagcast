@@ -1,16 +1,22 @@
 """Read-only edition lookup: canned public data, no remote iBroadcast requests."""
 
 import copy
+import json
+import tempfile
 import threading
 import unittest
-from types import SimpleNamespace
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
 from unittest.mock import Mock
+from urllib.parse import urlencode
 
 from test_library import lib
 from test_sources import FakeHttp
 
+from tagcast import app
+from tagcast.client import Studio
 from tagcast.library import ConflictError, LibraryError
-from tagcast.sources import Lookup, MusicBrainz, SourceError
+from tagcast.sources import MusicBrainz, SourceError
 from tagcast.track_comparison import MAX_TRACKS, release, search, view
 
 RID = '12345678-1234-1234-1234-123456789abc'
@@ -81,7 +87,8 @@ class PublicEditionTests(unittest.TestCase):
 
     def test_missing_tracks_and_extra_sections_are_incomplete_not_confirmed_matches(self):
         for replacement in [{'tracks': []}, {'track-count': 3}, {'pregap': {'title': 'Hidden'}},
-                            {'data-tracks': [{'title': 'Data'}]}, {'position': None}]:
+                            {'data-tracks': [{'title': 'Data'}]}, {'position': None},
+                            {'track-count': 0, 'tracks': []}]:
             data = raw_release()
             data['media'][0].update(replacement)
             source, _ = self.source(data)
@@ -109,10 +116,12 @@ class PublicEditionTests(unittest.TestCase):
 
 class OwnershipTests(unittest.TestCase):
     def setUp(self):
-        self.studio = SimpleNamespace(lock=threading.RLock(), library=lib(), client=Mock(),
-                                      library_user='one', playback_session='session', disabled_sources=[])
-        self.studio._require_client = Mock(return_value=self.studio.client)
-        self.studio.lookup = Lookup(lambda: {}, lambda: self.studio.disabled_sources)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.studio = Studio(directory.name)
+        self.studio.library, self.studio.client = lib(), Mock()
+        self.studio.library_user, self.studio.playback_session = 'one', 'session'
+        self.studio.config['disabled_sources'] = []
         self.studio.lookup.http = FakeHttp([('/release', raw_release())])
         self.query = {'album_id': '10', 'session': 'session', 'id': RID}
 
@@ -127,7 +136,7 @@ class OwnershipTests(unittest.TestCase):
     def test_stale_session_missing_library_and_disabled_source_block_before_http(self):
         for change in [lambda: setattr(self.studio, 'playback_session', 'two'),
                        lambda: setattr(self.studio, 'library', None),
-                       lambda: self.studio.disabled_sources.append('musicbrainz')]:
+                       lambda: self.studio.config['disabled_sources'].append('musicbrainz')]:
             with self.subTest(change=change):
                 self.setUp()
                 change()
@@ -169,6 +178,8 @@ class OwnershipTests(unittest.TestCase):
                 try:
                     if field == 'album_title':
                         self.studio.library.albums.rows[10][0] = value
+                    elif field == 'disabled_sources':
+                        self.studio.config[field] = value
                     else:
                         setattr(self.studio, field, value)
                 finally:
@@ -180,3 +191,67 @@ class OwnershipTests(unittest.TestCase):
             self.assertEqual(len(errors), 1)
             self.assertIsInstance(errors[0], (ConflictError, SourceError))
             self.assertEqual(len(self.studio.lookup.http.calls), 1)
+
+
+class HttpIntegrationTests(unittest.TestCase):
+    """Exercise real Studio/source wiring and HTTP error handling, not a replacement route."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.studio = Studio(directory.name)
+        self.studio.library, self.studio.client = lib(), Mock()
+        self.studio.library_user, self.studio.playback_session = 'one', 'session'
+        self.public = Mock(side_effect=lambda url, params: (
+            raw_release() if url.endswith('/' + RID) else {'releases': [raw_release()], 'count': 1}))
+        self.studio.lookup.http.json = self.public
+        handler = type('ComparisonHandler', (app.Handler,), {'studio': self.studio, 'port': 0,
+                                                            'log_message': lambda *args: None})
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+        handler.port = self.server.server_port
+        worker = threading.Thread(target=self.server.serve_forever, kwargs={'poll_interval': .01})
+        worker.start()
+        self.addCleanup(worker.join, 3)
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def request(self, route, **query):
+        connection = HTTPConnection('127.0.0.1', self.server.server_port, timeout=3)
+        self.addCleanup(connection.close)
+        connection.request('GET', '/api/tracklist/' + route + '?' + urlencode({
+            'album_id': '10', 'session': 'session', **query}), headers={'Sec-Fetch-Site': 'same-origin'})
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+
+    def test_real_search_then_selected_release_uses_only_public_reads(self):
+        before = copy.deepcopy(self.studio.library.album_view(10))
+        status, result = self.request('search', artist='Artist', album='Original')
+        self.assertEqual(status, 200, result)
+        self.assertEqual(result['releases'][0]['id'], RID)
+        status, result = self.request('release', id=RID)
+        self.assertEqual(status, 200, result)
+        self.assertEqual(len(result['tracks']), 3)
+        self.assertEqual(self.public.call_count, 2)
+        self.assertEqual(self.studio.client.method_calls, [], 'No iBroadcast status/read/write')
+        self.assertEqual(before, self.studio.library.album_view(10))
+
+    def test_disabled_source_and_replaced_session_return_structured_errors_without_public_io(self):
+        self.studio.config['disabled_sources'] = ['musicbrainz']
+        for route in ('search', 'release'):
+            status, result = self.request(route, artist='Artist', album='Original', id=RID)
+            self.assertEqual(status, 400, result)
+            self.assertEqual(result['code'], 'track_comparison.unavailable')
+        self.studio.config['disabled_sources'] = []
+        self.studio.playback_session = 'replaced'
+        status, result = self.request('search', artist='Artist', album='Original')
+        self.assertEqual(status, 409, result)
+        self.assertEqual(result['code'], 'track_comparison.replaced')
+        self.public.assert_not_called()
+
+    def test_public_outage_is_reported_once_and_not_a_generic_internal_error(self):
+        self.public.side_effect = SourceError('MusicBrainz is temporarily unavailable.')
+        status, result = self.request('search', artist='Artist', album='Original')
+        self.assertEqual(status, 400, result)
+        self.assertEqual(result['code'], 'track_comparison.source_failed')
+        self.assertEqual(self.public.call_count, 1, 'No automatic retries')
+        self.assertEqual(self.studio.client.method_calls, [])

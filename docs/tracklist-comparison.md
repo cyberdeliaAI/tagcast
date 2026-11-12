@@ -28,7 +28,7 @@ corresponding row, not proof of a missing/wrong song. The differences-only check
 also retains unknown fields. No title, order, membership, playlist or audio changes
 are offered or sent. There is no Apply/Save button or automatic matching/splitting.
 
-MusicBrainz can have incomplete metadata. Missing media/track positions, mismatched
+MusicBrainz can have incomplete metadata. Empty media, missing media/track positions, mismatched
 track counts and additional pregap/data sections are flagged as an incomplete audio
 track list; the linked release remains authoritative for inspection. Those additional
 sections are not silently treated as ordinary audio positions. Native and reference
@@ -74,7 +74,7 @@ account. Public service availability and data quality remain external limitation
 
 ## Validation (2026-11-12)
 
-- Full local Python 3.13: 995 tests / 2,660 subtests passed. Final focused provider /
+- Full local Python 3.13 after the runtime correction: 998 tests / 2,660 subtests passed. Focused provider /
   ownership cases also pass after stricter structural/count validation. They cover
   literal queries, selected UUIDs, disc/track order, repeats, unknown lengths,
   incomplete/oversized references, no iBroadcast reads/writes, source gating,
@@ -107,3 +107,32 @@ Local logs/reports are retained under the root checkout's ignored
 `build/tracklist-comparison-20261112/` and the development worktree's `build/reports/`.
 Ruff, generated translations/CSS, version consistency and diff checks pass. Native
 CI on all supported targets remains an independent gate. No assertion was relaxed.
+
+## Runtime correction and integration regression
+
+The first test app failed before provider I/O: `Studio.disabled_sources` is a
+method, but the comparison checked membership on the method object at both
+ownership gates. This produced a TypeError and the HTTP handler's generic 500.
+The initial test double incorrectly exposed a list, hiding that wiring defect.
+Both gates now call the method. Ownership tests use a real Studio with private
+temporary settings, replacing only the public transport. Three additional HTTP
+integration tests exercise actual search/release routes, source/session guards,
+and a lost public service without automatic retries or any iBroadcast calls.
+The corrected tests reproduce the TypeError against the previous implementation
+and pass with the fix. An empty zero-track medium is also marked incomplete.
+
+The packaged smoke now signs into the loopback synthetic iBroadcast fixture and
+calls both real comparison routes through the frozen Studio/Lookup, asserting
+structured input errors rather than generic 500 responses. Only the subsequent
+eight viewport/theme UI cases substitute public replies. The combined test must
+leave the synthetic account's writes empty. Startup, restart and shutdown checks
+retain their original assertions and deadlines.
+
+[Vespertine's MusicBrainz client](https://github.com/szeremeta1/Vespertine/blob/main/Packages/VespertineKit/Sources/VespertineLibrary/OnlineServices.swift)
+uses the same public release search by quoted artist and album, then an explicit
+release lookup for ordered media/tracks. Its UI may select a result automatically
+at a score of 95 and offers metadata application; Tagcast deliberately retains
+manual edition choice and comparison only. Vespertine also retries transient
+provider failures; this correction does not introduce retries or change Tagcast's
+transport policy. The reported generic error was a local integration defect,
+independent of MusicBrainz query matching or availability.
