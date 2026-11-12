@@ -4,9 +4,11 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="src/tagcast/static/ibroadcast-dark-compact-powered.svg"><img src="src/tagcast/static/ibroadcast-light-compact-powered.svg" width="220" alt="Powered by iBroadcast"></picture><br><small>Independent app by Cyberdelia</small></p>
 <p align="center"><a href="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml"><img src="https://github.com/cyberdeliaAI/tagcast/actions/workflows/tests.yml/badge.svg" alt="Tests"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2e7d4f" alt="MIT license"></a></p>
 
-Tagcast is a desktop app for browsing, playing and organising your
+Tagcast is an app for browsing, playing and organising your
 [iBroadcast](https://www.ibroadcast.com/) music library. Fix metadata, find covers
 and artist images, review every change, then save it to your iBroadcast account.
+Use the desktop app on macOS, Windows or Linux, or run Tagcast in your browser with
+Python. Both share the same editor and player.
 
 Tagcast is an **independent application for iBroadcast**. It is not made or endorsed
 by iBroadcast. Metadata editing changes your iBroadcast library, never the music
