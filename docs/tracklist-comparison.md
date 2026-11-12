@@ -26,7 +26,8 @@ are identified separately. A title also appearing elsewhere is only a navigation
 observation, not a proposed mapping. Extra displayed positions mean there is no
 corresponding row, not proof of a missing/wrong song. The differences-only checkbox
 also retains unknown fields. No title, order, membership, playlist or audio changes
-are offered or sent. There is no Apply/Save button or automatic matching/splitting.
+are sent by comparison. There is no Apply/Save button or automatic matching/splitting.
+Optional explicit field choices can fill a separate editor draft, as described below.
 
 MusicBrainz can have incomplete metadata. Empty media, missing media/track positions, mismatched
 track counts and additional pregap/data sections are flagged as an incomplete audio
@@ -136,3 +137,44 @@ manual edition choice and comparison only. Vespertine also retries transient
 provider failures; this correction does not introduce retries or change Tagcast's
 transport policy. The reported generic error was a local integration defect,
 independent of MusicBrainz query matching or availability.
+
+## Explicit title and artist correction drafts
+
+A separate follow-up to the read-only comparison adds **Use title** and **Use artist
+credits** for each displayed local/reference pair. Clicking confirms the user's own
+pairing; no pair or field is preselected. **Choose another reference track…** changes
+one local row's reference with one bounded selector (at most 1,000 options, never a
+selector per row). Changing a staged pairing asks before clearing its choices.
+Duplicate positions/titles remain independent native track IDs. The same reference
+can be explicitly used more than once without deduplicating local tracks.
+
+**Open corrections in editor…** transfers only chosen changed titles and artist
+fields. It rechecks the complete loaded album/set snapshot and session before and
+after opening the existing editor. It never imports numbers, years, durations,
+membership or album fields. No public source suggestions start on this handoff;
+the ordinary editor can still perform its existing lazy native-lyrics read.
+Normal review, fresh save checks, partial/uncertain outcomes and read-back are
+unchanged. Choices, mapping and drafts are memory-only; closing/replacing a chosen
+reference asks before discarding, while invalid ownership clears stale work.
+
+MusicBrainz artist credits are returned as bounded separate names/join phrases,
+without treating public MusicBrainz IDs as native iBroadcast IDs. The first name
+fills the primary track artist; additional names add neutral artist-role credits
+with the supplied phrase. All existing credits, native IDs, roles and phrases are
+kept, including unknown roles. Existing artist credits are not duplicated and
+case-only primary names reuse the native name. This operation does not globally
+rename artists or flatten a `feat.` display string into one new artist. Invalid or
+missing structured credits disable artist adoption; the display string stays
+available for comparison. Only explicit track/recording credits enable adoption;
+the release-artist display fallback is never imported as track-artist evidence.
+The ordinary review remains editable before saving.
+
+Follow-up validation (2026-11-12): full Python 3.13 **999 tests / 2,660 subtests**;
+**895 frontend/media/Electron tests**; Chromium and WebKit at 420/760/768/1280 px
+in Light/Dark (16 cases), with actual pointer/keyboard input and CSP. The native
+macOS ARM64 app passes startup/restart, all eight comparison/choice cases plus an
+additional real DOM editor/review transfer with title, primary artist and guest
+credit, both frozen Studio/HTTP guards and all 15 shutdown/recovery cases. The
+fixture refuses and records any attempted mutation; synthetic account writes stay
+zero. Existing deadlines, focus assertions and no-save checks remain intact.
+Source snapshots are checked once per render, rather than once per table row.

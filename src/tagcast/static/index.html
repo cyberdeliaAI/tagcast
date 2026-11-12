@@ -48,6 +48,7 @@
   <script src="album.js" defer></script>
   <script src="album-info.js" defer></script>
   <script src="track-comparison.js" defer></script>
+  <script src="track-comparison-drafts.js" defer></script>
   <script src="trash.js" defer></script>
   <script src="artists.js" defer></script>
   <script src="tracks.js" defer></script>
@@ -276,11 +277,12 @@
     </dialog>
     <dialog id="track-comparison" class="track-comparison-dialog" aria-labelledby="track-comparison-title" aria-describedby="track-comparison-hint">
       <div class="dialog-heading"><h2 id="track-comparison-title" data-i18n="trackComparison.heading">Compare track list</h2><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="track-comparison" aria-label="Help with track list comparison" data-i18n-attr="aria-label=trackComparison.help">?</button><button type="button" class="close" data-close="track-comparison" aria-label="Close track list comparison" data-i18n-attr="aria-label=trackComparison.close">×</button></div></div>
-      <p id="track-comparison-hint" class="muted" data-i18n="trackComparison.hint">Choose a specific edition. Comparison never changes your library, track titles, order or playback.</p>
+      <p id="track-comparison-hint" class="muted" data-i18n="trackComparison.hint">Comparing does not change your library or playback. Explicitly chosen titles and artist credits can fill an editor draft for review.</p>
       <form id="track-comparison-form" class="track-comparison-search"><label class="field"><span data-i18n="trackComparison.artist">Artist</span><input id="track-comparison-artist" required maxlength="200"></label><label class="field"><span data-i18n="trackComparison.album">Album</span><input id="track-comparison-album" required maxlength="200"></label><button type="submit" class="button" id="track-comparison-search" data-i18n="trackComparison.search">Search MusicBrainz</button></form>
       <p class="muted" data-i18n="trackComparison.privacy">Only Search sends the entered artist and album to MusicBrainz. Choose an edition to read its track list. No audio or account data is sent.</p>
       <p id="track-comparison-status" role="status" aria-live="polite"></p>
       <div class="track-comparison-layout"><section id="track-comparison-results" aria-label="MusicBrainz editions" data-i18n-attr="aria-label=trackComparison.editions"></section><section class="track-comparison-main"><div id="track-comparison-reference"></div><label class="checkline"><input type="checkbox" id="track-comparison-only"><span data-i18n="trackComparison.only">Show differences and unknown fields only</span></label><p class="muted" data-i18n="trackComparison.positional">Rows are compared by displayed position, not matched automatically. Different editions and incomplete data can explain differences. Duration differences are flagged only above two seconds.</p><div id="track-comparison-table" class="track-comparison-table"></div></section></div>
+      <div id="comparison-draft-footer" class="dialog-footer" hidden><p class="muted" data-i18n="comparisonDraft.note">Confirm each track pairing before choosing fields. Choices only fill an editor draft; review before saving. Existing credits are kept and artist names are reused, without global renaming.</p><p id="comparison-draft-count" role="status" aria-live="polite"></p><button type="button" class="button" id="comparison-draft-clear" data-i18n="comparisonDraft.clear">Clear choices</button><button type="button" class="button primary" id="comparison-draft-open" data-i18n="comparisonDraft.open">Open corrections in editor…</button></div>
     </dialog>
     <dialog id="cover-lightbox" class="cover-lightbox" aria-labelledby="cover-lightbox-title" aria-describedby="cover-lightbox-help">
       <div class="dialog-heading"><div><h2 id="cover-lightbox-title">Album cover</h2><p class="muted" id="cover-lightbox-artist"></p></div><button type="button" class="close" id="cover-lightbox-close" aria-label="Close enlarged cover" data-i18n-attr="aria-label=page.coverLightbox.close">×</button></div>

@@ -9,6 +9,7 @@ const HELP_TOPICS = {
     ["trackComparison.search", "trackComparison.privacy", ["#track-comparison-form"]],
     ["trackComparison.editions", "trackComparison.start", ["#track-comparison-results"]],
     ["trackComparison.observations", "trackComparison.positional", ["#track-comparison-table"]],
+    ["comparisonDraft.open", "comparisonDraft.note", ["#comparison-draft-footer"]],
   ]},
   uploads: {title: "help.uploads.title", scope: "#uploads-page", steps: [
     ["help.uploads.prepare.title", "help.uploads.prepare.body", ["#music-upload-form"]],
