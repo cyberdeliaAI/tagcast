@@ -420,12 +420,14 @@ function gaplessAudioError() {
 }
 audio.addEventListener("seeking", gaplessNativeSeek);
 audio.addEventListener("seeked", gaplessAdvance);
-document.addEventListener("change", event => {
-  if (event.target.id !== "gapless-test-enabled") return;
-  gaplessTrial.enabled = event.target.checked;
+function setGaplessEnabled(enabled) {
+  gaplessTrial.enabled = enabled === true;
   try { localStorage.setItem("tagcast-gapless-test", gaplessTrial.enabled ? "on" : "off"); } catch { /* Optional preference. */ }
   gaplessQueueChanged();
   gaplessNote(gaplessTrial.enabled ? "gapless.status.enabled" : "gapless.status.disabled");
+}
+document.addEventListener("change", event => {
+  if (event.target.id === "gapless-test-enabled") setGaplessEnabled(event.target.checked);
 });
 // A language change rewrites the settings status line from the stored note. Player and
 // Now playing labels repaint in player.js; nothing is prepared, fetched or restarted here.

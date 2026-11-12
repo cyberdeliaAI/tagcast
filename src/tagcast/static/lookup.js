@@ -36,6 +36,7 @@ async function loadSettings() {
     if (typeof applyMusicUploadSettings === "function") applyMusicUploadSettings(data);
     if (typeof applyPlaybackSettings === "function") applyPlaybackSettings(data);
     applyUpdateSettings(data);
+    if (typeof initializeFirstSetup === "function") initializeFirstSetup(data);
     if (typeof settingsView !== "undefined" && state.screen === "settings" && !settingsView.dirty && !settingsView.saving) renderSettingsContent();
   } catch { /* opened without the Python server: no online sources */ }
 }
@@ -153,7 +154,7 @@ function settingsContentMarkup() {
   const freeAccount = live() && state.connection.premium === false;
   const immediate = `<span class="settings-mode">${TagcastI18n.html("settings.mode.immediate")}</span>`;
   const saveRequired = `<span class="settings-mode">${TagcastI18n.html("settings.mode.saveRequired")}</span>`;
-  return `${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="interface-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.notice.heading")} ${immediate}</h3>
+  return `${typeof firstSetupSettings === "function" ? firstSetupSettings() : ""}${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="interface-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.notice.heading")} ${immediate}</h3>
     <p class="muted" data-notice-description>${TagcastI18n.html(libraryNotice.visible ? "settings.notice.visible" : "settings.notice.hidden")}</p>
     <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>${TagcastI18n.html("settings.notice.show")}</button>
     </section><section class="metadata-editing-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.editing.heading")} ${immediate}</h3>
@@ -228,6 +229,22 @@ function renderSettingsContent() {
   resumeMetadataExport();
 }
 
+async function persistSettings(body) {
+  const data = await api("/api/settings", body);
+  lookup.settingsRevision += 1;
+  applyLookupSources(data.sources); lookup.auto = data.auto_lookup;
+  lookup.recordPlays = data.record_plays === true;
+  applyAlbumGuideSettings(data);
+  applyArtistSettings(data);
+  applyAlbumInformationSettings(data);
+  applyPlaybackSettings(data);
+  if (typeof applyMusicUploadSettings === "function") applyMusicUploadSettings(data);
+  const wasAutomatic = updateNotice.automatic;
+  applyUpdateSettings(data); renderUpdateNotice();
+  if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
+  return data;
+}
+
 async function saveSettings(form, clear) {
   if (settingsView.saving) return;
   const settingsFocus = document.activeElement;
@@ -248,18 +265,7 @@ async function saveSettings(form, clear) {
   const locked = [...form.querySelectorAll("input, select, button[data-clear-key]")].map(input => [input, input.disabled]);
   for (const [input] of locked) input.disabled = true;
   try {
-    const data = await api("/api/settings", body);
-    lookup.settingsRevision += 1;
-    applyLookupSources(data.sources); lookup.auto = data.auto_lookup;
-    lookup.recordPlays = data.record_plays === true;
-    applyAlbumGuideSettings(data);
-    applyArtistSettings(data);
-    applyAlbumInformationSettings(data);
-    applyPlaybackSettings(data);
-    if (typeof applyMusicUploadSettings === "function") applyMusicUploadSettings(data);
-    const wasAutomatic = updateNotice.automatic;
-    applyUpdateSettings(data); renderUpdateNotice();
-    if (!wasAutomatic && updateNotice.automatic) checkForUpdates();
+    await persistSettings(body);
     renderSettingsContent();
     setSettingsFeedback(() => TagcastI18n.text(clear ? "settings.save.keyRemoved" : "settings.save.saved"));
     toast(TagcastI18n.text("settings.save.saved"));

@@ -1479,8 +1479,10 @@ async function boot() {
     state.connection = await api("/api/status");
   } catch {
     if (typeof restorePendingRoute === "function") restorePendingRoute();
+    if (typeof firstSetupBootReady === "function") firstSetupBootReady();
     return; // opened without the Python server: the demo still works
   }
+  if (typeof firstSetupBootReady === "function") firstSetupBootReady();
   updateChrome();
   checkForUpdates();
   if (state.connection.connected) loadLive();
@@ -1892,12 +1894,7 @@ $("#theme-menu").addEventListener("change", event => {
   if (event.target.dataset.customThemeChoice !== undefined) {
     try { TagcastThemes.activate(event.target.value); showTheme(); } catch { showTheme(); toast(TagcastI18n.text("app.theme.applyFailed")); }
   } else if (event.target.dataset.appearanceChoice !== undefined) {
-    const value = event.target.value;
-    if (!["auto", "light", "dark"].includes(value)) return;
-    if (value === "auto") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = value;
-    try { localStorage.setItem("tagcast-theme", value); } catch { /* private window */ }
-    showTheme();
+    setColourAppearance(event.target.value);
   } else if (event.target.dataset.paletteChoice !== undefined) {
     const palette = setColourPalette(event.target.value);
     try { localStorage.setItem("tagcast-palette", palette); } catch { /* private window */ }
@@ -1912,6 +1909,14 @@ document.addEventListener("keydown", event => {
     setThemeMenu(false, true);
   }
 });
+
+function setColourAppearance(value) {
+  if (!["auto", "light", "dark"].includes(value)) return;
+  if (value === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = value;
+  try { localStorage.setItem("tagcast-theme", value); } catch { /* private window */ }
+  showTheme();
+}
 
 function setColourPalette(value) {
   const palette = TagcastThemes.builtin(value);
