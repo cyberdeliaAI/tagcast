@@ -2,8 +2,9 @@
 .workspace-icon-button{display:inline-grid;place-items:center;width:38px;height:38px;padding:8px;flex:none}
 .workspace-icon-button svg,.workspace-track-details svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .page-breadcrumbs{display:flex;align-items:center;gap:12px;min-width:0}
-.workspace-location{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.workspace-location{display:flex;align-items:center;gap:12px;min-width:0;flex:1 1 260px}
 .workspace-location .page-breadcrumbs{margin-right:0}
+.workspace-location [data-breadcrumb-root]{flex:none;white-space:nowrap}
 #albums-page>.toolbar,#artists-page>.toolbar{flex-wrap:wrap}
 body.navigation-collapsed main{margin-left:0}
 body.navigation-collapsed .player{left:0}
