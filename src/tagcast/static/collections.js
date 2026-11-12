@@ -119,8 +119,15 @@ async function rateAlbum(ids, rating) {
   }
 }
 
-function playlistAlbumButton(id) {
-  return `<button class="button small" data-playlist-album="${escapeHtml(id)}" ${!live() ? "disabled" : ""}>♫ ${TagcastI18n.html("playlists.album.addToPlaylist")}</button>`;
+async function openAlbumPlaylist(id) {
+  if (!live() || state.loading || collectionsView.busy || document.querySelector("dialog[open]")) return;
+  const details = state.details, session = state.connection.playback_session;
+  const current = () => details === state.details && session === state.connection.playback_session
+    && live() && state.screen === "album" && albumView.id === id;
+  try {
+    await albumDetails(shelfIds(id));
+    if (current() && !document.querySelector("dialog[open]")) openPlaylistSave(queueTracks(playableAlbum(id)));
+  } catch (error) { if (current()) toast(TagcastI18n.errorText(error)); }
 }
 
 async function selectedQueueTracks(ids, current) {
@@ -417,11 +424,6 @@ document.addEventListener("click", async event => {
   if (favourite) return toggleAlbumFavourite(favourite.dataset.albumFavourite.split(","));
   const rating = target.closest("[data-album-rating]");
   if (rating) return rateAlbum(rating.dataset.albumRating.split(","), Number(rating.dataset.value));
-  const album = target.closest("[data-playlist-album]");
-  if (album) {
-    const details = state.details;
-    try { await albumDetails(shelfIds(album.dataset.playlistAlbum)); if (details === state.details) openPlaylistSave(queueTracks(playableAlbum(album.dataset.playlistAlbum))); } catch (error) { toast(TagcastI18n.errorText(error)); }
-  }
   const track = target.closest("[data-playlist-track]");
   if (track) return openTrackPlaylist(track.dataset.playlistSource, track.dataset.playlistTrack);
   const remove = target.closest("[data-playlist-remove]");

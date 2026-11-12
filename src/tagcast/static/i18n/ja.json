@@ -2,7 +2,7 @@
   "album.actions.checkLyrics": "アルバムの歌詞を確認",
   "album.actions.edit": "編集",
   "album.actions.more": "その他のアルバム操作",
-  "album.actions.play": "アルバムを再生",
+  "album.actions.play": "再生",
   "album.actions.shuffle": "アルバムをシャッフル",
   "album.actions.stopLyrics": "歌詞の確認を停止",
   "album.background.label": "アルバムの背景情報",
