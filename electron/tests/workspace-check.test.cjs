@@ -37,3 +37,41 @@ test("unknown matrices or nonisolated profiles cannot activate the native test r
     assert.equal(h.timers.length, 0);
   }
 });
+
+test("workspace pointer targeting measures after scroll/resize layout instead of clicking old player coordinates", async () => {
+  let y = 700, pendingY = null;
+  const clicks = [], module = {exports: {}}, before = {tab:"playlist",screen:"albums",sort:"artist",filter:"all",collapsed:false,queueSync:false};
+  const contents = {
+    executeJavaScript(code) {
+      if (code.includes("workspaceSmokeAudio=audio")) return Promise.resolve(before);
+      if (code === "state.mode") return Promise.resolve("demo");
+      if (code.includes("lastElementChild") || code.includes("contains($('#devices-button'))")) return Promise.resolve(true);
+      if (code.includes("scrollIntoView")) {
+        // Scrolling an element within a sticky toolbar settles on the next frame.
+        pendingY = 200;
+        return Promise.resolve({x:60,y:y+22});
+      }
+      if (code.includes("requestAnimationFrame")) {
+        if (pendingY !== null) {y=pendingY;pendingY=null;}
+        return Promise.resolve();
+      }
+      if (code.includes("elementFromPoint")) {
+        const point = code.match(/elementFromPoint\((\d+),(\d+)\)/);
+        return Promise.resolve({ok:Number(point[2])===y+22,hit:"player-track"});
+      }
+      if (code.includes("getBoundingClientRect")) return Promise.resolve({x:60,y:y+22});
+      return Promise.resolve();
+    },
+    sendInputEvent(event) {
+      if (event.type === "mouseDown") clicks.push(event);
+      if (event.type === "mouseUp") throw Error("test stopped after pointer");
+    },
+  };
+  vm.runInNewContext(readFileSync(require.resolve("../workspace-smoke.cjs"), "utf8"), {
+    module, require: name => {if(name==="node:assert/strict")return assert;throw Error(name);},
+  });
+  const window = {webContents:contents,getBounds:()=>({width:1280,height:900}),setBounds(){},setContentSize(){}};
+  await assert.rejects(module.exports.checkWorkspace(window), /test stopped after pointer/);
+  assert.equal(clicks.length,1);
+  assert.equal(clicks[0].y,222,"The real input uses the final control position, never the old footer coordinate");
+});
