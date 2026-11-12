@@ -2,7 +2,7 @@
   "album.actions.checkLyrics": "Comprobar letras del álbum",
   "album.actions.edit": "Editar",
   "album.actions.more": "Más acciones del álbum",
-  "album.actions.play": "Reproducir álbum",
+  "album.actions.play": "Reproducir",
   "album.actions.shuffle": "Reproducir álbum en aleatorio",
   "album.actions.stopLyrics": "Dejar de comprobar letras",
   "album.background.label": "Contexto del álbum",

@@ -178,6 +178,12 @@ ipcMain.on("desktop:interface", (event, value) => {
   if (desktop.update(value) && origin) installMenu();
 });
 
+ipcMain.on("desktop:appearance", (event, value) => {
+  const contents = window?.webContents;
+  if (!contents || contents.isDestroyed() || event.sender !== contents || event.senderFrame !== contents.mainFrame || !applicationUrl(contents.getURL(), origin)) return;
+  shutdownView.setAppearance(value);
+});
+
 app.on("before-quit", event => {
   if (finished) return;
   event.preventDefault();

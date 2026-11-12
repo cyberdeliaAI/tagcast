@@ -60,6 +60,12 @@ async function checkWorkspace(window) {
       await click('#albums-browse-options');
       await click('[data-browse-choice="filter:all"]');
       await run("openAlbum('1')"); await frame();
+      assert.equal(await run("document.querySelector('[data-play-album]').textContent.trim()"), '▶ Play');
+      assert.equal(await run("document.querySelector('[data-shuffle-album]').getAttribute('aria-label')"), 'Shuffle album');
+      assert.equal(await run("document.querySelectorAll('[data-shuffle-album] svg[aria-hidden=true]').length"), 1);
+      assert.equal(await run("document.querySelector('[data-shuffle-album]').textContent.trim()"), '');
+      assert.equal(await run("document.querySelectorAll('.album-detail-actions [data-playlist-album]').length"), 0);
+
       await run(`player.queue=queueTracks(state.details.get('1'));player.index=0;player.album=player.queue[0].album;
         setWorkspaceTab('playlist');openAlbum('2')`);await frame();
       assert.equal(await run("document.querySelector('[data-workspace-track]')===null"), true, 'Browsing cannot select a different Details subject');

@@ -26,6 +26,30 @@ contextBridge.exposeInMainWorld("tagcastDesktop", {
   setInterface: value => ipcRenderer.send("desktop:interface", value)
 });
 
+// Presentation only, even when Mini Player is closed. Report resolved CSS colours,
+// never browser storage, account data or an executable stylesheet.
+window.addEventListener("DOMContentLoaded", () => {
+  let previous = "";
+  const system = matchMedia("(prefers-color-scheme: dark)");
+  const publish = () => {
+    const root = document.documentElement, style = getComputedStyle(root);
+    const colour = name => style.getPropertyValue(name).trim();
+    const value = {theme: root.dataset.theme === "dark" || (!root.dataset.theme && system.matches) ? "dark" : "light", colours: {
+      paper: colour("--paper"), ink: colour("--ink"), muted: colour("--muted"),
+      surface: colour("--white"), line: colour("--line"),
+      focus: colour("--palette-focus") || colour("--green"),
+      tint: colour("--palette-tint") || colour("--white")
+    }};
+    const next = JSON.stringify(value);
+    if (next !== previous) { previous = next; ipcRenderer.send("desktop:appearance", value); }
+  };
+  new MutationObserver(publish).observe(document.documentElement,
+    {attributes: true, attributeFilter: ["data-theme", "data-palette", "style"]});
+  document.addEventListener("tagcast-theme-change", publish);
+  system.addEventListener("change", publish);
+  publish();
+});
+
 contextBridge.exposeInMainWorld("tagcastUploads", {
   choose: kind => ipcRenderer.invoke("uploads:choose", kind)
 });
