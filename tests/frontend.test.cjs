@@ -455,7 +455,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
     createElement(tag) { assert.equal(tag, "a"); return {click() { downloads.push({name: this.download, blob: blobs.get(this.href)}); }}; },
     addEventListener(type, handler) { const handlers = documentEvents.get(type) || []; handlers.push(handler); documentEvents.set(type, handlers); },
     querySelector(selector) {
-      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import", "#playlist-order"].includes(name) && node.open)?.[1] || null;
+      if (selector === "dialog[open]") return [...nodes.entries()].find(([name, node]) => ["#editor", "#review", "#artwork", "#history", "#connect", "#settings", "#updates", "#trash-review", "#cover-lightbox", "#help-dialog", "#tag-dialog", "#audio-output-dialog", "#playlist-import", "#playlist-order", "#track-comparison"].includes(name) && node.open)?.[1] || null;
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
     }, querySelectorAll() { return []; }};
@@ -1391,20 +1391,12 @@ function duplicatePreview() {
     selection: [{id: "100", group: "1"}]};
 }
 
-test("cleanup filters and a manual album selection hide random playback; card play stays explicit", async () => {
-  const p = livePage(); await settle();
-  for (const filter of ["genre", "year", "duplicates", "small", "combined", "cover", "edition"]) {
-    p.nodes.get("#filter").value = filter; p.run("render()");
-    assert.equal(p.nodes.get("#albums-random").hidden, true, filter);
-  }
-  p.nodes.get("#filter").value = "all"; p.run("render()");
-  assert.equal(p.nodes.get("#albums-random").hidden, false);
-  p.run('state.selected.add("1"); render()');
-  assert.equal(p.nodes.get("#albums-random").hidden, true);
-  const count = p.requests.length;
-  await p.nodes.get("#albums-random").emit("click");
-  assert.equal(p.requests.length, count);
-  p.run('state.selected.clear(); render()');
+test("album browsing exposes Random after Rating and keeps explicit card playback", async () => {
+  const p = livePage(); await settle();p.run('showScreen("albums");render()');
+  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');
+  assert.doesNotMatch(html,/id="albums-random"|id="albums-random-order"/);
+  assert.deepEqual(p.json('workspaceSortGroups.albums.map(group=>group[1])'),['artist','title','newest','uploaded_newest','rating_high','random']);
+  assert.match(p.nodes.get('#albums-sort-buttons').innerHTML,/data-sort-group="5" data-sort-value="random"/);
   const source = p.location.hash, entries = p.history.length;
   await p.click({"[data-card-play]": {dataset: {cardPlay: "1"}}});
   assert.equal(p.run("String(player.album.id)"), "1");
@@ -2895,7 +2887,7 @@ test("Shuffle album replaces only the play queue and ordinary Play restores albu
   await p.run('openAlbum("1")');
   const original = p.json('state.details.get("1")'), ids = original.tracks.map(t => String(t.id));
   const history = p.history.length, audio = p.nodes.get("#audio");
-  assert.match(p.nodes.get("#album-page").innerHTML, /▶ Play album<\/button><button[^>]*data-shuffle-album[^>]*>Shuffle album/);
+  assert.match(p.nodes.get("#album-page").innerHTML, /▶ Play<\/button><button[^>]*data-shuffle-album[^>]*aria-label="Shuffle album"[^>]*title="Shuffle album"[^>]*><svg[^>]*aria-hidden="true"/);
   await p.click({"[data-shuffle-album]": {dataset: {playAlbumId: "1"}}});
   const shuffled = [...ids.slice(1), ids[0]];
   assert.deepEqual(p.json('player.queue.map(t => t.id)'), shuffled);
@@ -3308,11 +3300,11 @@ test("Random album order spans every page, preserves filtered subsets and leaves
   assert.deepEqual(p.json("player.queue"), queue);
   assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
-  assert.equal(p.nodes.get('#albums-random-order').getAttribute('aria-pressed'), 'true');
+  assert.match(p.nodes.get('#albums-sort-buttons').innerHTML,/data-sort-value="random" aria-pressed="true"/);
 });
 
 
-test("Random order shortcut reshuffles the filtered shelf and preserves playback and selections", async () => {
+test("Random sort button reshuffles the filtered shelf and preserves playback and selections", async () => {
   const p = livePage(); await settle();
   p.run(`playTracks(state.details.get("1"), "100");
     state.albums=Array.from({length:150},(_,i)=>({...state.albums[0],id:String(i),
@@ -3321,39 +3313,40 @@ test("Random order shortcut reshuffles the filtered shelf and preserves playback
     $("#search").value="Album"; $("#filter").value="all"; $("#sort").value="title";
     Math.random=()=>0; showScreen("albums"); state.page=2; render()`);
   const queue=p.json("player.queue"), audio=p.nodes.get("#audio"), requests=p.requests.length;
-  assert.equal(p.nodes.get("#albums-random-order").disabled,false);
-  await p.nodes.get("#albums-random-order").emit("click");
+  assert.doesNotMatch(p.nodes.get("#albums-sort-buttons").innerHTML,/data-sort-value="random"[^>]* disabled/);
+  await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
   const first=p.json("filteredAlbums().map(a=>a.id)");
   assert.equal(first.length,75);
   assert.equal(p.nodes.get("#sort").value,"random");
+  assert.equal(JSON.parse(p.run('localStorage.getItem("tagcast-browse-sorts")')).sort,"random");
   assert.equal(p.run("state.page"),0);
-  assert.equal(p.nodes.get("#albums-random-order").getAttribute("aria-pressed"),"true");
+  assert.match(p.nodes.get("#albums-sort-buttons").innerHTML,/data-sort-value="random" aria-pressed="true"/);
   p.run("Math.random=()=>0.999");
-  await p.nodes.get("#albums-random-order").emit("click");
+  await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
   assert.notDeepEqual(p.json("filteredAlbums().map(a=>a.id)"),first,"Clicking again reshuffles immediately");
   assert.deepEqual(p.json("[state.artist,$('#search').value,$('#filter').value,[...state.selected]]"),["Test artist","Album","all",["1"]]);
   assert.deepEqual(p.json("player.queue"),queue);
   assert.equal(p.nodes.get("#audio"),audio);
   assert.equal(audio.src,"/api/stream/100?quality=128");
   assert.equal(audio.paused,false);
-  assert.equal(p.requests.length,requests,"The shortcut only sorts loaded summaries");
+  assert.equal(p.requests.length,requests,"The sort button only sorts loaded summaries");
   p.nodes.get("#per-page").value="continuous";
   await p.nodes.get("#per-page").emit("change",{target:p.nodes.get("#per-page")});
   p.run("albumContinuous.more();Math.random=()=>0");
   assert.equal(p.run("albumContinuous.count"),75);
-  await p.nodes.get("#albums-random-order").emit("click");
+  await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
   assert.equal(p.run("albumContinuous.count"),60,"Reshuffling resets continuous browsing to its first chunk");
   assert.equal(p.nodes.get("#per-page").value,"continuous");
 });
 
-test("Random order shortcut is unavailable for loading, empty and single-album results", async () => {
+test("Random sort button is unavailable for loading, empty and single-album results", async () => {
   const p=page(); await settle();
-  p.run("const shortcutAlbums=[...state.albums]");
+  p.run('showScreen("albums");const shortcutAlbums=[...state.albums]');
   for(const setup of ['state.albums=[]','state.albums=shortcutAlbums.slice(0,1)','state.albums=shortcutAlbums;state.loading=true']) {
     p.run(`${setup};render()`);
-    assert.equal(p.nodes.get("#albums-random-order").disabled,true,setup);
+    assert.match(p.nodes.get("#albums-sort-buttons").innerHTML,/data-sort-value="random"[^>]* disabled/,setup);
     const before=p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])");
-    await p.nodes.get("#albums-random-order").emit("click");
+    await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
     assert.equal(p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])"),before);
   }
 });
@@ -5598,21 +5591,21 @@ test("random album respects library filters across pages, plays full disc sets a
     {id:"33",name:"Excluded",artist:"B",year:1985,disc:1,tracks:[{id:"330",title:"Jazz",artist:"B",track:1,genres:["Jazz"]}]}
   ], "demo"); state.mode="live"; state.artist="A"; state.page=0; Math.random=()=>0.999; render()`);
   const route = p.location.hash, history = p.history.length;
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.equal(p.run('player.album.id'), "31", "Selection includes albums beyond the first page; disc set has one chance");
   assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ["310","311","320"]);
   assert.equal(p.run('player.index'), 0);
   assert.equal(p.location.hash, route);
   assert.equal(p.history.length, history);
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.equal(p.run('player.album.id'), "30", "The current set is excluded when alternatives exist");
   p.nodes.get("#search").value = "Z Set"; p.run("render()");
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.equal(p.run('player.album.id'), "31");
   p.nodes.get("#search").value = "no match"; p.run("render()");
-  assert.equal(p.nodes.get("#albums-random").disabled, true);
+  assert.equal(p.run("filteredAlbums().some(a=>a.track_count>0)"), false);
   const queue = p.json('player.queue');
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.deepEqual(p.json('player.queue'), queue);
   assert.equal(p.requests.filter(r=>r.options?.method === "POST").length,0);
 });
@@ -5640,7 +5633,7 @@ test("random album uses exact genre, year and decade membership and search, beyo
   p.run('browseView.key=null; updateRandomControls()');
   assert.equal(p.nodes.get("#browse-random").hidden, true);
   p.run('state.mode="demo"; render()');
-  assert.equal(p.nodes.get("#albums-random").disabled, true);
+  assert.equal(p.nodes.get("#browse-random").disabled, true);
 });
 
 test("random playback lazily loads only its selected album, cancels late loads and preserves playback on failure", async () => {
@@ -5654,7 +5647,7 @@ test("random playback lazily loads only its selected album, cancels late loads a
     return new Promise(resolve=>{finish=resolve;});
   });
   let pending = p.run('playRandomAlbum(state.albums.filter(a=>a.id==="2"))'); await settle();
-  assert.equal(p.nodes.get("#albums-random").disabled,true);
+  assert.equal(p.run("player.randomLoading"),true);
   assert.equal(p.nodes.get("#audio").src,original);
   await p.nodes.get("#queue-clear").emit("click");
   finish({ok:true,json:async()=>({albums:[album]})}); await pending;
@@ -5675,7 +5668,6 @@ test("random playback lazily loads only its selected album, cancels late loads a
   assert.equal(p.run('String(player.album.id)'),"1");
   assert.match(p.nodes.get("#toast").textContent,/Offline/);
   assert.equal(p.run('player.randomLoading'),false);
-  assert.equal(p.nodes.get("#albums-random").disabled,false);
 });
 
 test("CD artwork is opt-in, profile-local and does not dirty server settings", async () => {
@@ -6643,6 +6635,198 @@ test("breadcrumbs restore a decade's sampled order and reject a stale branch", a
   await p.run('openAlbum("1")');
   assert.match(p.nodes.get('#breadcrumb').innerHTML,/Albums.*Wish You Were Here/);
   assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/1980s/);
+});
+
+test("album playlist action is in More and opens the existing reviewed chooser for the complete set", async () => {
+  const p=setPage(); await settle();
+  p.run('state.mode="live"; state.connection.playback_session="album-menu-session"; playTracks(state.details.get("3"));');
+  await p.run('openAlbum("1")'); await settle();
+  const html=p.nodes.get('#album-page').innerHTML;
+  assert.doesNotMatch(html,/data-playlist-album/);
+  p.setFetch(async url=>{assert.equal(url,'/api/playlists');return {ok:true,json:async()=>({playlists:[]})};});
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,history:history.length})');
+  const count=p.requests.length;
+  p.run('openAlbumActions(document.querySelector("[data-album-more]"))');
+  assert.equal(p.requests.length,count);
+  await p.nodes.get('#album-action-playlist').emit('click'); await settle();
+  assert.equal(p.nodes.get('#album-action-menu').hidden,true);
+  assert.equal(p.nodes.get('#playlist-dialog').open,true);
+  assert.deepEqual(p.json('playlistDraft.tracks.map(t=>t.id)'),p.json('queueTracks(playableAlbum("1")).map(t=>t.id)'));
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,history:history.length})'),before);
+  assert.ok(p.requests.slice(count).every(r=>!r.options?.body),"no mutation before review and confirmation");
+});
+
+test("album playlist menu rejects replaced libraries, navigation and sessions during preparation", async () => {
+  for(const replacement of ['state.details=new Map(state.details)', 'showScreen("albums")', 'state.connection.playback_session="replacement"']){
+    const p=livePage(); await settle(); await p.run('openAlbum("1")');
+    p.run('openAlbumActions(document.querySelector("[data-album-more]"));'+replacement);
+    await p.nodes.get('#album-action-playlist').emit('click'); await settle();
+    assert.notEqual(p.nodes.get('#playlist-dialog').open,true);
+  }
+  const p=livePage(); await settle(); await p.run('openAlbum("1")');
+  p.run('globalThis.finishAlbumRead=null; albumDetails=()=>new Promise(resolve=>{finishAlbumRead=resolve}); openAlbumPlaylist("1"); state.connection.playback_session="replacement"; finishAlbumRead()');
+  await settle();
+  assert.notEqual(p.nodes.get('#playlist-dialog').open,true);
+});
+
+const comparisonRelease = {id:'12345678-1234-1234-1234-123456789abc',title:'Edition (Live)',artist:'Artist',date:'1990',country:'DE',formats:['CD'],labels:[{name:'Label',catalogue:'CAT'}],discs:1,track_count:2,url:'https://musicbrainz.org/release/12345678-1234-1234-1234-123456789abc'};
+function comparisonResponse() { return {release:comparisonRelease,tracks:[{disc:1,number:'1',position:1,title:'Other <script>',artist:'Artist',length:123},{disc:2,number:'1',position:1,title:'Version (Live)',artist:'Other',length:null}],incomplete:true}; }
+
+test("track comparison opens locally, searches and selects explicitly, and never changes playback or metadata",async()=>{
+  const p=livePage();await settle();await p.run('openAlbum("1");playTracks(state.details.get("1"))');
+  p.run('audio.currentTime=18.5');
+  const before=p.run('JSON.stringify({albums:state.albums,details:[...state.details],queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime,paused:audio.paused,history:history.length,changes:state.history})');
+  const count=p.requests.length;
+  const trigger=p.run('document.querySelector("[data-album-more]")');
+  await p.click({'[data-album-more]':trigger});await p.nodes.get('#album-action-compare').emit('click');
+  assert.equal(p.requests.length,count);assert.equal(p.nodes.get('#track-comparison').open,true);
+  assert.equal(p.nodes.get('#track-comparison-artist').value,p.run('state.details.get("1").artist'));
+  assert.equal(p.run('trackComparison.tracks.length'),p.run('state.details.get("1").tracks.length'));
+  assert.doesNotMatch(p.nodes.get('#track-comparison-table').innerHTML,/data-play=|data-edit|<input/);
+  p.setFetch(async(url,options)=>{assert.ok(!options?.body);return {ok:true,json:async()=>url.includes('/search?')?{releases:[comparisonRelease],total:1,offset:0,more:false,limit:200}:comparisonResponse()};});
+  await p.run('requestTrackComparison()');
+  assert.equal(p.requests.length,count+1);assert.equal(p.run('trackComparison.reference'),null);
+  assert.match(p.nodes.get('#track-comparison-results').innerHTML,/Edition \(Live\)/);
+  await p.run('requestTrackComparison("'+comparisonRelease.id+'")');
+  assert.equal(p.requests.length,count+2);assert.match(p.nodes.get('#track-comparison-table').innerHTML,/Other &lt;script&gt;/);
+  assert.match(p.nodes.get('#track-comparison-reference').innerHTML,/complete audio track list/);
+  assert.doesNotMatch(p.nodes.get('#track-comparison-table').innerHTML,/<script>/);
+  p.run('$("#track-comparison-only").checked=true;renderTrackComparison()');
+  assert.equal(p.run('JSON.stringify({albums:state.albums,details:[...state.details],queue:player.queue,index:player.index,src:audio.src,time:audio.currentTime,paused:audio.paused,history:history.length,changes:state.history})'),before);
+  p.run('$("#track-comparison").close()');await p.nodes.get('#track-comparison').emit('close');
+  assert.equal(p.run('trackComparison.tracks.length'),0);assert.equal(p.run('trackComparison.reference'),null);
+  assert.equal(p.run('document.activeElement')===trigger,true);
+});
+
+async function comparisonDraftPage() {
+  const p=livePage();await settle();await p.run('openAlbum("1")');p.run('const CSS={escape:value=>String(value)}; $("#track-inline").scrollIntoView=()=>{};openTrackComparison()');
+  const response=comparisonResponse();
+  response.tracks[0].artist_credits=[{name:'Different primary',phrase:null},{name:'Guest',phrase:'feat.'}];
+  response.tracks[1].artist_credits=[{name:'Second primary',phrase:null}];
+  p.run(`lookup.sources=[{name:"musicbrainz",enabled:true}];trackComparison.reference=${JSON.stringify(response)};renderTrackComparison()`);
+  return p;
+}
+test("comparison corrections stage only explicitly chosen fields and hand them to the ordinary editor/review",async()=>{
+  const p=await comparisonDraftPage(),before=p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})');
+  const id=p.run('trackComparison.tracks[0].id'),count=p.requests.length;
+  assert.equal(p.run('comparisonDraft.choices.size'),0);
+  assert.equal(p.nodes.get('#comparison-draft-open').disabled,true);
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title');stageComparisonField(${JSON.stringify(id)},'artists')`);
+  assert.equal(p.requests.length,count,'Choosing makes no requests');
+  assert.equal(p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})'),before);
+  await p.run('openComparisonDraftEditor()');
+  p.run('repaintLyrics()');await settle();
+  assert.equal(p.requests.length,count,'Initial correction handoff starts no lyrics, provider or library read');
+  const editorRequests=p.requests.length;
+  assert.equal(p.nodes.get('#editor').open,true);
+  const patches=JSON.parse(p.run('JSON.stringify(editing.trackPatches)'));
+  assert.equal(patches[id].title,'Other <script>');assert.equal(patches[id].artist,'Different primary');
+  assert.ok(patches[id].credits.some(c=>c.name==='Guest'&&c.type==='artist'&&c.phrase==='feat.'&&c.artist_id===null));
+  assert.equal(Object.keys(patches).length,1);
+  // Model the rendered native inputs; the simulated DOM does not parse editor markup.
+  const pane=p.nodes.get('#track-inline');
+  pane.querySelectorAll=()=>['title','artist'].map(key=>({type:'text',dataset:{key},value:patches[id][key]}));
+  pane.querySelector=selector=>selector.includes('data-credit-editor')?{dataset:{dirty:'false'},querySelector:()=>null,
+    querySelectorAll:()=>patches[id].credits.map(entry=>({dataset:{original:JSON.stringify(entry)},querySelector:s=>({value:s.includes('data-credit-name')?entry.name:s.includes('data-credit-role')?entry.type||'artist':entry.phrase||''})}))}:null;
+  p.run('buildReview()');
+  const changes=JSON.parse(p.run('JSON.stringify(pending.changes)'));
+  assert.equal(changes.length,1);assert.equal(changes[0].kind,'track');
+  assert.equal(changes[0].fields.title.after,'Other <script>');
+  assert.deepEqual(Object.keys(changes[0].fields).sort(),['artist','credits','title']);
+  assert.equal(p.requests.length,editorRequests,'Review does not save');
+  assert.equal(p.run('JSON.stringify({details:[...state.details],queue:player.queue,history:state.history})'),before);
+});
+test("comparison editor handoff rejects a session replaced while the editor is opening",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title');const normalOpenEditor=openEditor;openEditor=async(...args)=>{await normalOpenEditor(...args);state.connection.playback_session='replaced-during-open';}`);
+  await p.run('openComparisonDraftEditor()');
+  assert.equal(Boolean(p.nodes.get('#editor').open),false);
+  assert.equal(p.run('Object.keys(editing.trackPatches).length'),0);
+});
+test("normal track selection still loads lyrics after a quiet comparison draft handoff",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  const count=p.requests.length;
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title')`);await p.run('openComparisonDraftEditor()');
+  assert.equal(p.requests.length,count);
+  p.nodes.get('#track-inline').querySelectorAll=()=>[{type:'text',dataset:{key:'title'},value:'Other <script>'}];
+  p.run(`editTrack(${JSON.stringify(id)})`);await settle();
+  assert.ok(p.requests.slice(count).some(r=>r.url.startsWith('/api/lyrics?')&&!r.options?.body));
+});
+test("comparison manual pairing retains the target ID and cannot implicitly copy number, year or duration",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  p.run(`comparisonDraft.mapping.set(${JSON.stringify(id)},1);stageComparisonField(${JSON.stringify(id)},'title')`);
+  const patches=JSON.parse(p.run('JSON.stringify(comparisonDraftPatches())'));
+  assert.deepEqual(patches,{[id]:{title:'Version (Live)'}});
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title')`);
+  assert.equal(p.run('comparisonDraft.choices.size'),0);
+});
+test("comparison artist adoption preserves native and unknown credits and never flattens guests into a new combined name",async()=>{
+  const p=await comparisonDraftPage();
+  const patch=JSON.parse(p.run(`JSON.stringify(comparisonArtistPatch({artist:'CARMEN RIZZO',credits:[{artist_id:9,name:'Composer',type:'composer',phrase:'original'},{artist_id:10,name:'Other',type:'custom_role',phrase:'keep'},{artist_id:11,name:'GUEST',type:'artist',phrase:'existing'}]}, {artist_credits:[{name:'Carmen Rizzo',phrase:null},{name:'Guest',phrase:'feat.'},{name:'New guest',phrase:'&'}]}))`));
+  assert.equal(patch.artist,undefined,'No implicit global case rename');
+  assert.deepEqual(patch.credits.slice(0,3),[{artist_id:9,name:'Composer',type:'composer',phrase:'original'},{artist_id:10,name:'Other',type:'custom_role',phrase:'keep'},{artist_id:11,name:'GUEST',type:'artist',phrase:'existing'}]);
+  assert.deepEqual(patch.credits[3],{artist_id:null,name:'New guest',type:'artist',phrase:'&'});
+  assert.deepEqual(JSON.parse(p.run(`JSON.stringify(comparisonArtistPatch({artist:'Old'}, {artist:'Artist feat. Guest'}))`)),{});
+});
+test("comparison corrections reject replaced or in-place changed sources before editor handoff",async()=>{
+  for(const change of ['state.details=new Map(state.details)','state.connection.playback_session="new"','state.details.get("1").tracks[0].title="Changed"','lookup.sources.find(s=>s.name==="musicbrainz").enabled=false']){
+    const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+    p.run(`stageComparisonField(${JSON.stringify(id)},'title');${change}`);
+    await p.run('openComparisonDraftEditor()');
+    assert.equal(Boolean(p.nodes.get('#editor').open),false,change);
+  }
+});
+test("comparison draft discard confirmation protects close, Escape and replacing an edition",async()=>{
+  const p=await comparisonDraftPage(),id=p.run('trackComparison.tracks[0].id');
+  p.run(`stageComparisonField(${JSON.stringify(id)},'title');confirm=()=>false;requestCloseTrackComparison()`);
+  assert.equal(p.nodes.get('#track-comparison').open,true);
+  let prevented=false;await p.nodes.get('#track-comparison').emit('cancel',{preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);assert.equal(p.run('comparisonDraft.choices.size'),1);
+  p.run('confirm=()=>true;requestCloseTrackComparison()');await p.nodes.get('#track-comparison').emit('close');
+  assert.equal(p.nodes.get('#track-comparison').open,false);assert.equal(p.run('comparisonDraft.choices.size'),0);
+});
+
+test("track comparison preserves versions, duplicate positions, unknown values and the two-second observation threshold",async()=>{
+  const p=page();await settle();
+  assert.deepEqual(p.json('trackComparisonDifferences({title:"Song (Live)",disc:1,number:"1",length:100},{title:"Song",disc:2,number:"1",length:102.001})'),['titleDiff','positionDiff','durationDiff']);
+  assert.deepEqual(p.json('trackComparisonDifferences({title:" Song  (Live) ",disc:1,number:"1",length:100},{title:"song (live)",disc:1,number:"1",length:102})'),[]);
+  assert.deepEqual(p.json('trackComparisonDifferences({title:"Song",disc:0,number:"",length:null},{title:"Song",disc:1,number:"1",length:100})'),['unknown']);
+  assert.deepEqual(p.json('trackComparisonDifferences(null,{title:"Song"})'),['unpaired']);
+});
+
+test("track comparison rejects late results after close, navigation, account/library replacement or source disable",async()=>{
+  for(const change of ['$("#track-comparison").close()','showScreen("albums")','state.details=new Map(state.details)','state.connection.playback_session="replacement"','applyLookupSources([{name:"musicbrainz",enabled:false}])']){
+    const p=livePage();await settle();await p.run('openAlbum("1")');p.run('lookup.sources=[{name:"musicbrainz",enabled:true}];openTrackComparison()');
+    let resolve;p.setFetch(()=>new Promise(r=>{resolve=r;}));
+    const pending=p.run('requestTrackComparison()');assert.ok(resolve);
+    p.run(change);if(change.includes('.close()'))await p.nodes.get('#track-comparison').emit('close');
+    resolve({ok:true,json:async()=>({releases:[comparisonRelease],total:1,offset:0,more:false,limit:200})});await pending;
+    assert.equal(p.run('trackComparison.results'),null);assert.equal(p.run('trackComparison.tracks.length'),0);
+    assert.notEqual(p.nodes.get('#track-comparison').open,true);
+  }
+});
+
+test("track comparison paging retains the submitted query and does not search edited text until Search",async()=>{
+  const p=livePage();await settle();await p.run('openAlbum("1")');p.run('openTrackComparison()');
+  p.setFetch(async url=>({ok:true,json:async()=>({releases:[comparisonRelease],total:50,offset:Number(new URL('http://test'+url).searchParams.get('offset')),more:true,limit:200})}));
+  await p.run('requestTrackComparison()');const artist=p.nodes.get('#track-comparison-artist').value;
+  p.nodes.get('#track-comparison-artist').value='Changed query';
+  await p.run('requestTrackComparison(null,20)');await p.run('requestTrackComparison(null,0)');
+  assert.equal(new URL('http://test'+p.requests.at(-1).url).searchParams.get('artist'),artist);
+  await p.run('requestTrackComparison()');assert.equal(new URL('http://test'+p.requests.at(-1).url).searchParams.get('artist'),'Changed query');
+});
+
+test("track comparison bounds large albums and exposes source failures without automatic retry",async()=>{
+  const p=livePage();await settle();await p.run('openAlbum("1")');
+  p.run('state.details.get("1").tracks=Array.from({length:1001},()=>({id:"100",title:"Song"}));openTrackComparison()');
+  const count=p.requests.length;await p.run('requestTrackComparison()');
+  assert.equal(p.requests.length,count);assert.equal(p.run('trackComparison.tracks.length'),0);
+  assert.equal(p.nodes.get('#track-comparison-search').disabled,true);
+  p.run('$("#track-comparison").close();state.details.get("1").tracks.length=2;openTrackComparison()');
+  p.setFetch(async()=>({ok:false,status:503,json:async()=>({error:'Synthetic outage'})}));
+  await p.run('requestTrackComparison()');await settle();
+  assert.equal(p.requests.length,count+1);assert.equal(p.run('trackComparison.busy'),false);
+  assert.match(p.nodes.get('#track-comparison-status').textContent,/Synthetic outage/);
 });
 
 test("More album actions only starts an empty reviewed trash selection after an explicit choice", async () => {
@@ -9708,9 +9892,13 @@ test('album lyrics check starts explicitly, runs serially and keeps results unti
   assert.equal(p.requests.filter(r=>(r.url.startsWith('/api/lyrics?')||r.url==='/api/lyrics')).length,0);
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-playlist'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-lyrics-import'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-download'),true);
+  await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
+  assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-compare'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
   assert.equal(p.run('document.activeElement')===p.nodes.get('#album-action-split'),true);
   await p.nodes.get('#album-action-menu').emit('keydown',{key:'ArrowDown',preventDefault(){}});
@@ -13519,4 +13707,18 @@ test('Details follows cross-album queue transitions while the browsed album stay
   assert.equal(p.run('String(workspaceDetailsData().track.id)'),p.run('player.queue[player.index].id'));
   assert.equal(p.requests.length,requests);
   assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/data-workspace-track/,'Browsing no longer selects a different Details subject');
+});
+
+test('active Random has a trailing decorative shuffle indicator for both album and artist sorting',async()=>{
+  const p=page();await settle();
+  const requests=p.requests.length,queue=p.json('player.queue');
+  for(const kind of ['albums','artists']){
+    p.run(`showScreen(${JSON.stringify(kind)});chooseWorkspaceSort(${JSON.stringify(kind)},'random')`);
+    assert.match(p.nodes.get(`#${kind}-sort-buttons`).innerHTML,/data-sort-value="random" aria-pressed="true"[^>]*>Random<span aria-hidden="true"><svg/);
+    p.run(`chooseWorkspaceSort(${JSON.stringify(kind)},'rating_high')`);
+    const html=p.nodes.get(`#${kind}-sort-buttons`).innerHTML;
+    assert.match(html,/data-sort-value="random" aria-pressed="false"[^>]*>Random<span aria-hidden="true"><\/span>/);
+    assert.match(html,/Rating<span aria-hidden="true">↓<\/span>/);
+  }
+  assert.equal(p.requests.length,requests);assert.deepEqual(p.json('player.queue'),queue);
 });

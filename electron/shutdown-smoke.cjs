@@ -94,6 +94,7 @@ function check({app, window, origin, backend, shutdownView}) {
         observations.historyRestored=await window.webContents.executeJavaScript("state.history[0]?.status==='saved'");
         if(!observations.historyRestored)throw Error("Confirmed History lost on full restart");
       }
+      if(scenario==="stalled-read")await window.webContents.executeJavaScript('setColourAppearance("dark");setColourPalette("amber")');
       await control("arm");
       let operation;
       if(scenario==="idle-tcp"){
@@ -160,6 +161,39 @@ function check({app, window, origin, backend, shutdownView}) {
         if(!identity.closing||backend.child.exitCode!==null)throw Error("Backend stopped during protected work");
         observations.portRetained=true;
         if(scenario==="stalled-read"){
+          // Keep the real backend gated while checking the separate feedback renderer.
+          // No Mini Player, account request or mutation is needed to synchronize colours.
+          const {nativeTheme}=require("electron"),previousTheme=nativeTheme.themeSource;
+          observations.appearance=[];
+          const compare=async label=>{
+            const expected=await window.webContents.executeJavaScript(`(()=>{const root=document.documentElement,s=getComputedStyle(root);
+              return {background:s.backgroundColor,ink:s.color,theme:root.dataset.theme|| (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};})()`);
+            await until(async()=>{
+              const actual=await shutdownView.window.webContents.executeJavaScript(`(()=>{const s=getComputedStyle(document.body);return {background:s.backgroundColor,ink:s.color,theme:getComputedStyle(document.documentElement).colorScheme};})()`);
+              return JSON.stringify(actual)===JSON.stringify(expected);
+            },"shutdown palette "+label);
+            observations.appearance.push({label,...expected});
+          };
+          try{
+            await compare("initial amber dark");
+            for(const palette of ["forest","ocean","warm","ibroadcast","apple","amber"])for(const theme of ["light","dark"]){
+              await window.webContents.executeJavaScript(`setColourAppearance(${JSON.stringify(theme)});setColourPalette(${JSON.stringify(palette)})`);
+              await compare(palette+" "+theme);
+            }
+            await window.webContents.executeJavaScript(`TagcastThemes.save({id:'custom-shutdown-synthetic',name:'Shutdown synthetic',base:'amber',light:{paper:'#f8f0e0',ink:'#221100'},dark:{paper:'#16120d',ink:'#f8e8cc'}},true);showTheme()`);
+            for(const theme of ["light","dark"]){
+              await window.webContents.executeJavaScript(`setColourAppearance(${JSON.stringify(theme)})`);await compare("custom "+theme);
+            }
+            await window.webContents.executeJavaScript('setColourAppearance("auto")');
+            for(const theme of ["light","dark"]){
+              nativeTheme.themeSource=theme;
+              await until(()=>window.webContents.executeJavaScript(`matchMedia('(prefers-color-scheme: dark)').matches===${theme==="dark"}`),"system appearance");
+              // Media-query delivery and the owner's custom-colour application are
+              // separate events. Capture the reference only after both have settled.
+              await until(()=>window.webContents.executeJavaScript(`getComputedStyle(document.documentElement).backgroundColor===${JSON.stringify(theme==="dark"?"rgb(22, 18, 13)":"rgb(248, 240, 224)")}`),"custom Auto colours");
+              await compare("Auto "+theme);
+            }
+          }finally{nativeTheme.themeSource=previousTheme;}
           // Xvfb has no window manager to implement native minimization. Hiding
           // still requires the second process to restore the real status window.
           shutdownView.window.hide();

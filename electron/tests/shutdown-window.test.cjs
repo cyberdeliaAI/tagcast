@@ -3,7 +3,7 @@ const {test}=require("node:test"),assert=require("node:assert/strict");
 const {EventEmitter}=require("node:events");
 const {installShutdownWindow}=require("../shutdown-window.cjs");
 
-function fixture(){
+function fixture(appearance){
   const ipcMain=new EventEmitter(),windows=[];let reopened=0;
   class Window extends EventEmitter {
     constructor(options){
@@ -21,9 +21,11 @@ function fixture(){
     restore(){this.minimized=false;}
     show(){this.visible=true;}
     focus(){this.focused=true;}
+    setBackgroundColor(value){this.background=value;}
     destroy(){this.destroyed=true;this.emit("closed");}
   }
   const controller=installShutdownWindow(key=>key,()=>{reopened++;},{BrowserWindow:Window,ipcMain});
+  if(appearance)controller.setAppearance(appearance);
   controller.show({phase:"checking",elapsed:5},true);
   const view=controller.window,event={sender:view.webContents,senderFrame:view.webContents.mainFrame};
   return {controller,view,windows,ipcMain,event,reopened:()=>reopened};
@@ -37,6 +39,28 @@ test("shutdown feedback is visible, sandboxed, account-free and has no navigatio
   assert.match(decodeURIComponent(f.view.url),/script-src 'none'/);
   let blocked=false;f.view.webContents.emit("will-navigate",{preventDefault(){blocked=true;}});assert.equal(blocked,true);
   assert.deepEqual(ipcNames(f.ipcMain),["shutdown:ready","shutdown:resume"]);
+});
+
+test("shutdown uses the active palette before first paint and retains it through progress and reopening",()=>{
+  for(const theme of ["light","dark"]){
+    const colours={paper:"#123456",ink:"#fedcba",muted:"#aaaaaa",surface:"#234567",line:"#456789",focus:"#abcdef",tint:"#345678"};
+    const f=fixture({theme,colours,token:"never forwarded"});
+    assert.equal(f.view.options.backgroundColor,colours.paper);
+    assert.match(decodeURIComponent(f.view.url),new RegExp("color-scheme:"+theme));
+    for(const [role,colour]of Object.entries(colours))assert.ok(decodeURIComponent(f.view.url).includes(`--${role}:${colour}`));
+    assert.deepEqual(f.view.state.appearance,{theme,colours});
+    f.controller.update({phase:"checking",elapsed:8},true);
+    assert.deepEqual(f.view.state.appearance,{theme,colours});
+    f.controller.setAppearance({theme,colours:{...colours,paper:"#fff"}});
+    assert.equal(f.view.background,"#ffffff");
+    const current=JSON.stringify(f.view.state.appearance);
+    for(const invalid of [null,{}, {theme:"url(x)",colours},{theme,colours:{...colours,paper:"#123456; background:url(https://example.com)"}}, {theme,colours:{paper:"#123456"}}]){
+      f.controller.setAppearance(invalid);assert.equal(JSON.stringify(f.view.state.appearance),current);
+    }
+    f.controller.destroy();f.controller.show();
+    assert.equal(f.controller.window.options.backgroundColor,"#ffffff");
+    f.controller.destroy();
+  }
 });
 function ipcNames(ipc){return ipc.eventNames().sort();}
 

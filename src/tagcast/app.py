@@ -28,6 +28,7 @@ from .errors import error_payload
 from .library import ConflictError, LibraryError
 from .server_lifecycle import RequestDrain, ServerClosing, drain_server
 from .sources import SourceError
+from .track_comparison import view as track_comparison
 
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 24 * 1024 * 1024  # an uploaded image arrives base64-encoded
@@ -240,6 +241,8 @@ class Handler(SimpleHTTPRequestHandler):
                 query.get("album_id"), query.get("session"), query.get("album"), query.get("artist")))
         elif url.path == "/api/updates":
             self._run(self.studio.check_updates)
+        elif url.path in ("/api/tracklist/search", "/api/tracklist/release"):
+            self._run(lambda: track_comparison(self.studio, query, url.path.endswith("/release")))
         elif url.path == "/api/lookup/album":
             self._run(lambda: self.studio.lookup_album(query.get("source"), query.get("album_id"),
                                                        query.get("artist"), query.get("album")))

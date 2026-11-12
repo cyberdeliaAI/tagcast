@@ -10,12 +10,12 @@ const viewFailure = (key, params) => TagcastI18n.failure(key.replace(/^errors\./
 // quiet: a language repaint from memory, which never starts lookups.
 const albumView = {id: null, request: 0, loading: false, trash: null, found: "", failure: null, quiet: false};
 const coverLightbox = {open: false, focus: null, timer: null, fallback: "", fallbackTried: false, album: null, status: ""};
-const albumActions = {trigger: null, details: null, id: null};
+const albumActions = {trigger: null, details: null, id: null, session: null};
 
 function closeAlbumActions(restoreFocus = false) {
   const trigger = albumActions.trigger;
   $("#album-action-menu").hidden = true;
-  albumActions.trigger = null; albumActions.details = null; albumActions.id = null;
+  albumActions.trigger = null; albumActions.details = null; albumActions.id = null; albumActions.session = null;
   trigger?.setAttribute("aria-expanded", "false");
   if (restoreFocus && trigger?.isConnected) trigger.focus();
 }
@@ -26,6 +26,7 @@ function openAlbumActions(trigger) {
   if (same || trigger.disabled || !live() || state.loading || state.screen !== "album"
       || albumView.loading || albumView.trash || saving || checking) return;
   albumActions.trigger = trigger; albumActions.details = state.details; albumActions.id = albumView.id;
+  albumActions.session = state.connection.playback_session;
   trigger.setAttribute("aria-expanded", "true");
   const menu = $("#album-action-menu"); menu.hidden = false;
   $("#album-action-lyrics").textContent = TagcastI18n.text(albumLyricsCheck?.running ? "album.actions.stopLyrics" : "album.actions.checkLyrics");
@@ -43,6 +44,12 @@ $("#album-action-lyrics").addEventListener("click", () => {
   closeAlbumActions(true);
   if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id) checkAlbumLyrics();
 });
+$("#album-action-playlist").addEventListener("click", () => {
+  const {trigger, details, id, session} = albumActions;
+  closeAlbumActions(true);
+  if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id
+      && session === state.connection.playback_session) openAlbumPlaylist(id);
+});
 $("#album-action-lyrics-import").addEventListener("click", () => {
   const {trigger, details, id} = albumActions;
   closeAlbumActions(true);
@@ -59,7 +66,7 @@ $("#album-action-menu").addEventListener("keydown", event => {
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     event.preventDefault();
-    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
+    const items = [$("#album-action-lyrics"), $("#album-action-playlist"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-compare"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
     const index = items.indexOf(document.activeElement);
     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
       : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
@@ -282,6 +289,7 @@ function albumViewReady() {
 }
 
 function renderAlbumView() {
+  if (typeof trackComparisonCurrent === "function" && $("#track-comparison").open && !trackComparisonCurrent()) resetTrackComparison();
   if (state.screen !== "album" || albumView.loading) return;
   if (!state.albums.some(a => String(a.id) === albumView.id)) { resetAlbumView(); return; }
   const ids = shelfIds(albumView.id), discs = ids.map(i => state.details.get(i));
@@ -305,8 +313,8 @@ function renderAlbumView() {
       <p class="muted album-detail-meta">${year ? `<button type="button" class="album-year-link" data-browse-kind="years" data-browse-key="${escapeHtml(year)}" data-browse-label="${escapeHtml(year)}" aria-label="${TagcastI18n.html("album.year.browse", {year})}">${escapeHtml(year)}</button>` : TagcastI18n.html("album.year.unknown")} · ${TagcastI18n.html("album.header.tracks", {count: album.tracks.length})}${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · ${TagcastI18n.html("common.disc", {disc: album.disc})}` : ""}${total}</p>
       <div class="album-labels" aria-label="${TagcastI18n.html("album.labels.label")}">${genres.map(g => `<button type="button" class="album-genre-chip" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}" title="${TagcastI18n.html("album.labels.genre", {genre: g})}">${escapeHtml(g)}</button>`).join("")}${typeof albumTagChips === "function" ? albumTagChips(album) : ""}</div>
       ${albumRatingControls(discs)}
-      <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ ${TagcastI18n.html("album.actions.play")}</button><button type="button" class="button" data-shuffle-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>${TagcastI18n.html("album.actions.shuffle")}</button>
-        ${queueButton(album.id, null, false, true)}${playlistAlbumButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">${TagcastI18n.html("album.actions.edit")}</button>${live() ? `<button type="button" class="button album-more" data-album-more aria-label="${TagcastI18n.html("album.actions.more")}" aria-haspopup="menu" aria-controls="album-action-menu" aria-expanded="false" ${albumView.trash || saving || checking ? "disabled" : ""}>⋯</button>` : ""}</div>
+      <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ ${TagcastI18n.html("album.actions.play")}</button><button type="button" class="button album-shuffle" data-shuffle-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"} aria-label="${TagcastI18n.html("album.actions.shuffle")}" title="${TagcastI18n.html("album.actions.shuffle")}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m18 2 4 4-4 4m0 4 4 4-4 4M2 6h2.5a6 6 0 0 1 5 2.5l5 7a6 6 0 0 0 5 2.5H22M2 18h2.5a6 6 0 0 0 5-2.5l5-7a6 6 0 0 1 5-2.5H22"/></svg></button>
+        ${queueButton(album.id, null, false, true)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">${TagcastI18n.html("album.actions.edit")}</button>${live() ? `<button type="button" class="button album-more" data-album-more aria-label="${TagcastI18n.html("album.actions.more")}" aria-haspopup="menu" aria-controls="album-action-menu" aria-expanded="false" ${albumView.trash || saving || checking ? "disabled" : ""}>⋯</button>` : ""}</div>
       ${live() ? "" : `<p class="muted">${TagcastI18n.html("album.preview.note")}</p>`}</div></div>
     <section id="album-guide-notes" aria-label="${TagcastI18n.html("album.background.label")}" hidden></section>
     <section id="album-information" class="album-information artist-biography" aria-label="${TagcastI18n.html("album.information.label")}" hidden></section>
