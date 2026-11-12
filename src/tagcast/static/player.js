@@ -480,11 +480,13 @@ function setNowPlaying(open) {
   document.body.classList.toggle("now-playing-open", open && state.screen !== "now-playing");
   $("#player-queue").setAttribute("aria-expanded", String(open));
   if (open) { renderNowPlaying(); nowPlayingFocusTarget().focus(); }
+  if (typeof syncWorkspacePanel === "function") syncWorkspacePanel();
   if (typeof placePlayerExtras === "function") placePlayerExtras();
 }
 
 function renderNowPlaying() {
   if ($("#now-playing-panel").hidden) return;
+  if (typeof workspacePanel !== "undefined" && workspacePanel.tab === "details" && state.screen !== "now-playing") { syncWorkspacePanel(); return; }
   const list = $("#now-playing-list"), active = document.activeElement;
   const focused = queueActions.row && $("#queue-action-menu").contains?.(active) ? queueActions.trigger : active;
   if (queueActions.row) closeQueueActions();
@@ -528,6 +530,7 @@ function renderNowPlaying() {
     if (index >= 0) (attribute ? list.querySelector(`[data-queue-position="${index}"] [data-${attribute}]`)
       : list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`))?.focus({preventScroll: true});
   }
+  if (typeof syncWorkspacePanel === "function") syncWorkspacePanel();
 }
 
 function removeQueueEntry(index, revision) {
