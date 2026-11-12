@@ -4,7 +4,7 @@
 const FIRST_SETUP_KEY = "tagcast-first-setup-v1";
 const FIRST_SETUP_STEPS = ["setup.welcome", "setup.playback", "setup.lyrics", "setup.workspace", "setup.extras", "setup.summary"];
 const firstSetup = {initialized: false, statusReady: false, eligible: false, progress: null, step: 0, drafts: new Map(), baselines: new Map(), saving: false, connecting: false, scope: "", focus: null, error: null};
-function firstSetupScope() { return JSON.stringify([state.connection.connected, state.connection.account, state.connection.playback_session]); }
+function firstSetupScope() { return JSON.stringify([state.connection.connected, state.connection.account, state.connection.playback_session, state.connection.premium === true]); }
 function readFirstSetup() {
   try {
     const value = JSON.parse(localStorage.getItem(FIRST_SETUP_KEY));
@@ -88,7 +88,7 @@ function openFirstSetup(automatic = false) {
 }
 function captureFirstSetup() {
   const d = firstSetupDraft(), value = id => $("#setup-" + id).value, checked = id => $("#setup-" + id).checked;
-  if (firstSetup.step === 1) { if (state.connection.connected && state.connection.premium) d.quality = value("quality"); if (gaplessSupported()) d.gapless = checked("gapless"); }
+  if (firstSetup.step === 1) { if (state.connection.connected && state.connection.premium) d.quality = $("#setup-quality")?.value ?? d.quality; if (gaplessSupported()) d.gapless = checked("gapless"); }
   if (firstSetup.step === 2) d.lyrics = value("lyrics");
   if (firstSetup.step === 3) for (const key of ["language", "appearance", "palette", "browsing", "view"]) d[key] = value(key);
   if (firstSetup.step === 4) { d.record = checked("record"); d.sync = checked("sync"); }
