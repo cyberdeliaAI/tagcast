@@ -82,7 +82,7 @@ library lets you try browsing and edit previews; nothing is saved. See
 iBroadcast decides storage, bandwidth, which tracks are available and which
 features need Premium. Tagcast does not provide storage or remove those limits;
 music hidden by a limit has not necessarily been deleted (see
-[iBroadcast's plan changes](https://news.ibroadcast.com/an-important-update-on-ibroadcast-s-pricing)).
+[iBroadcast's plan changes](https://news.ibroadcast.com/pricing-update)).
 Original-quality streaming and saving lyrics need Premium. Free accounts stream at
 MP3 128 kbps.
 
