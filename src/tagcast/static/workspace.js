@@ -29,6 +29,7 @@ const workspaceSortGroups = {
     ["workspace.sort.year", "newest", "year", "↓", "↑"],
     ["workspace.sort.added", "uploaded_newest", "uploaded_oldest", "↓", "↑"],
     ["workspace.sort.rating", "rating_high", "rating_low", "↓", "↑"],
+    ["library.sort.random", "random", "random", "", ""],
   ],
   artists: [
     ["workspace.sort.name", "az", "za", "↑", "↓"],
@@ -44,16 +45,22 @@ function syncWorkspaceSort(kind) {
   const focused = host.contains?.(document.activeElement) ? document.activeElement.dataset.sortGroup : null;
   const markup = groups.map(([key, first, second, up, down], index) => {
     const selected = [first, second].includes(current), next = current === first ? second : first;
-    return `<button type="button" class="browse-sort-button" data-sort-kind="${kind}" data-sort-group="${index}" data-sort-value="${next}" aria-pressed="${selected}" aria-label="${escapeHtml(labels[next])}" title="${escapeHtml(labels[next])}">${TagcastI18n.html(key)}<span aria-hidden="true">${selected ? current === first ? up : down : ""}</span></button>`;
+    const random = kind === "albums" && first === "random";
+    const label = random ? TagcastI18n.text("page.albums.randomOrderTitle") : labels[next];
+    const disabled = random && (state.loading || filteredAlbums().length < 2);
+    const indicator = first === "random"
+      ? '<svg viewBox="0 0 24 24" focusable="false"><path d="m18 2 4 4-4 4m0 4 4 4-4 4M2 6h2.5a6 6 0 0 1 5 2.5l5 7a6 6 0 0 0 5 2.5H22M2 18h2.5a6 6 0 0 0 5-2.5l5-7a6 6 0 0 1 5-2.5H22"/></svg>'
+      : current === first ? up : down;
+    return `<button type="button" class="browse-sort-button" data-sort-kind="${kind}" data-sort-group="${index}" data-sort-value="${next}" aria-pressed="${selected}"${disabled ? " disabled" : ""} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${TagcastI18n.html(key)}<span aria-hidden="true">${selected ? indicator : ""}</span></button>`;
   }).join("");
   if (host.innerHTML !== markup) {
     host.innerHTML = markup;
     if (focused !== null) host.querySelector(`[data-sort-group="${focused}"]`)?.focus({preventScroll: true});
   }
-  if (kind === "albums") $("#albums-random-order").setAttribute("aria-pressed", String(current === "random"));
 }
 function chooseWorkspaceSort(kind, value) {
   if (state.screen !== kind || !workspaceSortGroups[kind]?.some(group => group[1] === value || group[2] === value)) return;
+  if (kind === "albums" && value === "random" && (state.loading || filteredAlbums().length < 2)) return;
   const input = browseChoiceInputs(kind).sort;
   input.value = value;
   closeBrowseOptions();

@@ -41,6 +41,15 @@ async function checkWorkspace(window) {
       await click('#albums-sort-buttons [data-sort-group="1"]');
       assert.equal(await run("$('#sort').value"), 'title_za');
       const sortHeight = await run("$('#albums-sort-buttons button').getBoundingClientRect().height");
+      const randomPlayback=await run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,paused:audio.paused})');
+      assert.deepEqual(await run("[...$('#albums-sort-buttons').querySelectorAll('button')].map(node=>node.dataset.sortGroup)"),['0','1','2','3','4','5']);
+      assert.equal(await run("document.querySelector('#albums-random,#albums-random-order')===null"),true);
+      await click('#albums-sort-buttons [data-sort-group="5"]');
+      assert.equal(await run("$('#albums-sort-buttons [data-sort-group=\"5\"] svg')!==null"),true,'Active Random has a shuffle indicator');
+      assert.equal(await run("$('#sort').value"),'random');
+      assert.equal(await run("$('#albums-sort-buttons [data-sort-group=\"5\"]').getAttribute('aria-pressed')"),'true');
+      await click('#albums-sort-buttons [data-sort-group="5"]');
+      assert.equal(await run('JSON.stringify({queue:player.queue,index:player.index,src:audio.src,paused:audio.paused})'),randomPlayback,'Random ordering never starts or changes playback');
       await click('#albums-browse-options');
       assert.equal(await run("document.querySelectorAll('#browse-options-menu [data-browse-choice^=\"sort:\"]').length"), 0);
       assert.equal(await run("document.querySelectorAll('#browse-options-menu [data-browse-close]').length"), 0);

@@ -327,19 +327,17 @@ function playTracks(album, startId, shuffle = false, options = {}) {
 }
 
 function updateRandomControls() {
-  const albums = $("#albums-random"), browse = $("#browse-random");
+  const browse = $("#browse-random");
   const unavailable = !live() || state.loading || player.randomLoading;
-  albums.hidden = !["", "all"].includes($("#filter").value) || state.selected.size > 0;
-  albums.disabled = unavailable || !filteredAlbums().some(a => a.track_count > 0);
   browse.hidden = browseView.key === null || ["upload-folders", "uploaded"].includes(browseView.kind);
   browse.disabled = unavailable || !browseAlbums().some(a => a.track_count > 0);
-  for (const button of [albums, browse]) button.setAttribute("aria-busy", String(player.randomLoading));
+  browse.setAttribute("aria-busy", String(player.randomLoading));
   renderRandomLabels();
 }
 
 function renderRandomLabels() {
   const label = TagcastI18n.text(player.randomLoading ? "player.random.loading" : "player.random.play");
-  for (const button of [$("#albums-random"), $("#browse-random")]) button.textContent = label;
+  $("#browse-random").textContent = label;
 }
 
 function cancelRandomPlay() {
@@ -374,9 +372,6 @@ async function playRandomAlbum(albums) {
   }
 }
 
-$("#albums-random").addEventListener("click", () => {
-  if (!$("#albums-random").hidden) return playRandomAlbum(filteredAlbums());
-});
 $("#browse-random").addEventListener("click", () => playRandomAlbum(browseAlbums()));
 
 // An album of several discs plays as one album, disc after disc.

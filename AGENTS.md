@@ -777,12 +777,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;
   ordinary Play restores disc/track order. Preserve Repeat and Play next semantics.
-- Play random album uses all filtered merged albums, before paging or the decade
+- Play random album in discovery groups uses all filtered merged albums, before paging or the decade
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play
   and library changes cancel pending random playback; previews cannot play.
-- On the album browser, hide random playback for every cleanup/edition filter and
-  while albums are selected. All albums and browse discovery groups retain it.
+- The album browser has no separate Play random album shortcut. Its Random sort
+  button follows Rating in the fixed search toolbar and never starts playback.
   Compact, aligned Play and + menu buttons on album cards/lists let the user play
   one chosen complete set without navigation. Load only that set, replace the queue
   explicitly and cancel pending playback on clear, another Play or library replacement.
@@ -911,7 +911,8 @@ their shared browsing/player state; a fast local response can otherwise race the
   Album Random album order shuffles the complete merged shelf once before search,
   artist scope, filters and pagination. Preserve it through metadata read-backs and
   Back/Forward within the same library; reset on library/account replacement or a
-  different sort choice. Keep random ordering separate from Play random album.
+  different sort choice. Clicking the fixed Random sort again explicitly reshuffles;
+  disable it while loading or with fewer than two matching albums.
   The separate Filters menu preserves keyboard dismissal/focus; fixed sorting buttons
   share the sticky search toolbar and preserve independent filtering and history.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
