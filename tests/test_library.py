@@ -69,6 +69,32 @@ class DecodeTests(unittest.TestCase):
 
 
 class SummaryTests(unittest.TestCase):
+    def test_optional_technical_metadata_is_bounded_and_never_inferred(self):
+        for values, expected in [
+            ([2048, 0, "-7.9"], {"size": 2048, "plays": 0, "replay_gain": -7.9}),
+            ([None, None, None], {}),
+            ([True, -1, "nan"], {}),
+            ([1.5, "Infinity", "101"], {}),
+            ([2**54, "bad", "-101"], {}),
+        ]:
+            with self.subTest(values=values):
+                data = raw()
+                table = data["library"]["tracks"]
+                table["map"].update(size=8, plays=9, replay_gain=10)
+                for key, row in table.items():
+                    if key != "map":
+                        row.extend([None, None, None])
+                table["100"][-3:] = values
+                before = deepcopy(data)
+                library = Library(data)
+                view = library.track_view(100)
+                self.assertEqual({k: view[k] for k in ("size", "plays", "replay_gain") if k in view}, expected)
+                self.assertEqual({k: library.track_view(101)[k] for k in expected if k in library.track_view(101)}, {})
+                self.assertNotIn("sample_rate", view)
+                self.assertNotIn("bit_depth", view)
+                self.assertEqual(data, before)
+                self.assertEqual(Library(library.to_cache()).track_view(100), view)
+
     def test_editor_names_keep_exact_active_genres_and_composer_roles_without_track_views(self):
         data = raw()
         artists = data["library"]["artists"]
