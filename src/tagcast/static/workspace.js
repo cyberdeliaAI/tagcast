@@ -65,6 +65,18 @@ document.addEventListener("click", event => {
   if (button) chooseWorkspaceSort(button.dataset.sortKind, button.dataset.sortValue);
 });
 
+// Presentation metadata is bounded by live queued occurrences, never persisted or published.
+const workspaceQueueDetails = new WeakMap();
+let workspaceQueueScope = state.details, workspaceQueueGeneration = 0;
+function workspaceQueueOwner() {
+  if (workspaceQueueScope !== state.details) {
+    workspaceQueueScope = state.details; workspaceQueueGeneration += 1;
+  }
+  return workspaceQueueGeneration;
+}
+function rememberWorkspaceQueueDetails(entry, metadata) {
+  workspaceQueueDetails.set(entry, {metadata, generation: workspaceQueueOwner(), session: state.connection.playback_session});
+}
 function workspaceAlbumDetails() {
   if (state.screen !== "album" || !albumViewReady()) return null;
   const albums = shelfIds(albumView.id).map(id => state.details.get(id));
@@ -83,10 +95,17 @@ function workspaceDetailsData() {
   }
   const album = workspaceAlbumDetails();
   if (album) return {album, track: album.tracks.find(t => String(t.id) === albumView.found) || null};
-  const track = player.queue[player.index];
-  if (track && state.albums.some(a => String(a.id) === String(track.album.id))) {
-    const cached = state.details.get(String(track.album.id));
-    return {album: cached || track.album, track: cached ? cached.tracks.find(t => String(t.id) === String(track.id)) || null : track};
+  const track = player.queue[player.index], captured = track && workspaceQueueDetails.get(track);
+  const current = captured && captured.generation === workspaceQueueOwner() && captured.session === state.connection.playback_session;
+  const metadata = current ? captured.metadata : null;
+  const albumId = metadata?.track?.album_id || track?.album?.id;
+  const summary = state.albums.find(a => String(a.id) === String(albumId));
+  if (track && summary) {
+    const cached = state.details.get(String(albumId));
+    // A current cached membership is authoritative, including a removed queued track.
+    if (cached) return {album: cached, track: cached.tracks.find(t => String(t.id) === String(track.id)) || null};
+    return {album: {...track.album, ...metadata?.album, ...summary},
+      track: captured && !current ? null : metadata?.track || track};
   }
   return null;
 }
@@ -106,7 +125,8 @@ function workspaceUploaded(value) {
   return value && Number.isFinite(Date.parse(value)) ? TagcastI18n.dateTime(value) : "";
 }
 function workspaceRating(records) {
-  const values = [...new Set(records.map(record => record.rating || 0))];
+  if (!records.length || records.some(record => !Number.isInteger(record.rating) || record.rating < 0 || record.rating > 5)) return "";
+  const values = [...new Set(records.map(record => record.rating))];
   return values.length > 1 ? TagcastI18n.text("workspace.rating.mixed")
     : values[0] ? TagcastI18n.text("workspace.rating.value", {value: values[0]}) : TagcastI18n.text("workspace.rating.unset");
 }
@@ -122,7 +142,7 @@ function renderWorkspaceDetails() {
     ["workspace.field.year", album.year], ["workspace.field.tracks", album.tracks ? TagcastI18n.number(album.tracks.length) : album.track_count ? TagcastI18n.number(album.track_count) : ""],
     ["workspace.field.disc", workspaceNames(discs.map(disc => disc.disc ? TagcastI18n.number(disc.disc) : ""))],
     ["workspace.field.duration", completeDuration ? trackDuration(tracks.reduce((sum, t) => sum + t.length, 0)) : ""],
-    ["workspace.field.genres", workspaceNames(tracks.flatMap(t => t.genres || (t.genre ? [t.genre] : [])))],
+    ["workspace.field.genres", workspaceNames(tracks.length ? tracks.flatMap(t => t.genres || (t.genre ? [t.genre] : [])) : album.genres || [])],
     ["workspace.field.tags", workspaceNames(tracks.flatMap(t => (t.tags || []).map(tag => tag.name)))],
     ["workspace.field.rating", workspaceRating(discs)],
     ["workspace.field.credits", workspaceNames(discs.map(workspaceCredits))],
@@ -159,6 +179,7 @@ function renderWorkspaceDetails() {
   }
 }
 function syncWorkspacePanel() {
+  workspaceQueueOwner();
   if (workspacePanel.scope !== state.details || workspacePanel.session !== state.connection.playback_session) {
     workspacePanel.selection = null; workspacePanel.markup = "";
     $("#workspace-details").innerHTML = "";
