@@ -57,6 +57,25 @@ actions retain their hover/focus behavior. Only known, loaded fields are shown;
 opening Details never starts a provider lookup, a metadata fetch or a write.
 Opening an album itself retains its existing lazy detail/cache reads.
 
+The accordions include loaded artist credits, disc/track numbers, genres, tags and
+native ratings, with mixed disc ratings distinguished from unrated albums. Album
+duration and file-size totals appear only when every loaded track has a known
+value. Last upload means the latest track upload, not an album creation date;
+dates use the interface locale without inventing a timezone. Optional library
+size, play-count and stored ReplayGain values are bounded metadata only. ReplayGain
+is not applied to playback here. No bit depth or sample rate is inferred from a
+format label, and no audio is downloaded to inspect technical properties.
+
+Restored local queues retain the requested tracks' public metadata in the existing
+account/session-bound restore response. This never expands all album tracks or
+adds upstream requests. Details combines that bounded, memory-only metadata with
+the current loaded album summary (count, native disc, genres, rating and last upload),
+so the album need not have been opened after restart. The metadata follows queued
+occurrences through a weak map and is excluded from playback storage and Queue Sync.
+A library/session replacement invalidates it; fresh cached membership takes priority.
+Unknown ratings are omitted; a confirmed zero remains Not rated. A partial queue,
+including repeated occurrences, never establishes complete-album duration or size.
+
 Arrow Left/Right and Home/End switch tabs. Escape closes the side panel and returns
 focus to the opening control. Accordion state survives read-only refreshes. A
 library or session replacement clears captured selections and rendered old details,
@@ -67,7 +86,8 @@ playback engine, source, library cache or account session.
 
 Frontend tests cover sorting and persistence, independent filters, sidebar/mobile
 access, read-only track inspection, tab keyboard navigation, metadata escaping and
-replacement invalidation. Existing browsing, playback, lyrics, settings and history
+replacement invalidation, restored queues before album visits, duplicate positions,
+unknown ratings and stale cached membership. Existing browsing, playback, lyrics, settings and history
 regressions continue to exercise the shared implementation. All six interface
 catalogues include the new text.
 
@@ -76,3 +96,20 @@ new controls at 420, 760, 768 and 1280 pixels in Light and Dark. It verifies hit
 the original audio element, focus restoration and absence of horizontal overflow.
 It uses synthetic demo metadata only. Browser validation and native startup/restart
 checks remain separate from real-account or hardware-audio compatibility claims.
+
+### Restored-queue regression validation (2026-11-12)
+
+The new startup-restore regression fails against the original #73 implementation
+with the same missing album fields and false Not rated result. The correction
+passes four frontend cases covering startup without an album visit, unknown ratings,
+replacement/membership invalidation and original-disc identity. Backend coverage
+confirms duplicate occurrence positions, unchanged ownership checks, no remote
+reads/writes and no full-album expansion in the existing restore response.
+
+Python 3.13: 985 tests / 2,640 subtests passed. Frontend/i18n, media and Electron:
+819 tests passed. Chromium/WebKit passed 16 real startup/restore viewport-theme
+cases with CSP, unchanged queue/audio/history, no autoplay and no extra Details
+requests. The extracted macOS ARM64 package passed eight synthetic restore cases
+using pointer input plus the existing application/shutdown checks. Normal Playlist
+native-lyrics reading remains separate; the Details request invariant is measured
+without first opening that lyrics view. No timeout or assertion was relaxed.
