@@ -488,9 +488,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   account, `lastmodified` and `combine_sets`. Track search runs on the server's
   library copy (`Library.search_tracks`, at most 1,000 results); the browser never
   loads every track.
-- Album artists and Albums each have one shared Filter and sort menu with independent
-  Sort/Show choices, retaining the existing hidden filter/order values for history and
-  discovery links. Show active checkmarks and both choices on the trigger. Omit zero-count
+- Album artists and Albums have fixed sort buttons below search in the existing sticky
+  toolbar and a separate Filters menu. Retain the hidden filter/order values for history,
+  saved sorts and discovery links. Repeated clicks reverse direction; show the active
+  button and direction. Filters retain active checkmarks and the selected filter on the
+  trigger. Omit zero-count
   filters except All; counts use loaded artist groups or the merged album shelf within
   the current artist scope, before text search. A selected filter can remain active
   when its count drops to zero; keep All reachable without silently resetting search.
@@ -606,12 +608,21 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal, focus/scroll return and close Help on navigation or library replacement.
 - The mobile sidebar is a disclosure menu; its open/closed state adds no history
   entry. Keep connection and source settings reachable and support Escape.
+  Desktop navigation has a separate browser-local collapse preference and an external
+  header button that remains reachable while collapsed. Restore mobile access on resize;
+  do not mix this state with shortcut visibility or change playback/history.
   Browser-local `tagcast-sidebar` preferences hide optional shortcuts and reorder
   navigation in DOM/keyboard order. Album artists, Albums and Change history cannot
   be hidden; connection controls and Settings remain outside customization. Hiding
   a shortcut never disables its feature or changes the current page/audio. Preserve
   opt-in gates for Recently played and 1001 Albums, support restoring defaults, and
   ignore unknown/duplicate stored IDs. Routine updates preserve focus and scroll.
+- The existing right side panel has Playlist and Details tabs; Playlist is the current
+  local play queue, separate from the native Playlists page. Reuse that same queue/audio
+  view and preserve the full Now playing page. Details inspects only loaded album/track
+  metadata in read-only accordions, without provider/API requests or playback changes.
+  Retire captured selections and old rendered details on library/session replacement,
+  even when closed. Keep tab keyboard navigation, Escape and opening-control focus return.
 - Decades reuses the browse indexes and effective track/album years. Exclude unknown
   years, use full decade labels (1980s, 2020s), sample merged album summaries locally
   without duplicates, and preserve the random order on Back. Surprise me again
@@ -896,8 +907,8 @@ their shared browsing/player state; a fast local response can otherwise race the
   artist scope, filters and pagination. Preserve it through metadata read-backs and
   Back/Forward within the same library; reset on library/account replacement or a
   different sort choice. Keep random ordering separate from Play random album.
-  The shared Filter and sort menu shows Sort/Show side by side above 760px and
-  stacked below, retaining independent choices and keyboard dismissal/focus.
+  The separate Filters menu preserves keyboard dismissal/focus; fixed sorting buttons
+  share the sticky search toolbar and preserve independent filtering and history.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
   Album-rating read-back invalidates copied multi-disc shelf ratings (including
   partial results) and refreshes visible album ordering. Confirm unnamed native

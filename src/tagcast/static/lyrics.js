@@ -226,7 +226,7 @@ function visibleLyricsSelection(context) {
     const id = $("#track-inline").dataset.track;
     return lyricsSelection(editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === id));
   }
-  return $("#now-playing-panel").hidden ? null : lyricsSelection(player.queue[player.index]);
+  return $("#now-playing-panel").hidden || (typeof workspacePanel !== "undefined" && workspacePanel.tab === "details" && state.screen !== "now-playing") ? null : lyricsSelection(player.queue[player.index]);
 }
 
 function renderLyrics(context, selection = visibleLyricsSelection(context)) {
