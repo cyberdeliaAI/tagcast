@@ -7798,7 +7798,8 @@ test('artist filters and fixed sort buttons keep independent choices without lib
   let html=p.nodes.get('#browse-options-menu').innerHTML;
   assert.doesNotMatch(html,/data-browse-choice="sort:/);
   assert.match(p.nodes.get('#artists-sort-buttons').innerHTML,/data-sort-value="za"/);
-  assert.match(html,/role="group" aria-label="Show"/);
+  assert.match(html,/role="menuitemradio"/);
+  assert.doesNotMatch(html,/data-browse-close|browse-options-title|browse-options-heading/);
   assert.match(html,/data-browse-choice="filter:no_image"[^>]*>[\s\S]*?Without image · 1/);
   assert.doesNotMatch(html,/filter:favourites/);
   assert.equal(p.history.length,entries,'Opening does not add a history entry');
@@ -13190,6 +13191,41 @@ test('sidebar collapse is independent of shortcut settings and restores access o
   assert.equal(storage['tagcast-sidebar'],shortcuts);assert.equal(p.requests.length,requests);assert.equal(p.history.length,history);
 });
 
+test('navigation starts open and panel tabs never change the saved manual choice',async()=>{
+  const storage={},p=page({storage});await settle();
+  assert.equal(p.nodes.get('#sidebar').hidden,false);
+  p.run('setNowPlaying(true);setWorkspaceTab("details");setWorkspaceTab("playlist")');
+  assert.equal(p.nodes.get('#sidebar').hidden,false);
+  assert.equal(storage['tagcast-navigation-collapsed'],undefined);
+  await p.nodes.get('#navigation-toggle').emit('click');
+  p.run('setNowPlaying(false);setNowPlaying(true);setWorkspaceTab("details")');
+  assert.equal(p.nodes.get('#sidebar').hidden,true);
+  const reloaded=page({storage});await settle();
+  assert.equal(reloaded.nodes.get('#sidebar').hidden,true);
+  await reloaded.nodes.get('#navigation-toggle').emit('click');
+  assert.equal(reloaded.nodes.get('#sidebar').hidden,false);
+});
+
+test('Playlist Devices retains the opt-in gate and opens an empty queue without writes or playback changes',async()=>{
+  const p=livePage();await settle();
+  p.run('applyQueueSettings({queue_sync:false})');
+  assert.equal(p.nodes.get('#devices-button').hidden,true);
+  p.run('applyQueueSettings({queue_sync:true});setNowPlaying(true);setWorkspaceTab("playlist")');
+  assert.equal(p.nodes.get('#devices-button').hidden,false);
+  assert.equal(p.run('player.queue.length'),0);
+  p.setFetch(url=>({ok:true,json:async()=>url==='/api/queue-sync'?{status:'disconnected',devices:[],state:null}: {}}));
+  const requests=p.requests.length,history=p.history.length;
+  const before=p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,paused:audio.paused})');
+  await p.nodes.get('#devices-button').emit('click');await settle();
+  assert.equal(p.nodes.get('#devices-dialog').open,true);
+  assert.equal(p.requests.slice(requests).filter(r=>r.url==='/api/queue-sync').length,1);
+  assert.ok(p.requests.slice(requests).every(r=>!r.options?.method || r.options.method==='GET'));
+  assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,index:player.index,paused:audio.paused})'),before);
+  assert.equal(p.history.length,history);
+  p.run('$("#devices-dialog").close();applyQueueSettings({queue_sync:false})');
+  assert.equal(p.nodes.get('#devices-button').hidden,true);
+});
+
 test('Details inspects a loaded track without requests, history, playback or metadata changes',async()=>{
   const p=page();await settle();await p.run('openAlbum("1")');await settle();
   const track=p.run('String(state.details.get("1").tracks[0].id)');
@@ -13347,4 +13383,89 @@ test('setup blocks a capability change while quality controls are open without d
   await p.run('saveFirstSetup()');assert.equal(p.requests.length,0);assert.equal(p.run('firstSetup.step'),1);assert.match(p.nodes.get('#first-setup-error').textContent,/changed/);
   p.run('pauseFirstSetup();openFirstSetup()');assert.match(p.nodes.get('#first-setup-content').innerHTML,/id="setup-quality"/);
   assert.equal(p.run('firstSetup.scope===firstSetupScope()'),true);
+});
+
+test('expanded Details shows only loaded metadata, readable upload dates and valid zero values',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run(`globalThis.detailAlbum=state.details.get('1');
+    detailAlbum.rating=4;detailAlbum.disc=2;
+    detailAlbum.tracks.forEach((t,i)=>Object.assign(t,{length:60,size:2048,genres:['Rock; Pop'],tags:[{id:'9',name:'Listen <later>'}],uploaded_at:'2026-11-12T09:00:00'}));
+    Object.assign(detailAlbum.tracks[0],{plays:0,replay_gain:0,performers:[{name:'Guest <artist>'}],credits:[{name:'Writer <name>',type:'lyricist',phrase:'with'}]});
+    openWorkspaceDetails('1',detailAlbum.tracks[0].id);`);
+  const before=p.requests.length,html=p.nodes.get('#workspace-details').innerHTML;
+  assert.match(html,/Last upload/);assert.doesNotMatch(html,/2026-11-12T09:00:00/);
+  assert.match(html,/Rock; Pop/);assert.match(html,/Listen &lt;later&gt;/);
+  assert.match(html,/Guest &lt;artist&gt;/);assert.match(html,/Writer &lt;name&gt;/);
+  assert.match(html,/4 \/ 5/);assert.match(html,/<dt>Plays<\/dt><dd>0<\/dd>/);
+  assert.match(html,/<dt>Stored ReplayGain<\/dt><dd>0 dB<\/dd>/);
+  assert.doesNotMatch(html,/sample.?rate|bit.?depth|44\.1|96 kHz/i);
+  p.run('renderWorkspaceDetails()');assert.equal(p.requests.length,before);
+});
+
+test('Details never advertises incomplete duration or size totals and distinguishes mixed ratings',async()=>{
+  const p=page();await settle();await p.run('openAlbum("1")');await settle();
+  p.run(`const a=state.details.get('1');a.tracks[0].length=60;a.tracks[0].size=2048;
+    a.tracks[1].length=0;delete a.tracks[1].size;
+    workspacePanel.selection=null;setWorkspaceTab('details');setNowPlaying(true);`);
+  const album=p.nodes.get('#workspace-details').innerHTML.split('data-workspace-section="track"')[0];
+  assert.doesNotMatch(album,/<dt>Duration<\/dt>|<dt>File size<\/dt>/);
+  assert.equal(p.run('workspaceRating([{rating:4},{rating:2}])'),'Mixed ratings');
+  assert.equal(p.run('workspaceRating([{rating:0}])'),'Not rated');
+});
+
+test('restored queue Details uses loaded summaries and fresh track metadata before any album visit',async()=>{
+  const storage={['tagcast-queue-'+'a'.repeat(64)]:JSON.stringify({version:1,entries:[{id:'900'},{id:'900',upNext:true}],index:1,repeat:'none',shuffle:false})};
+  const p=queueMemoryPage(storage);
+  p.run(`state.details=new Map();state.screen='albums';state.albums=[{id:'72',name:'Restored album',artist:'Album artist',year:1972,disc:2,rating:4,track_count:6,genres:['Jazz'],uploaded_at:'2026-11-12T09:00:00'}];globalThis.originalAudio=audio;`);
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/queue-tracks');
+    const tracks=JSON.parse(options.body).tracks.map((id,position)=>({
+      id,position,title:'Restored track',artist:'Performer',length:60,rating:0,
+      album:{id:'72',name:'Restored album',artist:'Album artist'},
+      details:{track:{id,album_id:'72',title:'Restored track',artist:'Performer',year:1972,
+        length:60,track:3,format:'FLAC',rating:0,genres:['Jazz; Fusion'],
+        tags:[{id:'9',name:'Listen <later>'}],uploaded_at:'2026-11-11T09:00:00',size:2048,plays:0,replay_gain:0},
+        album:{credits:[{name:'Guest',type:'artist'}]}}
+    }));
+    return {ok:true,json:async()=>({tracks})};
+  });
+  await p.run('restoreQueueMemory()');const requests=p.requests.length,queue=p.json('player.queue'),history=p.history.length;
+  p.run('setWorkspaceTab("details");setNowPlaying(true)');
+  const html=p.nodes.get('#workspace-details').innerHTML,album=html.split('data-workspace-section="track"')[0];
+  assert.match(album,/<dt>Tracks<\/dt><dd>6<\/dd>/);assert.match(album,/<dt>Rating<\/dt><dd>4 \/ 5<\/dd>/);assert.match(album,/Last upload/);assert.match(album,/Jazz/);assert.match(album,/Guest/);
+  assert.doesNotMatch(album,/<dt>Duration<\/dt>|<dt>File size<\/dt>/,'Never total only the queued subset or duplicate occurrences');
+  assert.match(html,/<dt>Track number<\/dt><dd>3<\/dd>/);assert.match(html,/Jazz; Fusion/);assert.match(html,/Listen &lt;later&gt;/);assert.match(html,/<dt>Plays<\/dt><dd>0<\/dd>/);assert.match(html,/0 dB/);
+  assert.equal(p.requests.length,requests);assert.deepEqual(p.json('player.queue'),queue);assert.equal(p.history.length,history);assert.equal(p.run('audio===originalAudio && audio.paused'),true);
+  assert.equal(p.run('state.details.size'),0);assert.equal(p.run('player.queue[1].upNext'),true);assert.deepEqual(p.json('player.queue.map(t=>t.id)'),['900','900']);
+  assert.equal(JSON.stringify(storage).includes('Restored album'),false,'Only queue IDs and position preferences are persisted');
+});
+
+test('Details omits unknown ratings and retires restored metadata on library or session replacement',async()=>{
+  const p=queueMemoryPage();p.run(`state.details=new Map();state.screen='albums';state.albums=[{id:'1',name:'Album',artist:'Artist'}];player.queue=[{id:'900',title:'Track',artist:'Performer',length:60,album:{id:'1',name:'Album',artist:'Artist'}}];player.index=0;renderWorkspaceDetails()`);
+  assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/<dt>Rating<\/dt>|Not rated/);
+  assert.equal(p.run('workspaceRating([{rating:0}])'),'Not rated');assert.equal(p.run('workspaceRating([{}])'),'');
+  p.run(`rememberWorkspaceQueueDetails(player.queue[0],{track:{...player.queue[0],genres:['Private old genre'],rating:4},album:{credits:[{name:'Private old credit',type:'artist'}]}});renderWorkspaceDetails()`);
+  assert.match(p.nodes.get('#workspace-details').innerHTML,/Private old genre/);
+  p.run('state.details=new Map();renderWorkspaceDetails()');assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/Private old genre|Private old credit/);
+  p.run(`rememberWorkspaceQueueDetails(player.queue[0],{track:{...player.queue[0],genres:['Second old genre'],rating:4}});state.connection.playback_session='another-session';renderWorkspaceDetails()`);
+  assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/Second old genre/);
+});
+
+test('queued Details uses the original disc and fresh cached membership without mutating playback',async()=>{
+  const p=page({deferReady:true});p.run(`globalThis.originalDisc=state.details.get('1');originalDisc.rating=4;originalDisc.tracks[0].album_id='1';originalDisc.tracks[0].genres=['Known genre'];
+    player.queue=queueTracks(originalDisc);player.index=0;state.screen='albums';state.details.delete('1');renderWorkspaceDetails()`);
+  assert.match(p.nodes.get('#workspace-details').innerHTML,/Known genre/);
+  p.run(`state.details.set('1',{...originalDisc,tracks:originalDisc.tracks.slice(1)});renderWorkspaceDetails()`);
+  assert.doesNotMatch(p.nodes.get('#workspace-details').innerHTML,/Known genre/,'A fresh cached album without the track rejects its old queued metadata');
+});
+
+test('queue Details resolves the original native disc of a combined album',()=>{
+  const p=page({deferReady:true});p.run(`const first=state.details.get('1');
+    const second={...first,id:'native-second',name:'Second native disc',rating:2,disc:2,credits:[{name:'Second credit',type:'artist'}],
+      tracks:[{...first.tracks[0],id:'second-track',album_id:'native-second',genres:['Second disc genre']}]};
+    state.details.set(second.id,second);state.albums.push({...second,track_count:1,tracks:undefined});
+    player.queue=queueTracks({...first,tracks:[...first.tracks,...second.tracks]});player.index=player.queue.length-1;
+    state.screen='albums';state.details.delete(second.id);renderWorkspaceDetails()`);
+  const html=p.nodes.get('#workspace-details').innerHTML;
+  assert.match(html,/Second native disc/);assert.match(html,/<dt>Rating<\/dt><dd>2 \/ 5<\/dd>/);assert.match(html,/Second credit/);assert.match(html,/Second disc genre/);
 });
