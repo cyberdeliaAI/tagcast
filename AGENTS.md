@@ -785,6 +785,15 @@ their shared browsing/player state; a fast local response can otherwise race the
   references remain visibly incomplete. Bound to 200 search results and 1,000 audio
   tracks. Invalidate and clear on close, navigation, source/account/library changes;
   preserve audio/history/focus, and do not restore an old route's scroll after navigation.
+  Explicit per-track title/artist choices (`track-comparison-drafts.js`) may fill the
+  existing editor only; comparison/staging never sends a mutation. Pairing is manual,
+  with positional display not proof of identity, and one bounded reference selector at
+  a time. Preserve native track IDs, positions, versions and all existing/unknown credits;
+  add separate guest artist credits from structured provider data, never one combined
+  artist name. Reuse native names without global case renaming. Capture and recheck the
+  complete source snapshot/session before and after opening the editor, suppress extra
+  automatic source suggestions, then use normal review/save/read-back. Confirm before
+  discarding choices or replacing their reference; invalidate stale ownership outright.
 - Album details offer Play album in disc/track order and Shuffle album in a newly mixed
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;

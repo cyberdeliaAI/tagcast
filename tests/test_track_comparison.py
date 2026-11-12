@@ -85,6 +85,22 @@ class PublicEditionTests(unittest.TestCase):
                 search(source, artist, album, '0')
         self.assertEqual(http.calls, [])
 
+    def test_artist_credits_keep_guest_names_and_join_phrases_separate_without_native_ids(self):
+        data = raw_release()
+        source, _ = self.source(data)
+        self.assertIsNone(release(source, RID)['tracks'][0]['artist_credits'],
+                          'Release artist display fallback is not evidence of track artist credits')
+        data['media'][0]['tracks'][0]['artist-credit'] = [
+            {'name': 'Carmen Rizzo', 'artist': {'id': RID}, 'joinphrase': ' feat. '},
+            {'name': 'Kate Havnevik', 'artist': {'id': OTHER}}]
+        source, _ = self.source(data)
+        self.assertEqual(release(source, RID)['tracks'][0]['artist_credits'], [
+            {'name': 'Carmen Rizzo', 'phrase': None}, {'name': 'Kate Havnevik', 'phrase': 'feat.'}])
+        for credits in [[{'name': ''}], [{'name': 'x', 'joinphrase': []}], [{'name': 'x'}] * 101]:
+            data['media'][0]['tracks'][0]['artist-credit'] = credits
+            source, _ = self.source(data)
+            self.assertIsNone(release(source, RID)['tracks'][0]['artist_credits'])
+
     def test_missing_tracks_and_extra_sections_are_incomplete_not_confirmed_matches(self):
         for replacement in [{'tracks': []}, {'track-count': 3}, {'pregap': {'title': 'Hidden'}},
                             {'data-tracks': [{'title': 'Data'}]}, {'position': None},

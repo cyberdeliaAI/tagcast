@@ -1,6 +1,6 @@
 "use strict";
 
-// Explicit, read-only edition comparison. No editor, queue, metadata or provider prefetch.
+// Explicit edition comparison; chosen corrections enter the separate editor/review only.
 const trackComparison = {request: 0, details: null, session: "", albumId: "", tracks: [], total: 0,
   results: null, reference: null, busy: false, error: null, query: null, focus: null, scroll: 0};
 const trackComparisonEnabled = () => lookup.sources.find(s => s.name === "musicbrainz")?.enabled !== false;
@@ -11,6 +11,7 @@ function trackComparisonCurrent(request = trackComparison.request) {
 }
 function resetTrackComparison() {
   const view = trackComparison; view.request += 1; view.busy = false;
+  resetComparisonDraft();
   view.tracks = []; view.results = null; view.reference = null; view.details = null; view.query = null; view.error = null;
   if ($("#track-comparison").open) $("#track-comparison").close();
   $("#track-comparison-reference").innerHTML = "";
@@ -24,11 +25,12 @@ function openTrackComparison() {
   Object.assign(view, {details: state.details, session: state.connection.playback_session, albumId: albumView.id,
     focus: document.activeElement, scroll: window.scrollY || 0,
     total: album.tracks.length,
-    tracks: album.tracks.length > 1000 ? [] : discs.flatMap(d => d.tracks.map(t => ({title: t.title || "", artist: t.artist || d.artist || "",
+    tracks: album.tracks.length > 1000 ? [] : discs.flatMap(d => d.tracks.map(t => ({id: String(t.id), title: t.title || "", artist: t.artist || d.artist || "",
       disc: Number(t.disc || d.disc) || 0, position: Number(t.track) || 0, number: String(t.track || ""), length: t.length}))) });
   $("#track-comparison-artist").value = album.artist || "";
   $("#track-comparison-album").value = album.name || "";
   $("#track-comparison-only").checked = false;
+  captureComparisonDraft(discs);
   $("#track-comparison").showModal();
   renderTrackComparison(); $("#track-comparison-artist").focus();
 }
@@ -56,7 +58,7 @@ function renderTrackComparison() {
   const view = trackComparison;
   if (!$("#track-comparison").open) return;
   const focused = document.activeElement, choice = focused?.dataset?.compareRelease, page = focused?.dataset?.comparePage;
-  const enabled = trackComparisonEnabled(), oversized = view.total > 1000;
+  const enabled = trackComparisonEnabled(), oversized = view.total > 1000, canStage = comparisonDraftCurrent();
   $("#track-comparison-search").disabled = view.busy || !enabled || oversized;
   $("#track-comparison-artist").disabled = view.busy; $("#track-comparison-album").disabled = view.busy;
   const message = !enabled ? trackComparisonLabel("disabled") : oversized ? trackComparisonLabel("tooLarge")
@@ -71,12 +73,13 @@ function renderTrackComparison() {
   $("#track-comparison-reference").innerHTML = reference ? `<a href="${escapeHtml(reference.release.url)}" target="_blank" rel="noopener noreferrer">${trackComparisonEdition(reference.release)}<span>${TagcastI18n.html("trackComparison.openRelease")} ↗</span></a>${reference.incomplete ? `<p class="warn-box">${TagcastI18n.html("trackComparison.incomplete")}</p>` : ""}` : "";
   const rows = [], titles = new Set((reference?.tracks || []).map(t => trackComparisonTitle(t.title)).filter(Boolean));
   if (!oversized) for (let i = 0; i < Math.max(view.tracks.length, reference?.tracks.length || 0); i++) {
-    const left = view.tracks[i], right = reference?.tracks[i], differences = reference ? trackComparisonDifferences(left, right) : [];
+    const left = view.tracks[i], selected = comparisonReferenceIndex(left?.id, i), right = reference?.tracks[selected], differences = reference ? trackComparisonDifferences(left, right) : [];
     if (reference && $("#track-comparison-only").checked && !differences.length) continue;
     const elsewhere = left && right && differences.includes("titleDiff") && titles.has(trackComparisonTitle(left.title));
-    rows.push(`<tr class="${differences.length ? "track-comparison-different" : ""}"><td>${trackComparisonCell(left)}</td><td>${reference ? trackComparisonCell(right) : "–"}</td><td>${differences.map(key => `<span>${escapeHtml(trackComparisonLabel(key))}</span>`).join("")}${elsewhere ? `<span>${TagcastI18n.html("trackComparison.elsewhere")}</span>` : ""}</td></tr>`);
+    rows.push(`<tr class="${differences.length ? "track-comparison-different" : ""}"><td>${trackComparisonCell(left)}</td><td>${reference ? trackComparisonCell(right) : "–"}${comparisonDraftControls(left, right, selected, canStage)}</td><td>${differences.map(key => `<span>${escapeHtml(trackComparisonLabel(key))}</span>`).join("")}${elsewhere ? `<span>${TagcastI18n.html("trackComparison.elsewhere")}</span>` : ""}</td></tr>`);
   }
   $("#track-comparison-table").innerHTML = `<table><thead><tr><th>${TagcastI18n.html("trackComparison.current", {count: view.total})}</th><th>${TagcastI18n.html("trackComparison.reference", {count: reference?.tracks.length || 0})}</th><th>${TagcastI18n.html("trackComparison.observations")}</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  renderComparisonDraftFooter(canStage);
   if (!view.busy && (choice || page !== undefined)) {
     const button = [...$("#track-comparison-results").querySelectorAll("button")].find(node => choice
       ? node.dataset.compareRelease === choice : node.dataset.comparePage === page);
@@ -86,9 +89,12 @@ function renderTrackComparison() {
 async function requestTrackComparison(releaseId = null, offset = null) {
   const view = trackComparison;
   if (!trackComparisonCurrent() || view.busy || view.total > 1000) return;
+  if (releaseId && !view.results?.releases.some(r => r.id === releaseId)) return;
+  if (releaseId && !discardComparisonDraft()) return;
   if (!releaseId && offset === null) {
     const artist = $("#track-comparison-artist"), album = $("#track-comparison-album");
     if (!artist.reportValidity() || !album.reportValidity()) return;
+    if (!discardComparisonDraft()) return;
     view.query = {artist: artist.value.trim(), album: album.value.trim()};
     view.reference = null; view.results = null;
   }
@@ -126,6 +132,7 @@ $("#track-comparison").addEventListener("close", () => {
     && state.screen === "album" && trackComparison.albumId === albumView.id;
   trackComparison.request += 1; trackComparison.tracks = []; trackComparison.reference = null; trackComparison.results = null;
   trackComparison.details = null; trackComparison.query = null; trackComparison.busy = false;
+  resetComparisonDraft();
   $("#track-comparison-reference").innerHTML = ""; $("#track-comparison-table").innerHTML = ""; $("#track-comparison-results").innerHTML = "";
   setActionStatus("#track-comparison-status", "");
   if (restore) { if (focus?.isConnected) focus.focus(); window.scrollTo({top: scroll}); }
