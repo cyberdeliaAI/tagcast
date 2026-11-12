@@ -92,7 +92,7 @@ def release(source, release_id):
         rows = medium.get("tracks", [])
         if not isinstance(rows, list) or len(tracks) + len(rows) > MAX_TRACKS:
             raise LibraryError("Compare editions with at most 1,000 tracks.", code="track_comparison.too_large")
-        incomplete |= not positive(medium.get("position"))
+        incomplete |= not rows or not positive(medium.get("position"))
         incomplete |= type(medium.get("track-count")) is not int or medium["track-count"] != len(rows)
         # Extra pregap/data sections are not ordinary audio positions. Never present
         # their omission as a complete edition or infer missing audio from them.
@@ -125,7 +125,7 @@ def view(studio, query, detail=False):
             raise LibraryError("Compare editions with at most 1,000 tracks.", code="track_comparison.too_large")
         before = library.album_view(int(album_id))
         owner = studio.client, studio.library_user, studio.playback_session
-        if "musicbrainz" in studio.disabled_sources:
+        if "musicbrainz" in studio.disabled_sources():
             raise SourceError("Enable MusicBrainz in Settings before comparing.", code="track_comparison.unavailable")
         source = studio.lookup._get("musicbrainz", "albums")
     try:
@@ -136,7 +136,7 @@ def view(studio, query, detail=False):
     with studio.lock:
         if library is not studio.library or owner != (studio.client, studio.library_user, studio.playback_session):
             raise ConflictError("The account or album changed. Open the comparison again.", code="track_comparison.replaced")
-        if "musicbrainz" in studio.disabled_sources:
+        if "musicbrainz" in studio.disabled_sources():
             raise SourceError("Enable MusicBrainz in Settings before comparing.", code="track_comparison.unavailable")
         if before != library.album_view(int(album_id)):
             raise ConflictError("The account or album changed. Open the comparison again.", code="track_comparison.replaced")

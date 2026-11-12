@@ -102,24 +102,8 @@ def check_app(executable, version, restart=False):
         reports.mkdir(parents=True, exist_ok=True)
         (reports / "electron.json").write_text(json.dumps(data, indent=2) + "\n")
         print(f'Checked Electron {data["electron"]}, Tagcast {data["version"]}, CLI, sandbox and server shutdown')
-        comparison_report = root / "comparison.json"
-        comparison_env = {key: value for key, value in env.items()
-                          if not key.startswith("TAGCAST_ELECTRON_SMOKE")}
-        comparison_env["TAGCAST_TRACK_COMPARISON_SMOKE_REPORT"] = str(comparison_report)
-        process = subprocess.Popen([str(executable)], env=comparison_env, cwd=root,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            result = process.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            process.terminate()
-            process.wait(timeout=15)
-            raise RuntimeError("The isolated track comparison check did not finish") from None
-        comparison = (json.loads(comparison_report.read_text()) if comparison_report.exists()
-                      else {"ok": False, "error": "Missing track comparison report"})
-        (reports / "electron-track-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
-        if result or not comparison.get("ok"):
-            raise RuntimeError(f"Native track comparison failed: {comparison}")
-        print("Checked native read-only track comparison with pointer/keyboard input")
+        from check_track_comparison import check_track_comparison
+        check_track_comparison(executable, inherited, reports)
         from check_shutdown import check_shutdown
         check_shutdown(executable, inherited)
 
