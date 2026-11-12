@@ -1,6 +1,6 @@
 # Workspace navigation, sorting and side panel
 
-These controls are development changes after 1.7.0; no release version is changed.
+These controls are included in Tagcast 1.8.0.
 
 ## Navigation
 
