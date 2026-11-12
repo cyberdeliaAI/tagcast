@@ -65,6 +65,21 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"device login did not finish: {studio.device}")
 
+    def test_setup_eligibility_is_read_only_and_excludes_existing_profiles(self):
+        for filename in (None, "config.json", "tokens.json", client.CACHE_FILE, "updates.json"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as home:
+                if filename:
+                    Path(home, filename).write_text("{}", encoding="utf-8")
+                before = {p.name: p.read_bytes() for p in Path(home).iterdir()}
+                studio = client.Studio(home)
+                self.assertEqual(studio.settings()["setup_eligible"], filename is None)
+                self.assertEqual({p.name: p.read_bytes() for p in Path(home).iterdir()}, before)
+                studio.client = object()
+                self.assertFalse(studio.settings()["setup_eligible"])
+                studio.client = None
+                studio.config["record_plays"] = False
+                self.assertFalse(studio.settings()["setup_eligible"])
+
     def test_lyrics_import_reuses_review_reads_and_verifies_each_write_over_http(self):
         original = copy.deepcopy(mock_ibroadcast.STATE)
         try:

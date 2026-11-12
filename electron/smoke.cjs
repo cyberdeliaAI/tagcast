@@ -119,10 +119,12 @@ function check({app, window, origin, backend, miniPlayer}) {
       const themes = await require("./theme-smoke.cjs").checkThemes({window, miniPlayer});
       checkpoint("workspace-controls");
       const workspace = await require("./workspace-smoke.cjs").checkWorkspace(window);
+      checkpoint("first-setup");
+      const setup = await require("./setup-smoke.cjs").checkSetup(window);
       if (errors.length) throw new Error("The renderer reported a runtime or CSP error: " + errors.join("; "));
       done({ok: true, version: identity.version, electron: process.versions.electron,
         chromium: process.versions.chrome, origin, pid: backend.child.pid, sandbox: true,
-        contextIsolation: true, nodeIntegration: false, sharedInterface: true, helpLabels, presentation, persistence, mini, themes, workspace, normalSettingsAllowed: true, restarted: restart});
+        contextIsolation: true, nodeIntegration: false, sharedInterface: true, helpLabels, presentation, persistence, mini, themes, workspace, setup, normalSettingsAllowed: true, restarted: restart});
     } catch (error) { done({ok: false, error: error.message}); }
   });
 }

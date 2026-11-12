@@ -465,6 +465,9 @@ class Studio:
         self._device_stop = threading.Event()
         self._pkce = {}
         self._pkce_gen = 0
+        # First-run eligibility is read-only and excludes existing saved profiles.
+        self.setup_eligible = not any((self.home / name).exists() for name in (
+            "config.json", "tokens.json", CACHE_FILE, "updates.json"))
         self.config = self._read("config.json") or {}
         self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
@@ -1193,6 +1196,7 @@ class Studio:
 
     def settings(self):
         return {"sources": self.lookup.describe(),
+                "setup_eligible": self.setup_eligible and self.client is None and not self.config,
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
                 "auto_lookup": self.config.get("auto_lookup", True),
                 "auto_updates": self.config.get("auto_updates", True),
