@@ -1391,20 +1391,12 @@ function duplicatePreview() {
     selection: [{id: "100", group: "1"}]};
 }
 
-test("cleanup filters and a manual album selection hide random playback; card play stays explicit", async () => {
-  const p = livePage(); await settle();
-  for (const filter of ["genre", "year", "duplicates", "small", "combined", "cover", "edition"]) {
-    p.nodes.get("#filter").value = filter; p.run("render()");
-    assert.equal(p.nodes.get("#albums-random").hidden, true, filter);
-  }
-  p.nodes.get("#filter").value = "all"; p.run("render()");
-  assert.equal(p.nodes.get("#albums-random").hidden, false);
-  p.run('state.selected.add("1"); render()');
-  assert.equal(p.nodes.get("#albums-random").hidden, true);
-  const count = p.requests.length;
-  await p.nodes.get("#albums-random").emit("click");
-  assert.equal(p.requests.length, count);
-  p.run('state.selected.clear(); render()');
+test("album browsing exposes Random after Rating and keeps explicit card playback", async () => {
+  const p = livePage(); await settle();p.run('showScreen("albums");render()');
+  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');
+  assert.doesNotMatch(html,/id="albums-random"|id="albums-random-order"/);
+  assert.deepEqual(p.json('workspaceSortGroups.albums.map(group=>group[1])'),['artist','title','newest','uploaded_newest','rating_high','random']);
+  assert.match(p.nodes.get('#albums-sort-buttons').innerHTML,/data-sort-group="5" data-sort-value="random"/);
   const source = p.location.hash, entries = p.history.length;
   await p.click({"[data-card-play]": {dataset: {cardPlay: "1"}}});
   assert.equal(p.run("String(player.album.id)"), "1");
@@ -3308,11 +3300,11 @@ test("Random album order spans every page, preserves filtered subsets and leaves
   assert.deepEqual(p.json("player.queue"), queue);
   assert.equal(p.nodes.get("#audio").src, "/api/stream/100?quality=128");
   assert.equal(p.nodes.get("#audio").paused, false);
-  assert.equal(p.nodes.get('#albums-random-order').getAttribute('aria-pressed'), 'true');
+  assert.match(p.nodes.get('#albums-sort-buttons').innerHTML,/data-sort-value="random" aria-pressed="true"/);
 });
 
 
-test("Random order shortcut reshuffles the filtered shelf and preserves playback and selections", async () => {
+test("Random sort button reshuffles the filtered shelf and preserves playback and selections", async () => {
   const p = livePage(); await settle();
   p.run(`playTracks(state.details.get("1"), "100");
     state.albums=Array.from({length:150},(_,i)=>({...state.albums[0],id:String(i),
@@ -3321,39 +3313,40 @@ test("Random order shortcut reshuffles the filtered shelf and preserves playback
     $("#search").value="Album"; $("#filter").value="all"; $("#sort").value="title";
     Math.random=()=>0; showScreen("albums"); state.page=2; render()`);
   const queue=p.json("player.queue"), audio=p.nodes.get("#audio"), requests=p.requests.length;
-  assert.equal(p.nodes.get("#albums-random-order").disabled,false);
-  await p.nodes.get("#albums-random-order").emit("click");
+  assert.doesNotMatch(p.nodes.get("#albums-sort-buttons").innerHTML,/data-sort-value="random"[^>]* disabled/);
+  await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
   const first=p.json("filteredAlbums().map(a=>a.id)");
   assert.equal(first.length,75);
   assert.equal(p.nodes.get("#sort").value,"random");
+  assert.equal(JSON.parse(p.run('localStorage.getItem("tagcast-browse-sorts")')).sort,"random");
   assert.equal(p.run("state.page"),0);
-  assert.equal(p.nodes.get("#albums-random-order").getAttribute("aria-pressed"),"true");
+  assert.match(p.nodes.get("#albums-sort-buttons").innerHTML,/data-sort-value="random" aria-pressed="true"/);
   p.run("Math.random=()=>0.999");
-  await p.nodes.get("#albums-random-order").emit("click");
+  await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
   assert.notDeepEqual(p.json("filteredAlbums().map(a=>a.id)"),first,"Clicking again reshuffles immediately");
   assert.deepEqual(p.json("[state.artist,$('#search').value,$('#filter').value,[...state.selected]]"),["Test artist","Album","all",["1"]]);
   assert.deepEqual(p.json("player.queue"),queue);
   assert.equal(p.nodes.get("#audio"),audio);
   assert.equal(audio.src,"/api/stream/100?quality=128");
   assert.equal(audio.paused,false);
-  assert.equal(p.requests.length,requests,"The shortcut only sorts loaded summaries");
+  assert.equal(p.requests.length,requests,"The sort button only sorts loaded summaries");
   p.nodes.get("#per-page").value="continuous";
   await p.nodes.get("#per-page").emit("change",{target:p.nodes.get("#per-page")});
   p.run("albumContinuous.more();Math.random=()=>0");
   assert.equal(p.run("albumContinuous.count"),75);
-  await p.nodes.get("#albums-random-order").emit("click");
+  await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
   assert.equal(p.run("albumContinuous.count"),60,"Reshuffling resets continuous browsing to its first chunk");
   assert.equal(p.nodes.get("#per-page").value,"continuous");
 });
 
-test("Random order shortcut is unavailable for loading, empty and single-album results", async () => {
+test("Random sort button is unavailable for loading, empty and single-album results", async () => {
   const p=page(); await settle();
-  p.run("const shortcutAlbums=[...state.albums]");
+  p.run('showScreen("albums");const shortcutAlbums=[...state.albums]');
   for(const setup of ['state.albums=[]','state.albums=shortcutAlbums.slice(0,1)','state.albums=shortcutAlbums;state.loading=true']) {
     p.run(`${setup};render()`);
-    assert.equal(p.nodes.get("#albums-random-order").disabled,true,setup);
+    assert.match(p.nodes.get("#albums-sort-buttons").innerHTML,/data-sort-value="random"[^>]* disabled/,setup);
     const before=p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])");
-    await p.nodes.get("#albums-random-order").emit("click");
+    await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
     assert.equal(p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])"),before);
   }
 });
@@ -5598,21 +5591,21 @@ test("random album respects library filters across pages, plays full disc sets a
     {id:"33",name:"Excluded",artist:"B",year:1985,disc:1,tracks:[{id:"330",title:"Jazz",artist:"B",track:1,genres:["Jazz"]}]}
   ], "demo"); state.mode="live"; state.artist="A"; state.page=0; Math.random=()=>0.999; render()`);
   const route = p.location.hash, history = p.history.length;
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.equal(p.run('player.album.id'), "31", "Selection includes albums beyond the first page; disc set has one chance");
   assert.deepEqual(p.json('player.queue.map(t=>t.id)'), ["310","311","320"]);
   assert.equal(p.run('player.index'), 0);
   assert.equal(p.location.hash, route);
   assert.equal(p.history.length, history);
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.equal(p.run('player.album.id'), "30", "The current set is excluded when alternatives exist");
   p.nodes.get("#search").value = "Z Set"; p.run("render()");
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.equal(p.run('player.album.id'), "31");
   p.nodes.get("#search").value = "no match"; p.run("render()");
-  assert.equal(p.nodes.get("#albums-random").disabled, true);
+  assert.equal(p.run("filteredAlbums().some(a=>a.track_count>0)"), false);
   const queue = p.json('player.queue');
-  await p.nodes.get("#albums-random").emit("click");
+  await p.run("playRandomAlbum(filteredAlbums())");
   assert.deepEqual(p.json('player.queue'), queue);
   assert.equal(p.requests.filter(r=>r.options?.method === "POST").length,0);
 });
@@ -5640,7 +5633,7 @@ test("random album uses exact genre, year and decade membership and search, beyo
   p.run('browseView.key=null; updateRandomControls()');
   assert.equal(p.nodes.get("#browse-random").hidden, true);
   p.run('state.mode="demo"; render()');
-  assert.equal(p.nodes.get("#albums-random").disabled, true);
+  assert.equal(p.nodes.get("#browse-random").disabled, true);
 });
 
 test("random playback lazily loads only its selected album, cancels late loads and preserves playback on failure", async () => {
@@ -5654,7 +5647,7 @@ test("random playback lazily loads only its selected album, cancels late loads a
     return new Promise(resolve=>{finish=resolve;});
   });
   let pending = p.run('playRandomAlbum(state.albums.filter(a=>a.id==="2"))'); await settle();
-  assert.equal(p.nodes.get("#albums-random").disabled,true);
+  assert.equal(p.run("player.randomLoading"),true);
   assert.equal(p.nodes.get("#audio").src,original);
   await p.nodes.get("#queue-clear").emit("click");
   finish({ok:true,json:async()=>({albums:[album]})}); await pending;
@@ -5675,7 +5668,6 @@ test("random playback lazily loads only its selected album, cancels late loads a
   assert.equal(p.run('String(player.album.id)'),"1");
   assert.match(p.nodes.get("#toast").textContent,/Offline/);
   assert.equal(p.run('player.randomLoading'),false);
-  assert.equal(p.nodes.get("#albums-random").disabled,false);
 });
 
 test("CD artwork is opt-in, profile-local and does not dirty server settings", async () => {
@@ -13519,4 +13511,18 @@ test('Details follows cross-album queue transitions while the browsed album stay
   assert.equal(p.run('String(workspaceDetailsData().track.id)'),p.run('player.queue[player.index].id'));
   assert.equal(p.requests.length,requests);
   assert.doesNotMatch(p.nodes.get('#album-page').innerHTML,/data-workspace-track/,'Browsing no longer selects a different Details subject');
+});
+
+test('active Random has a trailing decorative shuffle indicator for both album and artist sorting',async()=>{
+  const p=page();await settle();
+  const requests=p.requests.length,queue=p.json('player.queue');
+  for(const kind of ['albums','artists']){
+    p.run(`showScreen(${JSON.stringify(kind)});chooseWorkspaceSort(${JSON.stringify(kind)},'random')`);
+    assert.match(p.nodes.get(`#${kind}-sort-buttons`).innerHTML,/data-sort-value="random" aria-pressed="true"[^>]*>Random<span aria-hidden="true"><svg/);
+    p.run(`chooseWorkspaceSort(${JSON.stringify(kind)},'rating_high')`);
+    const html=p.nodes.get(`#${kind}-sort-buttons`).innerHTML;
+    assert.match(html,/data-sort-value="random" aria-pressed="false"[^>]*>Random<span aria-hidden="true"><\/span>/);
+    assert.match(html,/Rating<span aria-hidden="true">↓<\/span>/);
+  }
+  assert.equal(p.requests.length,requests);assert.deepEqual(p.json('player.queue'),queue);
 });
