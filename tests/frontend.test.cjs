@@ -13341,3 +13341,10 @@ test('setup handles status-first startup and preserves an existing gapless prefe
   assert.equal(p.nodes.get('#first-setup').open,true);
   await p.run('saveFirstSetup()');assert.equal(p.run('gaplessTrial.enabled'),true);assert.equal(p.requests.length,0);
 });
+
+test('setup blocks a capability change while quality controls are open without dropping its draft',async()=>{
+  const p=page({deferReady:true});p.run('state.connection={connected:true,premium:false,account:{id:1},playback_session:"s1"};openFirstSetup();firstSetupAdvance(1);state.connection.premium=true');
+  await p.run('saveFirstSetup()');assert.equal(p.requests.length,0);assert.equal(p.run('firstSetup.step'),1);assert.match(p.nodes.get('#first-setup-error').textContent,/changed/);
+  p.run('pauseFirstSetup();openFirstSetup()');assert.match(p.nodes.get('#first-setup-content').innerHTML,/id="setup-quality"/);
+  assert.equal(p.run('firstSetup.scope===firstSetupScope()'),true);
+});

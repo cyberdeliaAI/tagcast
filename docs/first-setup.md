@@ -26,7 +26,7 @@ partial `/api/settings` bodies. Unchanged settings are not posted; source keys a
 unrelated preferences are never copied into a wizard form. All choices in a step
 are validated before applying it. Failed server persistence leaves the step and
 its inputs available, without applying following local choices. A failed language
-save restores the previous profile language. Account/session replacement or changed
+save restores the previous profile language. Account/session/capability replacement or changed
 baseline preferences blocks a stale save. An in-flight save prevents closing/advancing.
 Existing editor, Settings and theme drafts block opening the wizard.
 
@@ -58,7 +58,7 @@ No real iBroadcast account writes are part of validation.
 ### Validation evidence (2026-11-12)
 
 - Python 3.13.16: 984 tests and 2,640 subtests passed with the local mock.
-- Frontend/i18n and Electron unit suites: 792 tests passed.
+- Frontend/i18n and Electron unit suites: 793 tests passed.
 - Chromium and WebKit: 16 viewport/theme combinations passed, including automatic
   first run, paused/completed profile state, explicit source selection, language
   and browsing choices, server persistence failure/recovery and CSP checks.
