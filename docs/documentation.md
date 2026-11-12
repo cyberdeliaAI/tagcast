@@ -5,6 +5,25 @@ The repository README stays a short introduction, installation entry point and
 feature overview. Detailed source/build notes remain in `docs/` and link to the
 relevant Wiki pages.
 
+## Structure
+
+The README has six parts: what Tagcast is, download and install, what you can do,
+a screenshot and the walkthrough, documentation and support, and privacy, security
+and development. Keep release-specific descriptions out of it: they belong in
+`.github/release-notes/` and the Wiki's *Release history*. Keep the *Code signing
+policy* heading, because `PRIVACY.md` and the Wiki link to `#code-signing-policy`.
+
+The Wiki's `Home.md` is the navigation hub, with six pathways: Getting started,
+Listening to music, Managing your collection, Cleaning and organising, Advanced
+features, and Help and reference. Each guide opens with a breadcrumb to its
+pathway, and `_Sidebar.md` repeats the pathways in short form. Canonical pages own
+shared explanations, so other guides link to them instead of repeating them:
+*Saving, history and recovery*, *Multi-disc albums*, *What is saved where* and
+*Privacy and security*. Pages kept only for older links (*Editing metadata and
+artwork*, *Ratings, favourites and playlists*, *Cleanup and duplicates* and
+*Upcoming changes*) stay in place, because the website, release notes and shared
+links use them.
+
 The Wiki has its own Git history and sidebar:
 
 ```sh
@@ -44,9 +63,15 @@ checks pending indefinitely.
 ## Publishing and screenshots
 
 Document changes on `main` that are not yet released on the Wiki's **Upcoming
-changes (unreleased)** page. Link to it from affected guide pages and the home/sidebar,
-while keeping the released version's instructions usable. When releasing, move the
-instructions into the relevant guide sections and update/remove the availability notes.
+changes (unreleased)** page, which is an archive while nothing is pending. Link to it
+from affected guide pages and the home/sidebar while a change is pending, and keep the
+released version's instructions usable. When releasing, move the instructions into the
+relevant guide sections, add a summary to *Release history* and update or remove the
+availability notes.
+
+At release time, update the version-pinned links: the README download table and
+release link, the Wiki's `Home.md` and `_Footer.md`, and the Homebrew tap. The Wiki's
+*Getting started* download table links to the latest release and needs no version change.
 
 Keep the README's **Code signing policy** and `PRIVACY.md` linked beside desktop
 downloads and from release notes. State the signing status of the actual published
