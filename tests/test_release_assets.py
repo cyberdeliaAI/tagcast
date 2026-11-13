@@ -84,6 +84,8 @@ class ReleaseAssetsTests(unittest.TestCase):
         self.assertEqual(len(run.call_args_list[0].args[0][4:]), 15)
         self.assertIn('--draft=false', run.call_args_list[1].args[0])
         self.assertNotIn('--clobber', str(run.call_args_list))
+        for name, text in assets.update_metadata(self.downloads, '1.2.1').items():
+            self.assertEqual((self.downloads / name).read_bytes(), text.encode('utf-8'))
 
     def test_update_feeds_bind_both_macos_architectures_and_the_installer_to_actual_bytes(self):
         import base64

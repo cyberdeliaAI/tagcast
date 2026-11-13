@@ -47,6 +47,8 @@ function refreshDesktopUpdateControls() {
 
 function applyDesktopUpdate(value) {
   if (!value || typeof value.supported !== "boolean") return;
+  if (Number.isSafeInteger(value.revision) && Number.isSafeInteger(desktopUpdate.data?.revision)
+      && value.revision < desktopUpdate.data.revision) return;
   const wasKnown = Boolean(desktopUpdate.data);
   desktopUpdate.data = value;
   renderUpdateNotice();

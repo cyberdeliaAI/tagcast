@@ -4663,6 +4663,16 @@ test("a failed native update preference stays visible and never pretends the ver
   assert.equal(p.nodes.get("#desktop-update-auto").checked,false);
 });
 
+test("late initial native status and completed actions cannot overwrite a newer updater event",async()=>{
+  const p=page();await settle();
+  p.run('applyDesktopUpdate({revision:2,supported:true,state:"downloading",version:"1.9.0",progress:47});applyDesktopUpdate({revision:1,supported:false,state:"idle",version:""})');
+  assert.equal(p.run('desktopUpdate.data.state'),"downloading");
+  assert.equal(p.run('desktopUpdate.data.supported'),true);
+  p.run('applyDesktopUpdate({revision:4,supported:true,state:"available",version:"1.10.0"});applyDesktopUpdate({revision:3,supported:true,state:"ready",version:"1.9.0"})');
+  assert.equal(p.run('desktopUpdate.data.version'),"1.10.0");
+  assert.equal(p.run('desktopUpdate.data.state'),"available");
+});
+
 test("update checks cannot overlap or overwrite a newer saved automatic-check preference", async () => {
   const p = page(); await settle();
   let finish;

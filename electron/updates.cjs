@@ -52,15 +52,16 @@ class DesktopUpdates {
     Object.assign(this, {current, platform, arch, supported, reason, file, createUpdater, onChange, onConfirm, onInstall, onInstallError, files});
     this.prefs = preferences();
     try { const text = files.readFileSync(file, "utf8"); if (text.length <= 16384) this.prefs = preferences(JSON.parse(text)); } catch { /* new profile */ }
-    this.state = "idle"; this.version = ""; this.progress = 0; this.error = "";
+    this.revision = 0; this.state = "idle"; this.version = ""; this.progress = 0; this.error = "";
     this.busy = null; this.updater = null; this.ready = false; this.installing = false;
     this.approved = false; this.installGeneration = 0;
   }
   snapshot() {
-    return {supported: this.supported, reason: this.reason, state: this.state, version: this.version,
+    return {revision: this.revision, supported: this.supported, reason: this.reason, state: this.state, version: this.version,
       progress: this.progress, error: this.error, autoDownload: this.prefs.autoDownload, skipped: this.prefs.skipped};
   }
   publish() {
+    this.revision++;
     try { this.onChange(this.snapshot()); } catch { /* a closing renderer cannot change update state */ }
     return this.snapshot();
   }
