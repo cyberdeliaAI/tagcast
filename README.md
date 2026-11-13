@@ -6,7 +6,7 @@
 
 Tagcast is an app for browsing, playing and organising your
 [iBroadcast](https://www.ibroadcast.com/) music library. Fix metadata, find covers
-and artist images, review every change, then save it to your iBroadcast account.
+and artist images, then review and save those edits to your iBroadcast account.
 Use the desktop app on macOS, Windows or Linux, or run Tagcast in your browser with
 Python. Both share the same editor and player.
 
@@ -99,7 +99,8 @@ MP3 128 kbps.
   genres, composers and artwork, with online suggestions and a before/after review.
   Tagcast checks saves against iBroadcast afterwards.
 - **Organise.** Native tags, favourites, star ratings, playlists and folders, with
-  CSV and public playlist import.
+  CSV and public playlist import. Star ratings and track hearts save directly;
+  see [ratings and favourites](https://github.com/cyberdeliaAI/tagcast/wiki/Ratings-and-favourites).
 - **Clean up.** Find missing metadata, review duplicate suggestions, merge or split
   albums, or move chosen tracks to iBroadcast's trash. Nothing is permanently deleted.
 - **Download and upload (optional).** [Album downloads](https://github.com/cyberdeliaAI/tagcast/wiki/Downloads)

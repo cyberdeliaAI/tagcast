@@ -92,6 +92,27 @@ on their own pages. Retain the old page addresses and section headings as links 
 the detailed guides when splitting a page, so existing README, Help and shared
 fragment links remain useful. Keep released behavior separate from local test builds.
 
+Before publishing a documentation change:
+
+- Check current instructions against the released source, including visible button
+  labels, accessible names for icon buttons and complete Settings category paths.
+  Keep older screenshot labels and historical release descriptions unchanged.
+- Link save and recovery guidance to the canonical guide. Lyrics and ordinary
+  metadata mutations both follow the send-once rules; ratings and track hearts
+  save directly rather than opening the metadata review. Describe actual defaults
+  and available opt-outs: the public Overview status feed has no Settings switch.
+- Keep upgrade advice pointed at the latest stable release. Put an earlier fix's
+  version-specific explanation in Release history instead of recommending an old
+  download from a current task guide.
+- Check where old fragment links land, not just whether the IDs exist. Put an
+  alias beside the relevant instructions or a specific link to their new section;
+  release bookmarks should lead to the corresponding version. Check Home, the
+  Sidebar, breadcrumbs and affected website links for consistency and duplication.
+- Inspect GitHub's rendered pages as well as local Markdown, including old
+  fragments, tables, images and collapsed details. Report an external service's
+  access refusal separately from a missing link; HTTP success alone does not prove
+  that a fragment reaches the intended explanation.
+
 ## Offline PDF editions
 
 The Wiki's [PDF manual](https://github.com/cyberdeliaAI/tagcast/wiki/PDF-manual)
