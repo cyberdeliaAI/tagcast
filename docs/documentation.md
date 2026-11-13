@@ -39,9 +39,18 @@ reference documents and screenshots. `_Sidebar.md` owns the topic navigation;
 
 ## Checks for documentation changes
 
-Wiki-only edits do not start the application's CI. README and screenshot changes
-in the main repository use a lightweight check when the **entire** pull request or
-push contains only allowlisted documentation: `README.md`, `PRIVACY.md`, `LICENSE`,
+Choose validation by the complete change, rather than waiting for a release:
+
+| Change | Validation |
+|---|---|
+| Wiki only | Check content, links, images and GitHub rendering; no application CI. |
+| Allowlisted documentation only in the main repository | Lightweight documentation checks; no application tests, measured Gapless suite or native builds. |
+| Application code, tests, dependencies, configuration or workflows | Full Tests and Builds before merging, including measured Gapless PCM and macOS/Windows/Linux packages; verify the post-merge runs too. |
+| Official release | Full regression and final distribution checks, including macOS signing/notarization, extracted-package smoke tests, Debian installation and checksums. |
+| Manually dispatched Builds | Full native build/package checks even for documentation; macOS test signing is optional with an empty tag. |
+
+The lightweight route applies only when the **entire** pull request or push
+contains allowlisted documentation: `README.md`, `PRIVACY.md`, `LICENSE`,
 Markdown and images under `docs/`, theme examples under `docs/themes/`, and Markdown
 release notes under `.github/release-notes/`. This check validates local image
 references, nonempty regular files and theme JSON without contacting providers.
@@ -59,6 +68,14 @@ explicitly states that no application tests or builds were needed. A missing or
 invalid scope fails the check instead of silently passing. Do not skip the entire
 workflow with path filters or commit-message instructions: that can leave required
 checks pending indefinitely.
+
+For documentation-only work, do not dispatch Builds or repeat manual listening and
+platform checks just because their required job names remain visible. Inspect
+**Check changed files** and the job summary to see which route actually ran.
+For application work, choose additional hands-on browser, audio and device checks
+for the affected behavior; a passing automated suite does not establish support
+for every physical output or desktop environment. A manual Builds run does not
+replace the separate Tests workflow.
 
 ## Publishing and screenshots
 
