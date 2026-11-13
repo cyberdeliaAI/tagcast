@@ -52,6 +52,7 @@ async function checkUpdates({window, updates}) {
       await until("desktopUpdate.data?.state==='available'");await run("openUpdateDetails()");await frame();
       assert.equal(await run("document.querySelector('#updates-content img')===null"),true,"Provider markup is text, not a resource request");
       assert.equal(await run("document.querySelector('#desktop-update-auto').checked"),false);
+      assert.equal(await run("document.querySelector('#desktop-update-install').hidden"),true,"Installation is unavailable before download, including the first dialog frame");
       await click("#desktop-update-download");await until("desktopUpdate.data?.state==='downloading'");
       native.emit("download-progress",{percent:51});await frame();
       assert.equal(await run("document.querySelector('#desktop-update-status').textContent.includes('51')"),true);

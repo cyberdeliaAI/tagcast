@@ -141,6 +141,7 @@ function openUpdateDetails() {
   if (!url) return;
   renderUpdateDetails(url);
   $("#updates").showModal();
+  refreshDesktopUpdateControls();
 }
 
 $("#update-button").addEventListener("click", openUpdateDetails);
