@@ -30,6 +30,14 @@
     ],
     "extraResources": [
       {
+        "from": "update-config.json",
+        "to": "app-update.yml"
+      },
+      {
+        "from": "../build/electron/update-capabilities.json",
+        "to": "update-capabilities.json"
+      },
+      {
         "from": "../src/tagcast/static/content-security-policy.json",
         "to": "content-security-policy.json"
       },
@@ -69,5 +77,8 @@
       "icon": "../build/assets/tagcast-icon.png",
       "category": "Audio"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.8.12"
   }
 }
