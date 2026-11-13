@@ -133,10 +133,10 @@ Before publishing a documentation change:
 ## Offline PDF editions
 
 The Wiki's [PDF manual](https://github.com/cyberdeliaAI/tagcast/wiki/PDF-manual)
-page links to the illustrated English 1.7.0 guide (52 pages, 11 November 2026). Versioned PDFs live once in the
+page links to the illustrated English 1.9.0 guide (56 pages, 13 November 2026). Versioned PDFs live once in the
 Wiki repository under `manuals/`; the application README and product website link
 to the same file. They are documentation downloads, not application resources or
 release-gate inputs. Keep older screenshots labelled and retain the version/date
 and SHA-256 on the Wiki page when publishing another edition.
 
-The 1.7.0 edition uses the final eight [manual captures](screenshots/2026-11-11-manual/README.md) and earlier archived sets. Keep useful older examples labelled rather than requiring a new screenshot for every step. The historical 1.4.0 PDF remains unchanged in the Wiki. The current PDF's Wiki page records its checksum, source revisions and validation manifest.
+The 1.9.0 edition adds selected [13 November captures](screenshots/2026-11-13-1.9.0/README.md) to earlier illustrated workflows. Its source manifest, checksum and validation reports are published beside the PDF. The 1.7.0 edition uses the final eight [manual captures](screenshots/2026-11-11-manual/README.md) and earlier archived sets. Keep useful older examples labelled rather than requiring a new screenshot for every step. The historical 1.4.0 and 1.7.0 PDFs remain unchanged in the Wiki. The current PDF's Wiki page records its checksum, source revisions and validation manifest.
