@@ -113,6 +113,22 @@ class ReleaseAssetsTests(unittest.TestCase):
                     gh.assert_not_called()
                 report.write_text(saved)
 
+    def test_enabling_windows_updates_requires_verified_signing_before_any_publication(self):
+        report = self.reports / 'smoke-reports-windows-x64/windows-installer.json'
+        data = json.loads(report.read_text())
+        for signed in (None, False, True):
+            with self.subTest(signed=signed):
+                data['authenticode'] = signed
+                report.write_text(json.dumps(data))
+                with patch.object(assets, 'WINDOWS_PUBLISHERS', ['Trusted Publisher']), \
+                        patch.object(assets, 'gh') as gh:
+                    if signed is True:
+                        self.assertEqual(len(assets.checked_assets(self.downloads, self.reports, '1.2.1')), 12)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'verified installer signing'):
+                            self.invoke()
+                    gh.assert_not_called()
+
     def test_missing_changed_extra_and_unsigned_assets_block_all_network_actions(self):
         path = self.downloads / 'tagcast-1.2.1-macos-arm64.zip'
         old = path.read_bytes()
