@@ -2,10 +2,9 @@
 
 Last updated: 13 November 2026.
 
-**Development note (unreleased):** the desktop updater described in
-[Desktop update installation](docs/desktop-updates.md) is prepared for a future
-release; published 1.8.0 retains manual installation. Updater-enabled desktop
-builds can download official GitHub release packages into the operating system's
+The desktop updater introduced in Tagcast 1.9.0 is described in
+[Desktop update installation](docs/desktop-updates.md). Supported desktop
+installations can download official GitHub release packages into the operating system's
 update cache, either explicitly or with a separate off-by-default automatic
 download preference. Installation and restart always require confirmation and
 wait for accepted saves and verification. These requests send no iBroadcast
