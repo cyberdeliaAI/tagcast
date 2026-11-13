@@ -139,7 +139,7 @@ guide. Good places to start:
 - [Editing metadata](https://github.com/cyberdeliaAI/tagcast/wiki/Editing-metadata) and [what is saved where](https://github.com/cyberdeliaAI/tagcast/wiki/Whats-saved-where)
 - [Playback and queue](https://github.com/cyberdeliaAI/tagcast/wiki/Playback-and-queue)
 - [Troubleshooting](https://github.com/cyberdeliaAI/tagcast/wiki/Troubleshooting)
-- [Illustrated PDF manual](https://github.com/cyberdeliaAI/tagcast/wiki/PDF-manual) for offline reading (English, describes 1.7.0)
+- [Illustrated PDF manual](https://github.com/cyberdeliaAI/tagcast/wiki/PDF-manual) for offline reading (English, 56 pages, describes 1.9.0)
 
 Ask questions and share ideas on [r/Tagcast](https://www.reddit.com/r/Tagcast/).
 Report bugs through [GitHub Issues](https://github.com/cyberdeliaAI/tagcast/issues).
