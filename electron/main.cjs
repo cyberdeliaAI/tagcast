@@ -12,12 +12,13 @@ const {installSignIn} = require("./sign-in.cjs");
 const {installUploadPicker} = require("./upload-picker.cjs");
 const {installShutdownWindow} = require("./shutdown-window.cjs");
 const {windowSize, rememberWindowSize} = require("./window-size.cjs");
+const {DesktopUpdates, installation, installUpdateBridge} = require("./updates.cjs");
 const packageInfo = require("./package.json");
 
 app.setName("Tagcast");
 if (process.env.TAGCAST_ELECTRON_PROFILE) app.setPath("userData", path.resolve(process.env.TAGCAST_ELECTRON_PROFILE));
 app.enableSandbox();
-let window, backend, origin, miniPlayer, signIn, stopping, closeChecking, rendererFailed = false, finished = false;
+let window, backend, origin, miniPlayer, signIn, stopping, closeChecking, desktopUpdates, rendererFailed = false, finished = false;
 // Menus, titles and dialogs in the interface language the main window last reported.
 const desktop = createDesktopText(path.join(app.getPath("userData"), "interface.json"));
 const t = name => desktop.text(name);
@@ -38,6 +39,7 @@ async function finishRenderer(status) {
       window.dispatchEvent(new Event('tagcast-shutdown-ready'));setTimeout(check,50);
     }};check();})`).catch(()=>{}),undefined);
   if(status.uncertain){
+    if (desktopUpdates?.installing) { desktopUpdates.defer("uncertain"); return false; }
     const choice=dialog.showMessageBoxSync(shutdownView.window,{type:"warning",buttons:[t("shutdown.reopen"),t("close.close")],defaultId:0,cancelId:0,
       title:t("shutdown.title"),message:t("shutdown.uncertain"),detail:t("shutdown.detail")});
     return choice===1;
@@ -56,6 +58,7 @@ function beginShutdown(){
   stopping=(async()=>{
     const result=await backend?.stop();
     if(result?.stopped===false){
+      if (desktopUpdates?.installing) desktopUpdates.defer();
       stopping=null;
       if (!window) await openMainWindow();
       if (rendererFailed && window && !window.isDestroyed()) {
@@ -70,8 +73,17 @@ function beginShutdown(){
       shutdownView.destroy();
       return;
     }
-    if(result?.code||result?.signal)dialog.showErrorBox(t("shutdown.title"),t("shutdown.interrupted"));
-    finished=true;shutdownView.destroy();window?.destroy();app.quit();
+    if(result?.code||result?.signal){
+      desktopUpdates?.defer("install");
+      dialog.showErrorBox(t("shutdown.title"),t("shutdown.interrupted"));
+    }
+    finished=true;
+    if (desktopUpdates?.installing) {
+      try { if (desktopUpdates.finish()) return; }
+      catch { dialog.showErrorBox(t("update.title"), t("update.failed")); }
+    }
+    shutdownView.destroy();window?.destroy();
+    app.quit();
   })();
 }
 function requestShutdown(){
@@ -85,7 +97,7 @@ function requestShutdown(){
     if(!clean){
       const choice=dialog.showMessageBoxSync(window,{type:"question",buttons:[t("close.keepOpen"),t("close.close")],defaultId:0,cancelId:0,
         title:t("close.title"),message:t("close.message"),detail:t("close.detail")});
-      if(choice!==1)return;
+      if(choice!==1){ if(desktopUpdates?.installing)desktopUpdates.defer();return; }
     }
     beginShutdown();
   })().finally(()=>{closeChecking=null;});
@@ -202,9 +214,32 @@ else {
       }});
     await backend.start();
     if (stopping) return;
+    const updateInstallation = installation({packaged: app.isPackaged, platform: process.platform, arch: process.arch,
+      execPath: process.execPath, resourcesPath: process.resourcesPath});
+    if (!backend.ready.owned) { updateInstallation.supported = false; updateInstallation.reason = "server"; }
+    desktopUpdates = new DesktopUpdates({...updateInstallation, current: packageInfo.version, platform: process.platform, arch: process.arch,
+      file: path.join(app.getPath("userData"), "updates.json"),
+      createUpdater: () => require("./native-updater.cjs").createNativeUpdater(process.platform),
+      onChange: value => { if(window&&!window.isDestroyed())window.webContents.send("updates:status", value); },
+      onInstallError: () => {
+        dialog.showErrorBox(t("update.title"), t("update.failed"));
+        finished=true;shutdownView.destroy();window?.destroy();app.quit();
+      },
+      onConfirm: async () => {
+        if(!backend.ready.owned || stopping) return false;
+        const choice = await dialog.showMessageBox(window, {type:"question", buttons:[t("close.keepOpen"),t("update.install")],
+          defaultId:0,cancelId:0,title:t("update.title"),message:t("update.confirm"),detail:t("close.detail")});
+        return choice.response===1 && !stopping && backend.ready.owned;
+      },
+      onInstall: () => {
+        if(!backend.ready.owned || stopping) { desktopUpdates.defer("install"); return; }
+        requestShutdown();
+      }
+    });
+    installUpdateBridge({ipcMain, window:()=>window, origin:()=>origin, applicationUrl, updates:desktopUpdates});
     await openMainWindow();
     if (stopping || !window) return;
-    if (process.env.TAGCAST_ELECTRON_SMOKE_REPORT) require("./smoke.cjs").check({app, window, origin, backend, miniPlayer});
+    if (process.env.TAGCAST_ELECTRON_SMOKE_REPORT) require("./smoke.cjs").check({app, window, origin, backend, miniPlayer, desktopUpdates});
     if (process.env.TAGCAST_WORKSPACE_SMOKE_REPORT) require("./workspace-check.cjs").check({app, window, origin});
     if (process.env.TAGCAST_TRACK_COMPARISON_SMOKE_REPORT) require("./track-comparison-smoke.cjs").check({app, window, origin});
     if (process.env.TAGCAST_SIGN_IN_SMOKE_REPORT) require("./sign-in-smoke.cjs").check({app, window, origin, signIn});

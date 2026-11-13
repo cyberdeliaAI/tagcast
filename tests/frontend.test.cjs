@@ -4621,6 +4621,58 @@ test("update failures and an older server do not claim success or disturb playba
   assert.ok(filePreview.requests.every(r => r.url !== "/api/updates"), "Opening HTML without the server does not check GitHub");
 });
 
+test("release notes are escaped, bounded and readable without contacting embedded resources", async () => {
+  const p = page(); await settle();
+  p.setUpdateFetch(() => ({ok:true,json:async()=>({current:"1.8.0",latest:"1.9.0",available:true,state:"available",auto_updates:false,
+    notes:'<img src="https://evil.example/pixel" onerror="execute()">\n'+'x'.repeat(60000)})}));
+  await p.run("checkForUpdates(true)");await p.nodes.get("#update-button").emit("click");
+  const html=p.nodes.get("#updates-content").innerHTML;
+  assert.match(html,/class="update-notes" tabindex="0"/);assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img/);
+  assert.ok(html.length<53000);assert.ok(p.requests.every(r=>!r.url.includes("evil.example")));
+});
+
+test("native update progress preserves the dialog and playback while skip remains an explicit preference", async () => {
+  const p=page();await settle();
+  p.run('$("#audio").src="/synthetic/audio";$("#audio").paused=false;applyDesktopUpdate({supported:true,state:"available",version:"1.9.0",autoDownload:false,skipped:""})');
+  p.setUpdateFetch(()=>({ok:true,json:async()=>({current:"1.8.0",latest:"1.9.0",available:true,state:"available",auto_updates:false,notes:"Synthetic release"})}));
+  await p.run("checkForUpdates(true)");await p.nodes.get("#update-button").emit("click");
+  const html=p.nodes.get("#updates-content").innerHTML;
+  assert.match(html,/Download update/);assert.match(html,/Restart and install/);assert.match(html,/Automatically download future updates/);
+  assert.equal(p.nodes.get("#desktop-update-download").hidden,false);
+  assert.equal(p.nodes.get("#desktop-update-install").hidden,true,"Install must be hidden when first opening a not-yet-downloaded update");
+  p.run('applyDesktopUpdate({supported:true,state:"downloading",version:"1.9.0",progress:47,autoDownload:false,skipped:""})');
+  assert.equal(p.nodes.get("#updates-content").innerHTML,html,"progress does not replace controls, focus or notes");
+  assert.equal(p.nodes.get("#desktop-update-download").disabled,true);
+  assert.match(p.nodes.get("#desktop-update-status").textContent,/47/);
+  p.run('applyDesktopUpdate({supported:true,state:"ready",version:"1.9.0",progress:100,autoDownload:false,skipped:""})');
+  assert.equal(p.nodes.get("#desktop-update-install").hidden,false);assert.equal(p.nodes.get("#desktop-update-install").disabled,false);
+  assert.equal(p.nodes.get("#audio").src,"/synthetic/audio");assert.equal(p.nodes.get("#audio").paused,false);
+  p.run('desktopUpdate.explicit=false;applyDesktopUpdate({supported:true,state:"ready",version:"1.9.0",autoDownload:false,skipped:"1.9.0"})');
+  assert.equal(p.nodes.get("#update-button").hidden,true);
+});
+
+test("a failed native update preference stays visible and never pretends the version was skipped",async()=>{
+  const p=page();await settle();
+  p.setUpdateFetch(()=>({ok:true,json:async()=>({current:"1.8.0",latest:"1.9.0",available:true,state:"available",auto_updates:false})}));
+  await p.run("checkForUpdates(true)");
+  p.run('applyDesktopUpdate({supported:true,state:"available",version:"1.9.0",autoDownload:false,skipped:""});window.tagcastUpdates={skip:async()=>({supported:true,state:"available",version:"1.9.0",autoDownload:false,skipped:"",error:"preferences"})};');
+  await p.nodes.get("#update-button").emit("click");
+  await p.click({"[data-update-skip]":{}});await settle();
+  assert.equal(p.nodes.get("#updates").open,true);assert.equal(p.nodes.get("#update-button").hidden,false);
+  assert.match(p.nodes.get("#desktop-update-status").textContent,/could not be saved/);
+  assert.equal(p.nodes.get("#desktop-update-auto").checked,false);
+});
+
+test("late initial native status and completed actions cannot overwrite a newer updater event",async()=>{
+  const p=page();await settle();
+  p.run('applyDesktopUpdate({revision:2,supported:true,state:"downloading",version:"1.9.0",progress:47});applyDesktopUpdate({revision:1,supported:false,state:"idle",version:""})');
+  assert.equal(p.run('desktopUpdate.data.state'),"downloading");
+  assert.equal(p.run('desktopUpdate.data.supported'),true);
+  p.run('applyDesktopUpdate({revision:4,supported:true,state:"available",version:"1.10.0"});applyDesktopUpdate({revision:3,supported:true,state:"ready",version:"1.9.0"})');
+  assert.equal(p.run('desktopUpdate.data.version'),"1.10.0");
+  assert.equal(p.run('desktopUpdate.data.state'),"available");
+});
+
 test("update checks cannot overlap or overwrite a newer saved automatic-check preference", async () => {
   const p = page(); await settle();
   let finish;

@@ -7,18 +7,30 @@ import subprocess
 from pathlib import Path
 
 from release_info import release_info
+from update_metadata import update_metadata
 
 TARGETS = {'macos-arm64': '.zip', 'macos-x64': '.zip',
-           'windows-x64': '.zip', 'linux-x64': '.tar.gz', 'linux-amd64': '.deb'}
+           'windows-x64': '.zip', 'linux-x64': '.tar.gz', 'linux-amd64': '.deb',
+           'windows-x64-setup': '.exe'}
 SIGNING = ('developer_id', 'hardened_runtime', 'notarization_ticket', 'gatekeeper')
+WINDOWS_PUBLISHERS = json.loads((Path(__file__).resolve().parent.parent /
+                                 'electron/update-config.json').read_text())['publisherName']
 
 
 def checked_assets(downloads, reports, version):
     expected = {f'tagcast-{version}-{target}{suffix}' for target, suffix in TARGETS.items()}
     expected |= {name + '.sha256' for name in tuple(expected)}
     paths = {path.name: path for path in downloads.iterdir()}
-    if set(paths) != expected:
-        raise ValueError('All four-platform archives, the Debian package and their checksums are required.')
+    feeds = {'latest.yml', 'latest-mac.yml', 'latest-linux.yml'}
+    if set(paths) not in (expected, expected | feeds):
+        raise ValueError('All platform archives, the Debian package, Windows installer and their checksums are required.')
+    for name in set(paths) - expected:
+        path = paths[name]
+        if path.is_symlink() or not path.is_file():
+            raise ValueError('Update feeds must be regular files.')
+        if path.read_text('utf-8') != update_metadata(downloads, version)[name]:
+            raise ValueError('An update feed does not match the checked packages.')
+    paths = {name: paths[name] for name in expected}
     for name, path in paths.items():
         if path.is_symlink() or not path.is_file() or not path.stat().st_size:
             raise ValueError('Release assets must be nonempty regular files.')
@@ -28,6 +40,14 @@ def checked_assets(downloads, reports, version):
             digest = hashlib.file_digest(source, 'sha256').hexdigest()
         if paths[name + '.sha256'].read_text('ascii').strip() != f'{digest}  {name}':
             raise ValueError('A release checksum does not match its archive.')
+        if name.endswith('-windows-x64-setup.exe'):
+            data = json.loads((reports / 'smoke-reports-windows-x64/windows-installer.json').read_text())
+            if (any(data.get(key) is not True for key in ('installed_startup', 'restart', 'removed'))
+                    or data.get('package') != name or data.get('version') != version
+                    or data.get('sha256') != digest):
+                raise ValueError('Windows installer evidence is missing or does not match the package.')
+            if WINDOWS_PUBLISHERS and data.get('authenticode') is not True:
+                raise ValueError('An enabled Windows updater requires verified installer signing.')
         if name.endswith('.deb'):
             for distribution in ('ubuntu-22.04', 'ubuntu-24.04'):
                 data = json.loads((reports / f'deb-reports-{distribution}' / 'linux-deb.json').read_text())
@@ -59,6 +79,11 @@ def publish(tag, commit, downloads, reports, info):
         raise ValueError('Only the draft for this exact tested commit can be published.')
     if release['assets']:
         raise ValueError('Draft already has assets; review it explicitly before replacing anything.')
+    feeds = {} if info['prerelease'] else update_metadata(downloads, info['version'])
+    for name, contents in feeds.items():
+        path = downloads / name
+        path.write_bytes(contents.encode('utf-8'))
+        assets.append(path)
     subprocess.run(['gh', 'release', 'upload', tag, *(str(path) for path in assets)], check=True)
     uploaded = gh('release', 'view', tag, '--json', fields)
     actual = {item['name']: item['size'] for item in uploaded['assets']}

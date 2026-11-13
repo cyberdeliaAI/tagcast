@@ -37,12 +37,12 @@ class UpdateTests(unittest.TestCase):
         self.response.iter_content.return_value = [json.dumps({"tag_name": f"v{version}", "name": "Tagcast release", **extra}).encode()]
 
     def test_public_check_compares_versions_and_constructs_its_own_link(self):
-        self.reply(html_url="https://evil.example/", body="private data", token="secret")
+        self.reply(html_url="https://evil.example/", body="Public release notes", token="secret")
         result = self.checker().check()
         self.assertTrue(result["available"])
         self.assertEqual(result["url"], updates.RELEASE_PAGE + "0.11.0")
         self.assertNotIn("secret", json.dumps(result))
-        self.assertNotIn("private data", json.dumps(result))
+        self.assertEqual(result["notes"], "Public release notes")
         self.assertFalse(self.session.trust_env)
         args, kwargs = self.session.get.call_args
         self.assertEqual(args, (updates.RELEASE_API,))
@@ -66,6 +66,14 @@ class UpdateTests(unittest.TestCase):
         with patch.object(updates.time, "time", return_value=100000 + updates.CHECK_INTERVAL):
             self.checker().check()
         self.assertEqual(self.session.get.call_count, 2)
+
+    def test_release_notes_are_bounded_plain_data_and_survive_the_daily_cache(self):
+        text = '<script>not executed</script>\n' + 'x' * updates.MAX_NOTES
+        self.reply(body=text)
+        result = self.checker().check()
+        self.assertEqual(result['notes'], text[:updates.MAX_NOTES])
+        self.assertEqual(self.checker().check()['notes'], result['notes'])
+        self.session.get.assert_called_once()
 
     def test_disabled_automatic_checks_still_allow_an_explicit_manual_check(self):
         checker = self.checker()
