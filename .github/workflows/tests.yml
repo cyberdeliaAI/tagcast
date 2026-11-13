@@ -35,7 +35,7 @@ jobs:
                 "Documentation checks passed; application tests/builds are not needed.")
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.scope.outputs.full == 'true'
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: needs.scope.outputs.full == 'true'
         with:
           python-version: ${{ matrix.python }}
@@ -91,7 +91,7 @@ jobs:
         if: needs.scope.outputs.full == 'true'
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: needs.scope.outputs.full == 'true'
       # --help makes Tagcast print its usage and stop, so the whole start-up path runs
       # without leaving a server behind.
