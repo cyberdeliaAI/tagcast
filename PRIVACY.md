@@ -1,6 +1,17 @@
 # Tagcast privacy policy
 
-Last updated: 1 November 2026.
+Last updated: 13 November 2026.
+
+**Development note (unreleased):** the desktop updater described in
+[Desktop update installation](docs/desktop-updates.md) is prepared for a future
+release; published 1.8.0 retains manual installation. Updater-enabled desktop
+builds can download official GitHub release packages into the operating system's
+update cache, either explicitly or with a separate off-by-default automatic
+download preference. Installation and restart always require confirmation and
+wait for accepted saves and verification. These requests send no iBroadcast
+credentials, library records or track metadata. Download preference and skipped
+version stay in the local Electron profile. Release descriptions are displayed
+as plain text, without loading embedded images or scripts.
 
 This policy describes the Tagcast application distributed from
 [cyberdeliaAI/tagcast](https://github.com/cyberdeliaAI/tagcast), including its

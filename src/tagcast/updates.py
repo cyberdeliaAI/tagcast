@@ -15,6 +15,7 @@ RELEASE_API = "https://api.github.com/repos/cyberdeliaAI/tagcast/releases/latest
 RELEASE_PAGE = "https://github.com/cyberdeliaAI/tagcast/releases/tag/v"
 CHECK_INTERVAL = 24 * 60 * 60
 MAX_RESPONSE = 1024 * 1024
+MAX_NOTES = 50000
 log = logging.getLogger("tagcast")
 
 
@@ -28,7 +29,7 @@ def version_order(version):
 
 
 def release_info(data):
-    """Keep only a stable version and a bounded label; construct our own release URL."""
+    """Keep a stable version, bounded label and plain notes; construct our own release URL."""
     if not isinstance(data, dict) or data.get("draft") or data.get("prerelease"):
         raise ValueError("Not a stable release")
     tag = data.get("tag_name")
@@ -37,7 +38,9 @@ def release_info(data):
     version = tag[1:]
     version_order(version)
     name = data.get("name")
-    return {"version": version, "name": name[:200] if isinstance(name, str) else f"Tagcast {version}"}
+    notes = data.get("body")
+    return {"version": version, "name": name[:200] if isinstance(name, str) else f"Tagcast {version}",
+            "notes": notes[:MAX_NOTES] if isinstance(notes, str) else ""}
 
 
 class UpdateChecker:
@@ -56,7 +59,7 @@ class UpdateChecker:
             latest = cached.get("latest")
             if isinstance(latest, dict):
                 try:
-                    self.cache["latest"] = release_info({"tag_name": f'v{latest.get("version")}', "name": latest.get("name")})
+                    self.cache["latest"] = release_info({"tag_name": f'v{latest.get("version")}', "name": latest.get("name"), "body": latest.get("notes")})
                 except ValueError:
                     pass
             if cached.get("error"):
@@ -75,6 +78,7 @@ class UpdateChecker:
         state = "error" if error else "available" if available else "current" if latest else "unchecked" if enabled else "disabled"
         return {"current": __version__, "latest": latest["version"] if latest else None,
                 "name": latest["name"] if latest else "", "available": available,
+                "notes": latest.get("notes", "") if latest else "",
                 "url": RELEASE_PAGE + latest["version"] if available else "",
                 "checked_at": self.cache.get("checked_at"), "auto_updates": enabled,
                 "state": state, "error": error}

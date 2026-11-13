@@ -17,6 +17,7 @@ from build_binary import prepare_assets, system_name
 from check_electron import check_app
 from linux_deb import build_deb
 from release_info import release_info
+from windows_installer import build_installer
 
 ROOT = Path(__file__).resolve().parent.parent
 MAC_SIGNING_SECRETS = (
@@ -150,6 +151,9 @@ def main():
     if not npm:
         parser.error("Install Node.js 24 LTS with npm to build Electron")
     prepare_assets(include_tk=False)
+    capabilities = ROOT / "build/electron/update-capabilities.json"
+    capabilities.parent.mkdir(parents=True, exist_ok=True)
+    capabilities.write_text(json.dumps({"protocol": 1, "developerId": args.sign_macos}) + "\n")
     subprocess.run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm",
                     "--distpath", str(ROOT / "build/electron/backend"),
                     "--workpath", str(ROOT / "build/electron/pyinstaller"),
@@ -178,6 +182,11 @@ def main():
         archive_app(directory, info, team_id)
         if sys.platform == "linux":
             build_deb(directory, info, node, plain_env)
+        elif sys.platform == "win32":
+            if os.environ.get("GITHUB_ACTIONS") == "true" or os.environ.get("TAGCAST_TEST_WINDOWS_INSTALLER") == "1":
+                build_installer(directory, info, node, plain_env)
+            else:
+                print("Portable ZIP verified. NSIS validation requires an explicitly disposable Windows environment.")
 
 
 if __name__ == "__main__":
