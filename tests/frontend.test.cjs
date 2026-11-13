@@ -4638,6 +4638,8 @@ test("native update progress preserves the dialog and playback while skip remain
   await p.run("checkForUpdates(true)");await p.nodes.get("#update-button").emit("click");
   const html=p.nodes.get("#updates-content").innerHTML;
   assert.match(html,/Download update/);assert.match(html,/Restart and install/);assert.match(html,/Automatically download future updates/);
+  assert.equal(p.nodes.get("#desktop-update-download").hidden,false);
+  assert.equal(p.nodes.get("#desktop-update-install").hidden,true,"Install must be hidden when first opening a not-yet-downloaded update");
   p.run('applyDesktopUpdate({supported:true,state:"downloading",version:"1.9.0",progress:47,autoDownload:false,skipped:""})');
   assert.equal(p.nodes.get("#updates-content").innerHTML,html,"progress does not replace controls, focus or notes");
   assert.equal(p.nodes.get("#desktop-update-download").disabled,true);
