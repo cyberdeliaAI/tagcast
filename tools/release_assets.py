@@ -82,7 +82,7 @@ def publish(tag, commit, downloads, reports, info):
     feeds = {} if info['prerelease'] else update_metadata(downloads, info['version'])
     for name, contents in feeds.items():
         path = downloads / name
-        path.write_text(contents, encoding='utf-8')
+        path.write_bytes(contents.encode('utf-8'))
         assets.append(path)
     subprocess.run(['gh', 'release', 'upload', tag, *(str(path) for path in assets)], check=True)
     uploaded = gh('release', 'view', tag, '--json', fields)
