@@ -64,6 +64,27 @@ The portable TAR.GZ does not install these hooks: Ubuntu 24.04 can require
 additional sandbox integration for that archive. Other Linux distributions are
 not covered by these Debian installation checks.
 
+## Validation scope
+
+Application changes run the automated Tests and Builds workflows before merging
+and again on main. Documentation-only changes use the separate
+[lightweight checks](documentation.md#checks-for-documentation-changes).
+Official releases also require verification of the final signed macOS archives
+and the complete distribution; an earlier PR build does not establish the
+integrity or signing of a later package.
+
+For 1.8.0, physical Linux Wayland validation remains incomplete. CI's virtual
+Linux display does not replace testing on a physical Wayland desktop. Audio
+compatibility depends on the device, driver and operating system; automated
+package/PCM checks do not cover every output, sleep/wake or device-change path.
+See [Gapless validation and platform scope](gapless-playback.md#validation-and-platform-scope)
+for the measured audio guarantees and fallback limits.
+
+Native pointer and focus checks need an isolated desktop: competing desktop
+automation can steal focus and invalidate a test run. Investigate those failures
+rather than relaxing assertions. Successful automated checks still need targeted
+hands-on validation on the affected desktop and audio output.
+
 ## CLI and Python/browser use
 
 The bundled `tagcast-cli` (`tagcast-cli.exe` on Windows) supports the same `--port`,
