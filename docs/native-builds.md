@@ -9,11 +9,11 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-1.7.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-1.7.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-1.7.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-1.7.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
-| Debian / Ubuntu, x64 | `tagcast-1.7.0-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.7.0-linux-amd64.deb`; open Tagcast from the app menu. |
+| macOS, Apple Silicon | `tagcast-1.9.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-1.9.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-1.9.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-1.9.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | `tagcast-1.9.0-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.9.0-linux-amd64.deb`; open Tagcast from the app menu. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -73,7 +73,7 @@ Official releases also require verification of the final signed macOS archives
 and the complete distribution; an earlier PR build does not establish the
 integrity or signing of a later package.
 
-For 1.8.0, physical Linux Wayland validation remains incomplete. CI's virtual
+Physical Linux Wayland validation remains incomplete. CI's virtual
 Linux display does not replace testing on a physical Wayland desktop. Audio
 compatibility depends on the device, driver and operating system; automated
 package/PCM checks do not cover every output, sleep/wake or device-change path.
@@ -191,4 +191,6 @@ Existing release assets are never overwritten automatically. Replacing a public
 archive requires a separate, explicitly reviewed publication procedure.
 The tag must match its application version. Tags from before 0.10.1 retain the
 earlier single-console executable format, using the pinned legacy recipe. Only
-publication jobs have write permission. There is no automatic app updater.
+publication jobs have write permission. The [desktop updater](desktop-updates.md)
+is available from 1.9.0 for supported installations; installation always requires
+explicit confirmation. 1.8.0 users install 1.9.0 manually once.

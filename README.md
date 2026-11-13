@@ -22,17 +22,17 @@ files on your computer.
 
 ### Desktop app — no Python required
 
-Download the archive for your computer from
-[Tagcast 1.8.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.8.0)
-([release notes](.github/release-notes/1.8.0.md)):
+Download the package for your computer from
+[Tagcast 1.9.0](https://github.com/cyberdeliaAI/tagcast/releases/tag/v1.9.0)
+([release notes](.github/release-notes/1.9.0.md)):
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.8.0/tagcast-1.8.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
-| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.8.0/tagcast-1.8.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
-| Windows, x64 | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.8.0/tagcast-1.8.0-windows-x64.zip) | Extract the whole archive, then open `Tagcast.exe`. |
-| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.8.0/tagcast-1.8.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
-| Debian / Ubuntu, x64 | [DEB](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.8.0/tagcast-1.8.0-linux-amd64.deb) | Install with `sudo apt install ./tagcast-1.8.0-linux-amd64.deb`; open Tagcast from the app menu. |
+| macOS, Apple Silicon | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.9.0/tagcast-1.9.0-macos-arm64.zip) | Move `Tagcast.app` to Applications and open it. |
+| macOS, Intel | [ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.9.0/tagcast-1.9.0-macos-x64.zip) | Move `Tagcast.app` to Applications and open it. |
+| Windows, x64 | [Installer](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.9.0/tagcast-1.9.0-windows-x64-setup.exe) · [portable ZIP](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.9.0/tagcast-1.9.0-windows-x64.zip) | Run the installer, or extract the whole ZIP and open `Tagcast.exe`. |
+| Linux, x64 | [TAR.GZ](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.9.0/tagcast-1.9.0-linux-x64.tar.gz) | Extract with permissions intact; run `./Tagcast` in the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | [DEB](https://github.com/cyberdeliaAI/tagcast/releases/download/v1.9.0/tagcast-1.9.0-linux-amd64.deb) | Install with `sudo apt install ./tagcast-1.9.0-linux-amd64.deb`; open Tagcast from the app menu. |
 
 macOS needs **13 Ventura or newer**. Linux needs a graphical desktop and glibc 2.35
 or newer. Keep the complete package together. Each archive has a SHA-256 companion
@@ -69,9 +69,13 @@ for port options and the differences from the desktop app.
 
 ### Updating
 
-Quit the old Tagcast, then replace it with the new download (Homebrew:
-`brew update`, then `brew upgrade --cask cyberdeliaAI/apps/tagcast`). Your settings
-stay in place. Tagcast notifies you about new releases but never installs them.
+Install 1.9.0 once using the normal download or package-manager route; 1.8.0 cannot
+install this first updater-enabled version itself. From 1.9.0, supported signed
+macOS and installed Debian/Ubuntu copies can download a later stable update and
+install it after your confirmation. Portable copies and unsigned Windows builds
+keep manual updates. Homebrew copies use `brew update`, then
+`brew upgrade --cask cyberdeliaAI/apps/tagcast`. Your settings stay in place.
+Downloading is optional, and ordinary Quit never installs an update.
 See [Updating Tagcast](https://github.com/cyberdeliaAI/tagcast/wiki/Getting-started#updating-tagcast).
 
 ### Your iBroadcast account

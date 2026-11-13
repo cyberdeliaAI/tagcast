@@ -1,10 +1,9 @@
-# Desktop update installation (unreleased)
+# Desktop update installation
 
-This feature is prepared for the next desktop release. Published Tagcast 1.8.0
-continues to check for updates and open the release page; it cannot install this
-first updater-enabled version itself. Install that version once through the
-normal download or package-manager route. No version or release tag changes are
-part of this work.
+Tagcast 1.9.0 is the first updater-enabled desktop release. Tagcast 1.8.0
+continues to check for updates and open the release page; it cannot install
+1.9.0 itself. Install 1.9.0 once through the normal download or package-manager
+route. Supported installations can then offer a later stable release.
 
 ## User flow
 
@@ -90,7 +89,8 @@ installation before safe shutdown. Browser checks must preserve focus, playback
 and history while progress changes. Native package checks must retain sandboxing,
 CLI operation and the existing shutdown suite.
 
-Before enabling the first public update chain, also validate an actual upgrade
+There is no earlier public updater-enabled client that can install 1.9.0. Before
+publishing the first later stable release that 1.9.0 can install, validate an actual upgrade
 between two disposable packages on both macOS architectures, Windows and the
 supported Debian/Ubuntu systems, including canceled installation and failed
 package verification. Signed macOS upgrade validation needs real signed test
@@ -103,7 +103,9 @@ native package, the existing 15 shutdown cases, and updater pointer/progress
 interaction at 420, 760, 768 and 1280 pixels in light and dark themes. Synthetic
 transfers exercise the pinned updater's actual checksum/cache path, including
 corrupt packages. These checks do not establish signed in-place upgrade behavior
-or replace the cross-platform CI and two-version validation above.
+or replace the cross-platform CI and two-version validation above. The first
+subsequent update chain must satisfy that gate; publishing the initial 1.9.0 client
+does not establish signed in-place upgrade behavior.
 
 References: [electron-builder 26 updater](https://www.electron.build/v26/docs/features/auto-update/),
 [native builds](native-builds.md), [signing](code-signing.md).
