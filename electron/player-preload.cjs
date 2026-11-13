@@ -53,3 +53,14 @@ window.addEventListener("DOMContentLoaded", () => {
 contextBridge.exposeInMainWorld("tagcastUploads", {
   choose: kind => ipcRenderer.invoke("uploads:choose", kind)
 });
+
+// Fixed updater actions only. No URL, local path or installer command crosses IPC.
+contextBridge.exposeInMainWorld("tagcastUpdates", {
+  status: () => ipcRenderer.invoke("updates:status"),
+  offer: (version, automatic) => ipcRenderer.invoke("updates:offer", {version, automatic}),
+  download: version => ipcRenderer.invoke("updates:download", version),
+  install: version => ipcRenderer.invoke("updates:install", version),
+  skip: version => ipcRenderer.invoke("updates:skip", version),
+  configure: autoDownload => ipcRenderer.invoke("updates:configure", autoDownload),
+  onStatus: callback => listen("updates:status", callback)
+});

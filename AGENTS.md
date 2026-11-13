@@ -1170,7 +1170,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   credentials or library data. Cache attempts (including failures) for 24 hours in
   `updates.json`; manual checks bypass the interval. `auto_updates` is a local
   setting. Keep failures separate from library loading, validate versions and
-  construct release URLs for this repository. Never install or restart automatically.
+  construct release URLs for this repository. Release notes are bounded plain text;
+  never execute provider HTML or load its embedded images. Browser/source and portable
+  builds retain manual installation. The desktop updater uses fixed, version-pinned
+  GitHub release feeds and exact platform filenames, with SHA-512 package verification.
+  Downloading is opt-in; installation always needs explicit native confirmation.
+  Never install on ordinary quit. Keep Homebrew copies with their package manager.
+  Drain the owned backend and all accepted writes/read-backs before installation;
+  defer on uncertainty, canceled shutdown or a reused server. Never force-stop a write.
+  Publish update feeds only with all final verified release packages, including the
+  additional tested Windows NSIS installer; preserve portable ZIP/TAR and the CLI.
 - The desktop launcher remembers automatic browser opening in `launcher.json`,
   separately from server settings. Default to enabled; the manual browser button
   stays available. CLI `--open` remains explicit.
@@ -1189,7 +1198,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   webviews disabled, and no generic preload/IPC bridge. Restrict navigation to the
   app entry pages, external opening to parsed credential-free HTTPS, and permissions
   to the app main frame's fullscreen/output/sanitized clipboard; never grant capture.
-  Hash existing inline theme scripts in CSP. No automatic updater or playback restart.
+  Hash existing inline theme scripts in CSP. The updater has only fixed, main-frame-bound
+  IPC actions; never expose feeds, file paths, commands or a generic IPC bridge.
+  Automatic download defaults off; installation and restart always stay explicit.
   Electron profiles/browser-local histories are separate; server credentials/settings
   and local account favourites retain their normal folder. Fuses disable RunAsNode,
   Node options/inspect injection and loading unpackaged application code.

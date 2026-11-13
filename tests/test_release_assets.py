@@ -40,6 +40,11 @@ class ReleaseAssetsTests(unittest.TestCase):
                         **dict.fromkeys(('installed_startup', 'sandbox', 'desktop_launcher', 'cli', 'removed'), True),
                         'package': path.name, 'sha256': digest, 'version': '1.2.1',
                         'distribution': distribution}))
+            if suffix == '.exe':
+                report = self.reports / 'smoke-reports-windows-x64/windows-installer.json'
+                report.parent.mkdir(parents=True)
+                report.write_text(json.dumps({'installed_startup': True, 'restart': True, 'removed': True,
+                                              'package': path.name, 'version': '1.2.1', 'sha256': digest}))
 
     def test_debian_package_requires_matching_installation_evidence_on_both_distributions(self):
         for distribution in ('ubuntu-22.04', 'ubuntu-24.04'):
@@ -69,14 +74,44 @@ class ReleaseAssetsTests(unittest.TestCase):
 
     def test_complete_checked_assets_are_uploaded_before_publication(self):
         names = [{'name': p.name, 'size': p.stat().st_size} for p in self.downloads.iterdir()]
+        names.extend({'name': name, 'size': len(text.encode())}
+                     for name, text in assets.update_metadata(self.downloads, '1.2.1').items())
         with patch.object(assets, 'gh', side_effect=[self.release(), self.release(assets=names)]), \
                 patch.object(assets.subprocess, 'run') as run:
             self.invoke()
         self.assertEqual(len(run.call_args_list), 2)
         self.assertEqual(run.call_args_list[0].args[0][:3], ['gh', 'release', 'upload'])
-        self.assertEqual(len(run.call_args_list[0].args[0][4:]), 10)
+        self.assertEqual(len(run.call_args_list[0].args[0][4:]), 15)
         self.assertIn('--draft=false', run.call_args_list[1].args[0])
         self.assertNotIn('--clobber', str(run.call_args_list))
+
+    def test_update_feeds_bind_both_macos_architectures_and_the_installer_to_actual_bytes(self):
+        import base64
+        feeds = assets.update_metadata(self.downloads, '1.2.1')
+        self.assertEqual(set(feeds), {'latest.yml', 'latest-mac.yml', 'latest-linux.yml'})
+        for text in feeds.values():
+            data = json.loads(text)
+            self.assertEqual(data['version'], '1.2.1')
+            for entry in data['files']:
+                raw = (self.downloads / entry['url']).read_bytes()
+                self.assertEqual(entry['size'], len(raw))
+                self.assertEqual(entry['sha512'], base64.b64encode(hashlib.sha512(raw).digest()).decode())
+        self.assertEqual(len(json.loads(feeds['latest-mac.yml'])['files']), 2)
+        self.assertTrue(json.loads(feeds['latest.yml'])['files'][0]['url'].endswith('-setup.exe'))
+
+    def test_windows_installer_requires_matching_install_and_restart_evidence(self):
+        report = self.reports / 'smoke-reports-windows-x64/windows-installer.json'
+        saved = report.read_text()
+        for key in ('installed_startup', 'restart', 'removed', 'package', 'version', 'sha256'):
+            with self.subTest(key=key):
+                data = json.loads(saved)
+                data[key] = False
+                report.write_text(json.dumps(data))
+                with patch.object(assets, 'gh') as gh:
+                    with self.assertRaises(ValueError):
+                        self.invoke()
+                    gh.assert_not_called()
+                report.write_text(saved)
 
     def test_missing_changed_extra_and_unsigned_assets_block_all_network_actions(self):
         path = self.downloads / 'tagcast-1.2.1-macos-arm64.zip'
