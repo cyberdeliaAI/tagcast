@@ -13795,7 +13795,7 @@ test('local artist discovery starts only on a click and preserves playback, sele
   const before=p.run('JSON.stringify({src:audio.src,paused:audio.paused,queue:player.queue,selected:[...state.selected],history:state.history})');
   const history=p.history.length;
   p.setFetch((url,options)=>{
-    assert.equal(url,'/api/discover'); assert.deepEqual(JSON.parse(options.body),selection);
+    assert.equal(url,'/api/discover'); assert.deepEqual(JSON.parse(options.body),{...selection,source:'local'});
     return {ok:true,json:async()=>data};
   });
   await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
@@ -13920,4 +13920,89 @@ test('local artist discovery stays hidden outside live named artist pages and bo
   assert.equal(live.p.run('artistDiscover.entries.size'),12);
   live.p.run('state.loading=true;renderArtistDiscover()');assert.equal(live.p.nodes.get('#artist-discover').hidden,true);
   live.p.run('state.loading=false;state.artist=null;renderArtistDiscover()');assert.equal(live.p.nodes.get('#artist-discover').hidden,true);
+});
+
+async function lastfmDiscoverPage() {
+  const setup=await localDiscoverPage(),{p,data,selection}=setup;
+  p.run('lookup.sources=[{name:"lastfm",enabled:true}];$("#artist-discover-source").value="lastfm"');
+  await p.nodes.get('#artist-discover-source').emit('change');
+  Object.assign(data,{source:'lastfm',requested_source:'lastfm',fallback:false,expires_in:60});
+  Object.assign(data.albums[0],{shared_genres:[],related_artist:'Related Artist',lastfm_url:'https://www.last.fm/music/Related%20Artist'});
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/discover');assert.deepEqual(JSON.parse(options.body),{...selection,source:'lastfm'});
+    return {ok:true,json:async()=>data};
+  });
+  return setup;
+}
+
+test('Last.fm selection is explicit and shows related artists with attribution without changing playback',async()=>{
+  const {p}=await lastfmDiscoverPage();
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
+  assert.equal(p.nodes.get('#artist-discover-privacy').hidden,false);
+  assert.equal(p.nodes.get('#artist-discover-setup').hidden,true);
+  const before=p.run('JSON.stringify({queue:player.queue,selected:[...state.selected],history:state.history,src:audio.src})');
+  await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
+  const html=p.nodes.get('#artist-discover-cards').innerHTML;
+  assert.match(html,/Related artist on Last.fm: Related Artist/);
+  assert.match(html,/https:\/\/www.last.fm\/music\/Related%20Artist/);
+  assert.doesNotMatch(html,/Shared genres:/);
+  assert.equal(p.nodes.get('#artist-discover-attribution').hidden,false);
+  assert.equal(p.nodes.get('#artist-discover-fallback').hidden,true);
+  assert.equal(p.run('JSON.stringify({queue:player.queue,selected:[...state.selected],history:state.history,src:audio.src})'),before);
+});
+
+test('healthy empty Last.fm discovery clearly labels the current local genre fallback',async()=>{
+  const {p,data}=await lastfmDiscoverPage();Object.assign(data,{source:'local',fallback:true});
+  data.albums[0].shared_genres=['Rock'];delete data.albums[0].related_artist;delete data.albums[0].lastfm_url;
+  await p.run('loadArtistDiscover()');
+  assert.equal(p.nodes.get('#artist-discover-fallback').hidden,false);
+  assert.equal(p.nodes.get('#artist-discover-attribution').hidden,true);
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Shared genres: Rock/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
+});
+
+test('Last.fm source changes and saved settings reject late results without automatic fallback',async()=>{
+  for(const change of ['$("#artist-discover-source").value="local"','lookup.settingsRevision+=1']) {
+    const {p,data}=await lastfmDiscoverPage();let resolve;
+    p.setFetch(()=>new Promise(done=>{resolve=done}));const pending=p.run('loadArtistDiscover()');await settle();
+    p.run(change);
+    if(change.includes('value=')) await p.nodes.get('#artist-discover-source').emit('change');
+    else p.run('renderArtistDiscover()');
+    resolve({ok:true,json:async()=>data});await pending;
+    assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
+    assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
+  }
+});
+
+test('Last.fm errors remain visible and do not masquerade as no matches',async()=>{
+  for(const code of ['lastfm_missing_key','lastfm_disabled','lastfm_key','lastfm_busy','lastfm_identity','lastfm_unavailable']) {
+    const {p}=await lastfmDiscoverPage();
+    p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'Failure',code:'discover.'+code})}));
+    await p.run('loadArtistDiscover()');
+    assert.equal(p.nodes.get('#artist-discover-fallback').hidden,true);
+    assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
+    assert.match(p.nodes.get('#artist-discover-status').textContent,/Last.fm/);
+    assert.equal(p.nodes.get('#artist-discover-refresh').disabled,false);
+  }
+});
+
+test('Last.fm results respect origin expiry when reopening and translation sends no request',async()=>{
+  const {p,data}=await lastfmDiscoverPage();data.expires_in=0;
+  await p.run('loadArtistDiscover()');assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Related Artist/);
+  await p.nodes.get('#artist-discover-toggle').emit('click');
+  await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,2);
+  const count=p.requests.filter(r=>r.url==='/api/discover').length;
+  await p.run('TagcastI18n.use("nl")');await settle();
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Verwante artiest op Last.fm/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,count);
+});
+
+test('Last.fm refuses untrusted catalogue links and responses for a different source',async()=>{
+  for(const modify of [data=>{data.albums[0].lastfm_url='https://attacker.example/'},data=>{data.requested_source='local'},data=>{data.expires_in=-1}]) {
+    const {p,data}=await lastfmDiscoverPage();modify(data);
+    await p.run('loadArtistDiscover()');
+    assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
+    assert.match(p.nodes.get('#artist-discover-status').textContent,/could not be read/);
+  }
 });

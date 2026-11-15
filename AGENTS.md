@@ -35,8 +35,9 @@ The application consists of a Python server and a plain JavaScript frontend.
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
-- `src/tagcast/discover.py`: explicitly requested, read-only artist discovery from loaded
-  album summaries; snapshot-local genre index, bounded diverse results, no provider or audio reads.
+- `src/tagcast/discover.py`: explicitly requested artist discovery from loaded genres/ratings
+  or opt-in Last.fm similarity, with snapshot-local indexes and strict local artist matching.
+  `discover_lastfm.py` owns bounded explicit public reads, pacing, RAM caching and source errors.
 - `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
@@ -958,18 +959,26 @@ their shared browsing/player state; a fast local response can otherwise race the
   ratings, audio or the queue and never fetches track details or biographies. Migrate
   the former separate album-favourites shortcut without losing access when either old
   shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
-- Artist Discover starts only on an explicit artist-page action or Refresh suggestions.
-  Rank the loaded library's displayed album sets by weighted shared genres, then native
-  album/artist ratings, with at most six results and one album per represented artist.
-  Use exact native named groups (including additional album artists); artist ID zero
-  identifies compilations, never a name string. Keep the index on the captured Library
-  object and coalesce builds outside Studio.lock. Reject account/session/library/combine
-  replacements before publishing; bound browser result memory to twelve artist groups.
-  Opening pages, changing language and Back reuse local results without new requests.
-  No provider searches, library refresh, disk reports, audio analysis or metadata writes.
-  Artwork and explicit Open/Play/Queue reuse existing routes and player guards; omit
-  playback actions when loaded streaming metadata is incomplete. Do not imply listening
-  history, external similarity, edition identity or audio availability guarantees.
+- Artist Discover starts only on an explicit artist-page action or Refresh. Local genres
+  is the initial choice; changing the source alone never requests. Last.fm reuses the
+  enabled Sources & keys API key server-side and sends only the chosen full artist name
+  to artist.getSimilar (autocorrect off). Match up to 100 returned artists strictly with
+  unique local NFC/case/whitespace identities; never strip punctuation, accents or version
+  text, infer aliases or use fuzzy MBIDs. Provider similarity ranks artists; native ratings
+  choose their albums. Healthy results without local matches fall back to the existing
+  genres with a visible notice. Errors/missing keys remain errors, never silent fallback.
+  Keep Last.fm attribution, catalogue and terms links; do not claim album/audio similarity.
+  discover_lastfm.py uses one fixed HTTPS endpoint, no redirects/cookies/auth/netrc, shared
+  pacing and bounded responses/timeouts. No automatic retries; respect origin cache headers
+  and Retry-After. Keep at most 64 public RAM entries / 2 MiB / six hours and obey no-store.
+  Keep six results and one album per represented artist, with native additional credits
+  and conservative disc grouping. Artist ID zero identifies compilations, never a name.
+  The local index belongs to its Library; coalesce outside Studio.lock. Reject replaced
+  accounts/sessions/libraries/combine/source/key generations before publishing. Browser
+  memory holds at most twelve artist/source results, respecting online expiry without
+  timers or automatic refresh. Opening pages, Back and translation make no new requests.
+  Do not refresh the library, scan audio, write metadata or persist discovery reports.
+  Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
 - `artist_biographies` is off by default. Enabling does not scan or fetch. Visiting one
   album artist first reads `artist-biographies.sqlite3`, then looks up only missing or
   expired text through the shared paced free TheAudioDB adapter. Cache English public

@@ -1,9 +1,12 @@
-"""Explicit, read-only album discovery from the loaded library's own metadata."""
+"""Explicit local or Last.fm artist discovery, matched to the loaded library."""
 
 import math
 from collections import defaultdict
+from urllib.parse import quote
 
+from .discover_lastfm import LastfmSimilar
 from .library import ConflictError, LibraryError, number
+from .sources import artist_name_key
 
 MAX_RESULTS = 6
 
@@ -16,6 +19,7 @@ class DiscoverIndex:
         self.albums = []
         self.genres = defaultdict(set)
         self.labels = {}
+        self.names = defaultdict(list)
         sets = defaultdict(list)
         for album in library.album_index():
             for artist in album["album_artists"]:
@@ -55,6 +59,32 @@ class DiscoverIndex:
                         for g, ids in self.genres.items()}
         for album in self.albums:
             album["weight"] = sum(self.weights[g] for g in sorted(album["genres"]))
+        for name, group in self.artists.items():
+            if group["albums"]:
+                self.names[artist_name_key(name)].append(name)
+
+    def similar_recommendations(self, name, artists):
+        """Unique strict local artist matches; provider similarity outranks native ratings."""
+        seed = self.artists[name]["albums"]
+        chosen, represented = [], set()
+        for provider_name, _score in artists:
+            matches = self.names.get(artist_name_key(provider_name), [])
+            if len(matches) != 1:
+                continue
+            matched = matches[0]
+            candidates = self.artists[matched]["albums"] - seed
+            for position in sorted(candidates, key=lambda i: (
+                    -self.albums[i]["rating"], -self.albums[i]["artist_rating"],
+                    self.albums[i]["name"].casefold(), number(self.albums[i]["id"]))):
+                album = self.albums[position]
+                if album["artists"] & represented:
+                    continue
+                represented.update(album["artists"])
+                chosen.append((album, provider_name))
+                break
+            if len(chosen) == MAX_RESULTS:
+                break
+        return chosen
 
     def recommendations(self, name):
         seed = self.artists[name]["albums"]
@@ -87,12 +117,17 @@ class DiscoverIndex:
 class ArtistDiscover:
     def __init__(self, studio):
         self.studio = studio
+        self.generation = 0
+        self.lastfm = LastfmSimilar(studio.lookup.http)
 
     def view(self, body):
         """Never refresh the library, inspect audio, persist a report or change playback."""
         if not isinstance(body, dict):
             raise LibraryError("Choose an album artist.", code="discover.invalid_artist")
         ids, name = body.get("artists"), body.get("name")
+        source = body.get("source", "local")
+        if source not in ("local", "lastfm"):
+            raise LibraryError("Choose local genres or Last.fm.", code="discover.invalid_source")
         if not isinstance(name, str) or not name.strip() or len(name) > 1000 \
                 or not isinstance(ids, list) \
                 or not 0 < len(ids) <= 100 or any(not isinstance(i, str) or not i.isascii()
@@ -106,11 +141,27 @@ class ArtistDiscover:
             if library is None or not account or not session or body.get("session") != session:
                 raise ConflictError("The account, library or artist changed. Reopen the artist.", code="discover.stale")
             revision, combine = library.lastmodified, studio.combine_sets
+            generation = self.generation
+            key = studio.source_keys().get("lastfm_api_key", "") if source == "lastfm" else ""
+            if source == "lastfm":
+                if "lastfm" in studio.disabled_sources():
+                    raise LibraryError("Last.fm is disabled. Enable it in Sources & keys in Settings.", code="discover.lastfm_disabled")
+                if not isinstance(key, str) or not key:
+                    raise LibraryError("Add a Last.fm API key in Sources & keys in Settings.", code="discover.lastfm_missing_key")
+                if len(name) > 200:
+                    raise LibraryError("Last.fm could not identify this artist exactly. Try local genres instead.", code="discover.lastfm_identity")
 
         def current():
             return (studio.client is client and studio.library is library and studio.library_user == account
                     and studio.playback_session == session and library.lastmodified == revision
                     and studio.combine_sets == combine)
+
+        def valid_online():
+            with studio.lock:
+                if not current() or self.generation != generation \
+                        or studio.source_keys().get("lastfm_api_key", "") != key \
+                        or "lastfm" in studio.disabled_sources():
+                    raise ConflictError("The account, library or source changed. Start discovery again.", code="discover.online_stale")
 
         # Derived data belongs to the Library object, so an old snapshot is not retained
         # by Studio after Disconnect/replacement, even when lastmodified is unchanged.
@@ -125,9 +176,19 @@ class ArtistDiscover:
         artist = index.artists.get(name)
         if not artist or set(ids) != artist["ids"]:
             raise ConflictError("The account, library or artist changed. Reopen the artist.", code="discover.stale")
-        choices, status = index.recommendations(name)
+        effective, fallback, ttl = source, False, None
+        if source == "lastfm":
+            related, ttl = self.lastfm.read(name, key, (account, session, generation), valid_online)
+            valid_online()
+            choices = index.similar_recommendations(name, related)
+            status = "ready"
+            if not choices:
+                effective, fallback = "local", True
+                choices, status = index.recommendations(name)
+        else:
+            choices, status = index.recommendations(name)
         albums = []
-        for album, genres in choices:
+        for album, reason in choices:
             playable = True
             for album_id in album["ids"]:
                 tracks = library.active_track_ids(number(album_id))
@@ -138,8 +199,15 @@ class ArtistDiscover:
                         library.stream_info(track_id)
                     except LibraryError:
                         playable = False
-            albums.append({"id": album["id"], "shared_genres": genres, "playable": playable})
+            row = {"id": album["id"], "shared_genres": reason if effective == "local" else [], "playable": playable}
+            if effective == "lastfm":
+                row.update(related_artist=reason, lastfm_url="https://www.last.fm/music/" + quote(reason, safe=""))
+            albums.append(row)
+        if source == "lastfm":
+            valid_online()
         with studio.lock:
             if not current():
                 raise ConflictError("The account, library or artist changed. Reopen the artist.", code="discover.stale")
-        return {"artist": name, "session": session, "status": status, "albums": albums}
+        return {"artist": name, "session": session, "status": status, "albums": albums,
+                "source": effective, "requested_source": source, "fallback": fallback,
+                "expires_in": ttl}

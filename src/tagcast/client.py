@@ -1301,6 +1301,9 @@ class Studio:
                 self.artist_bios.revision += 1
             if config.get("album_information", False) != self.config.get("album_information", False):
                 self.album_info.revision += 1
+            if config.get("lastfm_api_key") != self.config.get("lastfm_api_key") or (
+                    "lastfm" in config.get("disabled_sources", [])) != ("lastfm" in self.disabled_sources()):
+                self.discover.generation += 1
             self.config = config
         if not config.get("queue_sync"):
             self.queue_sync.disconnect()

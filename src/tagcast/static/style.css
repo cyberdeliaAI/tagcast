@@ -293,6 +293,10 @@ body.has-player main{padding-bottom:80px}
 .artist-biography-source{color:var(--muted);font-size:10px}
 .artist-biography-source a{color:var(--green)}
 .artist-discover{margin:0 0 24px}
+.discover-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.discover-controls label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.discover-controls select{padding:6px 28px 6px 10px;max-width:100%;font-size:12px;background:var(--palette-surface,#fff);color:var(--ink);border:1px solid var(--line);border-radius:6px}
+.discover-note{font-size:12px;line-height:1.6;margin:8px 0}
 #artist-discover-results{margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:9px}
 .discover-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .discover-heading h2{font-size:16px;margin:0}
