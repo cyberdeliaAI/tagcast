@@ -7,6 +7,7 @@ const favouriteArtists = {page: 0, pageSize: storedPageSize("tagcast-favourite-a
 let artistBrowseTimer, artistBiographyRetryTimer;
 
 function resetArtistBrowse() {
+  if (typeof resetArtistDiscover === "function") resetArtistDiscover();
   clearTimeout(artistBrowseTimer);
   clearTimeout(artistBiographyRetryTimer);
   artistBrowse.page = 0; artistBrowse.randomNames = []; artistBrowse.library += 1;
@@ -153,6 +154,7 @@ async function rateArtist(rating) {
     if (artistProfile.rating === update) collectionsView.busy = false;
     if (current()) {
       const restoreFocus = focused && (document.activeElement === document.body || $("#artist-rating").contains?.(document.activeElement));
+      if (typeof resetArtistDiscover === "function") { resetArtistDiscover(); renderArtistDiscover(); }
       renderArtistProfile(); renderArtistBrowse(); renderFavouriteArtists();
       if (restoreFocus && state.screen === "albums" && state.artist === selection.name) {
         (document.querySelector(`#artist-rating [data-artist-rating="${rating}"]`) || document.querySelector('#artist-rating [data-artist-rating="1"]'))?.focus();

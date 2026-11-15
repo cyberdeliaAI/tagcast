@@ -37,6 +37,7 @@ function screenBreadcrumb(name) {
 }
 
 function showScreen(name) {
+  if (typeof leaveArtistDiscover === "function") leaveArtistDiscover();
   const wasSettings = state.screen === "settings";
   closeBrowseOptions();
   if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();

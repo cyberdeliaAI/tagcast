@@ -71,6 +71,7 @@ const HELP_TOPICS = {
     ["help.albums.collection.title", "help.albums.collection.body", ["#albums-page .page-intro"]],
     ["help.albums.artistFavourites.title", "help.albums.artistFavourites.body", ["#albums-page [data-artist-favourite]", "#artist-biography"], "help.albums.artistFavourites.hint"],
     ["help.albums.artistRating.title", "help.albums.artistRating.body", ["#artist-rating"], "help.albums.artistRating.hint"],
+    ["help.albums.discover.title", "help.albums.discover.body", ["#artist-discover-toggle"], "help.albums.discover.hint"],
     ["help.albums.search.title", "help.albums.search.body", ["#albums-page .toolbar"]],
     ["help.albums.open.title", "help.albums.open.body", ["#albums-page .album-card"]],
     ["help.albums.select.title", "help.albums.select.body", ["#albums-page .album-select", "#albums-page .selection-bar"]],

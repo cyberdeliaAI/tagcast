@@ -514,6 +514,7 @@ function artistGroups() {
 }
 
 function setArtist(artist) {
+  if (artist !== state.artist && typeof leaveArtistDiscover === "function") leaveArtistDiscover();
   state.artist = artist; state.selected.clear(); state.page = 0;
   $("#search").value = "";
   if (state.screen && state.screen !== "albums") showScreen("albums");
@@ -595,6 +596,7 @@ function render() {
   if (typeof renderAlbumView === "function") renderAlbumView();
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();
   if (typeof renderArtistProfile === "function") renderArtistProfile();
+  if (typeof renderArtistDiscover === "function") renderArtistDiscover();
   if (typeof renderTrackSearch === "function") renderTrackSearch();
   if (typeof renderFavourites === "function") renderFavourites();
   if (typeof renderFavouriteArtists === "function") renderFavouriteArtists();
