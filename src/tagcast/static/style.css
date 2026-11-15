@@ -292,6 +292,19 @@ body.has-player main{padding-bottom:80px}
 .artist-biography>p{margin:0}
 .artist-biography-source{color:var(--muted);font-size:10px}
 .artist-biography-source a{color:var(--green)}
+.artist-discover{margin:0 0 24px}
+#artist-discover-results{margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:9px}
+.discover-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.discover-heading h2{font-size:16px;margin:0}
+#artist-discover-intro,#artist-discover-status{font-size:12px;line-height:1.6;margin:8px 0}
+.discover-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.discover-card{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
+.discover-card-text{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px}
+.discover-card-text p{font-size:11px;line-height:1.5;margin:5px 0 0}
+.discover-cover{flex-shrink:0}
+.discover-card .album-card-actions{flex-shrink:0}
+@media(max-width:1000px){.discover-cards{grid-template-columns:1fr}}
+@media(max-width:480px){#artist-discover-results{padding:12px}.discover-card{flex-wrap:wrap}.discover-card-text{flex-basis:calc(100% - 70px)}.discover-card .album-card-actions{margin-left:auto}}
 .favourites-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:min(560px,100%);padding:4px;margin:0 0 22px;border:1px solid var(--line);border-radius:10px;background:var(--palette-soft,#f0f3ed)}
 .favourites-tabs button{min-height:44px;padding:10px 12px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-weight:500;cursor:pointer}
 .favourites-tabs button[aria-selected="true"]{background:var(--palette-surface,#fff);color:var(--ink);box-shadow:0 1px 4px #0002}

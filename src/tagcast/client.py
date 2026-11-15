@@ -31,6 +31,7 @@ from .album_split import AlbumSplit
 from .artist_bios import ArtistBiographies
 from .cleanup import Cleanup
 from .collections import Collections
+from .discover import ArtistDiscover
 from .downloads import AudioDownloads
 from .duplicate_cleanup import DuplicateCleanup
 from .errors import CodedError
@@ -474,6 +475,7 @@ class Studio:
         self.service_status = ServiceStatus()
         self.lookup = Lookup(self.source_keys, self.disabled_sources)
         self.artist_bios = ArtistBiographies(self)
+        self.discover = ArtistDiscover(self)
         self.album_info = AlbumInformation(self)
         self.cleanup = Cleanup(self)
         self.duplicate_cleanup = DuplicateCleanup(self)

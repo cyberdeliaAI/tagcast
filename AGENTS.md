@@ -35,6 +35,8 @@ The application consists of a Python server and a plain JavaScript frontend.
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
+- `src/tagcast/discover.py`: explicitly requested, read-only artist discovery from loaded
+  album summaries; snapshot-local genre index, bounded diverse results, no provider or audio reads.
 - `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
@@ -956,6 +958,18 @@ their shared browsing/player state; a fast local response can otherwise race the
   ratings, audio or the queue and never fetches track details or biographies. Migrate
   the former separate album-favourites shortcut without losing access when either old
   shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
+- Artist Discover starts only on an explicit artist-page action or Refresh suggestions.
+  Rank the loaded library's displayed album sets by weighted shared genres, then native
+  album/artist ratings, with at most six results and one album per represented artist.
+  Use exact native named groups (including additional album artists); artist ID zero
+  identifies compilations, never a name string. Keep the index on the captured Library
+  object and coalesce builds outside Studio.lock. Reject account/session/library/combine
+  replacements before publishing; bound browser result memory to twelve artist groups.
+  Opening pages, changing language and Back reuse local results without new requests.
+  No provider searches, library refresh, disk reports, audio analysis or metadata writes.
+  Artwork and explicit Open/Play/Queue reuse existing routes and player guards; omit
+  playback actions when loaded streaming metadata is incomplete. Do not imply listening
+  history, external similarity, edition identity or audio availability guarantees.
 - `artist_biographies` is off by default. Enabling does not scan or fetch. Visiting one
   album artist first reads `artist-biographies.sqlite3`, then looks up only missing or
   expired text through the shared paced free TheAudioDB adapter. Cache English public

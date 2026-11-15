@@ -13774,3 +13774,150 @@ test('active Random has a trailing decorative shuffle indicator for both album a
   }
   assert.equal(p.requests.length,requests);assert.deepEqual(p.json('player.queue'),queue);
 });
+
+// Local discovery uses the real artist page, with invented read-only server results.
+async function localDiscoverPage() {
+  const p = livePage(); await settle();
+  p.run(`state.connection.playback_session="discover-session";
+    state.albums=state.albums.map((a,i)=>({...a,artist_id:100+i}));
+    setArtist(state.albums[0].artist); render();`);
+  const selection = p.json('artistProfileSelection(state.artist)');
+  const album = p.json('state.albums.find(a=>a.artist!==state.artist)');
+  const data = {artist:selection.name,session:selection.session,status:'ready',albums:[{id:album.id,shared_genres:['Art Rock'],playable:true}]};
+  return {p,selection,album,data};
+}
+
+test('local artist discovery starts only on a click and preserves playback, selection and history', async()=>{
+  const {p,selection,album,data}=await localDiscoverPage();
+  assert.equal(p.nodes.get('#artist-discover').hidden,false);
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
+  p.run('playTracks(state.details.values().next().value);state.selected.add(state.albums[0].id)');
+  const before=p.run('JSON.stringify({src:audio.src,paused:audio.paused,queue:player.queue,selected:[...state.selected],history:state.history})');
+  const history=p.history.length;
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/discover'); assert.deepEqual(JSON.parse(options.body),selection);
+    return {ok:true,json:async()=>data};
+  });
+  await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
+  assert.equal(p.nodes.get('#artist-discover-toggle').getAttribute('aria-expanded'),'true');
+  assert.equal(p.nodes.get('#artist-discover-results').hidden,false);
+  const html=p.nodes.get('#artist-discover-cards').innerHTML;
+  assert.ok(html.includes(album.name));assert.match(html,/Shared genres: Art Rock/);
+  assert.ok(html.includes(`data-card-play="${album.id}"`));assert.ok(html.includes(`data-queue-album="${album.id}"`));
+  assert.equal(p.run('JSON.stringify({src:audio.src,paused:audio.paused,queue:player.queue,selected:[...state.selected],history:state.history})'),before);
+  assert.equal(p.history.length,history);
+  await p.nodes.get('#artist-discover-toggle').emit('click');
+  await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1,'Reopening uses completed results');
+  await p.nodes.get('#artist-discover-refresh').emit('click');await settle();
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,2,'Refresh is explicit');
+});
+
+test('local artist discovery keeps unknown playback unavailable and escapes reasons',async()=>{
+  const {p,data}=await localDiscoverPage();
+  data.albums[0].playable=false;data.albums[0].shared_genres=['<script>bad()</script>'];
+  p.setFetch(()=>({ok:true,json:async()=>data}));await p.run('loadArtistDiscover()');
+  const html=p.nodes.get('#artist-discover-cards').innerHTML;
+  assert.match(html,/data-album=/);assert.doesNotMatch(html,/data-card-play|data-queue-album|<script>/);
+  assert.match(html,/&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+  assert.match(html,/Open the album to check its tracks/);
+});
+
+test('local artist discovery routes explicit Play and Queue through the existing player',async()=>{
+  const {p,album,data}=await localDiscoverPage();
+  p.setFetch(()=>({ok:true,json:async()=>data}));await p.run('loadArtistDiscover()');
+  const source=p.location.hash,history=p.history.length;
+  await p.click({'[data-card-play]':{dataset:{cardPlay:album.id}}});
+  assert.equal(p.run('String(player.album.id)'),album.id);
+  const original=p.json('player.queue.map(t=>t.id)'),audio=p.nodes.get('#audio').src;
+  p.run(`$("#discover-queue-test").dataset={queueAlbum:${JSON.stringify(album.id)}}`);
+  await p.click({'[data-queue-album]':p.nodes.get('#discover-queue-test')});
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),original,'Opening the menu never queues');
+  await p.nodes.get('#queue-action-append').emit('click');
+  assert.deepEqual(p.json('player.queue.map(t=>t.id)'),[...original,...original]);
+  assert.equal(p.nodes.get('#audio').src,audio);
+  assert.equal(p.location.hash,source);assert.equal(p.history.length,history);
+  assert.ok(p.requests.every(r=>!r.options?.body || r.url==='/api/discover'),'No metadata writes');
+});
+
+test('local discovery permits a native artist with the displayed name Various Artists',async()=>{
+  const {p}=await localDiscoverPage();
+  p.run('state.albums=state.albums.map(a=>({...a,artist:"Various Artists"}));setArtist("Various Artists");render()');
+  assert.equal(p.nodes.get('#artist-discover').hidden,false);
+  p.run('state.albums=state.albums.map(a=>({...a,artist_id:0}));render()');
+  assert.equal(p.nodes.get('#artist-discover').hidden,true);
+});
+
+test('local artist discovery exposes missing genres and no matches without fake recommendations',async()=>{
+  for(const [status,message] of [['missing_genres',/no usable genres/],['no_matches',/No albums by other artists/]]) {
+    const {p,data}=await localDiscoverPage();data.status=status;data.albums=[];
+    p.setFetch(()=>({ok:true,json:async()=>data}));await p.run('loadArtistDiscover()');
+    assert.match(p.nodes.get('#artist-discover-status').textContent,message);
+    assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
+    assert.equal(p.nodes.get('#artist-discover-status').getAttribute('data-working'),'false');
+  }
+});
+
+test('local artist discovery rejects late reads after navigation, closure, session and snapshot changes',async()=>{
+  for(const change of ['showArtistBrowse();setArtist(state.albums[0].artist)',
+    'state.connection.playback_session="other";renderArtistDiscover()',
+    'state.albums=[...state.albums];renderArtistDiscover()',
+    'state.details=new Map(state.details);renderArtistDiscover()',
+    'useLocal(demoLibrary(),"demo")']) {
+    const {p,data}=await localDiscoverPage();let finish;
+    p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+    const task=p.run('loadArtistDiscover()');await settle();p.run(change);
+    finish({ok:true,json:async()=>data});await task;
+    assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'',change);
+    assert.equal(p.run('artistDiscover.entries.size'),0,change);
+    assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
+  }
+  const {p,data}=await localDiscoverPage();let finish;
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const task=p.run('loadArtistDiscover()');await settle();
+  await p.nodes.get('#artist-discover-toggle').emit('click');
+  finish({ok:true,json:async()=>data});await task;
+  assert.equal(p.nodes.get('#artist-discover-results').hidden,true);
+  assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
+});
+
+test('local artist discovery retains completed results on Back and never refreshes on translation',async()=>{
+  const {p,data}=await localDiscoverPage();
+  p.setFetch(()=>({ok:true,json:async()=>data}));await p.run('loadArtistDiscover()');
+  p.run('showArtistBrowse();setArtist(state.albums[0].artist);render()');
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Art Rock/);
+  const requests=p.requests.filter(r=>r.url==='/api/discover').length;
+  await p.run('TagcastI18n.use("nl")');await settle();
+  assert.equal(p.nodes.get('#artist-discover-toggle').textContent,'Ontdek vergelijkbare muziek');
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Gedeelde genres: Art Rock/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,requests);
+});
+
+test('local artist discovery refuses unrelated or malformed responses and shows a retryable error',async()=>{
+  for(const mutate of [data=>{data.session='wrong';},data=>{data.albums=Array(7).fill(data.albums[0]);},data=>{data.albums[0].shared_genres=['x'.repeat(201)];}]) {
+    const {p,data}=await localDiscoverPage();mutate(data);
+    p.setFetch(()=>({ok:true,json:async()=>data}));await p.run('loadArtistDiscover()');
+    assert.match(p.nodes.get('#artist-discover-status').textContent,/could not be read/);
+    assert.equal(p.nodes.get('#artist-discover-refresh').disabled,false);
+    assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
+  }
+  const {p}=await localDiscoverPage();
+  p.setFetch(()=>({ok:false,status:409,json:async()=>({error:'Changed',code:'discover.stale'})}));
+  await p.run('loadArtistDiscover()');
+  assert.match(p.nodes.get('#artist-discover-status').textContent,/account, library or artist changed/);
+});
+
+test('local artist discovery stays hidden outside live named artist pages and bounds the result cache',async()=>{
+  const p=page();await settle();p.run('setArtist(state.albums[0].artist);render()');
+  assert.equal(p.nodes.get('#artist-discover').hidden,true);
+  const live=await localDiscoverPage();
+  live.p.run(`state.albums=Array.from({length:20},(_,i)=>({...state.albums[0],id:String(i+1),artist_id:i+1,artist:"Artist "+i}));render()`);
+  live.p.setFetch((url,options)=>{
+    assert.equal(url,'/api/discover');const body=JSON.parse(options.body);
+    return {ok:true,json:async()=>({artist:body.name,session:body.session,status:'no_matches',albums:[]})};
+  });
+  for(let i=0;i<20;i++){live.p.run(`setArtist("Artist ${i}")`);await live.p.run('loadArtistDiscover()');}
+  assert.equal(live.p.run('artistDiscover.entries.size'),12);
+  live.p.run('state.loading=true;renderArtistDiscover()');assert.equal(live.p.nodes.get('#artist-discover').hidden,true);
+  live.p.run('state.loading=false;state.artist=null;renderArtistDiscover()');assert.equal(live.p.nodes.get('#artist-discover').hidden,true);
+});
