@@ -105,6 +105,7 @@ async function rateAlbum(ids, rating) {
     }
     // Merged sets copy their disc ratings; refresh that derived shelf after read-back.
     shelfCache.albums = null;
+    if (typeof resetArtistDiscover === "function") resetArtistDiscover();
     if (response.error || !ids.every(id => job.results?.some(r => String(r.id) === String(id) && r.status === "saved" && Number(r.rating) === rating))) throw response.error ? Error(response.error) : playlistFailure("errors.playlists.rating_unconfirmed");
     update.status = () => TagcastI18n.text("playlists.albumRating.saved");
     toast(TagcastI18n.text("playlists.albumRating.savedToast"));

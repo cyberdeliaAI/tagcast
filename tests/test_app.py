@@ -216,6 +216,7 @@ class StartTests(unittest.TestCase):
         studio.collections.favourite_artist.return_value = {"results": []}
         studio.collections.artist_favourites.return_value = {"artists": []}
         studio.artist_bios.view.return_value = {"enabled": False}
+        studio.discover.view.return_value = {"artist": "Example", "status": "no_matches", "albums": []}
         studio.album_info.view.return_value = {"enabled": False}
         studio.lyrics.view.return_value = {"status": "missing"}
         studio.lyrics.cached_album.return_value = {"tracks": []}
@@ -261,6 +262,7 @@ class StartTests(unittest.TestCase):
                                  ("/api/album-favourite", studio.collections.favourite_album),
                                  ("/api/artist-favourite", studio.collections.favourite_artist),
                                  ("/api/artist-biography", studio.artist_bios.view),
+                                 ("/api/discover", studio.discover.view),
                                  ("/api/album-information", studio.album_info.view),
                                  ("/api/lyrics", studio.lyrics.view),
                                  ("/api/lyrics/review", studio.lyrics.prepare),

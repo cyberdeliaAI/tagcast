@@ -283,6 +283,8 @@ class Library:
         self._editor_names = None
         self._album_summaries = None
         self._summary_lock = Lock()
+        self._discover_index = None
+        self._discover_lock = Lock()
 
     def to_cache(self):
         """Only what Tagcast needs: no account details or third-party session keys."""

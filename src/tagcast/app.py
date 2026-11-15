@@ -378,6 +378,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/album-favourite": self.studio.collections.favourite_album,
             "/api/artist-favourite": self.studio.collections.favourite_artist,
             "/api/artist-biography": self.studio.artist_bios.view,
+            "/api/discover": self.studio.discover.view,
             "/api/album-information": self.studio.album_info.view,
             "/api/playlist": self.studio.collections.save_playlist,
             "/api/playlist-folder": self.studio.collections.save_folder,
