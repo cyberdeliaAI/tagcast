@@ -95,6 +95,7 @@ function runLookups(artist, album) {
     renderSource(source, candidates, error);
   });
   box.innerHTML = sources.map(s => `<section class="lookup-source" data-source="${s.name}"><h4>${escapeHtml(s.label)}<span class="lookup-state"><span class="spinner"></span></span></h4><div class="lookup-items"></div></section>`).join("")
+    + `<p id="lookup-empty" class="muted" role="status" hidden>${TagcastI18n.html("lookup.results.noMatch")}</p>`
     + (missing.length ? `<p class="muted lookup-missing">${TagcastI18n.html("lookup.results.needsKey", {count: missing.length, sources: missing.map(s => s.label).join(", ")})} <button class="text-action" data-open-settings>${TagcastI18n.html("lookup.results.addKeys")}</button></p>` : "")
     + (!sources.length && !missing.length ? `<p class="muted">${TagcastI18n.html("lookup.results.off")} <button class="text-action" data-open-settings>${TagcastI18n.html("lookup.results.chooseSources")}</button></p>` : "");
 }
@@ -103,10 +104,14 @@ function renderSource(source, candidates, error) {
   const section = document.querySelector(`.lookup-source[data-source="${source.name}"]`);
   if (!section) return;
   const state = section.querySelector(".lookup-state");
-  if (error) { state.textContent = error; state.classList.add("error"); return; }
-  state.textContent = candidates.length ? "" : TagcastI18n.text("lookup.results.noMatch");
-  section.classList.toggle("empty", !candidates.length);
-  section.querySelector(".lookup-items").innerHTML = candidates.slice(0, 3).map((c, i) => suggestionCard(source.name, c, i)).join("");
+  section.hidden = !error && !candidates.length;
+  state.textContent = error || "";
+  state.classList.toggle("error", Boolean(error));
+  section.querySelector(".lookup-items").innerHTML = error ? "" : candidates.slice(0, 3).map((c, i) => suggestionCard(source.name, c, i)).join("");
+  // One compact empty state only after every requested source completed without matches.
+  // Loading and failed sources stay visible, so neither can be mistaken for an empty search.
+  const sections = [...$("#lookup-results").querySelectorAll(".lookup-source")];
+  $("#lookup-empty").hidden = !sections.length || sections.some(item => !item.hidden);
 }
 
 function suggestionCard(source, c, index) {
@@ -202,7 +207,8 @@ function settingsContentMarkup() {
     <section class="artist-discover-settings" data-settings-category="discovery"><h3>${TagcastI18n.html("settings.discover.heading")} ${saveRequired}</h3>
     <label class="checkline"><input type="checkbox" name="discover_lastfm" ${lookup.discoverLastfm ? "checked" : ""}> ${TagcastI18n.html("settings.discover.lastfm")}</label>
     <p class="muted">${TagcastI18n.html("settings.discover.note")}</p>
-    <p class="muted">${TagcastI18n.html("settings.discover.requirements")}</p></section>
+    <p class="muted">${TagcastI18n.html("settings.discover.requirements")}</p>
+    ${lookup.discoverLastfm ? `<p class="muted">${TagcastI18n.html("discover.privacyLastfm")}</p>` : ""}</section>
     <section class="playback-settings" data-settings-category="discovery"><h3>1001 Albums ${saveRequired}</h3>
     <label class="checkline"><input type="checkbox" name="album_guide" ${albumGuide.enabled ? "checked" : ""}> ${TagcastI18n.html("settings.guide.enable")}</label>
     <p class="muted">${TagcastI18n.html("settings.guide.note")}</p>

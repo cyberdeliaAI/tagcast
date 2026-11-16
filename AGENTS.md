@@ -211,6 +211,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   order, keyboard selection, Escape/Tab dismissal, bulk gates and Various Artists.
   Invalidate the chooser on library/draft/catalogue replacement.
 - Online suggestions fill the editor; metadata writes follow only after review.
+  Hide healthy album-source sections with no matches; show one compact No match state
+  only after all requested sources are empty. Keep loading, errors and missing-key
+  guidance visible. This changes presentation, not lookup requests or candidate actions.
   Artwork has a separate comparison and explicit save.
 - Track lyrics have a separate textarea/review/save, independent of ordinary metadata
   patches. Now playing and the visited track read native userdata lazily; never scan
@@ -996,6 +999,8 @@ their shared browsing/player state; a fast local response can otherwise race the
   timers or automatic refresh. Opening pages, Back and translation make no new requests.
   Do not refresh the library, scan audio, write metadata or persist discovery reports.
   Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
+  Keep the Last.fm privacy explanation in Settings → Discovery and Help, without a
+  repeated paragraph below the artist-page Discover button.
   Albums opened from a Discover card label their breadcrumb origin as Discover from
   the seed artist, not that artist's discography. Keep the actual artist-page route,
   cached results and browsing/scroll restoration; ordinary album links keep their normal origin.

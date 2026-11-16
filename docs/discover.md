@@ -24,6 +24,8 @@ listening history or scrobbling is required. Only an explicit Discover or Refres
 sends the selected artist name to `artist.getSimilar` at the fixed HTTPS Last.fm
 API. No library records, iBroadcast credentials or audio are sent. Artist names
 longer than 200 characters are rejected rather than silently truncated.
+The privacy explanation is available in Settings → Discovery and Help, without
+repeating it below the artist-page Discover button.
 
 Last.fm supplies up to 100 related artists. Tagcast matches their names locally,
 ignoring case, NFC spelling and surrounding/repeated whitespace while preserving

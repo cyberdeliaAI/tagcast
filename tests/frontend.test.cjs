@@ -9696,6 +9696,86 @@ function selectableSources() {
   ];
 }
 
+async function albumLookupResultsPage() {
+  const p=page();await settle();
+  const sources=selectableSources().filter(s=>['musicbrainz','itunes','discogs'].includes(s.name));
+  p.run(`lookup.sources=${JSON.stringify(sources)};
+    function mountLookupRows() {
+      const rows=lookup.sources.map(source=>{
+        const section=document.querySelector('.lookup-source[data-source="'+source.name+'"]');
+        section.hidden=false;
+        const status=$("#lookup-test-status-"+source.name),items=$("#lookup-test-items-"+source.name);
+        status.textContent="";status.classList.remove("error");items.innerHTML="";
+        section.querySelector=selector=>selector===".lookup-state"?status:items;
+        return section;
+      });
+      $("#lookup-results").querySelectorAll=()=>rows;
+      $("#lookup-empty").hidden=true;
+    }`);
+  const pending=[];
+  p.setFetch((url,options)=>{
+    assert.ok(url.startsWith('/api/lookup/album?'));assert.equal(options?.method||'GET','GET');
+    return new Promise(resolve=>pending.push({source:new URL(url,'http://localhost').searchParams.get('source'),resolve}));
+  });
+  const start=()=>p.run('runLookups("Artist","Album");mountLookupRows()');
+  const answer=async(source,candidates,error='')=>{
+    const request=pending.find(r=>r.source===source&&!r.done);assert.ok(request);request.done=true;
+    request.resolve(error?{ok:false,status:503,json:async()=>({error})}:{ok:true,json:async()=>({candidates})});
+    await settle();
+  };
+  return {p,pending,start,answer};
+}
+
+test('album lookup hides healthy empty sources while matches, loading and errors remain visible',async()=>{
+  const {p,start,answer}=await albumLookupResultsPage();
+  const unchanged=p.run('JSON.stringify({editing,queue:player.queue,src:audio.src,history:state.history})');
+  start();
+  await answer('itunes',[]);
+  assert.equal(p.nodes.get('.lookup-source[data-source="itunes"]').hidden,true);
+  assert.equal(p.nodes.get('.lookup-source[data-source="discogs"]').hidden,false,'A loading source stays visible');
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+  await answer('discogs',[{title:'Matched album',artist:'Artist',year:1972,score:1,genres:['Blues'],url:''}]);
+  assert.equal(p.nodes.get('.lookup-source[data-source="discogs"]').hidden,false);
+  assert.match(p.nodes.get('#lookup-test-items-discogs').innerHTML,/Matched album|data-use-year="1972"|data-use-genre="Blues"/);
+  await answer('musicbrainz',null,'Temporarily unavailable');
+  assert.equal(p.nodes.get('.lookup-source[data-source="musicbrainz"]').hidden,false);
+  assert.match(p.nodes.get('#lookup-test-status-musicbrainz').textContent,/Temporarily unavailable/);
+  assert.equal(p.nodes.get('#lookup-test-status-musicbrainz').classList.contains('error'),true);
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+  assert.equal(p.run('JSON.stringify({editing,queue:player.queue,src:audio.src,history:state.history})'),unchanged);
+});
+
+test('all-empty album lookups show one compact status only after the last source answers',async()=>{
+  const {p,start,answer}=await albumLookupResultsPage();
+  start();
+  assert.match(p.nodes.get('#lookup-results').innerHTML,/id="lookup-empty"[^>]*role="status" hidden>No match/);
+  for(const source of ['itunes','discogs']) {
+    await answer(source,[]);assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+  }
+  await answer('musicbrainz',[]);
+  assert.equal(p.nodes.get('#lookup-empty').hidden,false);
+  assert.ok(['itunes','discogs','musicbrainz'].every(source=>p.nodes.get('.lookup-source[data-source="'+source+'"]').hidden));
+  start();
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true,'A fresh search clears the old empty state');
+  await answer('itunes',[]);await answer('discogs',[]);
+  await answer('musicbrainz',null,'Temporarily unavailable');
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true,'A failure is not a successful empty search');
+});
+
+test('empty replies from an older album lookup cannot hide the newer matches',async()=>{
+  const {p,pending,start}=await albumLookupResultsPage();
+  start();const old=[...pending];start();
+  const fresh=pending.slice(old.length);
+  fresh.find(r=>r.source==='discogs').resolve({ok:true,json:async()=>({candidates:[{title:'New match',artist:'Artist',year:0,score:1,genres:[],url:''}]})});
+  await settle();
+  for(const request of old)request.resolve({ok:true,json:async()=>({candidates:[]})});
+  for(const request of fresh.filter(r=>r.source!=='discogs'))request.resolve({ok:true,json:async()=>({candidates:[]})});
+  await settle();
+  assert.equal(p.nodes.get('.lookup-source[data-source="discogs"]').hidden,false);
+  assert.match(p.nodes.get('#lookup-test-items-discogs').innerHTML,/New match/);
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+});
+
 test('Settings offers selected source switches even without keys and keeps saved-key controls when disabled', async () => {
   const p=page(); await settle();
   const sources=selectableSources(); sources[1].selected=false; sources[1].enabled=false;
@@ -13941,7 +14021,8 @@ test('Last.fm is the default without a page selector and starts only on explicit
   assert.equal(p.run('lookup.discoverLastfm'),true);
   assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-source/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
-  assert.equal(p.nodes.get('#artist-discover-privacy').hidden,false);
+  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-privacy/);
+  assert.match(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
   assert.equal(p.nodes.get('#artist-discover-setup').hidden,true);
   const before=p.run('JSON.stringify({queue:player.queue,selected:[...state.selected],history:state.history,src:audio.src})');
   await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
@@ -14032,7 +14113,7 @@ test('Discovery settings save local-only mode, retire cached results and never s
   assert.equal(p.run('artistDiscover.entries.size'),0,'Retire completed online results too');
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
   p.run('showScreen("albums");render()');
-  assert.equal(p.nodes.get('#artist-discover-privacy').hidden,true);
+  assert.doesNotMatch(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
   assert.equal(p.nodes.get('#artist-discover-setup').hidden,true);
   assert.equal(p.nodes.get('#artist-discover-results').hidden,true);
   Object.assign(data,{source:'local',requested_source:'local',fallback:false,expires_in:null});

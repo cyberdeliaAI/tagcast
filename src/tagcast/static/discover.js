@@ -40,7 +40,6 @@ function renderArtistDiscover() {
   if (!selection) return;
   const key = discoverEntryKey(selection), entry = artistDiscover.entries.get(key), opened = entry?.open === true;
   const online = discoverSource() === "lastfm";
-  $("#artist-discover-privacy").hidden = !online;
   $("#artist-discover-setup").hidden = !online || lookup.sources.some(s => s.name === "lastfm" && s.enabled);
   const button = $("#artist-discover-toggle"), results = $("#artist-discover-results");
   button.textContent = TagcastI18n.text("discover.action");
