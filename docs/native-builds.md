@@ -9,11 +9,11 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-1.9.0-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-1.9.0-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-1.9.0-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-1.9.0-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
-| Debian / Ubuntu, x64 | `tagcast-1.9.0-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.9.0-linux-amd64.deb`; open Tagcast from the app menu. |
+| macOS, Apple Silicon | `tagcast-1.9.5-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-1.9.5-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-1.9.5-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-1.9.5-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | `tagcast-1.9.5-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.9.5-linux-amd64.deb`; open Tagcast from the app menu. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
