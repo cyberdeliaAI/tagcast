@@ -58,7 +58,7 @@ class AlbumSplit(AlbumMerge):
 
     @staticmethod
     def _split_snapshot(library, album_id):
-        if library.combine_sets:
+        if library.album_writes_blocked:
             raise LibraryError("Turn off Combine Multi-Disc Album Sets in iBroadcast before splitting.")
         album = library.albums.get(album_id)
         members = library.active_track_ids(album_id)
@@ -181,6 +181,8 @@ class AlbumSplit(AlbumMerge):
                 # identifies that destination, not an invented library record.
                 after_create, _ = self.studio._current(client, refresh=True)
                 self._owner(body, owner)
+                if after_create.album_writes_blocked:
+                    raise ConflictError("The library view changed after creation. No tracks were sent. Reload the library.")
                 if self._split_snapshot(after_create, source) != snapshot:
                     raise ConflictError("The original album changed after creation. No tracks were sent.")
                 if not self._created_target_empty(after_create, target_id, target):
@@ -200,7 +202,7 @@ class AlbumSplit(AlbumMerge):
 
             def check(after):
                 current_owner = (self.studio.client, self.studio.library_user, self.studio.playback_session)
-                valid = current_owner == owner and not after.combine_sets and target_id not in old_ids \
+                valid = current_owner == owner and not after.album_writes_blocked and target_id not in old_ids \
                     and self._target_matches(after, target_id, target)
                 valid = valid and sorted(after.active_track_ids(target_id)) == sorted(chosen) \
                     and sorted(after.active_track_ids(source)) == sorted(set(snapshot["members"]) - chosen) \

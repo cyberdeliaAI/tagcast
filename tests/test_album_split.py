@@ -114,6 +114,12 @@ class AlbumSplitTests(unittest.TestCase):
 
     def test_creation_receipt_cannot_reuse_an_orphaned_album_id(self):
         self.studio.raw["library"]["tracks"]["201"]["album_id"] = 44
+        # An active foreign membership now blocks even the initial review.
+        with self.assertRaises(LibraryError):
+            self.review()
+        self.assertFalse(self.studio.writes)
+        # A trashed orphan is not a combined view, but its ID still cannot be reused.
+        self.studio.raw["library"]["tracks"]["201"]["trashed"] = True
         result = self.save()
         self.assertIn("could not be confirmed", result["error"])
         self.assertEqual(len(self.studio.writes), 1)
