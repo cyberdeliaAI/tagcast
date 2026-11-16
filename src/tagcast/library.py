@@ -359,7 +359,27 @@ class Library:
                 and album_members[source] < album_members[next(iter(containers))]}
             members = {t: [a for a in albums if a not in self._contained_albums]
                        for t, albums in members.items()}
-            self._combined_view = any(number(self.tracks[t].get("album_id")) != a
+            # Current iBroadcast can also rewrite every track's album_id to the
+            # container, encoding disc/track as 101..199, 201..299, etc. Recognize
+            # only complete multi-block patterns; a lone native track 101 is not one.
+            encoded = {}
+            for album_id, track_ids in album_members.items():
+                if album_id in self._contained_albums or not track_ids:
+                    continue
+                groups, positions = {}, {}
+                for track_id in track_ids:
+                    raw = self.tracks[track_id].get("track")
+                    if type(raw) is not int or not 101 <= raw <= 9999 or raw % 100 == 0:
+                        break
+                    disc, position = divmod(raw, 100)
+                    groups.setdefault(disc, set()).add(position)
+                    positions[track_id] = (disc, position)
+                else:
+                    if len(groups) >= 2 and set(groups) == set(range(1, max(groups) + 1)) \
+                            and all(values == set(range(1, max(values) + 1)) for values in groups.values()):
+                        encoded.update({(album_id, t): value for t, value in positions.items()})
+            self._encoded_positions = encoded
+            self._combined_view = bool(encoded) or any(number(self.tracks[t].get("album_id")) != a
                                       for t, albums in members.items() for a in albums)
             self._membership = members
         return self._membership
@@ -379,7 +399,16 @@ class Library:
         source = self.albums.get(number(track.get("album_id")), {})
         raw = track.get("track")
         parts = re.fullmatch(r"([1-9][0-9]{0,3})-([0-9]{1,4})", text(raw))
-        return (int(parts[1]), int(parts[2])) if parts and int(parts[2]) > 0 else (number(source.get("disc")), number(raw))
+        if parts and int(parts[2]) > 0:
+            return int(parts[1]), int(parts[2])
+        containers = self.track_containers.get(track_id, ())
+        # Numeric decoding is display-only and requires the enabled account setting.
+        # Keep flag-off native numbers intact, even when the shape is suspicious.
+        if self.combine_sets and len(containers) == 1:
+            encoded = self._encoded_positions.get((containers[0], track_id))
+            if encoded:
+                return encoded
+        return number(source.get("disc")), number(raw)
 
     def album_ids(self):
         self.track_containers
@@ -437,7 +466,7 @@ class Library:
         # Keep original disc boundaries even when their album rows are absent.
         sources = {source: i for i, source in enumerate(dict.fromkeys(t["album_id"] for t in tracks))}
         tracks.sort(key=lambda t: (t["disc"] or 9999, sources[t["album_id"]],
-                                   t["track"] or 9999, t["title"].lower()))
+                                   t["display_track"] or 9999, t["title"].lower()))
         artwork = self.album_artwork(track_ids)
         return {
             "id": str(album_id),
@@ -480,8 +509,13 @@ class Library:
             "genres": stored_genres(track),
             "composers": [self.artist_name(e["artist_id"]) for e in self.composer_entries(track)],
             "composer_ids": [e["artist_id"] for e in self.composer_entries(track)],
-            "track": self.track_position(track_id)[1],
+            "track": number(track.get("track")),
+            "native_track": track.get("track"),
+            "display_track": self.track_position(track_id)[1],
             "disc": self.track_position(track_id)[0],
+            "encoded_disc": (len(self.track_containers.get(track_id, ())) == 1
+                             and (self.track_containers[track_id][0], track_id) in self._encoded_positions
+                             and bool(self.combine_sets)),
             "length": number(track.get("length")),
             "uploaded_on": text(track.get("uploaded_on")).strip()[:10],
             "uploaded_at": uploaded_at(track),
@@ -524,7 +558,7 @@ class Library:
     def album_summary(self, album_id, editor_names=None):
         """A small album entry for the browser's list: no tracks, only what lists and filters use."""
         album = self.albums[album_id]
-        genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, set()
+        genres, no_genre, no_cover, combined, no_composer, numbers = set(), 0, 0, 0, 0, {}
         duplicate_keys, positions, upload_dates = [], [], set()
         latest_upload = ""
         track_ids = self.active_track_ids(album_id)
@@ -544,15 +578,15 @@ class Library:
             if editor_names is not None:
                 editor_names["genres"].update(stored)
                 editor_names["composers"].update(e["artist_id"] for e in composers)
-            position = self.track_position(track_id)[1]
-            numbers.add(position)
+            display_disc, position = self.track_position(track_id)
+            numbers.setdefault((number(track.get("album_id")), display_disc), set()).add(position)
             title = title_key(track.get("title"))
             # Combined sets can contain tracks from different original discs.
             disc = number(track.get("album_id"))
             if position > 0:
-                positions.append((disc, position))
+                positions.append((disc, display_disc, position))
             if position > 0 and title:
-                duplicate_keys.append((disc, position, title))
+                duplicate_keys.append((disc, display_disc, position, title))
         self._upload_dates[album_id] = tuple(sorted(upload_dates))
         return {
             "id": str(album_id),
@@ -577,7 +611,7 @@ class Library:
             "combined_genres": combined,
             "no_composer": no_composer,
             # numbers missing below the highest one, e.g. 1, 2, 5 -> 2: maybe incomplete
-            "track_gaps": (max(numbers) - len(numbers - {0})) if numbers - {0} else 0,
+            "track_gaps": sum(max(values) - len(values - {0}) for values in numbers.values() if values - {0}),
             # Same numbered position and title on this disc; audio is not compared.
             "duplicates": len(duplicate_keys) - len(set(duplicate_keys)),
             # Repeated positions also flag candidates whose titles differ.
@@ -1111,6 +1145,9 @@ def plan_save(library, changes):
         if kind == "track" and change.get("sourceAlbumId") is not None \
                 and _clean_id(change["sourceAlbumId"]) != number(now["album_id"]):
             raise ConflictError("The track's original disc changed. Reload and review again.")
+        if kind == "track" and "sourceTrack" in change \
+                and change["sourceTrack"] != library.tracks[item_id].get("track"):
+            raise ConflictError("The track's stored position changed. Reload and review again.")
         context = change.get("libraryView")
         if context is not None and context != {"combine_sets": bool(library.combine_sets),
                                                "combined_view": library.combined_view}:
@@ -1160,6 +1197,8 @@ def plan_save(library, changes):
                     "label": now.get("name") or now.get("title"), "patch": patch}
             if kind == "track":
                 item["source_album_id"] = number(now["album_id"])
+                if library.album_writes_blocked:
+                    item["native_track"] = library.tracks[item_id].get("track")
             if "composers" in patch:  # other extra artists (featured, ...) stay as they are
                 item["keep"] = [e for e in library.extra_artists(library.tracks[item_id])
                                 if e.get("type") != "composer"]
@@ -1271,7 +1310,8 @@ def verify(library, plan, artist_ids, failed=None):
                     "combine_sets": bool(library.combine_sets), "combined_view": library.combined_view}
                 membership = item["kind"] != "track" or (
                     number(now["album_id"]) == item.get("source_album_id", number(now["album_id"]))
-                    and library.active_track_album(item["id"]) == item["album_id"])
+                    and library.active_track_album(item["id"]) == item["album_id"]
+                    and ("native_track" not in item or item["native_track"] == library.tracks[item["id"]].get("track")))
                 ok = same_view and membership and all(_matches(now, k, v, artist_ids) for k, v in item["patch"].items())
                 entry["status"] = "saved" if ok else "unverified"
                 if ok and "credits" in item["patch"]:

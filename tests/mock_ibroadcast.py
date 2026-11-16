@@ -74,6 +74,11 @@ def library():
     if STATE.get("combined_shape", STATE["combine_sets"]):
         for container, sources in STATE.get("combined_albums", {}).items():
             albums[str(container)][1] = [t for source in sources for t in STATE["albums"][source]["tracks"]]
+            if STATE.get("combined_rewrite_ids"):
+                for source in sources:
+                    for track_id in STATE["albums"][source]["tracks"]:
+                        tracks[str(track_id)][1] = container
+                        tracks[str(track_id)][5] = STATE["albums"][source]["disc"] * 100 + STATE["tracks"][track_id]["track"]
             if not STATE.get("combined_keep_source_rows"):
                 for source in sources:
                     if source != container:

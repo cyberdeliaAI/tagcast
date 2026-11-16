@@ -43,8 +43,8 @@ CSV_NOTES = """Tagcast library metadata export (schema 2)
 manifest.json describes the snapshot, completeness, counts and columns.
 IDs join the tables. Album records are the native records supplied by iBroadcast;
 Tagcast's browser disc grouping is not applied. album_tracks preserves membership
-and ordering, including combined views. source_album_id preserves the track's own
-stored album ID. Positions are zero-based; genre position 0 is the main genre.
+and ordering, including combined views. source_album_id preserves the track's
+album ID as supplied, which can itself be the combined container ID. Positions are zero-based; genre position 0 is the main genre.
 Credits include primary identities and all additional native roles and phrases.
 Genres preserve stored labels, punctuation, order and duplicates; display summary
 columns are for reading, not for reconstructing relationships.
@@ -105,7 +105,7 @@ class Snapshot:
             "scope": "active_library", "optional": optional, "counts": {},
             "columns": {key: list(value) for key, value in COLUMNS.items()},
             "notes": ["Native library records, without Tagcast's browser disc grouping.",
-                      "When iBroadcast combines discs, only the supplied combined records are available; source album IDs are retained.",
+                      "When iBroadcast combines discs, only the supplied records are available; track album IDs may be rewritten to the container. No original disc IDs are reconstructed.",
                       "Loaded snapshot only: pending drafts and later iBroadcast changes are not included.",
                       "CSV encoding and reversible spreadsheet escaping are documented in README.txt."],
         }

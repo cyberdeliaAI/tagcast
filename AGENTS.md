@@ -480,9 +480,14 @@ their shared browsing/player state; a fast local response can otherwise race the
   focus and scroll, reject late reads/writes after library replacement, and have local
   Help. Invalidate loaded tag metadata and browse indexes after checked writes.
 - Support both `Combine Multi-Disc Album Sets` states without changing the account preference.
-  Keep original track `album_id` separate from the visible container. Track writes target
-  `file_id`; validate both reviewed identities, before-values and the setting/view snapshot.
-  Original source rows may be absent; never invent their album fields or disc numbers.
+  Keep supplied track `album_id` separate from the visible container when they differ.
+  The service may instead rewrite every track’s `album_id` to the container and encode positions
+  as 101/201. Never reconstruct missing original album IDs from those positions. Track
+  writes target `file_id`; validate received ownership, native position, before-values and
+  the setting/view snapshot. Source rows may be absent; never invent their album fields.
+  Display-only numeric decoding requires combining on and at least two complete consecutive
+  disc blocks starting at 101/201, each starting at track 1 without gaps. Preserve raw numbers
+  in reviews, writes and export; a lone/mixed/ambiguous native 101 stays unchanged.
   A complete source row nested in exactly one larger container is not another visible album;
   ambiguous membership fails closed. Display original disc groups inside native containers,
   and do not apply Tagcast's separate-disc grouping to that view.

@@ -216,7 +216,7 @@ function trackNumberControl(track, position, action, canPlay) {
 }
 
 function albumTrackNumber(track, albumId, canPlay) {
-  return trackNumberControl(track, track.track || "–",
+  return trackNumberControl(track, displayedTrackNumber(track) || "–",
     `data-play="${escapeHtml(track.id)}" data-play-album-id="${escapeHtml(albumId)}"`, canPlay);
 }
 
@@ -311,7 +311,7 @@ function renderAlbumView() {
   $("#album-page").innerHTML = `
     <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="${TagcastI18n.html("album.cover.enlarge", {name: album.name})}" ${album.artwork ? "" : "disabled"}>${cover(album, false, true)}</button><div class="album-detail-info">
       <h1>${escapeHtml(album.name)}</h1><div class="album-artist-links">${albumArtistLinks(album)}</div>
-      <p class="muted album-detail-meta">${year ? `<button type="button" class="album-year-link" data-browse-kind="years" data-browse-key="${escapeHtml(year)}" data-browse-label="${escapeHtml(year)}" aria-label="${TagcastI18n.html("album.year.browse", {year})}">${escapeHtml(year)}</button>` : TagcastI18n.html("album.year.unknown")} · ${TagcastI18n.html("album.header.tracks", {count: album.tracks.length})}${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · ${TagcastI18n.html("common.disc", {disc: album.disc})}` : ""}${total}</p>
+      <p class="muted album-detail-meta">${year ? `<button type="button" class="album-year-link" data-browse-kind="years" data-browse-key="${escapeHtml(year)}" data-browse-label="${escapeHtml(year)}" aria-label="${TagcastI18n.html("album.year.browse", {year})}">${escapeHtml(year)}</button>` : TagcastI18n.html("album.year.unknown")} · ${TagcastI18n.html("album.header.tracks", {count: album.tracks.length})}${displayDiscs.length > 1 ? ` · ${discIcons(displayDiscs.length)}` : album.disc > 1 ? ` · ${TagcastI18n.html("common.disc", {disc: album.disc})}` : ""}${total}</p>
       <div class="album-labels" aria-label="${TagcastI18n.html("album.labels.label")}">${genres.map(g => `<button type="button" class="album-genre-chip" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}" title="${TagcastI18n.html("album.labels.genre", {genre: g})}">${escapeHtml(g)}</button>`).join("")}${typeof albumTagChips === "function" ? albumTagChips(album) : ""}</div>
       ${albumRatingControls(discs)}
       <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ ${TagcastI18n.html("album.actions.play")}</button><button type="button" class="button album-shuffle" data-shuffle-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"} aria-label="${TagcastI18n.html("album.actions.shuffle")}" title="${TagcastI18n.html("album.actions.shuffle")}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m18 2 4 4-4 4m0 4 4 4-4 4M2 6h2.5a6 6 0 0 1 5 2.5l5 7a6 6 0 0 0 5 2.5H22M2 18h2.5a6 6 0 0 0 5-2.5l5-7a6 6 0 0 1 5-2.5H22"/></svg></button>

@@ -1022,6 +1022,31 @@ class ClientTests(unittest.TestCase):
             mock_ibroadcast.STATE.clear()
             mock_ibroadcast.STATE.update(original)
 
+    def test_numeric_combined_track_save_preserves_received_and_stored_positions(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            mock_ibroadcast.STATE["albums"][75] = {
+                "name": "Hounds of Love", "artist_id": 41, "year": 0, "disc": 2, "tracks": [905]}
+            mock_ibroadcast.STATE["tracks"][905] = {
+                **mock_ibroadcast.STATE["tracks"][900], "title": "Second disc", "album_id": 75}
+            mock_ibroadcast.STATE.update(combine_sets=True, combined_albums={72: [72, 75]}, combined_rewrite_ids=True)
+            studio = self.connect()
+            self.assertTrue(studio.load_library()["combined_view"])
+            track = studio.library.track_view(905)
+            self.assertEqual((track["album_id"], track["track"], track["display_track"], track["disc"]), ("72", 201, 1, 2))
+            draft = edit("track", 905, 72, title=("Second disc", "Correct title"))
+            draft.update(sourceAlbumId="72", sourceTrack=201,
+                         libraryView={"combine_sets": True, "combined_view": True})
+            result = studio.save([draft])
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [{"file_id": 905, "title": "Correct title"}])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][905]["track"], 1)
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][905]["album_id"], 75)
+            self.assertEqual(studio.library.track_view(905)["track"], 201)
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
     def test_switching_combine_sets_downloads_the_library_again(self):
         studio = self.connect()
         self.assertEqual(studio.load_library()["source"], "download")

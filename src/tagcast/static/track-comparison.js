@@ -26,7 +26,7 @@ function openTrackComparison() {
     focus: document.activeElement, scroll: window.scrollY || 0,
     total: album.tracks.length,
     tracks: album.tracks.length > 1000 ? [] : discs.flatMap(d => d.tracks.map(t => ({id: String(t.id), title: t.title || "", artist: t.artist || d.artist || "",
-      disc: Number(t.disc || d.disc) || 0, position: Number(t.track) || 0, number: String(t.track || ""), length: t.length}))) });
+      disc: Number(t.disc || d.disc) || 0, position: Number(displayedTrackNumber(t)) || 0, number: String(displayedTrackNumber(t) || ""), length: t.length}))) });
   $("#track-comparison-artist").value = album.artist || "";
   $("#track-comparison-album").value = album.name || "";
   $("#track-comparison-only").checked = false;

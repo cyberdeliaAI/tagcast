@@ -14057,3 +14057,28 @@ test('combined album editing keeps source discs separate and locks album fields 
   assert.deepEqual(reviewed[0].libraryView,{combine_sets:true,combined_view:true});
   assert.equal(String(reviewed[0].albumId), '1');
 });
+
+test('numeric combined containers show per-disc positions while title reviews preserve native numbers', async () => {
+  const p=livePage(); await settle();
+  p.run(`state.connection.combine_sets=true; state.connection.combined_view=true;
+    const numericAlbum=state.details.get("1"), template=numericAlbum.tracks[0];
+    numericAlbum.tracks=[101,102,201,202].map(n=>({...template,id:String(n),album_id:"1",
+      title:"Synthetic "+n,track:n,native_track:n,display_track:n%100,disc:Math.floor(n/100),encoded_disc:true}));`);
+  await p.run('openAlbum("1")'); await settle();
+  const html=p.nodes.get('#album-page').innerHTML;
+  assert.match(html,/Disc 2/);
+  assert.equal(p.run('albumDisplayDiscs([state.details.get("1")]).length'),2);
+  assert.equal(p.run('summarize(state.details.get("1")).track_gaps'),0);
+  assert.equal(p.run('summarize(state.details.get("1")).repeated_numbers'),0);
+  p.run('$("#metadata-form")');
+  const title={disabled:false,type:'text',value:''};
+  p.nodes.get('#metadata-form').elements={namedItem:key=>key==='name'?title:null};
+  await p.run('openEditor(["1"],{onlineSuggestions:false})');
+  assert.equal(title.disabled,true);
+  p.run('editing.trackPatches["201"]={title:"Correct title"}; buildReview()');
+  const changes=p.json('pending.changes');
+  assert.equal(changes.length,1);
+  assert.equal(changes[0].sourceAlbumId,'1');
+  assert.equal(changes[0].sourceTrack,201);
+  assert.deepEqual(changes[0].fields,{title:{before:'Synthetic 201',after:'Correct title'}});
+});
