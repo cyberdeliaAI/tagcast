@@ -469,7 +469,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
   if (setupAudio) setupAudio(document.querySelector("#audio"));
   const context = vm.createContext({document, window, location, history, navigator: browserNavigator, MediaMetadata: metadataClass, console, confirm: () => true,
     Event, AbortController, ResizeObserver: browserResizeObserver, performance: {now: () => playbackClock},
-    localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }}, structuredClone,
+    localStorage: {getItem(key) { return storage[key] ?? null; }, setItem(key, value) { storage[key] = String(value); }, removeItem(key) { delete storage[key]; }}, structuredClone,
     URL: class extends URL {
       static createObjectURL(blob) { const url = `blob:test-${blobs.size}`; blobs.set(url, blob); return url; }
       static revokeObjectURL(url) { blobs.delete(url); }
@@ -14005,4 +14005,55 @@ test('Last.fm refuses untrusted catalogue links and responses for a different so
     assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
     assert.match(p.nodes.get('#artist-discover-status').textContent,/could not be read/);
   }
+});
+
+test('combined album advice is independent, dismissible per account and restored after switching off', async () => {
+  const storage = {}, p = page({storage}); await settle();
+  const before = p.requests.length;
+  p.run('state.mode="live"; state.connection.connected=true; state.connection.combine_sets=true; combinedNoticeProfile="account-a"; setLibraryNotice(false); updateChrome()');
+  assert.equal(p.nodes.get('#library-notice').hidden, true);
+  assert.equal(p.nodes.get('#combined-albums-notice').hidden, false);
+  await p.nodes.get('#combined-notice-dismiss').emit('click');
+  p.run('updateChrome()');
+  assert.equal(p.nodes.get('#combined-albums-notice').hidden, true);
+  p.run('combinedNoticeProfile="account-b"; updateChrome()');
+  assert.equal(p.nodes.get('#combined-albums-notice').hidden, false);
+  p.run('combinedNoticeProfile="account-a"; state.connection.combine_sets=false; state.connection.combined_view=false; updateChrome()');
+  assert.equal(p.nodes.get('#combined-albums-notice').hidden, true);
+  p.run('state.connection.combine_sets=true; updateChrome()');
+  assert.equal(p.nodes.get('#combined-albums-notice').hidden, false);
+  p.run('state.mode="demo"; updateChrome()');
+  assert.equal(p.nodes.get('#combined-albums-notice').hidden, true);
+  assert.equal(p.requests.length, before, 'Advice never reads or changes account settings itself');
+});
+
+test('combined album editing keeps source discs separate and locks album fields and track numbers', async () => {
+  const p = livePage(); await settle();
+  p.run(`globalThis.CSS={escape:String}; state.connection.combine_sets=true; state.connection.combined_view=true;
+    const combinedFixture=state.details.get("1");
+    combinedFixture.tracks.forEach((t,i)=>Object.assign(t,{album_id:i?"991":"1",disc:i?0:1}));
+    combinedFixture.combined_view=true;`);
+  await p.run('openAlbum("1")'); await settle();
+  assert.match(p.nodes.get('#album-page').innerHTML, /Original disc \(ID 991\)/);
+  const groups = p.json('albumDisplayDiscs([state.details.get("1")]).map(d=>({id:d.id,source:d.source_album_id,tracks:d.tracks.map(t=>t.id)}))');
+  assert.equal(groups.length, 2);
+  assert.ok(groups.every(g=>String(g.id)==='1'), 'Presentation retains the actual container target');
+  assert.equal(p.run('discSet(state.albums[0])'), null);
+  p.run('$("#metadata-form")');
+  const combinedTitleInput = {disabled:false,value:"",type:"text"};
+  p.nodes.get("#metadata-form").elements={namedItem:key=>key==="name"?combinedTitleInput:null};
+  await p.run('openEditor(["1"],{onlineSuggestions:false})');
+  assert.equal(combinedTitleInput.disabled, true);
+  assert.equal(p.nodes.get('#track-years').disabled, true);
+  const track = p.run('String(editing.originals[0].tracks.at(-1).id)');
+  p.run('$("#track-inline").scrollIntoView=()=>{}');
+  p.run(`editTrack(${JSON.stringify(track)},{loadLyrics:false})`);
+  assert.match(p.nodes.get('#track-inline').innerHTML, /data-key="track" disabled/);
+  assert.doesNotMatch(p.nodes.get('#track-inline').innerHTML, /data-key="title" disabled/);
+  p.run(`editing.trackPatches[${JSON.stringify(track)}]={title:"Correct title"}; $("#track-inline").dataset.track=""; buildReview()`);
+  const reviewed = p.json('pending.changes');
+  assert.equal(reviewed.length, 1);
+  assert.equal(reviewed[0].sourceAlbumId, '991');
+  assert.deepEqual(reviewed[0].libraryView,{combine_sets:true,combined_view:true});
+  assert.equal(String(reviewed[0].albumId), '1');
 });

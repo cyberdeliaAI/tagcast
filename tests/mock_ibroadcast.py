@@ -71,6 +71,13 @@ def library():
         if STATE.get("omit_empty_albums") and not a["tracks"]:
             continue
         albums[str(i)] = [a["name"], a["tracks"], a["artist_id"], False, a["year"], a["disc"], a.get("rating", 0), a.get("additional", [])]
+    if STATE.get("combined_shape", STATE["combine_sets"]):
+        for container, sources in STATE.get("combined_albums", {}).items():
+            albums[str(container)][1] = [t for source in sources for t in STATE["albums"][source]["tracks"]]
+            if not STATE.get("combined_keep_source_rows"):
+                for source in sources:
+                    if source != container:
+                        albums.pop(str(source), None)
     artists = {"map": {"name": 0, "tracks": 1, "trashed": 2, "artwork_id": 3, "rating": 4}}
     for i, name in STATE["artists"].items():
         artists[str(i)] = [name, [], i in STATE["album_only_artists"], STATE["artist_art"].get(i, 0), STATE.get("artist_ratings", {}).get(i, 0)]

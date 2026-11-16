@@ -479,8 +479,18 @@ their shared browsing/player state; a fast local response can otherwise race the
   not-sent and unconfirmed results distinct. Tag dialogs preserve playback, history,
   focus and scroll, reject late reads/writes after library replacement, and have local
   Help. Invalidate loaded tag metadata and browse indexes after checked writes.
-- With `Combine Multi-Disc Album Sets` enabled, album changes are blocked;
-  track changes can proceed. The cache must match this setting.
+- Support both `Combine Multi-Disc Album Sets` states without changing the account preference.
+  Keep original track `album_id` separate from the visible container. Track writes target
+  `file_id`; validate both reviewed identities, before-values and the setting/view snapshot.
+  Original source rows may be absent; never invent their album fields or disc numbers.
+  A complete source row nested in exactly one larger container is not another visible album;
+  ambiguous membership fails closed. Display original disc groups inside native containers,
+  and do not apply Tagcast's separate-disc grouping to that view.
+  Album-field/track-number writes, splitting, merging and album-artist cleanup stay blocked
+  when either the setting is on or the response still has combined membership. A lagging
+  combined response with the setting off must not be reused as the final cache. Read-back
+  validates view and original membership; uncertainty never triggers a resend. The separate
+  multi-disc advice banner is dismissible per account/browser and never hides save guards.
 - With that setting off, the album lists and the album page show the discs of a
   set (same title, album artist, album year and active-track upload-date set, different disc numbers) as one album
   (`albumShelf`, `mergeDiscs`); every write still goes to the disc's own album.

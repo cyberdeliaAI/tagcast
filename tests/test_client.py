@@ -993,6 +993,35 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 0)
         self.assertEqual(job["results"][0]["status"], "unverified")
 
+    def test_combined_shape_saves_second_disc_tracks_and_blocks_album_writes_during_lag(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            mock_ibroadcast.STATE["albums"][75] = {
+                "name": "Hounds of Love", "artist_id": 41, "year": 0, "disc": 2, "tracks": [905]}
+            mock_ibroadcast.STATE["tracks"][905] = {
+                **mock_ibroadcast.STATE["tracks"][900], "title": "Second disc", "album_id": 75}
+            mock_ibroadcast.STATE.update(combine_sets=True, combined_albums={72: [72, 75]})
+            studio = self.connect()
+            loaded = studio.load_library()
+            self.assertTrue(loaded["combined_view"])
+            self.assertNotIn("75", [a["id"] for a in loaded["albums"]])
+            result = studio.save([edit("track", 905, 72, genre=("", "Soul"))])
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [{"file_id": 905, "genre": "Soul"}])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][905]["album_id"], 75)
+            mock_ibroadcast.STATE.update(combine_sets=False, combined_shape=True)
+            writes = len(mock_ibroadcast.STATE["writes"])
+            result = studio.save([edit("album", 72, 72, artist=("Kate Bush", "Must not create"))])
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "blocked")
+            self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes)
+            before = mock_ibroadcast.STATE["downloads"]
+            studio.load_library()
+            studio.load_library()
+            self.assertEqual(mock_ibroadcast.STATE["downloads"], before + 2)
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
     def test_switching_combine_sets_downloads_the_library_again(self):
         studio = self.connect()
         self.assertEqual(studio.load_library()["source"], "download")

@@ -1302,7 +1302,7 @@ class CollectionTeardownTests(unittest.TestCase):
             return worker
 
         with patch.object(client.threading, 'Thread', side_effect=delayed_thread):
-            fixture.studio._write_cache(SimpleNamespace(to_cache=lambda: {}), 123, fixture.studio.client)
+            fixture.studio._write_cache(SimpleNamespace(to_cache=lambda: {}, combine_sets=False, combined_view=False), 123, fixture.studio.client)
         self.assertTrue(entered.wait(5))
         fixture.tearDown()
         self.finish(release, workers)
@@ -1339,7 +1339,7 @@ class CollectionTeardownTests(unittest.TestCase):
         fixture.studio._write_bytes = Mock(side_effect=write)
         fixture.studio._disconnect = disconnect
         fixture.home.cleanup = Mock(wraps=fixture.home.cleanup)
-        fixture.studio._write_cache(SimpleNamespace(to_cache=lambda: {}), 123, fixture.studio.client)
+        fixture.studio._write_cache(SimpleNamespace(to_cache=lambda: {}, combine_sets=False, combined_view=False), 123, fixture.studio.client)
         self.assertTrue(writing.wait(5))
         worker = threading.Thread(target=teardown)
         workers.append(worker)

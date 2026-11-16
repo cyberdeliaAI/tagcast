@@ -46,6 +46,24 @@ const state = {playlistsCount: null, albums: [], details: new Map(), albumFavour
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
+let combinedNoticeProfile = "";
+
+const combinedAlbumView = () => live() && Boolean(state.connection.combine_sets || state.connection.combined_view);
+function updateCombinedNotice() {
+  const banner = $("#combined-albums-notice");
+  if (!banner) return;
+  let dismissed = false;
+  if (combinedNoticeProfile) try {
+    const key = `tagcast-combined-notice:${combinedNoticeProfile}`;
+    dismissed = localStorage.getItem(key) === "hidden";
+    if (live() && !state.connection.combine_sets && !state.connection.combined_view && !state.loading) localStorage.removeItem(key);
+  } catch { /* private window */ }
+  banner.hidden = !combinedAlbumView() || !state.connection.connected || state.loading || !combinedNoticeProfile || dismissed;
+}
+$("#combined-notice-dismiss").addEventListener("click", () => {
+  if (combinedNoticeProfile) try { localStorage.setItem(`tagcast-combined-notice:${combinedNoticeProfile}`, "hidden"); } catch { /* private window */ }
+  $("#combined-albums-notice").hidden = true; $("#mode-badge").focus();
+});
 // Interface text keys; the visible text follows the interface language.
 const libraryLoadingMessages = [
   "library.loading.void",
@@ -435,6 +453,7 @@ let discCache = {albums: null, sets: new Map()};
 const discSetKey = a => JSON.stringify([a.name.trim().toLocaleLowerCase(), a.artist,
   Number(a.year) || 0, a.upload_dates || [""], albumArtistEntries(a).slice(1).map(entry => entry.id)]);
 function discSet(album) {
+  if (combinedAlbumView()) return null;
   if (discCache.albums !== state.albums) {
     const sets = new Map();
     for (const a of state.albums) {
@@ -488,6 +507,27 @@ function shelfIds(id) {
 // Full albums of one set as one album, tracks in disc order, for the album page and playback.
 const joinDiscs = albums => albums.length === 1 ? albums[0]
   : {...albums[0], artwork: albums.find(a => a.artwork)?.artwork || "", tracks: albums.flatMap(a => a.tracks)};
+
+function albumDisplayDiscs(albums) {
+  return albums.flatMap(album => {
+    const groups = new Map();
+    for (const track of album.tracks) {
+      const source = String(track.album_id || album.id);
+      if (!groups.has(source)) groups.set(source, []);
+      groups.get(source).push(track);
+    }
+    if (groups.size < 2) return [album];
+    return [...groups].map(([source, tracks]) => {
+      const numbers = new Set(tracks.map(t => Number(t.disc) || 0));
+      return {...album, source_album_id: source, virtualDisc: true,
+        disc: numbers.size === 1 ? [...numbers][0] : 0, tracks};
+    });
+  });
+}
+function sourceDiscLabel(disc) {
+  return disc.disc ? TagcastI18n.html("common.disc", {disc: disc.disc})
+    : TagcastI18n.html("combined.sourceDisc", {id: disc.source_album_id || disc.id});
+}
 
 function thumb(album) {
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
@@ -908,7 +948,8 @@ async function openEditor(ids, {onlineSuggestions = true} = {}) {
   const mixed = key => whole && !common(albums, key) && albums.some(a => a[key]) ? {placeholder: TagcastI18n.text("editor.field.mixedDiscs")} : {};
   const noGenre = TagcastI18n.html("editor.track.noGenre");
   const trackRow = t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button type="button" class="play" data-play="${escapeHtml(t.id)}" aria-label="${TagcastI18n.html("editor.track.play", {title: t.title})}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}${t.composers?.length ? `<small class="track-composer">${escapeHtml(t.composers.join(", "))}</small>` : ""}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${genresText(t.genres) ? escapeHtml(genresText(t.genres)) : noGenre}</span></td><td><button type="button" class="track-edit" data-track="${escapeHtml(t.id)}">${TagcastI18n.html("editor.track.edit")}</button></td></tr>`;
-  const trackRows = whole ? albums.map(a => `<tr class="disc-row"><td colspan="4">${TagcastI18n.html("common.disc", {disc: a.disc || "?"})}</td></tr>${a.tracks.map(trackRow).join("")}`).join("") : album.tracks.map(trackRow).join("");
+  const displayDiscs = albumDisplayDiscs(albums);
+  const trackRows = whole || displayDiscs.length > 1 ? displayDiscs.map(a => `<tr class="disc-row"><td colspan="4">${sourceDiscLabel(a)}</td></tr>${a.tracks.map(trackRow).join("")}`).join("") : album.tracks.map(trackRow).join("");
   const editorTabs = bulk ? "" : `<div id="editor-tabs" class="favourites-tabs editor-tabs" role="tablist" aria-label="${TagcastI18n.html("editor.tabs.label")}"><button type="button" id="editor-tab-album" role="tab" data-editor-tab="album" aria-selected="true" aria-controls="editor-album-panel" tabindex="0">${TagcastI18n.html("editor.editAlbum")}</button><button type="button" id="editor-tab-tracks" role="tab" data-editor-tab="tracks" aria-selected="false" aria-controls="editor-tracks-panel" tabindex="-1">${TagcastI18n.html("editor.tabs.tracks")} <span>${allTracks.length}</span></button></div>`;
   const trackPanel = bulk ? '<div id="track-inline"></div>' : `<section id="editor-tracks-panel" role="tabpanel" aria-labelledby="editor-tab-tracks" hidden><div class="tracks-heading"><h3>${TagcastI18n.html("editor.tracks.heading")} <span class="muted">(${allTracks.length})</span></h3><span class="muted">${TagcastI18n.html("editor.tracks.choose")}</span></div><div class="editor-track-workspace"><div class="editor-track-list"><table class="track-table"><thead><tr><th>#</th><th>${TagcastI18n.html("editor.tracks.columnTitle")}</th><th>${TagcastI18n.html("editor.tracks.columnYearGenre")}</th><th></th></tr></thead><tbody>${trackRows}</tbody></table></div><div id="track-inline"><p class="empty">${TagcastI18n.html("editor.tracks.empty")}</p></div></div></section>`;
   const eyebrow = whole ? TagcastI18n.html("editor.eyebrow.set", {count: albums.length}) : TagcastI18n.html(bulk ? "editor.eyebrow.bulk" : "editor.eyebrow.album");
@@ -918,15 +959,29 @@ async function openEditor(ids, {onlineSuggestions = true} = {}) {
   const combined = allTracks.filter(t => hasCombined(t.genres));
   const scope = whole ? TagcastI18n.html("editor.scope.set", {count: albums.length}) : bulk ? TagcastI18n.html("editor.scope.bulk", {count: albums.length}) : TagcastI18n.html("editor.scope.album");
   const sources = bulk ? `<aside class="sources"><div class="eyebrow">${TagcastI18n.html("editor.selection.eyebrow")}</div><h3>${TagcastI18n.html("editor.selection.heading")}</h3>` + albums.map(a => `<p class="muted">${escapeHtml(a.name)}${discLabel(a) ? ` · ${escapeHtml(discLabel(a))}` : ""}</p>`).join("") + `<div class="year-note"><strong>${TagcastI18n.html("editor.selection.lookupHeading")}</strong>${TagcastI18n.html("editor.selection.lookupNote")}</div></aside>` : lookupPanel(album);
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${TagcastI18n.html(bulk ? "editor.heading.bulk" : "editor.editAlbum")}</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="editing" aria-label="${help}" title="${help}">?</button><button class="close" data-close="editor" aria-label="${TagcastI18n.html("editor.close")}">×</button></div></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="${TagcastI18n.html("editor.cover.changeTitle")}">${cover(album, true)}<span>${TagcastI18n.html("editor.cover.change")}</span></button>`}<div><h3>${bulk ? TagcastI18n.html("editor.bulk.heading", {count: albums.length, artist: state.artist || album.artist}) : escapeHtml(album.name)}</h3><div class="muted">${escapeHtml(album.artist)}${dot}${TagcastI18n.html("editor.header.tracks", {count: allTracks.length})}${whole || !bulk ? `${dot}${discText}` : ""}${!bulk && !whole && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">${TagcastI18n.html("editor.header.editSet", {count: discSet(album).length})}</button>` : ""}</div><div class="header-actions"><span class="pill">${TagcastI18n.html(live() ? "editor.header.live" : "editor.header.sample")}</span>${live() && single ? `<button class="text-action" data-play-album>${TagcastI18n.html("editor.header.playAlbum")}</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}${TagcastI18n.html("editor.header.artistImage")}</button>` : ""}` : ""}</div></div></div>${editorTabs}<div class="edit-layout" id="editor-layout"><form id="metadata-form"><section id="editor-album-panel" ${bulk ? "" : 'role="tabpanel" aria-labelledby="editor-tab-album"'}><div class="fields">${bulk ? "" : field("name", TagcastI18n.html("editor.field.albumTitle"), whole ? common(albums, "name") : album.name, {wide: true, ...mixed("name")})}${albumArtistField(albums, bulk)}${creditsField(albums[0], {album: true, bulk: bulk || !albums.every(a => sameValue(a.credits || [], albums[0].credits || [])), mixed: !albums.every(a => sameValue(a.credits || [], albums[0].credits || []))})}${field("year", TagcastI18n.html("editor.field.releaseYear"), common(albums, "year"), {type: "number", bulk, hint: TagcastI18n.html("editor.field.releaseYearHint"), ...mixed("year")})}${whole || sameSet ? "" : field("disc", TagcastI18n.html("editor.field.discNumber"), common(albums, "disc"), {type: "number", bulk})}${genreField("genres", TagcastI18n.html("editor.field.genres"), allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: TagcastI18n.html("editor.field.genresHint")})}${combined.length ? `<p class="genre-note wide">${TagcastI18n.html("editor.genres.combinedNote", {count: combined.length, example: combined[0].genres.find(g => g.includes(";"))})} <button type="button" class="text-action" data-split-album-genres>${TagcastI18n.html("editor.genres.split")}</button></p>` : ""}${genreField("composers", TagcastI18n.html("editor.field.composers"), allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: TagcastI18n.html("editor.field.composersHint")})}</div><label class="checkline"><input type="checkbox" id="track-years"> ${TagcastI18n.html("editor.field.trackYears")}</label><div class="scope-note">${scope}</div></section>${trackPanel}</form>${sources}</div><div class="dialog-footer"><span class="muted">${TagcastI18n.html(live() ? "editor.footer.live" : "editor.footer.demo")}</span><button class="button" data-close="editor">${TagcastI18n.html("common.cancel")}</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>${TagcastI18n.html("editor.footer.nextAlbum")}</button>`}<button class="button primary" id="review-button">${TagcastI18n.html("editor.footer.review")}</button></div>`;
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${TagcastI18n.html(bulk ? "editor.heading.bulk" : "editor.editAlbum")}</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="editing" aria-label="${help}" title="${help}">?</button><button class="close" data-close="editor" aria-label="${TagcastI18n.html("editor.close")}">×</button></div></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="${TagcastI18n.html("editor.cover.changeTitle")}">${cover(album, true)}<span>${TagcastI18n.html("editor.cover.change")}</span></button>`}<div><h3>${bulk ? TagcastI18n.html("editor.bulk.heading", {count: albums.length, artist: state.artist || album.artist}) : escapeHtml(album.name)}</h3><div class="muted">${escapeHtml(album.artist)}${dot}${TagcastI18n.html("editor.header.tracks", {count: allTracks.length})}${whole || !bulk ? `${dot}${discText}` : ""}${!bulk && !whole && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">${TagcastI18n.html("editor.header.editSet", {count: discSet(album).length})}</button>` : ""}</div><div class="header-actions"><span class="pill">${TagcastI18n.html(live() ? "editor.header.live" : "editor.header.sample")}</span>${live() && single ? `<button class="text-action" data-play-album>${TagcastI18n.html("editor.header.playAlbum")}</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}${TagcastI18n.html("editor.header.artistImage")}</button>` : ""}` : ""}</div></div></div>${editorTabs}<div class="edit-layout" id="editor-layout"><form id="metadata-form"><section id="editor-album-panel" ${bulk ? "" : 'role="tabpanel" aria-labelledby="editor-tab-album"'}>${combinedAlbumView() ? `<p class="warn-box">${TagcastI18n.html("combined.editorNote")}</p>` : ""}<div class="fields">${bulk ? "" : field("name", TagcastI18n.html("editor.field.albumTitle"), whole ? common(albums, "name") : album.name, {wide: true, ...mixed("name")})}${albumArtistField(albums, bulk)}${creditsField(albums[0], {album: true, bulk: bulk || !albums.every(a => sameValue(a.credits || [], albums[0].credits || [])), mixed: !albums.every(a => sameValue(a.credits || [], albums[0].credits || []))})}${field("year", TagcastI18n.html("editor.field.releaseYear"), common(albums, "year"), {type: "number", bulk, hint: TagcastI18n.html("editor.field.releaseYearHint"), ...mixed("year")})}${whole || sameSet ? "" : field("disc", TagcastI18n.html("editor.field.discNumber"), common(albums, "disc"), {type: "number", bulk})}${genreField("genres", TagcastI18n.html("editor.field.genres"), allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: TagcastI18n.html("editor.field.genresHint")})}${combined.length ? `<p class="genre-note wide">${TagcastI18n.html("editor.genres.combinedNote", {count: combined.length, example: combined[0].genres.find(g => g.includes(";"))})} <button type="button" class="text-action" data-split-album-genres>${TagcastI18n.html("editor.genres.split")}</button></p>` : ""}${genreField("composers", TagcastI18n.html("editor.field.composers"), allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: TagcastI18n.html("editor.field.composersHint")})}</div><label class="checkline"><input type="checkbox" id="track-years"> ${TagcastI18n.html("editor.field.trackYears")}</label><div class="scope-note">${scope}</div></section>${trackPanel}</form>${sources}</div><div class="dialog-footer"><span class="muted">${TagcastI18n.html(live() ? "editor.footer.live" : "editor.footer.demo")}</span><button class="button" data-close="editor">${TagcastI18n.html("common.cancel")}</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>${TagcastI18n.html("editor.footer.nextAlbum")}</button>`}<button class="button primary" id="review-button">${TagcastI18n.html("editor.footer.review")}</button></div>`;
+  editing.combineSets = Boolean(state.connection.combine_sets);
+  editing.combinedView = Boolean(state.connection.combined_view);
+  if (combinedAlbumView()) {
+    for (const key of ["name", "artist", "year", "disc"]) {
+      const input = $("#metadata-form").elements.namedItem(key); if (input) input.disabled = true;
+    }
+    $("#album-various-artists").disabled = true;
+    $("#track-years").disabled = true;
+    const credits = $("#metadata-form").querySelector('[data-credit-editor="album-credits"]');
+    if (credits) { credits.classList.add("disabled"); for (const input of credits.querySelectorAll("input,button,select")) input.disabled = true; }
+    for (const input of $("#editor-album-panel").querySelectorAll("[data-enable]")) {
+      if (["name", "artist", "year", "disc", "credits"].includes(input.dataset.enable)) input.disabled = true;
+    }
+  }
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   // A mixed disc-set year is a blank placeholder, not an instruction to clear tracks.
   $("#track-years").checked = metadataEditingDefaults.applyYearToTracks && !bulk
-    && albums.every(a => a.year === album.year);
+    && albums.every(a => a.year === album.year) && !combinedAlbumView();
   const various = albums.map(a => a.artist_id === 0 && a.artist === "Various Artists");
   $("#album-various-artists").checked = various.every(Boolean);
   $("#album-various-artists").indeterminate = various.some(Boolean) && !various.every(Boolean);
-  syncAlbumArtistControls();
+  if (!combinedAlbumView()) syncAlbumArtistControls();
   $("#editor").showModal();
   if (!bulk) setEditorTab("album");
   if (!bulk && onlineSuggestions) startLookups(album);
@@ -990,6 +1045,7 @@ function stashTrack() {
   const original = editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === pane.dataset.track);
   const data = {};
   for (const input of pane.querySelectorAll("input[data-key]")) {
+    if (input.disabled) continue;
     if (input.dataset.key === "year" && input.validity?.badInput) {
       throw editorFailure("errors.editor.year_range");
     }
@@ -1016,7 +1072,7 @@ function editTrack(id, {loadLyrics = true, scrollBehavior = "smooth"} = {}) {
   const fields = [["title", "editor.track.titleField", "text"], ["artist", "editor.track.artistField", "text"], ["year", "editor.track.yearField", "number"], ["track", "editor.track.numberField", "number"]];
   pane.innerHTML = `<div class="track-inline"><h3>${TagcastI18n.html("editor.track.heading", {number: original.track, title: original.title})}</h3><div class="fields">${fields.map(([key, labelKey, type]) => {
     const label = TagcastI18n.html(labelKey);
-    return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`;
+    return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" ${key === "track" && combinedAlbumView() ? "disabled" : ""} aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`;
   }).join("")}${genreField("track-genres", TagcastI18n.html("editor.track.genresField"), track.genres || [])}${creditsField(track)}</div><section id="track-lyrics" class="track-lyrics" hidden></section><p class="muted">${TagcastI18n.html("editor.track.note")}</p></div>`;
   if (loadLyrics) renderLyrics("track", lyricsSelection(original));
   for (const button of document.querySelectorAll("#editor-tracks-panel button[data-track]")) {
@@ -1078,7 +1134,9 @@ function buildReview() {
         fields.artist_id.before_name = item.artist === "Various Artists" ? "Various Artists (named artist)" : item.artist;
         fields.artist_id.after_name = "Various Artists";
       }
-      if (Object.keys(fields).length) changes.push({kind, id: item.id, albumId, label: (item.name || item.title) + disc, fields});
+      if (Object.keys(fields).length) changes.push({kind, id: item.id, albumId, label: (item.name || item.title) + disc, fields,
+        ...(live() ? {libraryView: {combine_sets: Boolean(editing.combineSets), combined_view: Boolean(editing.combinedView)},
+          ...(kind === "track" ? {sourceAlbumId: item.album_id} : {})} : {})});
     }
     for (const album of editing.originals) {
       diff("album", album, albumPatch, album.id);
@@ -1136,7 +1194,7 @@ function showReview(changes) {
   if (live() && changes.some(c => c.kind === "album")) {
     api("/api/account-settings").then(settings => {
       if (Boolean(settings.combine_sets) === Boolean(state.connection.combine_sets) || !$("#review").open) return;
-      state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
+      state.connection.combine_sets = settings.combine_sets; updateCombinedNotice(); renderReviewChrome(changes);
     }).catch(() => { /* the save checks again */ });
   }
     $("#review-changes").innerHTML = reviewList(changes);
@@ -1462,6 +1520,7 @@ function paintChrome() {
   badge.setAttribute("aria-label", `${badge.textContent}. ${badge.title}`);
   $("#data-notice").textContent = TagcastI18n.text(live() ? "connection.notice.live" : "connection.notice.demo");
   $("#library-notice").hidden = !libraryNotice.visible;
+  updateCombinedNotice();
   $("#library-loading").hidden = !state.loading;
   $("#history-note").textContent = TagcastI18n.text(live() ? "history.note.live" : "history.note.demo");
 }
@@ -1521,6 +1580,7 @@ async function loadLive(refresh = false) {
     if (!current()) return;
     completed = true;
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    combinedNoticeProfile = typeof data.playback_profile === "string" ? data.playback_profile : "";
     if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
     applyEditorNames(data.editor_names);
     updatePlaylistCount(data.playlists_count);
@@ -1529,6 +1589,7 @@ async function loadLive(refresh = false) {
     state.artistFavourites = new Set(data.artist_favourites?.artists || []);
     state.artistFavouriteError = data.artist_favourites?.error || "";
     state.connection.combine_sets = Boolean(data.combine_sets);
+    state.connection.combined_view = Boolean(data.combined_view);
     if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
     if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
     toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
@@ -1660,7 +1721,7 @@ function renderReviewChrome(changes) {
     const known = knownArtists();
     const fresh = [...new Set(changes.flatMap(c => [...(c.fields.artist ? [c.fields.artist.after] : []), ...(c.fields.composers?.after || [])]))].filter(n => !known.has(n.toLocaleLowerCase()));
     if (fresh.length) warnings.push(TagcastI18n.html("review.warning.newArtists", {count: fresh.length, names: TagcastI18n.trusted(fresh.map(n => `“${escapeHtml(n)}”`).join(", "))}));
-    if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push(TagcastI18n.html("review.warning.combineSets"));
+    if (combinedAlbumView() && changes.some(c => c.kind === "album")) warnings.push(TagcastI18n.html("review.warning.combineSets"));
     if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push(TagcastI18n.html("review.warning.albumArtist"));
   }
   $("#review-warnings").innerHTML = warnings.map(w => `<div class="warn-box">${w}</div>`).join("");

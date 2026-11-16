@@ -241,6 +241,7 @@ class Library:
         # iBroadcast merges the discs of a set into one album while "Combine Multi-Disc
         # Album Sets" is on, so a copy is only valid for the setting it was downloaded with.
         self.combine_sets = response.get("combine_sets")
+        self._membership = None
         playlists = raw.get("playlists") if isinstance(raw.get("playlists"), dict) else None
         self.playlists_loaded = playlists is not None
         try:
@@ -328,20 +329,62 @@ class Library:
 
     def active_track_album(self, track_id):
         """Resolve the displayed album, including iBroadcast's combined multi-disc view."""
-        track = self.tracks.get(track_id)
-        if track and not track.get("trashed"):
-            original = number(track.get("album_id"))
-            album = self.albums.get(original)
-            if album and not album.get("trashed") and track_id in self.active_track_ids(original):
-                return original
-            for album_id, album in self.albums.items():
-                if not album.get("trashed") and track_id in self.active_track_ids(album_id):
-                    return album_id
+        containers = self.track_containers.get(track_id, ())
+        if len(containers) == 1:
+            return containers[0]
+        if containers:
+            raise LibraryError("This track has ambiguous album membership. Reload the library.")
         raise LibraryError("This track is no longer available. Reload the library.")
 
+    @property
+    def track_containers(self):
+        """Snapshot-local membership; original track album IDs are never rewritten."""
+        if self._membership is None:
+            members = {}
+            for album_id, album in self.albums.items():
+                if not album.get("trashed"):
+                    for track_id in self.active_track_ids(album_id):
+                        members.setdefault(track_id, []).append(album_id)
+            # Some responses retain the original disc row as well as its container.
+            # Hide only a complete, unambiguous source row nested in one foreign container.
+            album_members = {a: set(self.active_track_ids(a)) for a in self.albums}
+            parents = {}
+            for track_id, containers in members.items():
+                source = number(self.tracks[track_id].get("album_id"))
+                for container in containers:
+                    if container != source:
+                        parents.setdefault(source, set()).add(container)
+            self._contained_albums = {source for source, containers in parents.items()
+                if len(containers) == 1 and source in album_members and album_members[source]
+                and album_members[source] < album_members[next(iter(containers))]}
+            members = {t: [a for a in albums if a not in self._contained_albums]
+                       for t, albums in members.items()}
+            self._combined_view = any(number(self.tracks[t].get("album_id")) != a
+                                      for t, albums in members.items() for a in albums)
+            self._membership = members
+        return self._membership
+
+    @property
+    def combined_view(self):
+        self.track_containers
+        return self._combined_view
+
+    @property
+    def album_writes_blocked(self):
+        # The account flag can change before the returned library catches up.
+        return bool(self.combine_sets) or self.combined_view
+
+    def track_position(self, track_id):
+        track = self.tracks[track_id]
+        source = self.albums.get(number(track.get("album_id")), {})
+        raw = track.get("track")
+        parts = re.fullmatch(r"([1-9][0-9]{0,3})-([0-9]{1,4})", text(raw))
+        return (int(parts[1]), int(parts[2])) if parts and int(parts[2]) > 0 else (number(source.get("disc")), number(raw))
+
     def album_ids(self):
+        self.track_containers
         return [i for i, a in self.albums.items()
-                if not a.get("trashed") and self.active_track_ids(i)]
+                if i not in self._contained_albums and not a.get("trashed") and self.active_track_ids(i)]
 
     def extra_artists(self, track):
         return additional_artists(track, self.tracks.nested.get("artists_additional_map"))
@@ -391,7 +434,10 @@ class Library:
             raise LibraryError("This album is no longer available. Reload the library.")
         track_ids = self.active_track_ids(album_id)
         tracks = [self.track_view(t) for t in track_ids]
-        tracks.sort(key=lambda t: (t["track"] or 9999, t["title"].lower()))
+        # Keep original disc boundaries even when their album rows are absent.
+        sources = {source: i for i, source in enumerate(dict.fromkeys(t["album_id"] for t in tracks))}
+        tracks.sort(key=lambda t: (t["disc"] or 9999, sources[t["album_id"]],
+                                   t["track"] or 9999, t["title"].lower()))
         artwork = self.album_artwork(track_ids)
         return {
             "id": str(album_id),
@@ -412,6 +458,9 @@ class Library:
             "tracks": tracks,
             "uploaded_at": max((t["uploaded_at"] for t in tracks), default=""),
             "tags_loaded": self.tags_loaded,
+            "combined_view": any(t["album_id"] != str(album_id) for t in tracks),
+            "combine_sets": bool(self.combine_sets),
+            "album_writes_blocked": self.album_writes_blocked,
         }
 
     def track_view(self, track_id):
@@ -431,7 +480,8 @@ class Library:
             "genres": stored_genres(track),
             "composers": [self.artist_name(e["artist_id"]) for e in self.composer_entries(track)],
             "composer_ids": [e["artist_id"] for e in self.composer_entries(track)],
-            "track": number(track.get("track")),
+            "track": self.track_position(track_id)[1],
+            "disc": self.track_position(track_id)[0],
             "length": number(track.get("length")),
             "uploaded_on": text(track.get("uploaded_on")).strip()[:10],
             "uploaded_at": uploaded_at(track),
@@ -494,8 +544,9 @@ class Library:
             if editor_names is not None:
                 editor_names["genres"].update(stored)
                 editor_names["composers"].update(e["artist_id"] for e in composers)
-            numbers.add(number(track.get("track")))
-            position, title = number(track.get("track")), title_key(track.get("title"))
+            position = self.track_position(track_id)[1]
+            numbers.add(position)
+            title = title_key(track.get("title"))
             # Combined sets can contain tracks from different original discs.
             disc = number(track.get("album_id"))
             if position > 0:
@@ -568,6 +619,8 @@ class Library:
 
     def album_set_key(self, album_id):
         """A conservative display grouping; dates and year are not release identifiers."""
+        if self.album_writes_blocked:
+            return ("native-container", album_id)
         album = self.albums[album_id]
         if album_id not in self._upload_dates:
             self._upload_dates[album_id] = tuple(sorted({
@@ -1050,11 +1103,18 @@ def plan_save(library, changes):
         except LibraryError:
             raise ConflictError(f"{change.get('label') or kind} is no longer in your library. "
                                 "Reload and review again.") from None
-        album_id = item_id if kind == "album" else number(now["album_id"])
+        album_id = item_id if kind == "album" else library.active_track_album(item_id)
         if kind == "track" and change.get("albumId") is not None \
                 and _clean_id(change.get("albumId")) != album_id:
             raise ConflictError(f"Track “{now['title']}” moved to another album. "
                                 "Reload and review again.")
+        if kind == "track" and change.get("sourceAlbumId") is not None \
+                and _clean_id(change["sourceAlbumId"]) != number(now["album_id"]):
+            raise ConflictError("The track's original disc changed. Reload and review again.")
+        context = change.get("libraryView")
+        if context is not None and context != {"combine_sets": bool(library.combine_sets),
+                                               "combined_view": library.combined_view}:
+            raise ConflictError("The multi-disc setting or library view changed. Reload and review again.")
         names = {library.artist_name(i) for i in library.album_artist_ids(library.albums[album_id])}
         album_artists = names if album_artists is None else album_artists.intersection(names)
 
@@ -1063,6 +1123,8 @@ def plan_save(library, changes):
             if not isinstance(values, dict) or "after" not in values or "before" not in values:
                 raise LibraryError("Every field needs a before and after value.")
             after = _clean_value(key, values["after"])
+            if kind == "track" and key == "track" and library.album_writes_blocked and after != now[key]:
+                raise LibraryError("Turn off Combine Multi-Disc Album Sets and reload before changing track numbers.")
             if key == "credits":
                 for entry in after:
                     artist_id = entry["artist_id"]
@@ -1096,6 +1158,8 @@ def plan_save(library, changes):
                     raise LibraryError("An album artist cannot also appear in the additional album artists.")
             item = {"kind": kind, "id": item_id, "album_id": album_id,
                     "label": now.get("name") or now.get("title"), "patch": patch}
+            if kind == "track":
+                item["source_album_id"] = number(now["album_id"])
             if "composers" in patch:  # other extra artists (featured, ...) stay as they are
                 item["keep"] = [e for e in library.extra_artists(library.tracks[item_id])
                                 if e.get("type") != "composer"]
@@ -1116,6 +1180,7 @@ def plan_save(library, changes):
         "items": items,
         "artists": {name: artist_id for name, artist_id in names.items() if artist_id is not None},
         "new_artists": [name for name, artist_id in names.items() if artist_id is None],
+        "library_view": {"combine_sets": bool(library.combine_sets), "combined_view": library.combined_view},
     }
 
 
@@ -1202,7 +1267,12 @@ def verify(library, plan, artist_ids, failed=None):
         else:
             try:
                 now = library.current(item["kind"], item["id"])
-                ok = all(_matches(now, k, v, artist_ids) for k, v in item["patch"].items())
+                same_view = plan.get("library_view", {}) == {
+                    "combine_sets": bool(library.combine_sets), "combined_view": library.combined_view}
+                membership = item["kind"] != "track" or (
+                    number(now["album_id"]) == item.get("source_album_id", number(now["album_id"]))
+                    and library.active_track_album(item["id"]) == item["album_id"])
+                ok = same_view and membership and all(_matches(now, k, v, artist_ids) for k, v in item["patch"].items())
                 entry["status"] = "saved" if ok else "unverified"
                 if ok and "credits" in item["patch"]:
                     entry["credits"] = now["credits"]
