@@ -772,6 +772,27 @@ class ClientTests(unittest.TestCase):
             with self.assertRaises(client.ApiError):
                 studio.save_settings({"auto_updates": bad})
 
+    def test_discovery_defaults_to_lastfm_and_persists_local_only_without_provider_reads(self):
+        studio = client.Studio(self.home)
+        self.assertTrue(studio.settings()["discover_lastfm"])
+        with patch.object(studio.discover.lastfm, "read", side_effect=AssertionError("No lookup on save")):
+            settings = studio.save_settings({"lastfm_api_key": "keep-key", "discover_lastfm": False})
+            self.assertFalse(settings["discover_lastfm"])
+            self.assertNotIn("keep-key", json.dumps(settings))
+            restarted = client.Studio(self.home)
+            self.assertFalse(restarted.settings()["discover_lastfm"])
+            restarted.save_settings({"auto_lookup": False})
+            self.assertFalse(restarted.settings()["discover_lastfm"])
+            self.assertTrue(restarted.save_settings({"discover_lastfm": True})["discover_lastfm"])
+        self.assertEqual(restarted.config["lastfm_api_key"], "keep-key")
+        self.assertPrivate(Path(self.home, "config.json"))
+        original = Path(self.home, "config.json").read_bytes()
+        for bad in (None, "false", 0, 1, [], {}):
+            with self.subTest(value=bad), self.assertRaises(client.ApiError):
+                restarted.save_settings({"discover_lastfm": bad, "lastfm_api_key": "not-saved"})
+            self.assertEqual(Path(self.home, "config.json").read_bytes(), original)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
     def test_source_selection_persists_without_account_preserving_keys_and_other_settings(self):
         studio = client.Studio(self.home)
         settings = studio.save_settings({"discogs_token": "keep-source-key", "auto_lookup": False,

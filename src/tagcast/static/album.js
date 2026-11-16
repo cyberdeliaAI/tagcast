@@ -8,7 +8,7 @@ const viewFailure = (key, params) => TagcastI18n.failure(key.replace(/^errors\./
 // Read-only album details use the same lazy library cache as the metadata editor.
 // trash: track IDs chosen for the trash; found: a track opened from Tracks; failure: a failed read to show again;
 // quiet: a language repaint from memory, which never starts lookups.
-const albumView = {id: null, request: 0, loading: false, trash: null, found: "", failure: null, quiet: false};
+const albumView = {id: null, request: 0, loading: false, trash: null, found: "", failure: null, quiet: false, discoveryArtist: null};
 const coverLightbox = {open: false, focus: null, timer: null, fallback: "", fallbackTried: false, album: null, status: ""};
 const albumActions = {trigger: null, details: null, id: null, session: null};
 
@@ -223,6 +223,7 @@ function albumTrackNumber(track, albumId, canPlay) {
 function resetAlbumView() {
   closeCoverLightbox(); closeAlbumActions();
   albumView.id = null; albumView.request += 1; albumView.loading = false; albumView.trash = null; albumView.failure = null;
+  albumView.discoveryArtist = null;
   if (state.screen === "album") showScreen("albums");
 }
 
@@ -246,10 +247,11 @@ function duplicateTrackBadge(track, titles, numbers) {
 }
 
 // The discs of a set open as one album page, under the address of the first disc.
-async function openAlbum(id, found = "") {
+async function openAlbum(id, found = "", discoveryArtist = null) {
   const summary = state.albums.find(a => String(a.id) === String(id));
   if (!summary) return;
   const ids = shelfIds(id);
+  albumView.discoveryArtist = state.screen === "albums" && discoveryArtist === state.artist ? discoveryArtist : null;
   if (albumView.id !== ids[0]) albumView.trash = null;
   albumView.id = ids[0]; albumView.found = String(found); albumView.failure = null;
   const request = ++albumView.request, details = state.details;

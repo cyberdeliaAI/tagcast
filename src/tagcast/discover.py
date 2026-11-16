@@ -125,8 +125,8 @@ class ArtistDiscover:
         if not isinstance(body, dict):
             raise LibraryError("Choose an album artist.", code="discover.invalid_artist")
         ids, name = body.get("artists"), body.get("name")
-        source = body.get("source", "local")
-        if source not in ("local", "lastfm"):
+        source = body.get("source")
+        if "source" in body and source not in ("local", "lastfm"):
             raise LibraryError("Choose local genres or Last.fm.", code="discover.invalid_source")
         if not isinstance(name, str) or not name.strip() or len(name) > 1000 \
                 or not isinstance(ids, list) \
@@ -142,19 +142,25 @@ class ArtistDiscover:
                 raise ConflictError("The account, library or artist changed. Reopen the artist.", code="discover.stale")
             revision, combine = library.lastmodified, studio.combine_sets
             generation = self.generation
+            online_enabled = studio.config.get("discover_lastfm", True) is not False
+            if source is None:
+                source = "lastfm" if online_enabled else "local"
             key = studio.source_keys().get("lastfm_api_key", "") if source == "lastfm" else ""
             if source == "lastfm":
+                if not online_enabled:
+                    raise LibraryError("Last.fm discovery is disabled. Enable it in Settings → Discovery.", code="discover.lastfm_discovery_disabled")
                 if "lastfm" in studio.disabled_sources():
                     raise LibraryError("Last.fm is disabled. Enable it in Sources & keys in Settings.", code="discover.lastfm_disabled")
                 if not isinstance(key, str) or not key:
                     raise LibraryError("Add a Last.fm API key in Sources & keys in Settings.", code="discover.lastfm_missing_key")
                 if len(name) > 200:
-                    raise LibraryError("Last.fm could not identify this artist exactly. Try local genres instead.", code="discover.lastfm_identity")
+                    raise LibraryError("Last.fm could not identify this artist exactly. You can turn off Last.fm in Settings → Discovery to use local genres.", code="discover.lastfm_identity")
 
         def current():
             return (studio.client is client and studio.library is library and studio.library_user == account
                     and studio.playback_session == session and library.lastmodified == revision
-                    and studio.combine_sets == combine)
+                    and studio.combine_sets == combine and self.generation == generation
+                    and (studio.config.get("discover_lastfm", True) is not False) == online_enabled)
 
         def valid_online():
             with studio.lock:

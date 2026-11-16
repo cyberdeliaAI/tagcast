@@ -539,13 +539,14 @@ test('startup settings wait for all deferred feature scripts before applying pre
   p.setFetch(url=>{
     assert.equal(url,'/api/settings');
     return {ok:true,json:async()=>({sources:[],artist_biographies:true,album_information:true,
-      album_guide:true,auto_updates:false})};
+      album_guide:true,auto_updates:false,discover_lastfm:false})};
   });
   await p.emitDocument('DOMContentLoaded'); await settle();
   assert.equal(p.requests.filter(r=>r.url==='/api/settings').length,1);
   assert.equal(p.run('artistProfile.enabled'),true);
   assert.equal(p.run('albumInformation.enabled'),true);
   assert.equal(p.run('albumGuide.enabled'),true);
+  assert.equal(p.run('lookup.discoverLastfm'),false);
 });
 
 test("new installations sign in with a code without client ID setup", async () => {
@@ -9695,6 +9696,86 @@ function selectableSources() {
   ];
 }
 
+async function albumLookupResultsPage() {
+  const p=page();await settle();
+  const sources=selectableSources().filter(s=>['musicbrainz','itunes','discogs'].includes(s.name));
+  p.run(`lookup.sources=${JSON.stringify(sources)};
+    function mountLookupRows() {
+      const rows=lookup.sources.map(source=>{
+        const section=document.querySelector('.lookup-source[data-source="'+source.name+'"]');
+        section.hidden=false;
+        const status=$("#lookup-test-status-"+source.name),items=$("#lookup-test-items-"+source.name);
+        status.textContent="";status.classList.remove("error");items.innerHTML="";
+        section.querySelector=selector=>selector===".lookup-state"?status:items;
+        return section;
+      });
+      $("#lookup-results").querySelectorAll=()=>rows;
+      $("#lookup-empty").hidden=true;
+    }`);
+  const pending=[];
+  p.setFetch((url,options)=>{
+    assert.ok(url.startsWith('/api/lookup/album?'));assert.equal(options?.method||'GET','GET');
+    return new Promise(resolve=>pending.push({source:new URL(url,'http://localhost').searchParams.get('source'),resolve}));
+  });
+  const start=()=>p.run('runLookups("Artist","Album");mountLookupRows()');
+  const answer=async(source,candidates,error='')=>{
+    const request=pending.find(r=>r.source===source&&!r.done);assert.ok(request);request.done=true;
+    request.resolve(error?{ok:false,status:503,json:async()=>({error})}:{ok:true,json:async()=>({candidates})});
+    await settle();
+  };
+  return {p,pending,start,answer};
+}
+
+test('album lookup hides healthy empty sources while matches, loading and errors remain visible',async()=>{
+  const {p,start,answer}=await albumLookupResultsPage();
+  const unchanged=p.run('JSON.stringify({editing,queue:player.queue,src:audio.src,history:state.history})');
+  start();
+  await answer('itunes',[]);
+  assert.equal(p.nodes.get('.lookup-source[data-source="itunes"]').hidden,true);
+  assert.equal(p.nodes.get('.lookup-source[data-source="discogs"]').hidden,false,'A loading source stays visible');
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+  await answer('discogs',[{title:'Matched album',artist:'Artist',year:1972,score:1,genres:['Blues'],url:''}]);
+  assert.equal(p.nodes.get('.lookup-source[data-source="discogs"]').hidden,false);
+  assert.match(p.nodes.get('#lookup-test-items-discogs').innerHTML,/Matched album|data-use-year="1972"|data-use-genre="Blues"/);
+  await answer('musicbrainz',null,'Temporarily unavailable');
+  assert.equal(p.nodes.get('.lookup-source[data-source="musicbrainz"]').hidden,false);
+  assert.match(p.nodes.get('#lookup-test-status-musicbrainz').textContent,/Temporarily unavailable/);
+  assert.equal(p.nodes.get('#lookup-test-status-musicbrainz').classList.contains('error'),true);
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+  assert.equal(p.run('JSON.stringify({editing,queue:player.queue,src:audio.src,history:state.history})'),unchanged);
+});
+
+test('all-empty album lookups show one compact status only after the last source answers',async()=>{
+  const {p,start,answer}=await albumLookupResultsPage();
+  start();
+  assert.match(p.nodes.get('#lookup-results').innerHTML,/id="lookup-empty"[^>]*role="status" hidden>No match/);
+  for(const source of ['itunes','discogs']) {
+    await answer(source,[]);assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+  }
+  await answer('musicbrainz',[]);
+  assert.equal(p.nodes.get('#lookup-empty').hidden,false);
+  assert.ok(['itunes','discogs','musicbrainz'].every(source=>p.nodes.get('.lookup-source[data-source="'+source+'"]').hidden));
+  start();
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true,'A fresh search clears the old empty state');
+  await answer('itunes',[]);await answer('discogs',[]);
+  await answer('musicbrainz',null,'Temporarily unavailable');
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true,'A failure is not a successful empty search');
+});
+
+test('empty replies from an older album lookup cannot hide the newer matches',async()=>{
+  const {p,pending,start}=await albumLookupResultsPage();
+  start();const old=[...pending];start();
+  const fresh=pending.slice(old.length);
+  fresh.find(r=>r.source==='discogs').resolve({ok:true,json:async()=>({candidates:[{title:'New match',artist:'Artist',year:0,score:1,genres:[],url:''}]})});
+  await settle();
+  for(const request of old)request.resolve({ok:true,json:async()=>({candidates:[]})});
+  for(const request of fresh.filter(r=>r.source!=='discogs'))request.resolve({ok:true,json:async()=>({candidates:[]})});
+  await settle();
+  assert.equal(p.nodes.get('.lookup-source[data-source="discogs"]').hidden,false);
+  assert.match(p.nodes.get('#lookup-test-items-discogs').innerHTML,/New match/);
+  assert.equal(p.nodes.get('#lookup-empty').hidden,true);
+});
+
 test('Settings offers selected source switches even without keys and keeps saved-key controls when disabled', async () => {
   const p=page(); await settle();
   const sources=selectableSources(); sources[1].selected=false; sources[1].enabled=false;
@@ -13776,8 +13857,9 @@ test('active Random has a trailing decorative shuffle indicator for both album a
 });
 
 // Local discovery uses the real artist page, with invented read-only server results.
-async function localDiscoverPage() {
+async function localDiscoverPage({local = true} = {}) {
   const p = livePage(); await settle();
+  if (local) p.run('applyDiscoverSettings({discover_lastfm:false})');
   p.run(`state.connection.playback_session="discover-session";
     state.albums=state.albums.map((a,i)=>({...a,artist_id:100+i}));
     setArtist(state.albums[0].artist); render();`);
@@ -13923,9 +14005,8 @@ test('local artist discovery stays hidden outside live named artist pages and bo
 });
 
 async function lastfmDiscoverPage() {
-  const setup=await localDiscoverPage(),{p,data,selection}=setup;
-  p.run('lookup.sources=[{name:"lastfm",enabled:true}];$("#artist-discover-source").value="lastfm"');
-  await p.nodes.get('#artist-discover-source').emit('change');
+  const setup=await localDiscoverPage({local:false}),{p,data,selection}=setup;
+  p.run('lookup.sources=[{name:"lastfm",enabled:true}];renderArtistDiscover()');
   Object.assign(data,{source:'lastfm',requested_source:'lastfm',fallback:false,expires_in:60});
   Object.assign(data.albums[0],{shared_genres:[],related_artist:'Related Artist',lastfm_url:'https://www.last.fm/music/Related%20Artist'});
   p.setFetch((url,options)=>{
@@ -13935,10 +14016,13 @@ async function lastfmDiscoverPage() {
   return setup;
 }
 
-test('Last.fm selection is explicit and shows related artists with attribution without changing playback',async()=>{
+test('Last.fm is the default without a page selector and starts only on explicit Discover',async()=>{
   const {p}=await lastfmDiscoverPage();
+  assert.equal(p.run('lookup.discoverLastfm'),true);
+  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-source/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
-  assert.equal(p.nodes.get('#artist-discover-privacy').hidden,false);
+  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-privacy/);
+  assert.match(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
   assert.equal(p.nodes.get('#artist-discover-setup').hidden,true);
   const before=p.run('JSON.stringify({queue:player.queue,selected:[...state.selected],history:state.history,src:audio.src})');
   await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
@@ -13961,13 +14045,96 @@ test('healthy empty Last.fm discovery clearly labels the current local genre fal
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
 });
 
+test('Discover album breadcrumbs name the search context and restore its results, filters and scroll',async()=>{
+  for (const setup of [localDiscoverPage,lastfmDiscoverPage]) {
+    const {p,album,selection}=await setup();
+    if (setup===localDiscoverPage) {
+      const data={artist:selection.name,session:selection.session,status:'ready',albums:[{id:album.id,shared_genres:['Rock'],playable:true}]};
+      p.setFetch(()=>({ok:true,json:async()=>data}));
+    }
+    await p.run('loadArtistDiscover()');
+    p.run('$("#search").value="kept search";$("#sort").value="title_za";render();window.scrollY=345;syncHistory()');
+    const source=p.location.hash,requests=p.requests.filter(r=>r.url==='/api/discover').length;
+    const playing=p.run('JSON.stringify({queue:player.queue,src:audio.src,selected:[...state.selected]})');
+    await p.click({'[data-album]':{dataset:{album:album.id}},'#artist-discover-cards':p.nodes.get('#artist-discover-cards')});
+    await settle();
+    assert.equal(p.location.hash,'#/album/'+album.id);
+    assert.ok(p.nodes.get('#breadcrumb').innerHTML.includes('Discover from '+selection.name));
+    assert.equal(p.history.state.albumOrigin.at(-1).discoveryArtist,selection.name);
+    assert.equal(p.history.state.albumOrigin.at(-1).saved.scrollY,345);
+    assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,selected:[...state.selected]})'),playing);
+    await p.run('TagcastI18n.use("nl")');await settle();
+    assert.ok(p.nodes.get('#breadcrumb').innerHTML.includes('Ontdek vanuit '+selection.name));
+    await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}});await settle();p.flushTimers(0);
+    assert.equal(p.location.hash,source);
+    assert.equal(p.nodes.get('#search').value,'kept search');
+    assert.equal(p.nodes.get('#sort').value,'title_za');
+    assert.equal(p.run('window.scrollY'),345);
+    assert.equal(p.nodes.get('#artist-discover-results').hidden,false);
+    assert.ok(p.nodes.get('#artist-discover-cards').innerHTML.includes(album.name));
+    assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,requests,'Returning never looks up again');
+    p.history.forward();await settle();p.flushTimers(0);
+    assert.ok(p.nodes.get('#breadcrumb').innerHTML.includes('Ontdek vanuit '+selection.name));
+    p.run('state.details=new Map(state.details);renderAlbumView()');
+    assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/Ontdek vanuit/,'A replaced library retires the origin');
+  }
+});
+
+test('an ordinary album link after returning from Discover does not inherit the Discover breadcrumb',async()=>{
+  const {p,album,selection}=await lastfmDiscoverPage();
+  await p.run('loadArtistDiscover()');
+  await p.click({'[data-album]':{dataset:{album:album.id}},'#artist-discover-cards':p.nodes.get('#artist-discover-cards')});await settle();
+  await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}});await settle();
+  const own=p.run('state.albums.find(a=>albumHasArtist(a,state.artist)).id');
+  await p.click({'[data-album]':{dataset:{album:own}}});await settle();
+  assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/Discover from/);
+  assert.equal(p.history.state.albumOrigin.at(-1).discoveryArtist,undefined);
+  assert.equal(p.history.state.albumOrigin.at(-1).label,selection.name);
+});
+
+test('Discovery settings save local-only mode, retire cached results and never start a lookup',async()=>{
+  const {p,data,selection}=await lastfmDiscoverPage();
+  await p.run('loadArtistDiscover()');
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Related Artist/);
+  p.run('openSettings("discovery")');
+  assert.match(p.nodes.get('#settings-content').innerHTML,/name="discover_lastfm" checked/);
+  let finish;
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/settings');
+    assert.equal(JSON.parse(options.body).discover_lastfm,false);
+    return new Promise(resolve=>{finish=resolve});
+  });
+  const saved=p.run('saveSettings({elements:{auto_lookup:{checked:true},auto_updates:{checked:false},discover_lastfm:{checked:false}},querySelectorAll:()=>[]})');
+  await settle();
+  assert.equal(p.run('lookup.discoverLastfm'),true,'An unsaved preference cannot change discovery');
+  finish({ok:true,json:async()=>({sources:[{name:'lastfm',enabled:true}],discover_lastfm:false,auto_lookup:true})});
+  await saved;
+  assert.equal(p.run('lookup.discoverLastfm'),false);
+  assert.equal(p.run('artistDiscover.entries.size'),0,'Retire completed online results too');
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
+  p.run('showScreen("albums");render()');
+  assert.doesNotMatch(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
+  assert.equal(p.nodes.get('#artist-discover-setup').hidden,true);
+  assert.equal(p.nodes.get('#artist-discover-results').hidden,true);
+  Object.assign(data,{source:'local',requested_source:'local',fallback:false,expires_in:null});
+  data.albums[0].shared_genres=['Rock'];
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/discover');
+    assert.deepEqual(JSON.parse(options.body),{...selection,source:'local'});
+    return {ok:true,json:async()=>data};
+  });
+  await p.nodes.get('#artist-discover-toggle').emit('click');await settle();
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Shared genres: Rock/);
+  assert.equal(p.nodes.get('#artist-discover-attribution').hidden,true);
+  assert.equal(p.nodes.get('#artist-discover-fallback').hidden,true);
+});
+
 test('Last.fm source changes and saved settings reject late results without automatic fallback',async()=>{
-  for(const change of ['$("#artist-discover-source").value="local"','lookup.settingsRevision+=1']) {
+  for(const change of ['applyDiscoverSettings({discover_lastfm:false})','lookup.settingsRevision+=1']) {
     const {p,data}=await lastfmDiscoverPage();let resolve;
     p.setFetch(()=>new Promise(done=>{resolve=done}));const pending=p.run('loadArtistDiscover()');await settle();
     p.run(change);
-    if(change.includes('value=')) await p.nodes.get('#artist-discover-source').emit('change');
-    else p.run('renderArtistDiscover()');
+    p.run('renderArtistDiscover()');
     resolve({ok:true,json:async()=>data});await pending;
     assert.equal(p.nodes.get('#artist-discover-cards').innerHTML,'');
     assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
@@ -13975,7 +14142,7 @@ test('Last.fm source changes and saved settings reject late results without auto
 });
 
 test('Last.fm errors remain visible and do not masquerade as no matches',async()=>{
-  for(const code of ['lastfm_missing_key','lastfm_disabled','lastfm_key','lastfm_busy','lastfm_identity','lastfm_unavailable']) {
+  for(const code of ['lastfm_missing_key','lastfm_disabled','lastfm_discovery_disabled','lastfm_key','lastfm_busy','lastfm_identity','lastfm_unavailable']) {
     const {p}=await lastfmDiscoverPage();
     p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'Failure',code:'discover.'+code})}));
     await p.run('loadArtistDiscover()');

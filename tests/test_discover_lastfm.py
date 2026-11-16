@@ -56,7 +56,6 @@ class OnlineDiscoveryTests(unittest.TestCase):
                 "artists": ["1"],
                 "name": "Seed",
                 "session": "session-a",
-                "source": "lastfm",
                 **changes,
             }
         )
@@ -128,8 +127,21 @@ class OnlineDiscoveryTests(unittest.TestCase):
             with self.assertRaises(SourceError):
                 self.view()
 
+    def test_disabled_discovery_uses_local_genres_without_provider_even_with_a_key(self):
+        self.studio.config["discover_lastfm"] = False
+        with patch.object(self.studio.discover.lastfm, "read") as read:
+            result = self.view()
+            self.assertEqual(result["source"], "local")
+            self.assertEqual(result["requested_source"], "local")
+            self.assertFalse(result["fallback"])
+            self.assertEqual([a["id"] for a in result["albums"]], ["2", "3"])
+            with self.assertRaises(LibraryError) as error:
+                self.view(source="lastfm")
+            self.assertEqual(error.exception.code, "discover.lastfm_discovery_disabled")
+            read.assert_not_called()
+
     def test_account_library_source_key_or_generation_change_rejects_late_answers(self):
-        for kind in ("account", "library", "key", "disabled", "generation"):
+        for kind in ("account", "library", "key", "disabled", "preference", "generation"):
             self.setUp()
 
             def changed(*args):
@@ -142,6 +154,8 @@ class OnlineDiscoveryTests(unittest.TestCase):
                     self.studio.config["lastfm_api_key"] = "other"
                 elif kind == "disabled":
                     self.studio.config["disabled_sources"] = ["lastfm"]
+                elif kind == "preference":
+                    self.studio.save_settings({"discover_lastfm": False})
                 else:
                     self.studio.discover.generation += 1
                 return (("Artist 4", 0.9),), 60
@@ -161,6 +175,25 @@ class OnlineDiscoveryTests(unittest.TestCase):
         self.assertEqual(self.studio.discover.generation, generation + 2)
         self.studio.save_interface_language({"language": "nl"})
         self.assertEqual(self.studio.discover.generation, generation + 2)
+        self.studio.save_settings({"discover_lastfm": False})
+        self.assertEqual(self.studio.discover.generation, generation + 3)
+        self.studio.save_settings({"discover_lastfm": False})
+        self.assertEqual(self.studio.discover.generation, generation + 3)
+        self.studio.save_settings({"discover_lastfm": True})
+        self.assertEqual(self.studio.discover.generation, generation + 4)
+
+    def test_preference_change_during_local_ranking_rejects_the_old_result(self):
+        self.studio.config["discover_lastfm"] = False
+        self.view()
+        index = self.studio.library._discover_index
+        original = index.recommendations
+
+        def changed(name):
+            self.studio.save_settings({"discover_lastfm": True})
+            return original(name)
+
+        with patch.object(index, "recommendations", side_effect=changed), self.assertRaises(ConflictError):
+            self.view()
 
 
 class LastfmTransportTests(unittest.TestCase):

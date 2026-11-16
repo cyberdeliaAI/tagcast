@@ -1331,7 +1331,11 @@ document.addEventListener("click", event => {
   if (artist) { setArtist(artist.dataset.artist); return; }
   const album = event.target.closest("[data-album]");
   if (album) {
-    coverClick(event, () => openAlbum(album.dataset.album), coverPreviewFor(event.target)); return;
+    const discoveryArtist = event.target.closest("#artist-discover-cards") ? state.artist : null;
+    coverClick(event, () => {
+      if (discoveryArtist && (state.screen !== "albums" || state.artist !== discoveryArtist)) return;
+      openAlbum(album.dataset.album, "", discoveryArtist);
+    }, coverPreviewFor(event.target)); return;
   }
   const track = event.target.closest("button[data-track]");
   if (track) { editTrack(track.dataset.track); return; }

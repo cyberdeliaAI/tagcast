@@ -1,7 +1,17 @@
 "use strict";
 
-// Discovery starts only on a click. Provider selection never starts a request.
-const artistDiscover = {albums: null, details: null, session: null, entries: new Map(), request: 0, source: "local", settings: null};
+// Discovery starts only on a click, using the saved preference rather than a page selector.
+const artistDiscover = {albums: null, details: null, session: null, entries: new Map(), request: 0, settings: null};
+
+function discoverSource() { return lookup.discoverLastfm ? "lastfm" : "local"; }
+
+function applyDiscoverSettings(data) {
+  const enabled = data.discover_lastfm !== false;
+  if (enabled === lookup.discoverLastfm) return;
+  lookup.discoverLastfm = enabled;
+  resetArtistDiscover();
+  if (state.screen === "albums" && state.artist) renderArtistDiscover();
+}
 
 function resetArtistDiscover() {
   artistDiscover.request += 1;
@@ -19,7 +29,7 @@ function discoverSelection() {
   return selection?.artists.length <= 100 && selection.session ? selection : null;
 }
 
-function discoverEntryKey(selection) { return JSON.stringify([artistDiscover.source, selection.name]); }
+function discoverEntryKey(selection) { return JSON.stringify([discoverSource(), selection.name]); }
 function discoverExpired(entry) { return entry?.expires !== undefined && Date.now() >= entry.expires; }
 
 function renderArtistDiscover() {
@@ -29,9 +39,7 @@ function renderArtistDiscover() {
   section.hidden = !selection;
   if (!selection) return;
   const key = discoverEntryKey(selection), entry = artistDiscover.entries.get(key), opened = entry?.open === true;
-  const online = artistDiscover.source === "lastfm";
-  $("#artist-discover-source").value = artistDiscover.source;
-  $("#artist-discover-privacy").hidden = !online;
+  const online = discoverSource() === "lastfm";
   $("#artist-discover-setup").hidden = !online || lookup.sources.some(s => s.name === "lastfm" && s.enabled);
   const button = $("#artist-discover-toggle"), results = $("#artist-discover-results");
   button.textContent = TagcastI18n.text("discover.action");
@@ -72,7 +80,7 @@ async function loadArtistDiscover() {
   renderArtistDiscover();
   const selection = discoverSelection();
   if (!selection) return;
-  const key = discoverEntryKey(selection), source = artistDiscover.source, settings = lookup.settingsRevision;
+  const key = discoverEntryKey(selection), source = discoverSource(), settings = lookup.settingsRevision;
   if (artistDiscover.entries.get(key)?.loading) return;
   const entry = {open: true, loading: true, data: null, error: null};
   const albums = state.albums, details = state.details, request = ++artistDiscover.request;
@@ -81,7 +89,7 @@ async function loadArtistDiscover() {
   const current = () => request === artistDiscover.request && albums === state.albums && details === state.details
     && state.connection.playback_session === selection.session && state.screen === "albums"
     && state.artist === selection.name && live() && !state.loading
-    && artistDiscover.entries.get(key) === entry && artistDiscover.source === source && lookup.settingsRevision === settings;
+    && artistDiscover.entries.get(key) === entry && discoverSource() === source && lookup.settingsRevision === settings;
   renderArtistDiscover();
   try {
     const data = await api("/api/discover", {...selection, source});
@@ -120,11 +128,6 @@ $("#artist-discover-toggle").addEventListener("click", () => {
     renderArtistDiscover();
   } else if (entry && !discoverExpired(entry)) { entry.open = true; renderArtistDiscover(); }
   else loadArtistDiscover();
-});
-$("#artist-discover-source").addEventListener("change", () => {
-  leaveArtistDiscover();
-  artistDiscover.source = $("#artist-discover-source").value === "lastfm" ? "lastfm" : "local";
-  renderArtistDiscover();
 });
 $("#artist-discover-refresh").addEventListener("click", loadArtistDiscover);
 
