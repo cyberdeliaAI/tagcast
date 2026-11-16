@@ -1215,6 +1215,7 @@ class Studio:
                 "music_uploads": self.config.get("music_uploads") is True,
                 "music_uploads_authorized": upload_authorized(self.client),
                 "album_guide": self.config.get("album_guide") is True,
+                "discover_lastfm": self.config.get("discover_lastfm", True) is not False,
                 "artist_biographies": self.config.get("artist_biographies") is True,
                 "artist_biographies_revision": self.artist_bios.revision,
                 "album_information": self.config.get("album_information") is True,
@@ -1258,6 +1259,8 @@ class Studio:
                 raise ApiError("Choose whether artist biographies are enabled.")
             if "album_guide" in body and type(body["album_guide"]) is not bool:
                 raise ApiError("Choose whether 1001 Albums is enabled.")
+            if "discover_lastfm" in body and type(body["discover_lastfm"]) is not bool:
+                raise ApiError("Choose whether artist discovery uses Last.fm.")
             if "guide_matching_details" in body and type(body["guide_matching_details"]) is not bool:
                 raise ApiError("Choose whether matching details are shown.")
             if "auto_lookup" in body and type(body["auto_lookup"]) is not bool:
@@ -1297,6 +1300,8 @@ class Studio:
                 config["record_plays"] = body["record_plays"]
             if "album_guide" in body:
                 config["album_guide"] = body["album_guide"]
+            if "discover_lastfm" in body:
+                config["discover_lastfm"] = body["discover_lastfm"]
             if "artist_biographies" in body:
                 config["artist_biographies"] = body["artist_biographies"]
             if "album_information" in body:
@@ -1308,7 +1313,8 @@ class Studio:
                 self.artist_bios.revision += 1
             if config.get("album_information", False) != self.config.get("album_information", False):
                 self.album_info.revision += 1
-            if config.get("lastfm_api_key") != self.config.get("lastfm_api_key") or (
+            if config.get("discover_lastfm", True) != self.config.get("discover_lastfm", True) or \
+                    config.get("lastfm_api_key") != self.config.get("lastfm_api_key") or (
                     "lastfm" in config.get("disabled_sources", [])) != ("lastfm" in self.disabled_sources()):
                 self.discover.generation += 1
             self.config = config

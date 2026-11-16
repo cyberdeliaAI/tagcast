@@ -211,6 +211,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   order, keyboard selection, Escape/Tab dismissal, bulk gates and Various Artists.
   Invalidate the chooser on library/draft/catalogue replacement.
 - Online suggestions fill the editor; metadata writes follow only after review.
+  Hide healthy album-source sections with no matches; show one compact No match state
+  only after all requested sources are empty. Keep loading, errors and missing-key
+  guidance visible. This changes presentation, not lookup requests or candidate actions.
   Artwork has a separate comparison and explicit save.
 - Track lyrics have a separate textarea/review/save, independent of ordinary metadata
   patches. Now playing and the visited track read native userdata lazily; never scan
@@ -974,8 +977,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   ratings, audio or the queue and never fetches track details or biographies. Migrate
   the former separate album-favourites shortcut without losing access when either old
   shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
-- Artist Discover starts only on an explicit artist-page action or Refresh. Local genres
-  is the initial choice; changing the source alone never requests. Last.fm reuses the
+- Artist Discover starts only on an explicit artist-page action or Refresh. Last.fm
+  is the default (`discover_lastfm`, on by default); Settings → Discovery can disable it
+  for local genres only. Saving the preference never requests; it retires cached/pending
+  results, and the server rejects explicit Last.fm requests while disabled. Last.fm reuses the
   enabled Sources & keys API key server-side and sends only the chosen full artist name
   to artist.getSimilar (autocorrect off). Match up to 100 returned artists strictly with
   unique local NFC/case/whitespace identities; never strip punctuation, accents or version
@@ -989,11 +994,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   Keep six results and one album per represented artist, with native additional credits
   and conservative disc grouping. Artist ID zero identifies compilations, never a name.
   The local index belongs to its Library; coalesce outside Studio.lock. Reject replaced
-  accounts/sessions/libraries/combine/source/key generations before publishing. Browser
+  accounts/sessions/libraries/combine/preference/source/key generations before publishing. Browser
   memory holds at most twelve artist/source results, respecting online expiry without
   timers or automatic refresh. Opening pages, Back and translation make no new requests.
   Do not refresh the library, scan audio, write metadata or persist discovery reports.
   Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
+  Keep the Last.fm privacy explanation in Settings → Discovery and Help, without a
+  repeated paragraph below the artist-page Discover button.
+  Albums opened from a Discover card label their breadcrumb origin as Discover from
+  the seed artist, not that artist's discography. Keep the actual artist-page route,
+  cached results and browsing/scroll restoration; ordinary album links keep their normal origin.
 - `artist_biographies` is off by default. Enabling does not scan or fetch. Visiting one
   album artist first reads `artist-biographies.sqlite3`, then looks up only missing or
   expired text through the shared paced free TheAudioDB adapter. Cache English public

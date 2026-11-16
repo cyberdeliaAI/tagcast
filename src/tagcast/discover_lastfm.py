@@ -45,7 +45,7 @@ def lastfm_error(kind):
     if kind == "key":
         return SourceError("Last.fm refused the API key. Check Sources & keys in Settings.", code="discover.lastfm_key")
     if kind == "identity":
-        return SourceError("Last.fm could not identify this artist exactly. Try local genres instead.", code="discover.lastfm_identity")
+        return SourceError("Last.fm could not identify this artist exactly. You can turn off Last.fm in Settings → Discovery to use local genres.", code="discover.lastfm_identity")
     return SourceError("Last.fm returned an unusable response. Try again later.", code="discover.lastfm_response")
 
 
