@@ -54,8 +54,11 @@ for full album editing. It uses the existing library/status response and makes n
 account requests. Dismissal is local to the browser/profile and the existing opaque account
 namespace. Observing the setting off with a separate library resets that dismissal. Demo,
 disconnected and loading states do not show the advice. Hiding either banner does not hide
-save-time warnings or bypass write guards. The editor retains its own explanation of the
-read-only fields.
+save-time warnings or bypass write guards. Settings → Interface also keeps a short,
+read-only explanation of the recommendation, Tagcast's separate-disc grouping and the
+remaining iBroadcast editing restriction, even after the banner is dismissed. It directs
+users to change the preference in iBroadcast and reload Tagcast; there is no local switch
+or new account request. The editor retains its own explanation of the read-only fields.
 
 ## Validation boundary
 
