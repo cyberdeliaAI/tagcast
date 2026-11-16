@@ -163,6 +163,9 @@ function settingsContentMarkup() {
     <label class="checkline"><input type="checkbox" id="apply-track-year-default" ${metadataEditingDefaults.applyYearToTracks ? "checked" : ""}> ${TagcastI18n.html("settings.editing.trackYear")}</label>
     <p class="muted">${TagcastI18n.html("settings.editing.trackYearNote")}</p>
     <p class="muted">${TagcastI18n.html("settings.editing.trackYearScope")}</p>
+    </section><section class="interface-settings" id="settings-multi-disc-info" data-settings-category="interface"><h3>${TagcastI18n.html("combined.settings.heading")}</h3>
+    <p class="muted">${TagcastI18n.html("combined.settings.recommend")}</p>
+    <p class="muted">${TagcastI18n.html("combined.settings.limits")}</p>
     </section><section class="player-display-settings" data-settings-category="playback"><h3>${TagcastI18n.html("settings.display.heading")} ${immediate}</h3>
     <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> ${TagcastI18n.html("settings.display.quality")}</label>
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> ${TagcastI18n.html("settings.display.trackArtists")}</label>

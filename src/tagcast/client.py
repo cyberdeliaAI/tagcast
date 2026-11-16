@@ -513,12 +513,15 @@ class Studio:
             if data.get("user_id") != user_id or data.get("status", {}).get("lastmodified") != lastmodified \
                     or data.get("combine_sets") != self.combine_sets:
                 return None
-            return Library(data)
+            library = Library(data)
+            return None if not library.combine_sets and library.combined_view else library
         except (OSError, ValueError, AttributeError, EOFError, LibraryError):
             return None
 
     def _write_cache(self, library, user_id, client):
         """Write the library to disk in the background; a failed write only costs a download."""
+        if not library.combine_sets and library.combined_view:
+            return  # A transitional combined response must not become the final cache.
         def write():
             with self.cache_lock:
                 if client is not self.client:  # disconnected before the write started
@@ -834,7 +837,8 @@ class Studio:
         with self.lock:
             library, owner = self.library, self.library_user
         if library and owner == user_id and library.lastmodified == lastmodified \
-                and library.combine_sets == self.combine_sets:
+                and library.combine_sets == self.combine_sets \
+                and not (not library.combine_sets and library.combined_view):
             return library
         return None
 
@@ -863,7 +867,7 @@ class Studio:
                 "playlists_count": self.collections.playlist_count(library),
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
-                "combine_sets": self.combine_sets}
+                "combine_sets": self.combine_sets, "combined_view": library.combined_view}
 
     def album_details(self, ids):
         with self.lock:
@@ -1066,10 +1070,13 @@ class Studio:
                     "error": "", "message": "iBroadcast already has these values."}
 
         failed, error = {}, ""
-        if self.combine_sets and any(i["kind"] == "album" for i in plan["items"]):
+        if fresh.album_writes_blocked and any(i["kind"] == "album" for i in plan["items"]):
             blocked = [i for i in plan["items"] if i["kind"] == "album"]
             failed.update({("album", i["id"]): "blocked" for i in blocked})
-            error = (f"{COMBINE_SETS_MESSAGE} {len(blocked)} album "
+            advice = COMBINE_SETS_MESSAGE if self.combine_sets else (
+                "The library still contains combined multi-disc albums. Reload after iBroadcast "
+                "has applied the setting change before editing album fields.")
+            error = (f"{advice} {len(blocked)} album "
                      f"{'change was' if len(blocked) == 1 else 'changes were'} not sent; "
                      "track changes were saved as usual.")
         sendable = {**plan, "items": [i for i in plan["items"] if (i["kind"], i["id"]) not in failed]}
