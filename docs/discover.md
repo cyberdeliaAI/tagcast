@@ -10,6 +10,12 @@ Similar music**, turn off **Use Last.fm for similar artists** to use only local 
 then save. The preference defaults to on and persists in local `config.json` across
 restarts. Saving or opening a page never starts discovery; only Discover or Refresh does.
 
+Opening a suggested album labels its breadcrumb **Discover from [artist]**, so a
+recommendation is not presented as part of the seed artist's discography. This link
+returns to that artist's page and the existing suggestions, preserving browsing
+state and scroll. Back/Forward and interface-language changes retain the context;
+replacing the loaded library invalidates it like other album origins.
+
 ## Last.fm
 
 Enable Last.fm and add its API key under **Settings → Sources & keys**. Existing

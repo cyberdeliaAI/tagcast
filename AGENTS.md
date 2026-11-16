@@ -996,6 +996,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   timers or automatic refresh. Opening pages, Back and translation make no new requests.
   Do not refresh the library, scan audio, write metadata or persist discovery reports.
   Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
+  Albums opened from a Discover card label their breadcrumb origin as Discover from
+  the seed artist, not that artist's discography. Keep the actual artist-page route,
+  cached results and browsing/scroll restoration; ordinary album links keep their normal origin.
 - `artist_biographies` is off by default. Enabling does not scan or fetch. Visiting one
   album artist first reads `artist-biographies.sqlite3`, then looks up only missing or
   expired text through the shared paced free TheAudioDB adapter. Cache English public

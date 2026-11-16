@@ -13964,6 +13964,53 @@ test('healthy empty Last.fm discovery clearly labels the current local genre fal
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
 });
 
+test('Discover album breadcrumbs name the search context and restore its results, filters and scroll',async()=>{
+  for (const setup of [localDiscoverPage,lastfmDiscoverPage]) {
+    const {p,album,selection}=await setup();
+    if (setup===localDiscoverPage) {
+      const data={artist:selection.name,session:selection.session,status:'ready',albums:[{id:album.id,shared_genres:['Rock'],playable:true}]};
+      p.setFetch(()=>({ok:true,json:async()=>data}));
+    }
+    await p.run('loadArtistDiscover()');
+    p.run('$("#search").value="kept search";$("#sort").value="title_za";render();window.scrollY=345;syncHistory()');
+    const source=p.location.hash,requests=p.requests.filter(r=>r.url==='/api/discover').length;
+    const playing=p.run('JSON.stringify({queue:player.queue,src:audio.src,selected:[...state.selected]})');
+    await p.click({'[data-album]':{dataset:{album:album.id}},'#artist-discover-cards':p.nodes.get('#artist-discover-cards')});
+    await settle();
+    assert.equal(p.location.hash,'#/album/'+album.id);
+    assert.ok(p.nodes.get('#breadcrumb').innerHTML.includes('Discover from '+selection.name));
+    assert.equal(p.history.state.albumOrigin.at(-1).discoveryArtist,selection.name);
+    assert.equal(p.history.state.albumOrigin.at(-1).saved.scrollY,345);
+    assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src,selected:[...state.selected]})'),playing);
+    await p.run('TagcastI18n.use("nl")');await settle();
+    assert.ok(p.nodes.get('#breadcrumb').innerHTML.includes('Ontdek vanuit '+selection.name));
+    await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}});await settle();p.flushTimers(0);
+    assert.equal(p.location.hash,source);
+    assert.equal(p.nodes.get('#search').value,'kept search');
+    assert.equal(p.nodes.get('#sort').value,'title_za');
+    assert.equal(p.run('window.scrollY'),345);
+    assert.equal(p.nodes.get('#artist-discover-results').hidden,false);
+    assert.ok(p.nodes.get('#artist-discover-cards').innerHTML.includes(album.name));
+    assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,requests,'Returning never looks up again');
+    p.history.forward();await settle();p.flushTimers(0);
+    assert.ok(p.nodes.get('#breadcrumb').innerHTML.includes('Ontdek vanuit '+selection.name));
+    p.run('state.details=new Map(state.details);renderAlbumView()');
+    assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/Ontdek vanuit/,'A replaced library retires the origin');
+  }
+});
+
+test('an ordinary album link after returning from Discover does not inherit the Discover breadcrumb',async()=>{
+  const {p,album,selection}=await lastfmDiscoverPage();
+  await p.run('loadArtistDiscover()');
+  await p.click({'[data-album]':{dataset:{album:album.id}},'#artist-discover-cards':p.nodes.get('#artist-discover-cards')});await settle();
+  await p.click({'[data-album-crumb]':{dataset:{albumCrumb:'1'}}});await settle();
+  const own=p.run('state.albums.find(a=>albumHasArtist(a,state.artist)).id');
+  await p.click({'[data-album]':{dataset:{album:own}}});await settle();
+  assert.doesNotMatch(p.nodes.get('#breadcrumb').innerHTML,/Discover from/);
+  assert.equal(p.history.state.albumOrigin.at(-1).discoveryArtist,undefined);
+  assert.equal(p.history.state.albumOrigin.at(-1).label,selection.name);
+});
+
 test('Discovery settings save local-only mode, retire cached results and never start a lookup',async()=>{
   const {p,data,selection}=await lastfmDiscoverPage();
   await p.run('loadArtistDiscover()');
