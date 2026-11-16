@@ -974,8 +974,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   ratings, audio or the queue and never fetches track details or biographies. Migrate
   the former separate album-favourites shortcut without losing access when either old
   shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
-- Artist Discover starts only on an explicit artist-page action or Refresh. Local genres
-  is the initial choice; changing the source alone never requests. Last.fm reuses the
+- Artist Discover starts only on an explicit artist-page action or Refresh. Last.fm
+  is the default (`discover_lastfm`, on by default); Settings → Discovery can disable it
+  for local genres only. Saving the preference never requests; it retires cached/pending
+  results, and the server rejects explicit Last.fm requests while disabled. Last.fm reuses the
   enabled Sources & keys API key server-side and sends only the chosen full artist name
   to artist.getSimilar (autocorrect off). Match up to 100 returned artists strictly with
   unique local NFC/case/whitespace identities; never strip punctuation, accents or version
@@ -989,7 +991,7 @@ their shared browsing/player state; a fast local response can otherwise race the
   Keep six results and one album per represented artist, with native additional credits
   and conservative disc grouping. Artist ID zero identifies compilations, never a name.
   The local index belongs to its Library; coalesce outside Studio.lock. Reject replaced
-  accounts/sessions/libraries/combine/source/key generations before publishing. Browser
+  accounts/sessions/libraries/combine/preference/source/key generations before publishing. Browser
   memory holds at most twelve artist/source results, respecting online expiry without
   timers or automatic refresh. Opening pages, Back and translation make no new requests.
   Do not refresh the library, scan audio, write metadata or persist discovery reports.

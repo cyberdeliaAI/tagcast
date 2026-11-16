@@ -1,12 +1,14 @@
 # Artist discovery
 
-On an **Album artists** page, choose an artist, select **Local genres** or
-**Last.fm**, then choose **Discover similar music**. Up to six albums from other
-artists in the loaded iBroadcast library appear above the album toolbar. Cards
+On an **Album artists** page, choose an artist, then choose **Discover similar music**.
+Tagcast tries **Last.fm** first. Up to six albums from other artists in the loaded
+iBroadcast library appear above the album toolbar. Cards
 reuse Open album/artist, Play and Queue. Viewing results changes neither playback,
 selection nor Change history. The feature is unavailable in the demo or during a
-library load. Local genres is the initial selection; choosing a source alone
-never starts a request. The choice stays only in page memory.
+library load. There is no per-artist source selector. Under **Settings → Discovery →
+Similar music**, turn off **Use Last.fm for similar artists** to use only local genres,
+then save. The preference defaults to on and persists in local `config.json` across
+restarts. Saving or opening a page never starts discovery; only Discover or Refresh does.
 
 ## Last.fm
 
@@ -51,7 +53,7 @@ retained for reuse. The browser reuses online results only within the returned
 lifetime; expiry never starts a request. An active result remains readable, but
 closing or leaving removes expired results. Refresh recomputes local availability
 and can reuse a still-fresh provider response. Keys, accounts and sessions have
-separate cache identities. Settings changes retire browser results; source/key
+separate cache identities. Settings changes retire browser results; preference/source/key
 changes and account/session/library replacement reject in-flight responses before
 publication. Neither Studio.lock nor a library lock is held during network I/O.
 
@@ -62,8 +64,9 @@ API terms link. Using a personal API key does not waive those conditions.
 
 ## Local genres
 
-The selected artist's loaded albums supply the genre set. Other albums are ranked
-by weighted genre overlap, with less common genres contributing more. Genre labels
+With Last.fm disabled for discovery, or after a healthy Last.fm search without
+usable local matches, the selected artist's loaded albums supply the genre set.
+Other albums are ranked by weighted genre overlap, with less common genres contributing more. Genre labels
 compare without case or surrounding whitespace; punctuation and distinct labels
 remain distinct. Native album ratings, then artist ratings, break equal genre
 scores. Favourites and listening history are not inputs. Missing genres or shared
@@ -87,7 +90,8 @@ service availability is not guaranteed. Artwork uses the existing iBroadcast rou
 Backend tests cover local ranking, strict identities, provider order, healthy-empty
 fallback, disabled/missing/refused keys, source/account/library changes, bounded
 streamed bodies/cache, origin cache controls, redirects, rate limits and unchanged
-account data. Frontend tests cover explicit selection, attribution, safe links,
-fallback/error states, cache expiry, translation, late replies and existing actions.
+account data. Frontend tests cover the default source, saved local-only preference,
+attribution, safe links, fallback/error states, cache expiry, translation, late replies
+and existing actions.
 All six interface languages include the new controls and messages. Public provider
 validation used example artist names, without uploading a library or listening data.

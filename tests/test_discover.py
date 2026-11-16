@@ -47,7 +47,7 @@ class DiscoverTests(unittest.TestCase):
         self.studio.library = Library(self.data)
 
     def view(self, **changes):
-        return self.studio.discover.view({"artists": ["1"], "name": "Seed", "session": "session-a", **changes})
+        return self.studio.discover.view({"artists": ["1"], "name": "Seed", "session": "session-a", "source": "local", **changes})
 
     def replace(self):
         self.studio.library = Library(deepcopy(self.data))
