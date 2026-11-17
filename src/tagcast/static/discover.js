@@ -20,6 +20,7 @@ function resetArtistDiscover() {
   artistDiscover.session = state.connection.playback_session;
   artistDiscover.settings = lookup.settingsRevision;
   $("#artist-discover").hidden = true;
+  $("#artist-discover").open = false;
   $("#artist-discover-cards").innerHTML = "";
 }
 
@@ -42,10 +43,13 @@ function renderArtistDiscover() {
   const online = discoverSource() === "lastfm";
   $("#artist-discover-setup").hidden = !online || lookup.sources.some(s => s.name === "lastfm" && s.enabled);
   const button = $("#artist-discover-toggle"), results = $("#artist-discover-results");
-  button.textContent = TagcastI18n.text("discover.action");
+  $("#artist-discover-label").textContent = TagcastI18n.text("discover.action");
+  $("#artist-discover-source").textContent = entry?.data?.source === "local" || !online
+    ? TagcastI18n.text("discover.yourLibrary") : "Last.fm";
+  // Restoring a completed disclosure never starts a provider request.
+  section.open = opened;
   button.setAttribute("aria-expanded", String(opened));
   results.hidden = !opened;
-  $("#artist-discover-heading").textContent = TagcastI18n.text("discover.heading", {artist: selection.name});
   $("#artist-discover-refresh").textContent = TagcastI18n.text("discover.refresh");
   $("#artist-discover-refresh").disabled = Boolean(entry?.loading);
   $("#artist-discover-intro").textContent = TagcastI18n.text(entry?.data?.source === "lastfm" ? "discover.introLastfm" : "discover.intro", {artist: selection.name});
@@ -118,7 +122,10 @@ async function loadArtistDiscover() {
   }
 }
 
-$("#artist-discover-toggle").addEventListener("click", () => {
+$("#artist-discover-toggle").addEventListener("click", event => {
+  // Native summary keyboard activation also dispatches click. Handle the state
+  // here, not on toggle: programmatic restoration must remain read-only.
+  event.preventDefault();
   const selection = discoverSelection();
   if (!selection) return;
   const key = discoverEntryKey(selection), entry = artistDiscover.entries.get(key);
