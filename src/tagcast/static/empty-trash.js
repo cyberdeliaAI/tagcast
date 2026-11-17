@@ -76,7 +76,7 @@ async function openEmptyTrashReview() {
 async function pageEmptyTrash(offset) {
   const view = emptyTrashView, review = view.review, request = view.request;
   if (!review || view.busy || view.reading || !emptyTrashCurrent(request)) return;
-  view.reading = true; renderEmptyTrashReview(); setActionStatus("#empty-trash-status", TagcastI18n.text("trashEmpty.loading"), true);
+  view.reading = true; renderEmptyTrashReview(); setActionStatus("#empty-trash-status", TagcastI18n.text("trashEmpty.loadingPage"), true);
   try {
     const data = await api("/api/trash/empty/page", {session: view.session, review: review.review, offset});
     if (!emptyTrashCurrent(request)) return;

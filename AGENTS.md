@@ -72,8 +72,11 @@ The application consists of a Python server and a plain JavaScript frontend.
   uploads distinct and never retry them automatically. Only the local hash index
   persists, using the existing private atomic storage. Playback remains independent.
 - `src/tagcast/trash_emptying.py`: explicit Settings → Data review of the current iBroadcast
-  trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Recheck fresh complete
-  trash membership/identity and account/session/combine state, consume the review once,
+  trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Check the remote
+  revision before review/save; reuse only a matching known account/combine library,
+  downloading on changed/unknown revisions. Keep fresh downloaded read-back even
+  with an unchanged revision. Recheck complete trash membership/identity and
+  account/session/combine state, consume the review once,
   send one empty_trash request without retry, and verify absence from the loaded library.
   Emptying moves files to iBroadcast's unavailable Dashboard records; no permanent
   dashboard deletion, restore, local-file operation or automatic follow-up is allowed.

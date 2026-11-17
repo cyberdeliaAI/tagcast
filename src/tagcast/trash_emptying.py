@@ -71,7 +71,9 @@ class TrashEmptying(AlbumMerge):
 
     def review(self, body):
         owner = self._owner(body)
-        library, _ = self.studio._current(owner[0], refresh=True)
+        # Always ask for the remote revision; reuse only a matching account/combine
+        # snapshot. A changed or unknown revision still downloads the library.
+        library, _ = self.studio._current(owner[0])
         self._owner(body, owner)
         rows, digest = self._snapshot(library)
         review = {"owner": owner, "rows": rows, "digest": digest}
@@ -96,7 +98,7 @@ class TrashEmptying(AlbumMerge):
             review = self._get(self.reviews, body.get("review"), consume=True)
             owner = self._owner(body, review["owner"])
             client = owner[0]
-            fresh, _ = studio._current(client, refresh=True)
+            fresh, _ = studio._current(client)
             _, digest = self._snapshot(fresh)
             self._owner(body, owner)
             if digest != review["digest"]:
