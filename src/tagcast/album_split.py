@@ -169,13 +169,16 @@ class AlbumSplit(AlbumMerge):
                 self.selections.clear()
                 self.reviews.clear()
             target_id, attempted_move, error = 0, False, ""
+            effects = {}
             try:
                 response = client._jsonrequest("create_album", _retry=False, **target)
                 raw_id = response.get("album_id")
                 if response.get("result") is not True or type(raw_id) not in (int, str) \
                         or not str(raw_id).isdigit() or int(raw_id) <= 0 or int(raw_id) in old_ids:
+                    effects["album_uncertain"] = True
                     raise LibraryError("The new album could not be confirmed. No tracks were sent.")
                 target_id = int(raw_id)
+                effects["album_created"] = str(target_id)
                 # Recheck the source and any returned destination. Empty albums can
                 # be omitted by the library server; the confirmed creation receipt
                 # identifies that destination, not an invented library record.
@@ -195,9 +198,11 @@ class AlbumSplit(AlbumMerge):
             except Exception as failure:
                 # Preserve an accepted/uncertain creation or move; never roll back or retry.
                 # Runtime imports avoid the Studio -> feature -> Studio import cycle.
-                from .client import ApiError
+                from .client import ApiError, UncertainWrite
                 if not isinstance(failure, (ApiError, LibraryError)):
                     raise
+                if not target_id and isinstance(failure, UncertainWrite):
+                    effects["album_uncertain"] = True
                 error = str(failure)
 
             def check(after):
@@ -215,6 +220,7 @@ class AlbumSplit(AlbumMerge):
                         for tid in review["chosen"]]
 
             job = self.studio._check_later(client, self.studio.downloads, check)
-            return {"job": job, "target": str(target_id) if target_id else "", "error": error}
+            return {"job": job, "target": str(target_id) if target_id else "", "error": error,
+                    "write_effects": effects}
         finally:
             self.studio.save_lock.release()
