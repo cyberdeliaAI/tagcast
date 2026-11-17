@@ -432,7 +432,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
         toggle: (c, on) => on ? classes.add(c) : classes.delete(c)},
       addEventListener(type, handler) { const handlers = events.get(type) || []; handlers.push(handler); events.set(type, handlers); },
-      emit(type, event = {}) { return Promise.all((events.get(type) || []).map(handler => handler(event))); },
+      emit(type, event = {}) { return Promise.all((events.get(type) || []).map(handler => handler({preventDefault() {}, ...event}))); },
       dispatchEvent(event) {
         const delivered = {type: event.type, target: this, bubbles: event.bubbles};
         for (const handler of events.get(event.type) || []) handler(delivered);
@@ -13239,7 +13239,7 @@ test('split failures display the specific server reason without offering a retry
   const error='The original album changed <elsewhere>. No tracks were sent.';
   const results=fixture.review.tracks.map(t=>({kind:'track',id:t.id,fields:['album'],status:'not_sent'}));
   p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:url.endsWith('/review')?fixture.review:
-    url.endsWith('/save')?(saves++,{job:'split',target:'44',error}):{state:'done',results}}));
+    url.endsWith('/save')?(saves++,{job:'split',target:'44',error,write_effects:{album_created:'44'}}):{state:'done',results}}));
   await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');
   splitTargetInputs(p);await p.run('reviewAlbumSplit()');
   const pending=p.run('saveAlbumSplit()');await settle();p.flushTimers(2000);await settle();await pending;
@@ -13247,6 +13247,8 @@ test('split failures display the specific server reason without offering a retry
   assert.match(html,/changed &lt;elsewhere&gt;\. No tracks were sent/);
   assert.doesNotMatch(html,/The complete split could not be confirmed|id="album-split-save"/);
   assert.equal(p.run('state.history[0].error'),error);
+  assert.match(html,/Album 44 was created/);
+  assert.deepEqual(p.json('state.history[0].write_effects'),{album_created:'44'});
   await p.run('saveAlbumSplit()');assert.equal(saves,1);
   assert.equal(p.run('saving || checking || albumSplitDraft.busy'),false);
 });
@@ -13970,7 +13972,7 @@ test('local artist discovery retains completed results on Back and never refresh
   assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Art Rock/);
   const requests=p.requests.filter(r=>r.url==='/api/discover').length;
   await p.run('TagcastI18n.use("nl")');await settle();
-  assert.equal(p.nodes.get('#artist-discover-toggle').textContent,'Ontdek vergelijkbare muziek');
+  assert.equal(p.nodes.get('#artist-discover-label').textContent,'Vergelijkbaar in je bibliotheek');
   assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Gedeelde genres: Art Rock/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,requests);
 });
@@ -14019,7 +14021,7 @@ async function lastfmDiscoverPage() {
 test('Last.fm is the default without a page selector and starts only on explicit Discover',async()=>{
   const {p}=await lastfmDiscoverPage();
   assert.equal(p.run('lookup.discoverLastfm'),true);
-  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-source/);
+  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/<select[^>]*id="artist-discover-source"/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
   assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-privacy/);
   assert.match(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
@@ -14248,4 +14250,105 @@ test('numeric combined containers show per-disc positions while title reviews pr
   assert.equal(changes[0].sourceAlbumId,'1');
   assert.equal(changes[0].sourceTrack,201);
   assert.deepEqual(changes[0].fields,{title:{before:'Synthetic 201',after:'Correct title'}});
+});
+
+test('similar music is a native disclosure with a separate refresh and source label', async () => {
+  const html = readFileSync(path.join(staticDir, 'index.html'), 'utf8');
+  const disclosure = html.match(/<details id="artist-discover"[\s\S]*?<\/details>/)[0];
+  const summary = disclosure.match(/<summary[\s\S]*?<\/summary>/)[0];
+  assert.match(summary, /id="artist-discover-toggle"/);
+  assert.doesNotMatch(summary, /<button|artist-discover-refresh/);
+  assert.doesNotMatch(disclosure, /artist-discover-heading|<h2/);
+  const {p, data, selection} = await localDiscoverPage({local:false});
+  assert.equal(p.nodes.get('#artist-discover').open, false);
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Last.fm');
+  await p.nodes.get('#artist-discover').emit('toggle');
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length, 0);
+  Object.assign(data, {requested_source:'lastfm', source:'local', fallback:true, expires_in:60});
+  p.setFetch(()=>({ok:true, json:async()=>data}));
+  await p.nodes.get('#artist-discover-toggle').emit('click'); await settle();
+  assert.equal(p.nodes.get('#artist-discover').open, true);
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Your library');
+  const other = p.run('state.albums.find(a=>a.artist!==state.artist).artist');
+  p.run(`setArtist(${JSON.stringify(other)});renderArtistDiscover()`);
+  assert.equal(p.nodes.get('#artist-discover').open, false);
+  p.run(`setArtist(${JSON.stringify(selection.name)});renderArtistDiscover()`);
+  assert.equal(p.nodes.get('#artist-discover').open, true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length, 1);
+  Object.assign(data, {source:'lastfm', fallback:false});
+  Object.assign(data.albums[0], {related_artist:'Related Artist', lastfm_url:'https://www.last.fm/music/Related%20Artist'});
+  await p.nodes.get('#artist-discover-refresh').emit('click'); await settle();
+  assert.equal(p.nodes.get('#artist-discover').open, true);
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Last.fm');
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length, 2);
+  assert.equal(p.nodes.get('#artist-discover-attribution').hidden, false);
+});
+
+test('an early artist creation failure is visible in review, persisted History and export without metadata retry', async () => {
+  const storage = {}, p = livePage({storage}); await settle();
+  p.run(`pending={scope:'album',selection:[{id:'1',name:'Example'}],changes:[{kind:'track',id:'t1',label:'Track',fields:{artist:{before:'Old',after:'New'}}}]}`);
+  p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'Artist creation failed <elsewhere>',
+    write_effects:{artists_created:1,artist_uncertain:true,token:'synthetic-secret'}})}));
+  await p.run('saveDraft()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/save').length,1);
+  assert.deepEqual(p.json('state.history[0].write_effects'),{artists_created:1,artist_uncertain:true});
+  assert.equal(p.run('state.history[0].changes[0].status'),'not_sent');
+  assert.match(p.nodes.get('#review-status').innerHTML,/1 artist record was created/);
+  assert.match(p.nodes.get('#review-status').innerHTML,/may have been created/);
+  p.run('showHistory()');
+  assert.match(p.nodes.get('#history-content').innerHTML,/&lt;elsewhere&gt;/);
+  assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-undo=|data-review-rest|synthetic-secret/);
+  const saved=JSON.parse(storage['tagcast-history']);
+  assert.deepEqual(saved[0].write_effects,{artists_created:1,artist_uncertain:true});
+  assert.equal(saved[0].status,'unverified');
+  await p.run('exportHistory()');
+  const blob=p.downloads[p.downloads.length-1].blob;
+  assert.deepEqual(JSON.parse(await blob.text()).entries[0].write_effects,saved[0].write_effects);
+  await p.run('TagcastI18n.use("nl")');
+  p.run('renderHistory()');
+  assert.match(p.nodes.get('#history-content').innerHTML,/Mogelijke restanten/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/save').length,1);
+});
+
+test('failed artwork assignment records the upload receipt without presenting Undo or changing the cover', async () => {
+  const p=livePage(); await settle();
+  const before=p.json('state.albums');
+  p.run(`art.target={target:'album',id:'1',label:'Example',artist:'Artist',before:{tracks:{t1:0}}};
+    art.options=[{url:'https://example.test/cover.png',source:'Example'}];art.choice=0;art.saved=[];art.artworkId=null`);
+  p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'Assignment refused',write_effects:{artwork_created:'99'}})}));
+  await p.run('saveArtwork()');
+  assert.match(p.nodes.get('#art-status').innerHTML,/Artwork 99 was uploaded/);
+  assert.deepEqual(p.json('state.history[0].write_effects'),{artwork_created:'99'});
+  assert.equal(p.run('state.history[0].writeAttempt'),true);
+  assert.deepEqual(p.json('state.albums'),before);
+  p.run('showHistory()');
+  assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-undo=|data-review-rest/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/artwork').length,1);
+});
+
+test('creation warnings disappear after confirmed assignment and reject untrusted receipt data', async () => {
+  const p=livePage(); await settle();
+  const effects={artists_created:2,artwork_created:'99',album_created:'44'};
+  assert.equal(p.run(`writeEffectsMarkup(${JSON.stringify(effects)},'saved')`),'');
+  assert.equal(p.run(`writeEffectsMarkup(${JSON.stringify(effects)},'sent')`),'');
+  assert.match(p.run(`writeEffectsMarkup(${JSON.stringify(effects)},'unverified')`),/may be empty/);
+  assert.equal(p.run(`writeEffectsMarkup({artwork_created:'<script>',album_created:'9'.repeat(33),artists_created:true,artist_uncertain:'yes'})`),'');
+  assert.match(p.run(`writeEffectsMarkup({artwork_uncertain:true})`),/may have completed/);
+  assert.doesNotMatch(p.run(`writeEffectsMarkup({artwork_uncertain:true})`),/Artwork [0-9]+ was uploaded/);
+});
+
+test('a failed assignment read-back immediately shows creation receipts and keeps them across restart', async () => {
+  const storage={}, p=livePage({storage}); await settle();
+  p.run(`state.history=[{source:'ibroadcast',status:'sent',created:new Date().toISOString(),error:'',
+    selection:[{id:'1',name:'Example'}],write_effects:{artwork_created:'99'},
+    changes:[{kind:'album',id:'1',label:'Example',status:'sent',fields:{cover:{before:'old',after:'new'}}}]}]`);
+  p.setFetch(()=>({ok:true,json:async()=>({state:'error',error:'Read-back unavailable'})}));
+  const job=p.run('followJob("artwork-job",state.history[0])'); await settle();
+  p.flushTimers(2000); await job;
+  assert.equal(p.nodes.get('#results').open,true);
+  assert.match(p.nodes.get('#results-content').innerHTML,/Artwork 99 was uploaded/);
+  const reopened=page({storage}); await settle(); reopened.run('showHistory()');
+  assert.match(reopened.nodes.get('#history-content').innerHTML,/Artwork 99 was uploaded/);
+  assert.equal(reopened.run('state.history[0].status'),'unverified');
+  assert.equal(p.requests.filter(r=>r.url==='/api/artwork').length,0);
 });

@@ -1215,7 +1215,7 @@ function showReview(changes) {
 
 // Put the changes of a save that didn't (fully) go through back in review.
 function reviewRest(entry) {
-  if (entry.albumSplit) return;
+  if (entry.albumSplit || entry.writeAttempt) return;
   const changes = entry.changes.filter(c => ["failed", "not_sent", "blocked"].includes(c.status)).map(({status, ...change}) => change);
   if (!changes.length) return;
   pending = {scope: entry.scope || "album", selection: entry.selection, changes};
@@ -1308,8 +1308,42 @@ function historyDate(value) {
   return Number.isNaN(date.getTime()) ? "" : TagcastI18n.dateTime(date);
 }
 
+// Creation receipts never establish that an object is unused. Keep only fixed,
+// bounded diagnostics in History, including when a write failed before a job.
+function writeEffectsData(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const effects = {};
+  if (Number.isInteger(value.artists_created) && value.artists_created > 0 && value.artists_created <= 1000000) effects.artists_created = value.artists_created;
+  for (const key of ["artist_uncertain", "artwork_uncertain", "album_uncertain"]) if (value[key] === true) effects[key] = true;
+  for (const key of ["artwork_created", "album_created"]) if (typeof value[key] === "string" && /^[0-9]{1,32}$/.test(value[key]) && /[1-9]/.test(value[key])) effects[key] = value[key];
+  return effects;
+}
+
+function writeEffectsMarkup(value, status = "unverified", error = "") {
+  if (status === "saved" || status === "sent" && !error) return "";
+  const effects = writeEffectsData(value), notes = [];
+  if (effects.artists_created) notes.push(TagcastI18n.html("writeEffects.artists", {count: effects.artists_created}));
+  if (effects.artist_uncertain) notes.push(TagcastI18n.html("writeEffects.artistUncertain"));
+  if (effects.artwork_created) notes.push(TagcastI18n.html("writeEffects.artwork", {id: effects.artwork_created}));
+  if (effects.artwork_uncertain) notes.push(TagcastI18n.html("writeEffects.artworkUncertain"));
+  if (effects.album_created) notes.push(TagcastI18n.html("writeEffects.album", {id: effects.album_created}));
+  if (effects.album_uncertain) notes.push(TagcastI18n.html("writeEffects.albumUncertain"));
+  return notes.length ? `<div class="warn-box"><strong>${TagcastI18n.html("writeEffects.heading")}</strong>${notes.map(note => `<p>${note}</p>`).join("")}<p>${TagcastI18n.html("writeEffects.noCleanup")}</p></div>` : "";
+}
+
+function rememberWriteAttempt(draft, error) {
+  const effects = writeEffectsData(error.data?.write_effects);
+  if (!Object.keys(effects).length) return;
+  const entry = {...structuredClone(draft), writeAttempt: true, write_effects: effects,
+    source: "ibroadcast", created: new Date().toISOString(),
+    status: effects.artist_uncertain || effects.artwork_uncertain ? "unverified" : "failed", error: error.message,
+    changes: draft.changes.map(c => ({...structuredClone(c), status: effects.artwork_created ? "failed" : "not_sent"}))};
+  state.history.unshift(entry); rememberHistory();
+  return entry;
+}
+
 function renderHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${writeEffectsMarkup(entry.write_effects, entry.status, entry.error)}${!entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && !entry.writeAttempt && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
     : `<p class="empty">${TagcastI18n.html(historyView.cleared ? "history.cleared" : "history.empty")}</p>`;
 }
 
@@ -1766,6 +1800,7 @@ async function saveDraft() {
     const next = thenNext();
     const newArtist = pending.scope === "artist" ? pending.changes.find(c => c.kind === "album" && c.fields.artist)?.fields.artist.after : null;
     const entry = {...structuredClone(pending), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
+      write_effects: writeEffectsData(result.write_effects),
       created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
     state.history.unshift(entry);
     pendingAlbums = null; // an older read-back; this save's own read-back follows
@@ -1784,6 +1819,7 @@ async function saveDraft() {
     } else if (yearReviewContext) finishedYearReviewSave(yearReviewContext, null, entry);
     if (next && overall !== "failed") openEditor(shelfIds(next));
   } catch (error) {
+    const attempt = rememberWriteAttempt(pending, error);
     if (yearReviewContext) yearReviewContext.saving = false;
     apply.disabled = false; $("#review-cancel").disabled = false;
     apply.textContent = TagcastI18n.text("common.tryAgain");
@@ -1799,6 +1835,7 @@ async function saveDraft() {
     } else {
       $("#review-status").innerHTML = `<span class="error-text">${TagcastI18n.html("review.error.notConfirmed", {error: TagcastI18n.errorText(error)})}</span>`;
     }
+    if (attempt) $("#review-status").innerHTML += writeEffectsMarkup(attempt.write_effects);
   } finally {
     saving = false;
     setActionStatus("#review-status", undefined);
@@ -1835,7 +1872,9 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   if (job.state === "error") {
     entry.status = "unverified"; entry.error = [entry.error, job.error].filter(Boolean).join(" ");
     for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
-    rememberHistory(); toast(shownError || job.error); return job;
+    rememberHistory();
+    if (!entry.albumSplit && Object.keys(writeEffectsData(entry.write_effects)).length) showResults({error: entry.error}, entry.status, entry);
+    toast(shownError || job.error); return job;
   }
   const byId = new Map(job.results.map(r => [`${r.kind}:${r.id}`, r.status]));
   for (const c of entry.changes) {
@@ -1873,11 +1912,12 @@ function showResults(result, overall, entry) {
   const notes = [];
   if (result.message) notes.push(`<p class="muted">${escapeHtml(result.message)}</p>`);
   if (result.error) notes.push(`<div class="error-box">${escapeHtml(result.error)}</div>`);
+  notes.push(writeEffectsMarkup(result.write_effects || entry?.write_effects, overall, result.error));
   if (result.created_artists?.length) notes.push(`<p class="muted">${TagcastI18n.html("review.results.createdArtists", {count: result.created_artists.length, names: TagcastI18n.trusted(result.created_artists.map(n => `“${escapeHtml(n)}”`).join(", "))})}</p>`);
   if (overall === "unverified") notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.unverified")}</div>`);
   if (result.readBackFailed) notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.readBackFailed")}</div>`);
   const index = entry ? state.history.indexOf(entry) : -1;
-  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
+  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && !entry.writeAttempt && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
     notes.push(`<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button> <span class="muted">${TagcastI18n.html("review.results.restNote")}</span></p>`);
   }
   $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${TagcastI18n.html(r.kind === "album" ? "review.results.album" : "review.results.track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(resultFieldName).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");
