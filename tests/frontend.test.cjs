@@ -11812,6 +11812,28 @@ test('Upload review escapes filenames, keeps inputs and locks the reviewed selec
   assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
 });
 
+test('Remembered upload outcomes block sending and keep uncertainty visible in a new review',async()=>{
+  for(const status of ['uploaded','uncertain']) {
+    const p=page();await settle();prepareMusicUploadsPage(p);
+    const d=musicUploadsFixture();
+    d.items=[{label:'Album/previous.flac',size:200,status,sent:0,verified:false,
+      note:status==='uncertain'?'A previous upload still needs checking.':'Accepted earlier; not listed yet.'}];
+    d.summary={files:1,counts:{[status]:1},bytes_to_send:0};
+    const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
+    p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(d)};renderMusicUploads()`);
+    assert.equal(p.nodes.get('#music-upload-start').disabled,true,status);
+    assert.equal(p.nodes.get('#music-upload-uncertain').hidden,status!=='uncertain');
+    assert.equal(p.nodes.get('#music-upload-progress').hidden,true);
+    const list=p.nodes.get('#music-upload-files').innerHTML;
+    if(status==='uncertain') {
+      assert.match(list,/Needs checking/);
+      assert.doesNotMatch(list,/>Uploaded<\/span>/);
+    } else assert.match(list,/not listed yet/);
+    assert.equal(p.requests.filter(r=>r.url==='/api/uploads/start').length,0);
+    assert.equal(p.run('JSON.stringify({queue:player.queue,src:audio.src})'),before);
+  }
+});
+
 test('Upload start is explicit, single-click guarded and bound to the reviewed session',async()=>{
   const p=page();await settle();prepareMusicUploadsPage(p);
   p.run(`state.screen="uploads";musicUploadsView.data=${JSON.stringify(musicUploadsFixture())};renderMusicUploads()`);

@@ -71,6 +71,12 @@ The application consists of a Python server and a plain JavaScript frontend.
   Never hold Studio.lock during file/network I/O or socket abort. Keep uncertain
   uploads distinct and never retry them automatically. Only the local hash index
   persists, using the existing private atomic storage. Playback remains independent.
+  Keep a bounded, memory-only account/session guard for recent accepted and uncertain
+  MD5 outcomes across upload reviews and Clear. Never treat remembered uncertainty
+  as success or silently evict unlisted outcomes; release them on fresh native membership
+  or owner replacement. Before the first audio request, refresh MD5 membership and
+  skip newly present reviewed files; a failed check sends no audio. A machine-readable
+  storage limit stops the queue, preserving uncertainty and checking earlier results.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
