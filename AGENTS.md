@@ -77,7 +77,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   or owner replacement. Before the first audio request, refresh MD5 membership and
   skip newly present reviewed files; a failed check sends no audio. A machine-readable
   storage limit stops the queue, preserving uncertainty and checking earlier results.
-- `src/tagcast/trash_emptying.py`: explicit Settings → Data review of the current iBroadcast
+- `src/tagcast/trash_emptying.py`: explicit Settings → Data & exports review of the current iBroadcast
   trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Check the remote
   revision before review/save; reuse only a matching known account/combine library,
   downloading on changed/unknown revisions. Keep fresh downloaded read-back even

@@ -170,7 +170,7 @@ and permissions would need confirmation before implementation.
 | Area | Observed names / capability | Tagcast |
 | --- | --- | --- |
 | Restore Trash | `restore` | No |
-| Empty Trash | `empty_trash` | Reviewed development workflow under Settings → Data; exact reviewed track list, fresh checks and read-back. This is not permanent deletion. |
+| Empty Trash | `empty_trash` | Reviewed development workflow under Settings → Data & exports; exact reviewed track list, fresh checks and read-back. This is not permanent deletion. |
 | Hide/archive tracks by tags | `archivetracks` | No; archived tags can be read and removed from a selection, but not added/archived here. |
 | Track Dashboard | `dashboard_files`, `dashboard_meta`, `dashboard_suggestions`, `dashboard_missing_meta_count`, `dashboard_upload_issue_count`, `dashboard_upload_status` | No |
 | Dashboard restoration/deletion | `restore_file`, `dashboard_delete` | No |
