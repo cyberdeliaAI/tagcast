@@ -1236,3 +1236,8 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 .update-notes table{width:100%;border-collapse:collapse;table-layout:fixed;margin:.8em 0}
 .update-notes th,.update-notes td{border:1px solid var(--line);padding:.5em;text-align:left;vertical-align:top;overflow-wrap:anywhere}
 .update-notes hr{border:0;border-top:1px solid var(--line);margin:1em 0}
+
+.empty-trash-list{max-height:40vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.empty-trash-list article{padding:10px 12px;overflow-wrap:anywhere;border-bottom:1px solid var(--line)}
+.empty-trash-list article:last-child{border-bottom:0}
+.empty-trash-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;font-size:12px;flex-wrap:wrap}
