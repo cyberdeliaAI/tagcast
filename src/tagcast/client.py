@@ -56,6 +56,7 @@ from .service_status import ServiceStatus
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
 from .tags import Tags
+from .trash_emptying import TrashEmptying
 from .updates import UpdateChecker
 from .year_review import YearReview
 
@@ -451,6 +452,7 @@ class Studio:
         self.tags = Tags(self)
         self.album_merge = AlbumMerge(self)
         self.album_split = AlbumSplit(self)
+        self.trash_emptying = TrashEmptying(self)
         self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
         self.downloads = 0  # library downloads started so far; numbers each one
@@ -593,6 +595,7 @@ class Studio:
         with self.lock:
             self.client, self.library, self.account = client, None, None
             self.jobs.clear()
+            self.trash_emptying.reviews.clear()
             self.playback_session = secrets.token_hex(16)
             self.stream_results.clear()
             if save:
@@ -605,6 +608,7 @@ class Studio:
         with self.lock:
             self.client = self.library = self.account = self.device = None
             self.jobs.clear()
+            self.trash_emptying.reviews.clear()
             self.playback_session = ""
             self.stream_results.clear()
             self._device_gen += 1
