@@ -14454,3 +14454,139 @@ test('release-note limits bound input, table expansion and unmatched formatting 
   assert.equal(p.run(`renderReleaseNotes('['.repeat(50000))`),'<p>'+'['.repeat(50000)+'</p>');
   assert.match(p.run(`renderReleaseNotes('## a'+' '.repeat(49000)+'Z')`),/Z<\/h4>/);
 });
+
+async function emptyTrashPage(count=2,storage={}) {
+  const p=livePage({storage});await settle();
+  p.run('state.connection.connected=true;state.connection.playback_session="trash-session"');
+  const data={review:count?'synthetic-trash-review-token':'',count,digest:'a'.repeat(64),offset:0,limit:50,
+    tracks:Array.from({length:Math.min(count,50)},(_,i)=>({id:String(i+100),title:i?'Second track':'<First track>',artist:'Artist',album:'Album'}))};
+  p.setFetch(url=>({ok:true,json:async()=>data}));
+  return {p,data};
+}
+
+test('Settings trash action makes no requests until explicit review and renders a bounded escaped list',async()=>{
+  const {p,data}=await emptyTrashPage(51);
+  const before=p.requests.length,albums=p.json('state.albums'),history=p.json('state.history');
+  assert.match(p.run('settingsContentMarkup()'),/data-empty-trash-open/);
+  assert.equal(p.requests.length,before);
+  await p.run('openEmptyTrashReview()');
+  assert.deepEqual(p.json('state.albums'),albums);assert.deepEqual(p.json('state.history'),history);
+  assert.equal(p.requests.filter(r=>r.url==='/api/trash/empty/review').length,1);
+  assert.equal(p.nodes.get('#empty-trash').open,true);
+  assert.match(p.nodes.get('#empty-trash-content').innerHTML,/&lt;First track&gt;/);
+  assert.match(p.nodes.get('#empty-trash-content').innerHTML,/not permanently deleted/);
+  assert.match(p.nodes.get('#empty-trash-footer').innerHTML,/id="empty-trash-save"[^>]* disabled/);
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/trash/empty/page');assert.equal(JSON.parse(options.body).offset,50);
+    return {ok:true,json:async()=>({...data,offset:50,tracks:[{id:'999',title:'Last track',artist:'Other',album:'Last'}]})};
+  });
+  await p.run('pageEmptyTrash(50)');
+  assert.match(p.nodes.get('#empty-trash-content').innerHTML,/Last track/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/trash/empty/save').length,0);
+});
+
+test('trash progress distinguishes revision checks, local paging and fresh read-back without extra polling',async()=>{
+  const {p,data}=await emptyTrashPage(51);
+  let finish;const status=()=>p.nodes.get('#empty-trash-status');
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const review=p.run('openEmptyTrashReview()');await settle();
+  assert.match(status().textContent,/Checking for library changes/);
+  assert.equal(status().getAttribute('data-working'),'true');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/trash/empty')).length,1);
+  finish({ok:true,json:async()=>data});await review;
+  assert.equal(status().getAttribute('data-working'),'false');
+  const page=p.run('pageEmptyTrash(50)');await settle();
+  assert.match(status().textContent,/Loading this page of the reviewed trash/);
+  assert.doesNotMatch(status().textContent,/iBroadcast|library changes/);
+  finish({ok:true,json:async()=>({...data,offset:50,tracks:[{id:'999',title:'Last',artist:'A',album:'B'}]})});
+  await page;p.run('emptyTrashView.acknowledged=true');
+  const save=p.run('saveEmptyTrash()');await settle();
+  assert.match(status().textContent,/Checking and emptying/);
+  assert.match(status().textContent,/changed library is reloaded first/);
+  assert.equal(status().getAttribute('data-working'),'true');
+  finish({ok:true,json:async()=>({job:'empty',count:51,error:''})});await settle();
+  assert.match(status().textContent,/Reading your library back from iBroadcast/);
+  assert.match(status().textContent,/Large libraries can take a while/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/jobs/')).length,0);
+  p.flushTimers(2000);await settle();
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/jobs/')).length,1);
+  finish({ok:true,json:async()=>({state:'done',results:[{kind:'trash',id:'empty',status:'saved',fields:[]}]})});
+  await save;
+  assert.equal(status().getAttribute('data-working'),'false');
+  assert.match(status().textContent,/51 tracks removed/);
+  assert.deepEqual(p.requests.filter(r=>r.url.startsWith('/api/trash/empty')||r.url.startsWith('/api/jobs/')).map(r=>r.url),
+    ['/api/trash/empty/review','/api/trash/empty/page','/api/trash/empty/save','/api/jobs/empty']);
+});
+
+test('emptying trash requires both acknowledgement and the extra confirmation',async()=>{
+  const {p}=await emptyTrashPage();await p.run('openEmptyTrashReview()');
+  await p.run('saveEmptyTrash()');
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0);
+  p.run('emptyTrashView.acknowledged=true;confirm=()=>false');await p.run('saveEmptyTrash()');
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0);
+  assert.equal(p.run('state.history.length'),0);
+  await p.nodes.get('#empty-trash').emit('close');
+  assert.equal(p.run('emptyTrashView.review'),null);
+});
+
+test('confirmed emptying records only an aggregate History result without retry or Undo and preserves audio',async()=>{
+  const storage={}, {p}=await emptyTrashPage(2,storage);await p.run('openEmptyTrashReview()');
+  p.run('emptyTrashView.acknowledged=true;playTracks(state.details.values().next().value)');
+  const playback=p.run('JSON.stringify({src:audio.src,queue:player.queue,index:player.index})'),before=p.history.length;
+  p.setFetch((url,options)=>{
+    if(url.endsWith('/save')){
+      assert.deepEqual(JSON.parse(options.body),{session:'trash-session',review:'synthetic-trash-review-token',approved:true,acknowledged:true});
+      return {ok:true,json:async()=>({job:'empty',count:2,digest:'a'.repeat(64),error:''})};
+    }
+    return {ok:true,json:async()=>({state:'done',results:[{kind:'trash',id:'empty',status:'saved',fields:[]}]})};
+  });
+  const task=p.run('saveEmptyTrash()');await settle();
+  await p.run('saveEmptyTrash()');p.flushTimers(2000);await task;
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,1);
+  assert.match(p.nodes.get('#empty-trash-status').textContent,/2 tracks removed/);
+  assert.equal(p.run('state.history[0].status'),'saved');assert.equal(p.history.length,before);
+  assert.equal(p.run('JSON.stringify({src:audio.src,queue:player.queue,index:player.index})'),playback);
+  p.run('showHistory()');
+  assert.match(p.nodes.get('#history-content').innerHTML,/Empty iBroadcast trash/);
+  assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-undo|data-review-rest/);
+  assert.doesNotMatch(storage['tagcast-history'],/synthetic-trash-review-token/);
+  assert.equal(JSON.parse(storage['tagcast-history'])[0].emptyTrash.count,2);
+  const html=p.nodes.get('#empty-trash-content').innerHTML;await p.run('TagcastI18n.use("nl")');
+  assert.equal(p.nodes.get('#empty-trash-content').innerHTML,html,'Open reviews are not rebuilt for translation');
+  p.run('renderHistory()');assert.match(p.nodes.get('#history-content').innerHTML,/iBroadcast-prullenbak legen/);
+});
+
+test('empty-trash conflicts, uncertain writes and failed read-backs never offer automatic retry',async()=>{
+  for(const phase of ['conflict','lost-response','unverified','readback-error']){
+    const {p}=await emptyTrashPage();await p.run('openEmptyTrashReview()');p.run('emptyTrashView.acknowledged=true');
+    p.setFetch(url=>{
+      if(url.endsWith('/save')){
+        if(phase==='conflict')return {ok:false,status:409,json:async()=>({error:'Trash changed'})};
+        if(phase==='lost-response')throw Error('Lost response');
+        return {ok:true,json:async()=>({job:'empty',count:2,error:''})};
+      }
+      return {ok:true,json:async()=>phase==='readback-error'?{state:'error',error:'Read-back failed'}:
+        {state:'done',results:[{kind:'trash',id:'empty',status:'unverified',fields:[]}]}};
+    });
+    const task=p.run('saveEmptyTrash()');await settle();p.flushTimers(2000);await task;await p.run('saveEmptyTrash()');
+    assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,1,phase);
+    assert.notEqual(p.run('state.history[0].status'),'saved',phase);
+    assert.doesNotMatch(p.nodes.get('#empty-trash-footer').innerHTML,/id="empty-trash-save"/,phase);
+    assert.equal(p.run('saving || checking || emptyTrashView.busy'),false);
+  }
+});
+
+test('empty and replaced trash reviews cannot write or accept late data',async()=>{
+  const empty=await emptyTrashPage(0);await empty.p.run('openEmptyTrashReview()');
+  assert.match(empty.p.nodes.get('#empty-trash-content').innerHTML,/trash is empty/);
+  assert.doesNotMatch(empty.p.nodes.get('#empty-trash-footer').innerHTML,/empty-trash-save/);
+  for(const change of ['resetEmptyTrashReview()','useLocal(demoLibrary(),"demo")','state.connection.playback_session="other";updateChrome()']){
+    const {p,data}=await emptyTrashPage();let finish;
+    p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+    const task=p.run('openEmptyTrashReview()');await settle();p.run(change);
+    finish({ok:true,json:async()=>data});await task;
+    assert.equal(p.run('emptyTrashView.review'),null,change);
+    await p.run('saveEmptyTrash()');
+    assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0,change);
+  }
+});
