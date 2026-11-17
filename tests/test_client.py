@@ -91,29 +91,34 @@ class ClientTests(unittest.TestCase):
                     mock_ibroadcast.STATE.update(copy.deepcopy(original))
                     mock_ibroadcast.STATE["frozen"] = True
                     studio = self.connect()
-                    studio.load_library(refresh=True)
-                    self.wait_for_cache(studio)
-                    if disk:
-                        with studio.lock:
-                            studio.library = None
-                    downloads = mock_ibroadcast.STATE["downloads"]
-                    with patch.object(studio.client, "_jsonrequest", wraps=studio.client._jsonrequest) as request:
-                        body = {"session": studio.playback_session}
-                        review = studio.trash_emptying.review(body)
-                        self.assertEqual([row["id"] for row in review["tracks"]], ["902"])
-                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
-                        studio.trash_emptying.page({**body, "review": review["review"]})
-                        self.assertEqual([c.args[0] for c in request.call_args_list], ["status"])
-                        saved = studio.trash_emptying.save({**body, "review": review["review"],
-                                                           "approved": True, "acknowledged": True})
-                        job = self.wait_job(studio, saved["job"])
-                        self.assertEqual([c.args[0] for c in request.call_args_list],
-                                         ["status", "status", "empty_trash", "status", "library"])
-                    self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
-                    self.assertEqual(job["results"][0]["status"], "saved")
-                    self.assertNotIn(902, studio.library.tracks)
-                    self.assertIn(902, mock_ibroadcast.STATE["emptied_tracks"])
-                    self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [902])
+                    try:
+                        studio.load_library(refresh=True)
+                        self.wait_for_cache(studio)
+                        if disk:
+                            with studio.lock:
+                                studio.library = None
+                        downloads = mock_ibroadcast.STATE["downloads"]
+                        with patch.object(studio.client, "_jsonrequest", wraps=studio.client._jsonrequest) as request:
+                            body = {"session": studio.playback_session}
+                            review = studio.trash_emptying.review(body)
+                            self.assertEqual([row["id"] for row in review["tracks"]], ["902"])
+                            self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
+                            studio.trash_emptying.page({**body, "review": review["review"]})
+                            self.assertEqual([c.args[0] for c in request.call_args_list], ["status"])
+                            saved = studio.trash_emptying.save({**body, "review": review["review"],
+                                                               "approved": True, "acknowledged": True})
+                            job = self.wait_job(studio, saved["job"])
+                            self.assertEqual([c.args[0] for c in request.call_args_list],
+                                             ["status", "status", "empty_trash", "status", "library"])
+                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+                        self.assertEqual(job["results"][0]["status"], "saved")
+                        self.assertNotIn(902, studio.library.tracks)
+                        self.assertIn(902, mock_ibroadcast.STATE["emptied_tracks"])
+                        self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [902])
+                    finally:
+                        studio._disconnect()
+                        with studio.cache_lock:
+                            pass  # Finish an accepted cache write before removing this test home.
         finally:
             self.home = original_home
             mock_ibroadcast.STATE.clear()
@@ -129,20 +134,25 @@ class ClientTests(unittest.TestCase):
                     mock_ibroadcast.STATE.clear()
                     mock_ibroadcast.STATE.update(copy.deepcopy(original))
                     studio = self.connect()
-                    studio.load_library(refresh=True)
-                    downloads = mock_ibroadcast.STATE["downloads"]
-                    mock_ibroadcast.STATE["tracks"][900]["trashed"] = True
-                    mock_ibroadcast.STATE["version"] += 1
-                    with patch.object(mock_ibroadcast, "lastmodified", return_value="") if unknown else \
-                            patch.object(mock_ibroadcast, "lastmodified", wraps=mock_ibroadcast.lastmodified):
-                        body = {"session": studio.playback_session}
-                        review = studio.trash_emptying.review(body)
-                        self.assertEqual([row["id"] for row in review["tracks"]], ["900", "902"])
-                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
-                        saved = studio.trash_emptying.save({**body, "review": review["review"],
-                                                           "approved": True, "acknowledged": True})
-                        self.assertEqual(self.wait_job(studio, saved["job"])["results"][0]["status"], "saved")
-                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + (3 if unknown else 2))
+                    try:
+                        studio.load_library(refresh=True)
+                        downloads = mock_ibroadcast.STATE["downloads"]
+                        mock_ibroadcast.STATE["tracks"][900]["trashed"] = True
+                        mock_ibroadcast.STATE["version"] += 1
+                        with patch.object(mock_ibroadcast, "lastmodified", return_value="") if unknown else \
+                                patch.object(mock_ibroadcast, "lastmodified", wraps=mock_ibroadcast.lastmodified):
+                            body = {"session": studio.playback_session}
+                            review = studio.trash_emptying.review(body)
+                            self.assertEqual([row["id"] for row in review["tracks"]], ["900", "902"])
+                            self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+                            saved = studio.trash_emptying.save({**body, "review": review["review"],
+                                                               "approved": True, "acknowledged": True})
+                            self.assertEqual(self.wait_job(studio, saved["job"])["results"][0]["status"], "saved")
+                            self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + (3 if unknown else 2))
+                    finally:
+                        studio._disconnect()
+                        with studio.cache_lock:
+                            pass  # Finish an accepted cache write before removing this test home.
         finally:
             self.home = original_home
             mock_ibroadcast.STATE.clear()
@@ -162,21 +172,26 @@ class ClientTests(unittest.TestCase):
                     mock_ibroadcast.STATE.clear()
                     mock_ibroadcast.STATE.update(copy.deepcopy(original))
                     studio = self.connect()
-                    studio.load_library(refresh=True)
-                    body = {"session": studio.playback_session}
-                    review = studio.trash_emptying.review(body)
-                    downloads, writes = mock_ibroadcast.STATE["downloads"], len(mock_ibroadcast.STATE["writes"])
-                    change()
-                    if index != 3:  # The combine setting invalidates a cache even at the same revision.
-                        mock_ibroadcast.STATE["version"] += 1
-                    with self.assertRaises(ConflictError):
-                        studio.trash_emptying.save({**body, "review": review["review"],
-                                                   "approved": True, "acknowledged": True})
-                    self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
-                    self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes)
-                    with self.assertRaises(ConflictError):
-                        studio.trash_emptying.save({**body, "review": review["review"],
-                                                   "approved": True, "acknowledged": True})
+                    try:
+                        studio.load_library(refresh=True)
+                        body = {"session": studio.playback_session}
+                        review = studio.trash_emptying.review(body)
+                        downloads, writes = mock_ibroadcast.STATE["downloads"], len(mock_ibroadcast.STATE["writes"])
+                        change()
+                        if index != 3:  # The combine setting invalidates a cache even at the same revision.
+                            mock_ibroadcast.STATE["version"] += 1
+                        with self.assertRaises(ConflictError):
+                            studio.trash_emptying.save({**body, "review": review["review"],
+                                                       "approved": True, "acknowledged": True})
+                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+                        self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes)
+                        with self.assertRaises(ConflictError):
+                            studio.trash_emptying.save({**body, "review": review["review"],
+                                                       "approved": True, "acknowledged": True})
+                    finally:
+                        studio._disconnect()
+                        with studio.cache_lock:
+                            pass  # Finish an accepted cache write before removing this test home.
         finally:
             self.home = original_home
             mock_ibroadcast.STATE.clear()
