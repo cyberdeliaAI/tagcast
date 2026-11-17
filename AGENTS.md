@@ -1227,8 +1227,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   credentials or library data. Cache attempts (including failures) for 24 hours in
   `updates.json`; manual checks bypass the interval. `auto_updates` is a local
   setting. Keep failures separate from library loading, validate versions and
-  construct release URLs for this repository. Release notes are bounded plain text;
-  never execute provider HTML or load its embedded images. Browser/source and portable
+  construct release URLs for this repository. Release notes stay bounded untrusted text;
+  render only a fixed Markdown subset with escaped text/attributes, credential-free HTTPS
+  links and bounded inline/table work. Keep unsupported content visible as text and flat
+  nested lists; never execute provider HTML or load its embedded images or styles. Browser/source and portable
   builds retain manual installation. The desktop updater uses fixed, version-pinned
   GitHub release feeds and exact platform filenames, with SHA-512 package verification.
   Downloading is opt-in; installation always needs explicit native confirmation.

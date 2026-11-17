@@ -14352,3 +14352,83 @@ test('a failed assignment read-back immediately shows creation receipts and keep
   assert.equal(reopened.run('state.history[0].status'),'unverified');
   assert.equal(p.requests.filter(r=>r.url==='/api/artwork').length,0);
 });
+
+test('update notes format the shipped release with safe headings, lists and links without another request', async () => {
+  const p=page(); await settle();
+  const notes=readFileSync(path.join(root,'.github/release-notes/1.9.5.md'),'utf8');
+  p.setUpdateFetch(()=>({ok:true,json:async()=>({current:'1.8.0',latest:'1.9.5',available:true,state:'available',auto_updates:false,notes})}));
+  await p.run('checkForUpdates(true)'); const requests=p.requests.length;
+  p.run('openUpdateDetails()');
+  const html=p.nodes.get('#updates-content').innerHTML;
+  assert.match(html,/<div class="update-notes" tabindex="0"><h3>Tagcast 1\.9\.5<\/h3>/);
+  assert.match(html,/<h4>Discover albums already in your library<\/h4>/);
+  assert.match(html,/<strong>Discover similar music<\/strong>/);
+  assert.match(html,/<ul><li>Open an album artist/);
+  assert.match(html,/<a href="https:\/\/github.com\/cyberdeliaAI\/tagcast\/wiki\/PDF-manual" target="_blank" rel="noopener noreferrer">illustrated PDF manual<\/a>/);
+  assert.equal(p.requests.length,requests);
+  await p.run('TagcastI18n.use("nl")');
+  const translated=p.nodes.get('#updates-content').innerHTML;
+  assert.equal(translated.match(/<div class="update-notes"[\s\S]*?<\/div>/)[0],html.match(/<div class="update-notes"[\s\S]*?<\/div>/)[0]);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/updates')).length,2);
+});
+
+test('release-note inline formatting keeps code literal, composes link labels and preserves HTTPS queries', () => {
+  const p=page();
+  const notes='**Bold** and _italic_ and `**literal** <img>`\n\n[**Guide** and `code`](https://example.test/a_(v)?a=1&b=2)\n\nhttps://example.test/notes?q=1&b=2.';
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(notes)})`);
+  assert.match(html,/<strong>Bold<\/strong> and <em>italic<\/em>/);
+  assert.match(html,/<code>\*\*literal\*\* &lt;img&gt;<\/code>/);
+  assert.match(html,/<a href="https:\/\/example.test\/a_\(v\)\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer"><strong>Guide<\/strong> and <code>code<\/code><\/a>/);
+  assert.match(html,/href="https:\/\/example.test\/notes\?q=1&amp;b=2"/);
+  assert.match(html,/>https:\/\/example.test\/notes\?q=1&amp;b=2<\/a>\./);
+  assert.doesNotMatch(html,/\u0000|undefined/);
+});
+
+test('release-note raw HTML, images and unsafe links never become active content', () => {
+  const p=page();
+  const notes=[
+    '<script>alert(1)</script><img src="https://evil.test/pixel" onerror="alert(1)">',
+    '<iframe src="https://evil.test/frame"></iframe><svg onload="alert(1)">',
+    '![pixel](https://evil.test/pixel) ![`code alt`](https://evil.test/other)',
+    '[bad](javascript:alert(1)) [bad](data:text/html,execute) [bad](file:///tmp/anything)',
+    '[credentials](https://user:password@example.test/) [control](https://exam\tple.test/)',
+    '[nested [label](https://example.test/) \u00000\u0000 **safe**',
+    '<!-- <img src="https://evil.test/comment"> -->'
+  ].join('\n\n');
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(notes)})`);
+  assert.match(html,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html,/!\[pixel\]\(https:\/\/evil.test\/pixel\)/);
+  assert.match(html,/!\[`code alt`\]/);
+  assert.doesNotMatch(html,/<(?:script|img|iframe|svg|style)|<[^>]+\bon\w+=|<a[^>]+href="(?:javascript:|data:|file:|https:\/\/user:)/i);
+  assert.doesNotMatch(html,/\u0000|undefined/);
+  assert.match(html,/<strong>safe<\/strong>/);
+});
+
+test('release-note code fences, simple tables and flat lists retain their content', () => {
+  const p=page();
+  const notes='# C#\n\n## Heading ###\n\n- First\n  continued\n  - Nested\n\n1. One\n2. Two\n\n---\n\n| Platform | State |\n| :--- | ---: |\n| macOS | **Ready** |\n| Linux | `test` |\n| Extra | Still visible | Do not drop |\n\n```html\n<!-- example -->\n<img src="https://evil.test/pixel">\n**literal**\n```\n\n~~~\nunfinished <script>';
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(notes)})`);
+  assert.match(html,/<h3>C#<\/h3>/);assert.match(html,/<h4>Heading<\/h4>/);
+  assert.match(html,/<ul><li>First continued<\/li><li>Nested<\/li><\/ul>/);
+  assert.match(html,/<ol><li>One<\/li><li>Two<\/li><\/ol>/);assert.match(html,/<hr>/);
+  assert.match(html,/<th scope="col">Platform<\/th>/);assert.match(html,/<td><strong>Ready<\/strong><\/td>/);
+  assert.match(html,/Do not drop/);
+  assert.match(html,/<pre><code>&lt;!-- example --&gt;\n&lt;img/);
+  assert.match(html,/\*\*literal\*\*<\/code><\/pre>/);
+  assert.match(html,/<pre><code>unfinished &lt;script&gt;<\/code><\/pre>/);
+});
+
+test('release-note limits bound input, table expansion and unmatched formatting without discarding the remaining text', () => {
+  const p=page();
+  for(const notes of [null,{},42,'\n\t ']) assert.equal(p.run(`renderReleaseNotes(${JSON.stringify(notes)})`),'');
+  const bounded=p.run(`renderReleaseNotes('x'.repeat(50000)+'MUST_NOT_APPEAR')`);
+  assert.equal(bounded,'<p>'+'x'.repeat(50000)+'</p>');
+  const table='| A | B |\n| --- | --- |\n'+'| x | y |\n'.repeat(3000)+'END';
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(table)})`);
+  assert.ok((html.match(/<(?:td|th)\b/g)||[]).length<=2000);
+  assert.match(html,/END/);assert.ok(html.length<100000);
+  const columns=Array(21).fill('A').join('|'), separator=Array(21).fill('---').join('|');
+  assert.doesNotMatch(p.run(`renderReleaseNotes(${JSON.stringify('|'+columns+'|\n|'+separator+'|')})`),/<table>/);
+  assert.equal(p.run(`renderReleaseNotes('['.repeat(50000))`),'<p>'+'['.repeat(50000)+'</p>');
+  assert.match(p.run(`renderReleaseNotes('## a'+' '.repeat(49000)+'Z')`),/Z<\/h4>/);
+});

@@ -1216,7 +1216,6 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
 .update-notes {
   max-height: min(42vh, 24rem);
   overflow: auto;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: inherit;
   padding: 1rem;
@@ -1225,3 +1224,15 @@ body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 1
   background: var(--paper);
   color: var(--ink);
 }
+.update-notes>:first-child{margin-top:0}
+.update-notes>:last-child{margin-bottom:0}
+.update-notes h3,.update-notes h4,.update-notes h5,.update-notes h6{margin:1.2em 0 .5em;line-height:1.4}
+.update-notes h3{font-size:1.15em}.update-notes h4{font-size:1.05em}.update-notes h5,.update-notes h6{font-size:1em}
+.update-notes p{margin:.65em 0;line-height:1.65}
+.update-notes ul,.update-notes ol{padding-left:1.6em;margin:.65em 0}
+.update-notes li{margin:.35em 0;line-height:1.6}
+.update-notes pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:.75em;background:var(--palette-tint,var(--white));border-radius:6px}
+.update-notes code{font-family:ui-monospace,monospace;font-size:.92em}
+.update-notes table{width:100%;border-collapse:collapse;table-layout:fixed;margin:.8em 0}
+.update-notes th,.update-notes td{border:1px solid var(--line);padding:.5em;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.update-notes hr{border:0;border-top:1px solid var(--line);margin:1em 0}
