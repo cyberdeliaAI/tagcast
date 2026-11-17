@@ -26,10 +26,15 @@ in both iBroadcast and Tagcast. This does not establish every error/recovery beh
 5. Review the filenames and choose **Start uploads**. Only files marked **Ready to
    upload** are sent, one at a time. The reviewed selection stays locked until you
    choose **Change selection**. Reviews expire after 15 minutes or a library change.
+   Before sending the first file, Tagcast checks a fresh remote MD5 list again and
+   skips reviewed files that are now present. If that check fails, no audio is sent
+   and a new preparation/review is required.
 6. **Pause after this file** waits between files. **Stop** cancels preparation or
    interrupts a transfer where possible. A file already sent may still arrive.
-   No uncertain upload is automatically repeated. Check iBroadcast before preparing
-   those files again. A new explicit review always checks the remote MD5 list again.
+   No uncertain upload is automatically repeated. Recent accepted and uncertain
+   outcomes remain protected across new reviews in the same upload session, even
+   when iBroadcast's MD5 list has not caught up. Check iBroadcast before starting
+   a new session for an unresolved file.
 7. Use **Reload library** after processing to see new music. Processing time belongs
    to iBroadcast; Tagcast does not automatically reload the library or disturb playback.
 8. After a fully successful upload, the old path selection is cleared. Results remain
@@ -41,6 +46,23 @@ or subsequent MD5 confirmation was received. The additional uploaded-file list c
 is described under **Details**; a delayed list entry does not undo a successful
 acknowledgement. **Needs checking** is reserved for genuinely uncertain uploads and
 always retains the warning to check iBroadcast before preparing again.
+
+Recent outcomes are kept only in RAM for the captured account and upload session,
+separate from the persistent local hash index. Changing the selection, clearing
+results or visiting another page does not clear them. A fresh native MD5 listing
+releases the remembered entry once membership is confirmed. Disconnecting,
+disabling uploads, replacing the account/session or restarting Tagcast clears this
+guard. It is bounded to 10,000 unlisted MD5 outcomes: preparation stops before
+exceeding the limit instead of silently forgetting accepted or uncertain files.
+Remembered uncertain files remain **Needs checking**, not **Uploaded**.
+
+If iBroadcast returns the machine-readable `storage_limit: true` flag, the whole
+upload task stops before sending subsequent files. Earlier uploads are still
+checked against a fresh MD5 list. A clear refusal leaves the current file failed;
+a contradictory/missing result or a 429/5xx response retains uncertainty. Remaining
+files are **Not sent**. Freeing storage never resumes the job automatically;
+prepare and review a new selection explicitly. Ordinary file refusals still affect
+only their own file.
 
 Uploaded copies use the original local files and embedded metadata. Tagcast does
 not retag, move, delete or adopt your local music. Byte-identical files are skipped;
@@ -58,7 +80,7 @@ Preparation sends no audio. Starting sends the selected audio bytes and a relati
 identity and authorization. Absolute local paths, cached file MD5s and file identity
 stay in `upload-hashes.json` in the private Tagcast settings directory. They are not
 written into music folders. The remote MD5 list is read for matching and confirmation.
-Selections, review IDs and job results are memory-only and disappear when Tagcast
+Selections, review IDs, recent upload outcomes and job results are memory-only and disappear when Tagcast
 stops. Navigating to another page keeps an existing task running, but stops its
 page-local status polling. Disconnecting, replacing the account or shutting down
 stops it. Opening Uploads never scans or starts a transfer. No watch-folder/sync or
@@ -144,10 +166,16 @@ about either and reports such files as uncertain.
   (direct and HTTP proxy connections), so a stop attempts to cut off the request.
   See the Windows and connection-phase limits below.
 - **Job** (`UploadJob`): one file at a time; pause waits between files.
+  - Before the first audio request, a fresh MD5 listing skips reviewed files now
+    present and can confirm remembered uncertain files. A failed pre-upload check
+    leaves all queued files `not_sent`. This narrows the review/start window but
+    cannot prevent another client uploading the same bytes immediately afterwards.
   - An uncertain answer is **never resent**. The engine checks the MD5 list after 2 s
     and 6 s: listed → `confirmed`; not listed → `uncertain`, and the job continues.
     If that check itself fails, the job ends and the remaining files are not sent.
   - A refusal fails that file; the job continues.
+    The structured storage-limit flag is an account-wide exception: no subsequent
+    audio is sent, earlier outcomes are read back, and a new explicit review is needed.
   - No connection before any audio left the computer → `failed` ("Not uploaded"),
     job ends. A rejected token or permission → `failed`, job ends.
   - A stop or session change before any audio was sent → `stopped` ("Not sent").

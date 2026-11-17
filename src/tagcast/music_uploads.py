@@ -16,6 +16,7 @@ from .library import ConflictError, LibraryError
 
 MAX_ROOTS = 100
 MAX_FILES = 1000
+MAX_RECENT_UPLOADS = 10_000
 PAGE_SIZE = 50
 REVIEW_LIFETIME = 15 * 60
 ACTIVE = {"ready", "running", "paused"}
@@ -25,6 +26,7 @@ PREPARATION_ERRORS = {
     "duplicates": "iBroadcast's list of uploaded files could not be read. No files were uploaded. Try preparing again later.",
     "scan": "The selected files or folders could not be scanned. Check file access and choose at most 1,000 audio files.",
     "hash": "The selected files could not be checked. Check file access and available space in Tagcast's settings folder.",
+    "recent": "Too many recent uploads are still missing from iBroadcast's file list. Check their results in iBroadcast before starting a new upload session. No files were uploaded.",
 }
 
 
@@ -46,6 +48,7 @@ class MusicUploads:
         self.transfer = self.job = self.worker = None
         self._preparations, self._jobs = [], []
         self.items = []
+        self.recent = {}  # Account/session-bound MD5 outcomes, never persisted.
         self.review = None
         self.preparing = False
         self.phase = self.error = ""
@@ -71,6 +74,16 @@ class MusicUploads:
 
     def _busy(self):
         return self.preparing or (self.job is not None and self.job.state in ACTIVE)
+
+    def _remember_job(self):
+        # Called under Studio.lock only after the current job is terminal. Its
+        # item outcomes are settled; collecting them performs no I/O and cannot
+        # publish a late result from a replaced account's detached job.
+        if self.job and self.job.state not in ACTIVE:
+            for item in self.job.items:
+                if item.status in (engine.SENT, engine.CONFIRMED, engine.UNCERTAIN):
+                    self.recent[item.md5] = (engine.UNCERTAIN if item.status == engine.UNCERTAIN
+                                             else engine.SENT)
 
     def _bind(self, owner):
         if owner != self.owner:
@@ -129,6 +142,7 @@ class MusicUploads:
             self._bind(owner)
             if self._busy():
                 raise ConflictError("Stop the current upload task before preparing another.")
+            self._remember_job()
             self.generation += 1
             generation = self.generation
             self.stop = stop = threading.Event()
@@ -171,6 +185,14 @@ class MusicUploads:
                 self.phase = "Checking files already uploaded to iBroadcast…"
             service = engine.UploadService(owner[0])
             remote = service.remote_md5s(transfer)
+            with self.lock:
+                if not valid():
+                    return
+                # Release a remembered outcome only after the fresh list proves
+                # membership. Never age out/evict unlisted uncertain outcomes.
+                self.recent = {md5: outcome for md5, outcome in self.recent.items()
+                               if md5 not in remote}
+                recent = dict(self.recent)
             stage = "scan"
             with self.lock:
                 if not valid():
@@ -196,6 +218,20 @@ class MusicUploads:
                 index = engine.HashIndex(self._read_index, self.studio._write)
                 items = engine.plan_uploads(files, extensions, remote, index,
                                             stop=stop, progress=progress)
+            for item in items:
+                outcome = recent.get(item.md5)
+                if item.status == engine.NEW and outcome:
+                    if outcome == engine.UNCERTAIN:
+                        item.status, item.note = engine.UNCERTAIN, (
+                            "A previous upload of this file still needs checking. "
+                            "It is not sent again. Check iBroadcast before starting a new session.")
+                    else:
+                        item.status, item.note = engine.UPLOADED, (
+                            "Accepted by iBroadcast earlier in this upload session, but not listed yet. "
+                            "It is not sent again.")
+            stage = "recent"
+            if len(recent) + sum(item.status == engine.NEW for item in items) > MAX_RECENT_UPLOADS:
+                raise engine.UploadError("Recent upload outcome limit reached.")
             with self.lock:
                 if valid():
                     self.items = items
@@ -261,6 +297,7 @@ class MusicUploads:
             elif action == "clear":
                 if self._busy():
                     raise ConflictError("Stop the current upload task first.")
+                self._remember_job()
                 self.items, self.job, self.review, self.library = [], None, None, None
                 self.error = self.phase = ""
             else:
@@ -302,5 +339,6 @@ class MusicUploads:
             self.generation += 1
             self.owner = self.library = self.review = self.job = self.transfer = None
             self.items = []
+            self.recent = {}
             self.preparing = False
             self.error = self.phase = ""
