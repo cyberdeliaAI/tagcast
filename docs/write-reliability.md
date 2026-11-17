@@ -59,3 +59,34 @@ definition does not identify a lost creation receipt. The UI consumes the review
 and warns against creating another copy. Failed reads and replaced accounts or
 sessions never produce a confirmed result. See the [remediation record](audits/data-integrity-remediation-2026-11-10.md)
 for the complete call-site inventory, regressions and unresolved append contract.
+
+## Reviewed iBroadcast trash emptying (development)
+
+**Settings → Data → Review iBroadcast trash…** explicitly reads a fresh library
+and shows only tracks whose native trashed flag is set, 50 per page. Nothing is
+selected or sent when Settings opens. Empty trash produces an ordinary empty
+state; reviews above 10,000 tracks or with unreadable metadata are blocked.
+These are Tagcast bounds, not claims about the service's limits.
+
+The review requires acknowledgement and an extra confirmation before submitting.
+Its bounded, expiring, single-use token stays in memory and binds the account,
+session and complete trash identity snapshot, including the combine setting.
+The save lane forces another full library read, rejects added, removed, restored
+or renamed trash members, then sends exactly one `empty_trash` with the reviewed
+IDs. It never sends active tracks, automatic retries, permanent Dashboard
+deletion requests or restore operations. No local music files are touched.
+
+A fresh read-back confirms the reviewed IDs are absent from the library. A
+restored active record is not treated as confirmation. Lost replies are checked
+without replaying the request; refusals, partial results and failed read-backs
+remain distinct. History/export retain an aggregate result and review digest,
+without review tokens, metadata Undo or a resend action. Account/library changes
+invalidate the browser review; accepted work remains part of normal shutdown
+draining.
+
+Emptying Trash is not permanent deletion. Per iBroadcast, these files appear as
+Unavailable Files in the Track Dashboard and can still count toward storage.
+Further Dashboard management remains in iBroadcast. The service offers no
+conditional transaction for the local review; concurrent changes during the
+request cannot be ruled out by these checks. Public-client contract observations
+and real-account validation limits are recorded in [the API audit](ibroadcast-api-audit.md).

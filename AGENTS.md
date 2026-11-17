@@ -71,6 +71,14 @@ The application consists of a Python server and a plain JavaScript frontend.
   Never hold Studio.lock during file/network I/O or socket abort. Keep uncertain
   uploads distinct and never retry them automatically. Only the local hash index
   persists, using the existing private atomic storage. Playback remains independent.
+- `src/tagcast/trash_emptying.py`: explicit Settings → Data review of the current iBroadcast
+  trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Recheck fresh complete
+  trash membership/identity and account/session/combine state, consume the review once,
+  send one empty_trash request without retry, and verify absence from the loaded library.
+  Emptying moves files to iBroadcast's unavailable Dashboard records; no permanent
+  dashboard deletion, restore, local-file operation or automatic follow-up is allowed.
+  Keep acknowledgement plus extra confirmation, aggregate History/export and accepted
+  write/read-back draining. Opening Settings never reads or empties the trash.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
@@ -82,7 +90,7 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/static/`: HTML, CSS, SVG and shared JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `album-info.js`, `lyrics.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-order.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
-  `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
+  `empty-trash.js` owns the separate reviewed trash-emptying dialog; `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
   searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` owns browser-local playback and the queue independently of the editor. `navigation.js` gives every page a hash address

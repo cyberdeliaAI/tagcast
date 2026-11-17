@@ -186,6 +186,7 @@ function settingsContentMarkup() {
     + themeEditorPanel()
     + sidebarSettingsPanel()
     + metadataExportPanel()
+    + emptyTrashPanel()
     + `<section class="history-settings" data-settings-category="data"><h3>${TagcastI18n.html("settings.history.heading")}</h3>
     <p class="muted">${TagcastI18n.html("settings.history.note")}</p>
     <button type="button" class="button small" id="export-button" ${state.history.length ? "" : "disabled"}>${TagcastI18n.html("settings.history.export")}</button></section>`
