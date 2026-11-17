@@ -14280,6 +14280,39 @@ test('Settings trash action makes no requests until explicit review and renders 
   assert.equal(p.requests.filter(r=>r.url==='/api/trash/empty/save').length,0);
 });
 
+test('trash progress distinguishes revision checks, local paging and fresh read-back without extra polling',async()=>{
+  const {p,data}=await emptyTrashPage(51);
+  let finish;const status=()=>p.nodes.get('#empty-trash-status');
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const review=p.run('openEmptyTrashReview()');await settle();
+  assert.match(status().textContent,/Checking for library changes/);
+  assert.equal(status().getAttribute('data-working'),'true');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/trash/empty')).length,1);
+  finish({ok:true,json:async()=>data});await review;
+  assert.equal(status().getAttribute('data-working'),'false');
+  const page=p.run('pageEmptyTrash(50)');await settle();
+  assert.match(status().textContent,/Loading this page of the reviewed trash/);
+  assert.doesNotMatch(status().textContent,/iBroadcast|library changes/);
+  finish({ok:true,json:async()=>({...data,offset:50,tracks:[{id:'999',title:'Last',artist:'A',album:'B'}]})});
+  await page;p.run('emptyTrashView.acknowledged=true');
+  const save=p.run('saveEmptyTrash()');await settle();
+  assert.match(status().textContent,/Checking and emptying/);
+  assert.match(status().textContent,/changed library is reloaded first/);
+  assert.equal(status().getAttribute('data-working'),'true');
+  finish({ok:true,json:async()=>({job:'empty',count:51,error:''})});await settle();
+  assert.match(status().textContent,/Reading your library back from iBroadcast/);
+  assert.match(status().textContent,/Large libraries can take a while/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/jobs/')).length,0);
+  p.flushTimers(2000);await settle();
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/jobs/')).length,1);
+  finish({ok:true,json:async()=>({state:'done',results:[{kind:'trash',id:'empty',status:'saved',fields:[]}]})});
+  await save;
+  assert.equal(status().getAttribute('data-working'),'false');
+  assert.match(status().textContent,/51 tracks removed/);
+  assert.deepEqual(p.requests.filter(r=>r.url.startsWith('/api/trash/empty')||r.url.startsWith('/api/jobs/')).map(r=>r.url),
+    ['/api/trash/empty/review','/api/trash/empty/page','/api/trash/empty/save','/api/jobs/empty']);
+});
+
 test('emptying trash requires both acknowledgement and the extra confirmation',async()=>{
   const {p}=await emptyTrashPage();await p.run('openEmptyTrashReview()');
   await p.run('saveEmptyTrash()');

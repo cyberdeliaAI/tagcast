@@ -60,18 +60,18 @@ class TrashEmptyingTests(unittest.TestCase):
         return self.feature.save({"session": "session", "review": review["review"],
                                   "approved": True, "acknowledged": True})
 
-    def test_review_reads_fresh_trash_and_pages_without_any_writes(self):
+    def test_review_checks_current_trash_and_pages_without_any_writes(self):
         for tid in range(1000, 1060):
             self.studio.raw["library"]["tracks"][str(tid)] = {
                 "title": f"Trashed {tid}", "artist_id": 1, "album_id": 11, "trashed": True}
         review = self.review()
         self.assertEqual(review["count"], 62)
         self.assertEqual(len(review["tracks"]), 50)
-        self.assertEqual(self.studio.reads, [{"refresh": True}])
+        self.assertEqual(self.studio.reads, [{}])
         page = self.feature.page({"session": "session", "review": review["review"], "offset": 50})
         self.assertEqual(len(page["tracks"]), 12)
         self.assertEqual(page["digest"], review["digest"])
-        self.assertEqual(self.studio.reads, [{"refresh": True}])
+        self.assertEqual(self.studio.reads, [{}])
         self.assertEqual(self.studio.writes, [])
         self.assertEqual(set(review), {"review", "count", "digest", "offset", "limit", "tracks"})
 
@@ -90,7 +90,7 @@ class TrashEmptyingTests(unittest.TestCase):
         review = self.review()
         result = self.save(review)
         self.assertEqual(self.studio.writes, [("empty_trash", {"_retry": False, "tracks": [101, 103]})])
-        self.assertEqual(self.studio.reads, [{"refresh": True}, {"refresh": True}])
+        self.assertEqual(self.studio.reads, [{}, {}])
         self.assertEqual(result["count"], 2)
         self.assertEqual(result["digest"], review["digest"])
         self.assertEqual(self.studio.jobs[result["job"]]["results"][0]["status"], "saved")
