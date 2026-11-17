@@ -1006,7 +1006,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   Do not refresh the library, scan audio, write metadata or persist discovery reports.
   Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
   Keep the Last.fm privacy explanation in Settings → Discovery and Help, without a
-  repeated paragraph below the artist-page Discover button.
+  repeated paragraph below the artist-page disclosure. Similar in your library uses
+  a native details/summary alongside About this artist, with the active source label.
+  Refresh stays inside the content, outside summary. New artists start closed; only
+  explicit summary activation or Refresh starts discovery, never programmatic toggle.
+- Creation receipts for artists, uploaded artwork and split destinations are separate
+  from assignment/read-back confirmation. Preserve bounded write_effects in errors,
+  results and browser History/export, including failures before a read-back job exists.
+  Show possible leftovers only for incomplete saves, distinguishing confirmed creation
+  from a lost receipt. Never infer an object is unused, clean it up, retry it or offer
+  metadata Undo for a creation-only failure. Keep existing save gates and payloads.
   Albums opened from a Discover card label their breadcrumb origin as Discover from
   the seed artist, not that artist's discography. Keep the actual artist-page route,
   cached results and browsing/scroll restoration; ordinary album links keep their normal origin.
@@ -1224,8 +1233,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   credentials or library data. Cache attempts (including failures) for 24 hours in
   `updates.json`; manual checks bypass the interval. `auto_updates` is a local
   setting. Keep failures separate from library loading, validate versions and
-  construct release URLs for this repository. Release notes are bounded plain text;
-  never execute provider HTML or load its embedded images. Browser/source and portable
+  construct release URLs for this repository. Release notes stay bounded untrusted text;
+  render only a fixed Markdown subset with escaped text/attributes, credential-free HTTPS
+  links and bounded inline/table work. Keep unsupported content visible as text and flat
+  nested lists; never execute provider HTML or load its embedded images or styles. Browser/source and portable
   builds retain manual installation. The desktop updater uses fixed, version-pinned
   GitHub release feeds and exact platform filenames, with SHA-512 package verification.
   Downloading is opt-in; installation always needs explicit native confirmation.

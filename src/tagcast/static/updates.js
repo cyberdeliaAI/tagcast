@@ -125,11 +125,148 @@ async function checkForUpdates(manual = false) {
   }
 }
 
+// A bounded Markdown subset, not provider HTML. Every text/attribute is escaped;
+// only our fixed tags and credential-free HTTPS links can enter the dialog.
+const UPDATE_NOTES_LIMIT = 50000;
+
+function updateNotesURL(value) {
+  if (value.length > 8192 || /[\s\u0000-\u001f\u007f]/.test(value)) return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : "";
+  } catch { return ""; }
+}
+
+function updateNotesLinkEnd(text, start) {
+  let depth = 0;
+  for (let i = start; i < Math.min(text.length, start + 8193); i++) {
+    if (text[i] === "(") depth += 1;
+    if (text[i] === ")") { if (!depth) return i; depth -= 1; }
+  }
+  return -1;
+}
+
+function updateNotesInline(text, budget, depth = 0, links = true) {
+  const html = [], tokens = /`+|!\[|\[|https:\/\/|\*{1,2}|_{1,2}/g;
+  let copied = 0, match;
+  const append = (start, end, markup) => {
+    html.push(escapeHtml(text.slice(copied, start)), markup);
+    copied = end; tokens.lastIndex = end;
+  };
+  // A shared attempt budget also bounds unmatched delimiters and nested labels.
+  while (budget.inline > 0 && (match = tokens.exec(text))) {
+    budget.inline -= 1;
+    const marker = match[0], start = match.index, body = start + marker.length;
+    if (marker[0] === "`") {
+      const end = text.indexOf(marker, body);
+      if (end > body) append(start, end + marker.length, `<code>${escapeHtml(text.slice(body, end))}</code>`);
+    } else if (marker === "[" || marker === "![") {
+      const labelEnd = text.indexOf("](", body);
+      if (labelEnd < body) continue;
+      const end = updateNotesLinkEnd(text, labelEnd + 2);
+      if (end < 0) continue;
+      const label = text.slice(body, labelEnd), url = updateNotesURL(text.slice(labelEnd + 2, end));
+      const markup = marker === "[" && links && label && !label.includes("[") && url
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${updateNotesInline(label, budget, depth + 1, false)}</a>`
+        : escapeHtml(text.slice(start, end + 1));
+      append(start, end + 1, markup);
+    } else if (marker === "https://") {
+      if (!links || start && !/[\s(]/.test(text[start - 1])) continue;
+      let end = body;
+      while (end < text.length && !/[\s<>"'`]/.test(text[end])) end += 1;
+      let value = text.slice(start, end).replace(/[.,;:!?]+$/, "");
+      let balance = 0;
+      for (const char of value) { if (char === "(") balance += 1; else if (char === ")") balance -= 1; }
+      while (balance < 0 && value.endsWith(")")) { value = value.slice(0, -1); balance += 1; }
+      const url = updateNotesURL(value);
+      if (url) append(start, start + value.length, `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(value)}</a>`);
+      else append(start, end, escapeHtml(text.slice(start, end)));
+    } else if (depth < 2 && /\S/.test(text[body] || "") && !(marker.length === 1 && /[\w*_]/.test(text[start - 1] || ""))) {
+      const end = text.indexOf(marker, body);
+      if (end > body && /\S/.test(text[end - 1]) && !(marker.length === 1 && /[\w*_]/.test(text[end + 1] || ""))) {
+        const tag = marker.length === 2 ? "strong" : "em";
+        append(start, end + marker.length, `<${tag}>${updateNotesInline(text.slice(body, end), budget, depth + 1, links)}</${tag}>`);
+      }
+    }
+  }
+  html.push(escapeHtml(text.slice(copied)));
+  return html.join("");
+}
+
+function updateNotesCells(line) {
+  return line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+}
+
+function renderReleaseNotes(markdown) {
+  if (typeof markdown !== "string") return "";
+  const bounded = markdown.slice(0, UPDATE_NOTES_LIMIT);
+  if (!bounded.trim()) return "";
+  const lines = bounded.replace(/\r\n?/g, "\n").replace(/\u0000/g, "\ufffd").split("\n");
+  const html = [], budget = {inline: 1500, cells: 2000};
+  const inline = text => updateNotesInline(text, budget);
+  let paragraph = [], list = null;
+  const endParagraph = () => { if (paragraph.length) html.push(`<p>${inline(paragraph.join(" "))}</p>`); paragraph = []; };
+  const endList = () => {
+    if (list) html.push(`<${list.tag}>${list.items.map(item => `<li>${inline(item)}</li>`).join("")}</${list.tag}>`);
+    list = null;
+  };
+  const endBlocks = () => { endParagraph(); endList(); };
+  const tableLine = line => /^\s*\|.*\|\s*$/.test(line);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], fence = /^ {0,3}(`{3,}|~{3,})[^\n]*$/.exec(line);
+    if (fence) {
+      endBlocks();
+      const code = [], closing = new RegExp(`^ {0,3}${fence[1][0]}{${fence[1].length},}\\s*$`);
+      for (i++; i < lines.length && !closing.test(lines[i]); i++) code.push(lines[i]);
+      html.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    if (!line.trim()) { endBlocks(); continue; }
+    const heading = /^ {0,3}(#{1,6})[ \t]+(.+)$/.exec(line);
+    if (heading) {
+      endBlocks();
+      const level = Math.min(6, heading[1].length + 2);
+      let label = heading[2].trimEnd(), end = label.length;
+      while (end && label[end - 1] === "#") end -= 1;
+      if (end && /\s/.test(label[end - 1])) label = label.slice(0, end).trimEnd();
+      html.push(`<h${level}>${inline(label)}</h${level}>`);
+      continue;
+    }
+    if (/^ {0,3}([-*_])(?:[ \t]*\1){2,}\s*$/.test(line)) { endBlocks(); html.push("<hr>"); continue; }
+    if (tableLine(line) && tableLine(lines[i + 1] || "")) {
+      const head = updateNotesCells(line), separator = updateNotesCells(lines[i + 1]);
+      if (head.length <= 20 && head.length <= budget.cells && head.length === separator.length && separator.every(cell => /^:?-{2,}:?$/.test(cell))) {
+        endBlocks();
+        const rows = []; budget.cells -= head.length;
+        for (i += 2; i < lines.length && tableLine(lines[i]); i++) {
+          const cells = updateNotesCells(lines[i]);
+          if (cells.length !== head.length || head.length > budget.cells) break;
+          budget.cells -= head.length; rows.push(cells);
+        }
+        i--;
+        html.push(`<table><thead><tr>${head.map(cell => `<th scope="col">${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${inline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+        continue;
+      }
+    }
+    const item = /^\s*(?:([-*+])|(\d{1,9})[.)])\s+(.*)$/.exec(line);
+    if (item) {
+      endParagraph();
+      const tag = item[1] ? "ul" : "ol";
+      if (!list || list.tag !== tag) { endList(); list = {tag, items: []}; }
+      list.items.push(item[3]); continue;
+    }
+    if (list && /^\s+\S/.test(line)) { list.items[list.items.length - 1] += " " + line.trim(); continue; }
+    endList(); paragraph.push(line.trim());
+  }
+  endBlocks();
+  return html.join("\n");
+}
+
 function renderUpdateDetails(url) {
   const data = updateNotice.data, error = data.error || updateErrorText();
   $("#updates-content").innerHTML = `<p><strong>${TagcastI18n.html("updates.dialog.available", {version: data.latest})}</strong> ${TagcastI18n.html("updates.dialog.running", {version: data.current})}</p>
     ${data.name ? `<p class="muted">${escapeHtml(data.name)}</p>` : ""}
-    ${typeof data.notes === "string" && data.notes ? `<pre class="update-notes" tabindex="0">${escapeHtml(data.notes.slice(0, 50000))}</pre>` : ""}
+    ${typeof data.notes === "string" && data.notes ? `<div class="update-notes" tabindex="0">${renderReleaseNotes(data.notes)}</div>` : ""}
     ${desktopUpdatePanel()}
     <p>${TagcastI18n.html("updates.dialog.release")}</p>
     ${desktopUpdate.data?.supported ? "" : `<p>${TagcastI18n.html("updates.dialog.restart")}</p>`}
