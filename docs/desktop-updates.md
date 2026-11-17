@@ -8,9 +8,16 @@ route. Supported installations can then offer a later stable release.
 ## User flow
 
 The existing daily public GitHub check remains independent of iBroadcast. Its
-bounded release description is displayed as escaped, scrollable text: no provider
-HTML, scripts, images or remote styles are loaded. The official release link
-remains available for the complete notes and manual downloads.
+bounded release description is displayed in a scrollable pane with headings,
+lists, emphasis, code, simple tables and credential-free HTTPS links. Only fixed
+application markup is generated; provider HTML, scripts, images and remote styles
+are never loaded. HTML and Markdown image syntax stay visible as text. The official
+release link remains available for the complete notes and manual downloads.
+
+Formatting uses the existing 50,000-character limit, bounded inline parsing and
+at most 20 table columns / 2,000 table cells. Nested lists are displayed flat.
+Unsupported or excess formatting remains escaped text; opening or translating
+these notes does not fetch links or other embedded resources.
 
 Supported installed desktop copies offer **Download update**, progress, **Restart
 and install**, **Later** and **Skip this version**. The dialog does not open itself

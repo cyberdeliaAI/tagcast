@@ -432,7 +432,7 @@ function page({hash = "", storage = {}, server = true, browserNavigator = {}, me
       classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
         toggle: (c, on) => on ? classes.add(c) : classes.delete(c)},
       addEventListener(type, handler) { const handlers = events.get(type) || []; handlers.push(handler); events.set(type, handlers); },
-      emit(type, event = {}) { return Promise.all((events.get(type) || []).map(handler => handler(event))); },
+      emit(type, event = {}) { return Promise.all((events.get(type) || []).map(handler => handler({preventDefault() {}, ...event}))); },
       dispatchEvent(event) {
         const delivered = {type: event.type, target: this, bubbles: event.bubbles};
         for (const handler of events.get(event.type) || []) handler(delivered);
@@ -13261,7 +13261,7 @@ test('split failures display the specific server reason without offering a retry
   const error='The original album changed <elsewhere>. No tracks were sent.';
   const results=fixture.review.tracks.map(t=>({kind:'track',id:t.id,fields:['album'],status:'not_sent'}));
   p.setFetch(url=>({ok:true,json:async()=>url.endsWith('/selection')?fixture.selection:url.endsWith('/review')?fixture.review:
-    url.endsWith('/save')?(saves++,{job:'split',target:'44',error}):{state:'done',results}}));
+    url.endsWith('/save')?(saves++,{job:'split',target:'44',error,write_effects:{album_created:'44'}}):{state:'done',results}}));
   await p.run('openAlbumSplit()');splitTargetInputs(p);p.run('applyAlbumSplitSuggestion(1)');
   splitTargetInputs(p);await p.run('reviewAlbumSplit()');
   const pending=p.run('saveAlbumSplit()');await settle();p.flushTimers(2000);await settle();await pending;
@@ -13269,6 +13269,8 @@ test('split failures display the specific server reason without offering a retry
   assert.match(html,/changed &lt;elsewhere&gt;\. No tracks were sent/);
   assert.doesNotMatch(html,/The complete split could not be confirmed|id="album-split-save"/);
   assert.equal(p.run('state.history[0].error'),error);
+  assert.match(html,/Album 44 was created/);
+  assert.deepEqual(p.json('state.history[0].write_effects'),{album_created:'44'});
   await p.run('saveAlbumSplit()');assert.equal(saves,1);
   assert.equal(p.run('saving || checking || albumSplitDraft.busy'),false);
 });
@@ -13992,7 +13994,7 @@ test('local artist discovery retains completed results on Back and never refresh
   assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Art Rock/);
   const requests=p.requests.filter(r=>r.url==='/api/discover').length;
   await p.run('TagcastI18n.use("nl")');await settle();
-  assert.equal(p.nodes.get('#artist-discover-toggle').textContent,'Ontdek vergelijkbare muziek');
+  assert.equal(p.nodes.get('#artist-discover-label').textContent,'Vergelijkbaar in je bibliotheek');
   assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Gedeelde genres: Art Rock/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,requests);
 });
@@ -14041,7 +14043,7 @@ async function lastfmDiscoverPage() {
 test('Last.fm is the default without a page selector and starts only on explicit Discover',async()=>{
   const {p}=await lastfmDiscoverPage();
   assert.equal(p.run('lookup.discoverLastfm'),true);
-  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-source/);
+  assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/<select[^>]*id="artist-discover-source"/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
   assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-privacy/);
   assert.match(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
@@ -14270,4 +14272,321 @@ test('numeric combined containers show per-disc positions while title reviews pr
   assert.equal(changes[0].sourceAlbumId,'1');
   assert.equal(changes[0].sourceTrack,201);
   assert.deepEqual(changes[0].fields,{title:{before:'Synthetic 201',after:'Correct title'}});
+});
+
+test('similar music is a native disclosure with a separate refresh and source label', async () => {
+  const html = readFileSync(path.join(staticDir, 'index.html'), 'utf8');
+  const disclosure = html.match(/<details id="artist-discover"[\s\S]*?<\/details>/)[0];
+  const summary = disclosure.match(/<summary[\s\S]*?<\/summary>/)[0];
+  assert.match(summary, /id="artist-discover-toggle"/);
+  assert.doesNotMatch(summary, /<button|artist-discover-refresh/);
+  assert.doesNotMatch(disclosure, /artist-discover-heading|<h2/);
+  const {p, data, selection} = await localDiscoverPage({local:false});
+  assert.equal(p.nodes.get('#artist-discover').open, false);
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Last.fm');
+  await p.nodes.get('#artist-discover').emit('toggle');
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length, 0);
+  Object.assign(data, {requested_source:'lastfm', source:'local', fallback:true, expires_in:60});
+  p.setFetch(()=>({ok:true, json:async()=>data}));
+  await p.nodes.get('#artist-discover-toggle').emit('click'); await settle();
+  assert.equal(p.nodes.get('#artist-discover').open, true);
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Your library');
+  const other = p.run('state.albums.find(a=>a.artist!==state.artist).artist');
+  p.run(`setArtist(${JSON.stringify(other)});renderArtistDiscover()`);
+  assert.equal(p.nodes.get('#artist-discover').open, false);
+  p.run(`setArtist(${JSON.stringify(selection.name)});renderArtistDiscover()`);
+  assert.equal(p.nodes.get('#artist-discover').open, true);
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length, 1);
+  Object.assign(data, {source:'lastfm', fallback:false});
+  Object.assign(data.albums[0], {related_artist:'Related Artist', lastfm_url:'https://www.last.fm/music/Related%20Artist'});
+  await p.nodes.get('#artist-discover-refresh').emit('click'); await settle();
+  assert.equal(p.nodes.get('#artist-discover').open, true);
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Last.fm');
+  assert.equal(p.requests.filter(r=>r.url==='/api/discover').length, 2);
+  assert.equal(p.nodes.get('#artist-discover-attribution').hidden, false);
+});
+
+test('an early artist creation failure is visible in review, persisted History and export without metadata retry', async () => {
+  const storage = {}, p = livePage({storage}); await settle();
+  p.run(`pending={scope:'album',selection:[{id:'1',name:'Example'}],changes:[{kind:'track',id:'t1',label:'Track',fields:{artist:{before:'Old',after:'New'}}}]}`);
+  p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'Artist creation failed <elsewhere>',
+    write_effects:{artists_created:1,artist_uncertain:true,token:'synthetic-secret'}})}));
+  await p.run('saveDraft()');
+  assert.equal(p.requests.filter(r=>r.url==='/api/save').length,1);
+  assert.deepEqual(p.json('state.history[0].write_effects'),{artists_created:1,artist_uncertain:true});
+  assert.equal(p.run('state.history[0].changes[0].status'),'not_sent');
+  assert.match(p.nodes.get('#review-status').innerHTML,/1 artist record was created/);
+  assert.match(p.nodes.get('#review-status').innerHTML,/may have been created/);
+  p.run('showHistory()');
+  assert.match(p.nodes.get('#history-content').innerHTML,/&lt;elsewhere&gt;/);
+  assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-undo=|data-review-rest|synthetic-secret/);
+  const saved=JSON.parse(storage['tagcast-history']);
+  assert.deepEqual(saved[0].write_effects,{artists_created:1,artist_uncertain:true});
+  assert.equal(saved[0].status,'unverified');
+  await p.run('exportHistory()');
+  const blob=p.downloads[p.downloads.length-1].blob;
+  assert.deepEqual(JSON.parse(await blob.text()).entries[0].write_effects,saved[0].write_effects);
+  await p.run('TagcastI18n.use("nl")');
+  p.run('renderHistory()');
+  assert.match(p.nodes.get('#history-content').innerHTML,/Mogelijke restanten/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/save').length,1);
+});
+
+test('failed artwork assignment records the upload receipt without presenting Undo or changing the cover', async () => {
+  const p=livePage(); await settle();
+  const before=p.json('state.albums');
+  p.run(`art.target={target:'album',id:'1',label:'Example',artist:'Artist',before:{tracks:{t1:0}}};
+    art.options=[{url:'https://example.test/cover.png',source:'Example'}];art.choice=0;art.saved=[];art.artworkId=null`);
+  p.setFetch(()=>({ok:false,status:400,json:async()=>({error:'Assignment refused',write_effects:{artwork_created:'99'}})}));
+  await p.run('saveArtwork()');
+  assert.match(p.nodes.get('#art-status').innerHTML,/Artwork 99 was uploaded/);
+  assert.deepEqual(p.json('state.history[0].write_effects'),{artwork_created:'99'});
+  assert.equal(p.run('state.history[0].writeAttempt'),true);
+  assert.deepEqual(p.json('state.albums'),before);
+  p.run('showHistory()');
+  assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-undo=|data-review-rest/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/artwork').length,1);
+});
+
+test('creation warnings disappear after confirmed assignment and reject untrusted receipt data', async () => {
+  const p=livePage(); await settle();
+  const effects={artists_created:2,artwork_created:'99',album_created:'44'};
+  assert.equal(p.run(`writeEffectsMarkup(${JSON.stringify(effects)},'saved')`),'');
+  assert.equal(p.run(`writeEffectsMarkup(${JSON.stringify(effects)},'sent')`),'');
+  assert.match(p.run(`writeEffectsMarkup(${JSON.stringify(effects)},'unverified')`),/may be empty/);
+  assert.equal(p.run(`writeEffectsMarkup({artwork_created:'<script>',album_created:'9'.repeat(33),artists_created:true,artist_uncertain:'yes'})`),'');
+  assert.match(p.run(`writeEffectsMarkup({artwork_uncertain:true})`),/may have completed/);
+  assert.doesNotMatch(p.run(`writeEffectsMarkup({artwork_uncertain:true})`),/Artwork [0-9]+ was uploaded/);
+});
+
+test('a failed assignment read-back immediately shows creation receipts and keeps them across restart', async () => {
+  const storage={}, p=livePage({storage}); await settle();
+  p.run(`state.history=[{source:'ibroadcast',status:'sent',created:new Date().toISOString(),error:'',
+    selection:[{id:'1',name:'Example'}],write_effects:{artwork_created:'99'},
+    changes:[{kind:'album',id:'1',label:'Example',status:'sent',fields:{cover:{before:'old',after:'new'}}}]}]`);
+  p.setFetch(()=>({ok:true,json:async()=>({state:'error',error:'Read-back unavailable'})}));
+  const job=p.run('followJob("artwork-job",state.history[0])'); await settle();
+  p.flushTimers(2000); await job;
+  assert.equal(p.nodes.get('#results').open,true);
+  assert.match(p.nodes.get('#results-content').innerHTML,/Artwork 99 was uploaded/);
+  const reopened=page({storage}); await settle(); reopened.run('showHistory()');
+  assert.match(reopened.nodes.get('#history-content').innerHTML,/Artwork 99 was uploaded/);
+  assert.equal(reopened.run('state.history[0].status'),'unverified');
+  assert.equal(p.requests.filter(r=>r.url==='/api/artwork').length,0);
+});
+
+test('update notes format the shipped release with safe headings, lists and links without another request', async () => {
+  const p=page(); await settle();
+  const notes=readFileSync(path.join(root,'.github/release-notes/1.9.5.md'),'utf8');
+  p.setUpdateFetch(()=>({ok:true,json:async()=>({current:'1.8.0',latest:'1.9.5',available:true,state:'available',auto_updates:false,notes})}));
+  await p.run('checkForUpdates(true)'); const requests=p.requests.length;
+  p.run('openUpdateDetails()');
+  const html=p.nodes.get('#updates-content').innerHTML;
+  assert.match(html,/<div class="update-notes" tabindex="0"><h3>Tagcast 1\.9\.5<\/h3>/);
+  assert.match(html,/<h4>Discover albums already in your library<\/h4>/);
+  assert.match(html,/<strong>Discover similar music<\/strong>/);
+  assert.match(html,/<ul><li>Open an album artist/);
+  assert.match(html,/<a href="https:\/\/github.com\/cyberdeliaAI\/tagcast\/wiki\/PDF-manual" target="_blank" rel="noopener noreferrer">illustrated PDF manual<\/a>/);
+  assert.equal(p.requests.length,requests);
+  await p.run('TagcastI18n.use("nl")');
+  const translated=p.nodes.get('#updates-content').innerHTML;
+  assert.equal(translated.match(/<div class="update-notes"[\s\S]*?<\/div>/)[0],html.match(/<div class="update-notes"[\s\S]*?<\/div>/)[0]);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/updates')).length,2);
+});
+
+test('release-note inline formatting keeps code literal, composes link labels and preserves HTTPS queries', () => {
+  const p=page();
+  const notes='**Bold** and _italic_ and `**literal** <img>`\n\n[**Guide** and `code`](https://example.test/a_(v)?a=1&b=2)\n\nhttps://example.test/notes?q=1&b=2.';
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(notes)})`);
+  assert.match(html,/<strong>Bold<\/strong> and <em>italic<\/em>/);
+  assert.match(html,/<code>\*\*literal\*\* &lt;img&gt;<\/code>/);
+  assert.match(html,/<a href="https:\/\/example.test\/a_\(v\)\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer"><strong>Guide<\/strong> and <code>code<\/code><\/a>/);
+  assert.match(html,/href="https:\/\/example.test\/notes\?q=1&amp;b=2"/);
+  assert.match(html,/>https:\/\/example.test\/notes\?q=1&amp;b=2<\/a>\./);
+  assert.doesNotMatch(html,/\u0000|undefined/);
+});
+
+test('release-note raw HTML, images and unsafe links never become active content', () => {
+  const p=page();
+  const notes=[
+    '<script>alert(1)</script><img src="https://evil.test/pixel" onerror="alert(1)">',
+    '<iframe src="https://evil.test/frame"></iframe><svg onload="alert(1)">',
+    '![pixel](https://evil.test/pixel) ![`code alt`](https://evil.test/other)',
+    '[bad](javascript:alert(1)) [bad](data:text/html,execute) [bad](file:///tmp/anything)',
+    '[credentials](https://user:password@example.test/) [control](https://exam\tple.test/)',
+    '[nested [label](https://example.test/) \u00000\u0000 **safe**',
+    '<!-- <img src="https://evil.test/comment"> -->'
+  ].join('\n\n');
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(notes)})`);
+  assert.match(html,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html,/!\[pixel\]\(https:\/\/evil.test\/pixel\)/);
+  assert.match(html,/!\[`code alt`\]/);
+  assert.doesNotMatch(html,/<(?:script|img|iframe|svg|style)|<[^>]+\bon\w+=|<a[^>]+href="(?:javascript:|data:|file:|https:\/\/user:)/i);
+  assert.doesNotMatch(html,/\u0000|undefined/);
+  assert.match(html,/<strong>safe<\/strong>/);
+});
+
+test('release-note code fences, simple tables and flat lists retain their content', () => {
+  const p=page();
+  const notes='# C#\n\n## Heading ###\n\n- First\n  continued\n  - Nested\n\n1. One\n2. Two\n\n---\n\n| Platform | State |\n| :--- | ---: |\n| macOS | **Ready** |\n| Linux | `test` |\n| Extra | Still visible | Do not drop |\n\n```html\n<!-- example -->\n<img src="https://evil.test/pixel">\n**literal**\n```\n\n~~~\nunfinished <script>';
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(notes)})`);
+  assert.match(html,/<h3>C#<\/h3>/);assert.match(html,/<h4>Heading<\/h4>/);
+  assert.match(html,/<ul><li>First continued<\/li><li>Nested<\/li><\/ul>/);
+  assert.match(html,/<ol><li>One<\/li><li>Two<\/li><\/ol>/);assert.match(html,/<hr>/);
+  assert.match(html,/<th scope="col">Platform<\/th>/);assert.match(html,/<td><strong>Ready<\/strong><\/td>/);
+  assert.match(html,/Do not drop/);
+  assert.match(html,/<pre><code>&lt;!-- example --&gt;\n&lt;img/);
+  assert.match(html,/\*\*literal\*\*<\/code><\/pre>/);
+  assert.match(html,/<pre><code>unfinished &lt;script&gt;<\/code><\/pre>/);
+});
+
+test('release-note limits bound input, table expansion and unmatched formatting without discarding the remaining text', () => {
+  const p=page();
+  for(const notes of [null,{},42,'\n\t ']) assert.equal(p.run(`renderReleaseNotes(${JSON.stringify(notes)})`),'');
+  const bounded=p.run(`renderReleaseNotes('x'.repeat(50000)+'MUST_NOT_APPEAR')`);
+  assert.equal(bounded,'<p>'+'x'.repeat(50000)+'</p>');
+  const table='| A | B |\n| --- | --- |\n'+'| x | y |\n'.repeat(3000)+'END';
+  const html=p.run(`renderReleaseNotes(${JSON.stringify(table)})`);
+  assert.ok((html.match(/<(?:td|th)\b/g)||[]).length<=2000);
+  assert.match(html,/END/);assert.ok(html.length<100000);
+  const columns=Array(21).fill('A').join('|'), separator=Array(21).fill('---').join('|');
+  assert.doesNotMatch(p.run(`renderReleaseNotes(${JSON.stringify('|'+columns+'|\n|'+separator+'|')})`),/<table>/);
+  assert.equal(p.run(`renderReleaseNotes('['.repeat(50000))`),'<p>'+'['.repeat(50000)+'</p>');
+  assert.match(p.run(`renderReleaseNotes('## a'+' '.repeat(49000)+'Z')`),/Z<\/h4>/);
+});
+
+async function emptyTrashPage(count=2,storage={}) {
+  const p=livePage({storage});await settle();
+  p.run('state.connection.connected=true;state.connection.playback_session="trash-session"');
+  const data={review:count?'synthetic-trash-review-token':'',count,digest:'a'.repeat(64),offset:0,limit:50,
+    tracks:Array.from({length:Math.min(count,50)},(_,i)=>({id:String(i+100),title:i?'Second track':'<First track>',artist:'Artist',album:'Album'}))};
+  p.setFetch(url=>({ok:true,json:async()=>data}));
+  return {p,data};
+}
+
+test('Settings trash action makes no requests until explicit review and renders a bounded escaped list',async()=>{
+  const {p,data}=await emptyTrashPage(51);
+  const before=p.requests.length,albums=p.json('state.albums'),history=p.json('state.history');
+  assert.match(p.run('settingsContentMarkup()'),/data-empty-trash-open/);
+  assert.equal(p.requests.length,before);
+  await p.run('openEmptyTrashReview()');
+  assert.deepEqual(p.json('state.albums'),albums);assert.deepEqual(p.json('state.history'),history);
+  assert.equal(p.requests.filter(r=>r.url==='/api/trash/empty/review').length,1);
+  assert.equal(p.nodes.get('#empty-trash').open,true);
+  assert.match(p.nodes.get('#empty-trash-content').innerHTML,/&lt;First track&gt;/);
+  assert.match(p.nodes.get('#empty-trash-content').innerHTML,/not permanently deleted/);
+  assert.match(p.nodes.get('#empty-trash-footer').innerHTML,/id="empty-trash-save"[^>]* disabled/);
+  p.setFetch((url,options)=>{
+    assert.equal(url,'/api/trash/empty/page');assert.equal(JSON.parse(options.body).offset,50);
+    return {ok:true,json:async()=>({...data,offset:50,tracks:[{id:'999',title:'Last track',artist:'Other',album:'Last'}]})};
+  });
+  await p.run('pageEmptyTrash(50)');
+  assert.match(p.nodes.get('#empty-trash-content').innerHTML,/Last track/);
+  assert.equal(p.requests.filter(r=>r.url==='/api/trash/empty/save').length,0);
+});
+
+test('trash progress distinguishes revision checks, local paging and fresh read-back without extra polling',async()=>{
+  const {p,data}=await emptyTrashPage(51);
+  let finish;const status=()=>p.nodes.get('#empty-trash-status');
+  p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+  const review=p.run('openEmptyTrashReview()');await settle();
+  assert.match(status().textContent,/Checking for library changes/);
+  assert.equal(status().getAttribute('data-working'),'true');
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/trash/empty')).length,1);
+  finish({ok:true,json:async()=>data});await review;
+  assert.equal(status().getAttribute('data-working'),'false');
+  const page=p.run('pageEmptyTrash(50)');await settle();
+  assert.match(status().textContent,/Loading this page of the reviewed trash/);
+  assert.doesNotMatch(status().textContent,/iBroadcast|library changes/);
+  finish({ok:true,json:async()=>({...data,offset:50,tracks:[{id:'999',title:'Last',artist:'A',album:'B'}]})});
+  await page;p.run('emptyTrashView.acknowledged=true');
+  const save=p.run('saveEmptyTrash()');await settle();
+  assert.match(status().textContent,/Checking and emptying/);
+  assert.match(status().textContent,/changed library is reloaded first/);
+  assert.equal(status().getAttribute('data-working'),'true');
+  finish({ok:true,json:async()=>({job:'empty',count:51,error:''})});await settle();
+  assert.match(status().textContent,/Reading your library back from iBroadcast/);
+  assert.match(status().textContent,/Large libraries can take a while/);
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/jobs/')).length,0);
+  p.flushTimers(2000);await settle();
+  assert.equal(p.requests.filter(r=>r.url.startsWith('/api/jobs/')).length,1);
+  finish({ok:true,json:async()=>({state:'done',results:[{kind:'trash',id:'empty',status:'saved',fields:[]}]})});
+  await save;
+  assert.equal(status().getAttribute('data-working'),'false');
+  assert.match(status().textContent,/51 tracks removed/);
+  assert.deepEqual(p.requests.filter(r=>r.url.startsWith('/api/trash/empty')||r.url.startsWith('/api/jobs/')).map(r=>r.url),
+    ['/api/trash/empty/review','/api/trash/empty/page','/api/trash/empty/save','/api/jobs/empty']);
+});
+
+test('emptying trash requires both acknowledgement and the extra confirmation',async()=>{
+  const {p}=await emptyTrashPage();await p.run('openEmptyTrashReview()');
+  await p.run('saveEmptyTrash()');
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0);
+  p.run('emptyTrashView.acknowledged=true;confirm=()=>false');await p.run('saveEmptyTrash()');
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0);
+  assert.equal(p.run('state.history.length'),0);
+  await p.nodes.get('#empty-trash').emit('close');
+  assert.equal(p.run('emptyTrashView.review'),null);
+});
+
+test('confirmed emptying records only an aggregate History result without retry or Undo and preserves audio',async()=>{
+  const storage={}, {p}=await emptyTrashPage(2,storage);await p.run('openEmptyTrashReview()');
+  p.run('emptyTrashView.acknowledged=true;playTracks(state.details.values().next().value)');
+  const playback=p.run('JSON.stringify({src:audio.src,queue:player.queue,index:player.index})'),before=p.history.length;
+  p.setFetch((url,options)=>{
+    if(url.endsWith('/save')){
+      assert.deepEqual(JSON.parse(options.body),{session:'trash-session',review:'synthetic-trash-review-token',approved:true,acknowledged:true});
+      return {ok:true,json:async()=>({job:'empty',count:2,digest:'a'.repeat(64),error:''})};
+    }
+    return {ok:true,json:async()=>({state:'done',results:[{kind:'trash',id:'empty',status:'saved',fields:[]}]})};
+  });
+  const task=p.run('saveEmptyTrash()');await settle();
+  await p.run('saveEmptyTrash()');p.flushTimers(2000);await task;
+  assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,1);
+  assert.match(p.nodes.get('#empty-trash-status').textContent,/2 tracks removed/);
+  assert.equal(p.run('state.history[0].status'),'saved');assert.equal(p.history.length,before);
+  assert.equal(p.run('JSON.stringify({src:audio.src,queue:player.queue,index:player.index})'),playback);
+  p.run('showHistory()');
+  assert.match(p.nodes.get('#history-content').innerHTML,/Empty iBroadcast trash/);
+  assert.doesNotMatch(p.nodes.get('#history-content').innerHTML,/data-undo|data-review-rest/);
+  assert.doesNotMatch(storage['tagcast-history'],/synthetic-trash-review-token/);
+  assert.equal(JSON.parse(storage['tagcast-history'])[0].emptyTrash.count,2);
+  const html=p.nodes.get('#empty-trash-content').innerHTML;await p.run('TagcastI18n.use("nl")');
+  assert.equal(p.nodes.get('#empty-trash-content').innerHTML,html,'Open reviews are not rebuilt for translation');
+  p.run('renderHistory()');assert.match(p.nodes.get('#history-content').innerHTML,/iBroadcast-prullenbak legen/);
+});
+
+test('empty-trash conflicts, uncertain writes and failed read-backs never offer automatic retry',async()=>{
+  for(const phase of ['conflict','lost-response','unverified','readback-error']){
+    const {p}=await emptyTrashPage();await p.run('openEmptyTrashReview()');p.run('emptyTrashView.acknowledged=true');
+    p.setFetch(url=>{
+      if(url.endsWith('/save')){
+        if(phase==='conflict')return {ok:false,status:409,json:async()=>({error:'Trash changed'})};
+        if(phase==='lost-response')throw Error('Lost response');
+        return {ok:true,json:async()=>({job:'empty',count:2,error:''})};
+      }
+      return {ok:true,json:async()=>phase==='readback-error'?{state:'error',error:'Read-back failed'}:
+        {state:'done',results:[{kind:'trash',id:'empty',status:'unverified',fields:[]}]}};
+    });
+    const task=p.run('saveEmptyTrash()');await settle();p.flushTimers(2000);await task;await p.run('saveEmptyTrash()');
+    assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,1,phase);
+    assert.notEqual(p.run('state.history[0].status'),'saved',phase);
+    assert.doesNotMatch(p.nodes.get('#empty-trash-footer').innerHTML,/id="empty-trash-save"/,phase);
+    assert.equal(p.run('saving || checking || emptyTrashView.busy'),false);
+  }
+});
+
+test('empty and replaced trash reviews cannot write or accept late data',async()=>{
+  const empty=await emptyTrashPage(0);await empty.p.run('openEmptyTrashReview()');
+  assert.match(empty.p.nodes.get('#empty-trash-content').innerHTML,/trash is empty/);
+  assert.doesNotMatch(empty.p.nodes.get('#empty-trash-footer').innerHTML,/empty-trash-save/);
+  for(const change of ['resetEmptyTrashReview()','useLocal(demoLibrary(),"demo")','state.connection.playback_session="other";updateChrome()']){
+    const {p,data}=await emptyTrashPage();let finish;
+    p.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+    const task=p.run('openEmptyTrashReview()');await settle();p.run(change);
+    finish({ok:true,json:async()=>data});await task;
+    assert.equal(p.run('emptyTrashView.review'),null,change);
+    await p.run('saveEmptyTrash()');
+    assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0,change);
+  }
 });

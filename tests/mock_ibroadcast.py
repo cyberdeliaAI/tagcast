@@ -217,7 +217,7 @@ class H(BaseHTTPRequestHandler):
             if mode == "gettrackuserdata":
                 return self.send(200, {"result": True, "userdata": STATE["tracks"][int(body["track_id"])].get("userdata", [])})
             if mode in ("update_album", "update_track", "create_album", "create_artist", "set_artwork",
-                        "set_artist_artwork", "trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "updateplaylist", "deleteplaylist",
+                        "set_artist_artwork", "trash", "empty_trash", "ratetrack", "ratealbum", "rateartist", "createplaylist", "createplaylistfolder", "appendplaylist", "updateplaylist", "deleteplaylist",
                         "createtag", "updatetag", "deletetags", "tagtracks"):
                 if STATE["busy"]:
                     STATE["busy"] -= 1
@@ -232,6 +232,13 @@ class H(BaseHTTPRequestHandler):
             if mode == "trash":
                 for track_id in body["tracks"]:
                     STATE["tracks"][track_id]["trashed"] = True
+                return self.send(200, {"result": True})
+            if mode == "empty_trash":
+                # Model the observed transition, not permanent Dashboard deletion.
+                for track_id in body["tracks"]:
+                    row = STATE["tracks"].get(track_id)
+                    if row and row.get("trashed"):
+                        STATE.setdefault("emptied_tracks", {})[track_id] = STATE["tracks"].pop(track_id)
                 return self.send(200, {"result": True})
             if mode == "playqueue_token":
                 return self.send(200, {"result": True, "token": "one-use-secret"})

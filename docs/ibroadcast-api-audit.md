@@ -169,7 +169,8 @@ and permissions would need confirmation before implementation.
 
 | Area | Observed names / capability | Tagcast |
 | --- | --- | --- |
-| Restore or empty Trash | `restore`, `empty_trash` | No |
+| Restore Trash | `restore` | No |
+| Empty Trash | `empty_trash` | Reviewed development workflow under Settings → Data & exports; exact reviewed track list, fresh checks and read-back. This is not permanent deletion. |
 | Hide/archive tracks by tags | `archivetracks` | No; archived tags can be read and removed from a selection, but not added/archived here. |
 | Track Dashboard | `dashboard_files`, `dashboard_meta`, `dashboard_suggestions`, `dashboard_missing_meta_count`, `dashboard_upload_issue_count`, `dashboard_upload_status` | No |
 | Dashboard restoration/deletion | `restore_file`, `dashboard_delete` | No |
@@ -284,7 +285,7 @@ support for the native API operation or cross-device account synchronization.
    service maximum once that maximum has been confirmed. Keep explicit comparison.
 5. **Document the remaining intentional omissions.** Play skips, playlist sharing/mood/seed and ReplayGain remain distinct
    missing options. Track thumbs-down, multiple album artists and general additional
-   credit editing have been added in development. Native restore/empty-trash and account changes have
+   credit editing have been added in development. Native restore and account changes have
    a different impact from ordinary editor features and need their own designs.
 6. **Treat additional endpoints as candidates, not automatic additions.** Public
    web-client code does not establish a stable supported API for third-party apps.
@@ -329,3 +330,24 @@ existing repeated positions (with and without overlap), repeated incoming new ID
 and an empty append. The exact cases and remaining risk are in the
 [data-integrity remediation record](audits/data-integrity-remediation-2026-11-10.md#f2-02--unresolved-contract-production-semantics-unchanged).
 No real-account writes were performed for this audit remediation.
+
+## Development follow-up: emptying Trash (2026-11-17)
+
+The [current official UI](https://media.ibroadcast.com/js/iBroadcastUI.js) sends
+`empty_trash` with `tracks` from the Trash container. Its SHA-256 at inspection was
+`4c71f0cf753b592525fca3edea33f9f0c6142c9f7f1c0462db61f77d4c910e8e`.
+The [official library code](https://media.ibroadcast.com/js/iBroadcastLibrary.js)
+constructs this container from the native trashed flag. Tagcast uses the same
+identity list, with OAuth through its existing client and no permanent-delete mode.
+
+[iBroadcast's own explanation](https://news.ibroadcast.com/) distinguishes
+emptying Trash from permanently deleting Unavailable Files in the Track Dashboard.
+Tagcast implements only the first step; it does not promise storage reclamation.
+The separate `dashboard_delete` and `dashboard_delete_unavailable` operations
+remain outside Tagcast.
+
+The 10,000-track review ceiling and 50-row pages are local application limits,
+not documented service limits. Contract verification uses public source and mocks;
+no real-account emptying or third-party OAuth permission test was performed.
+Mock selection/read-back tests do not establish service atomicity or prove how
+the service handles concurrent changes or ignores unknown fields.

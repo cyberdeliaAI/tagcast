@@ -41,7 +41,7 @@ class WriteReliabilityTests(unittest.TestCase):
         modes = ["update_album", "update_track", "ratetrack", "ratealbum", "rateartist",
                  "set_artwork", "set_artist_artwork", "updateplaylist", "appendplaylist",
                  "create_artist", "createplaylist", "createplaylistfolder", "deleteplaylist",
-                 "createtag", "updatetag", "deletetags", "tagtracks", "trash", "playqueue_token",
+                 "createtag", "updatetag", "deletetags", "tagtracks", "trash", "empty_trash", "playqueue_token",
                  "future_unknown_mode", "status"]
         invalid = response()
         invalid.json.side_effect = ValueError("truncated JSON")
