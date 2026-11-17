@@ -1,6 +1,10 @@
 # Artist discovery
 
-On an **Album artists** page, choose an artist, then choose **Discover similar music**.
+On an **Album artists** page, choose an artist, then open **Similar in your library**.
+It is a disclosure alongside **About this artist**, with the active source next to
+the title: **Last.fm**, or **Your library** for local results. **Refresh suggestions**
+is inside the open section. New artist pages start closed; returning to a previously
+opened artist can restore completed results without another request.
 Tagcast tries **Last.fm** first. Up to six albums from other artists in the loaded
 iBroadcast library appear above the album toolbar. Cards
 reuse Open album/artist, Play and Queue. Viewing results changes neither playback,
@@ -8,7 +12,8 @@ selection nor Change history. The feature is unavailable in the demo or during a
 library load. There is no per-artist source selector. Under **Settings → Discovery →
 Similar music**, turn off **Use Last.fm for similar artists** to use only local genres,
 then save. The preference defaults to on and persists in local `config.json` across
-restarts. Saving or opening a page never starts discovery; only Discover or Refresh does.
+restarts. Saving or opening a page never starts discovery; only explicitly opening
+this section or choosing Refresh does. Restoring its open state on Back does not start a request, and no global open preference is saved.
 
 Opening a suggested album labels its breadcrumb **Discover from [artist]**, so a
 recommendation is not presented as part of the seed artist's discography. This link
@@ -20,12 +25,12 @@ replacing the loaded library invalidates it like other album origins.
 
 Enable Last.fm and add its API key under **Settings → Sources & keys**. Existing
 saved/environment keys are reused server-side. No Last.fm user login, personal
-listening history or scrobbling is required. Only an explicit Discover or Refresh
-sends the selected artist name to `artist.getSimilar` at the fixed HTTPS Last.fm
+listening history or scrobbling is required. Only explicitly opening
+**Similar in your library** or choosing **Refresh suggestions** sends the selected artist name to `artist.getSimilar` at the fixed HTTPS Last.fm
 API. No library records, iBroadcast credentials or audio are sent. Artist names
 longer than 200 characters are rejected rather than silently truncated.
 The privacy explanation is available in Settings → Discovery and Help, without
-repeating it below the artist-page Discover button.
+repeating it below the artist-page disclosure.
 
 Last.fm supplies up to 100 related artists. Tagcast matches their names locally,
 ignoring case, NFC spelling and surrounding/repeated whitespace while preserving

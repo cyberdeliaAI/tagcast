@@ -77,6 +77,17 @@ The application consists of a Python server and a plain JavaScript frontend.
   or owner replacement. Before the first audio request, refresh MD5 membership and
   skip newly present reviewed files; a failed check sends no audio. A machine-readable
   storage limit stops the queue, preserving uncertainty and checking earlier results.
+- `src/tagcast/trash_emptying.py`: explicit Settings → Data & exports review of the current iBroadcast
+  trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Check the remote
+  revision before review/save; reuse only a matching known account/combine library,
+  downloading on changed/unknown revisions. Keep fresh downloaded read-back even
+  with an unchanged revision. Recheck complete trash membership/identity and
+  account/session/combine state, consume the review once,
+  send one empty_trash request without retry, and verify absence from the loaded library.
+  Emptying moves files to iBroadcast's unavailable Dashboard records; no permanent
+  dashboard deletion, restore, local-file operation or automatic follow-up is allowed.
+  Keep acknowledgement plus extra confirmation, aggregate History/export and accepted
+  write/read-back draining. Opening Settings never reads or empties the trash.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
@@ -88,7 +99,7 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/static/`: HTML, CSS, SVG and shared JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `album-info.js`, `lyrics.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-order.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
-  `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
+  `empty-trash.js` owns the separate reviewed trash-emptying dialog; `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
   searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` owns browser-local playback and the queue independently of the editor. `navigation.js` gives every page a hash address
@@ -1006,7 +1017,16 @@ their shared browsing/player state; a fast local response can otherwise race the
   Do not refresh the library, scan audio, write metadata or persist discovery reports.
   Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
   Keep the Last.fm privacy explanation in Settings → Discovery and Help, without a
-  repeated paragraph below the artist-page Discover button.
+  repeated paragraph below the artist-page disclosure. Similar in your library uses
+  a native details/summary alongside About this artist, with the active source label.
+  Refresh stays inside the content, outside summary. New artists start closed; only
+  explicit summary activation or Refresh starts discovery, never programmatic toggle.
+- Creation receipts for artists, uploaded artwork and split destinations are separate
+  from assignment/read-back confirmation. Preserve bounded write_effects in errors,
+  results and browser History/export, including failures before a read-back job exists.
+  Show possible leftovers only for incomplete saves, distinguishing confirmed creation
+  from a lost receipt. Never infer an object is unused, clean it up, retry it or offer
+  metadata Undo for a creation-only failure. Keep existing save gates and payloads.
   Albums opened from a Discover card label their breadcrumb origin as Discover from
   the seed artist, not that artist's discography. Keep the actual artist-page route,
   cached results and browsing/scroll restoration; ordinary album links keep their normal origin.
@@ -1224,8 +1244,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   credentials or library data. Cache attempts (including failures) for 24 hours in
   `updates.json`; manual checks bypass the interval. `auto_updates` is a local
   setting. Keep failures separate from library loading, validate versions and
-  construct release URLs for this repository. Release notes are bounded plain text;
-  never execute provider HTML or load its embedded images. Browser/source and portable
+  construct release URLs for this repository. Release notes stay bounded untrusted text;
+  render only a fixed Markdown subset with escaped text/attributes, credential-free HTTPS
+  links and bounded inline/table work. Keep unsupported content visible as text and flat
+  nested lists; never execute provider HTML or load its embedded images or styles. Browser/source and portable
   builds retain manual installation. The desktop updater uses fixed, version-pinned
   GitHub release feeds and exact platform filenames, with SHA-512 package verification.
   Downloading is opt-in; installation always needs explicit native confirmation.
