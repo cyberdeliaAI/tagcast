@@ -1351,6 +1351,32 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(status.call_count, 2)
         self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
 
+    def test_read_back_keeps_verified_results_but_omits_superseded_summaries(self):
+        studio = self.connect()
+        studio.load_library()
+        entered = threading.Event()
+        release = threading.Event()
+
+        def check(_):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Test did not resume the read-back")
+            return [{"status": "saved"}]
+
+        job_id = studio._check_later(studio.client, studio.downloads, check)
+        try:
+            self.assertTrue(entered.wait(5))
+            checked = studio.library
+            studio.load_library(refresh=True)
+            self.assertIsNot(studio.library, checked)
+        finally:
+            release.set()
+        job = self.wait_job(studio, job_id)
+        self.assertEqual(job["results"], [{"status": "saved"}])
+        self.assertNotIn("albums", job)
+        self.assertNotIn("editor_names", job)
+        self.wait_for_cache(studio)
+
     def test_read_back_replaces_cached_summaries_even_at_the_same_revision(self):
         studio = self.connect()
         before = studio.load_library()

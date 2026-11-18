@@ -1180,7 +1180,8 @@ class Studio:
         job_id = secrets.token_urlsafe(9)
         marker = {"state": "checking"}
         with self.lock:
-            owner = (self.client, self.library_user, self.playback_session)
+            self._check_client(client)
+            owner = (client, self.library_user, self.playback_session)
             self.jobs[job_id] = marker
             self.readbacks[job_id] = marker
 
@@ -1204,6 +1205,10 @@ class Studio:
             with self.lock:
                 if owner != (self.client, self.library_user, self.playback_session):
                     result = {"state": "error", "error": "The account or session changed. The write outcome is unknown; check iBroadcast before any new review."}
+                elif "albums" in result and self.library is not after:
+                    # The outcome was verified, but a newer snapshot superseded its view.
+                    result.pop("albums")
+                    result.pop("editor_names")
                 # A drainer can retain this marker even if logout cleared the
                 # account-scoped job view. Never publish old account data there.
                 marker.update(result)

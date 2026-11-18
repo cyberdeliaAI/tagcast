@@ -3083,7 +3083,7 @@ test("artist image Undo survives an older read-back waiting for the editor to cl
   const p = page();
   p.run(`state.mode = "live";
     state.albums = state.albums.map(a => a.artist === "Pink Floyd" ? {...a, artist_id: 42, artist_artwork_id: 77, artist_image: "https://example.test/artwork/77-150"} : a);
-    $("#editor").open = true; pendingAlbums = structuredClone(state.albums);
+    $("#editor").open = true; pendingAlbums = {owner:readBackOwner(), order:saveOrder, albums:structuredClone(state.albums)};
     state.history = [artworkEntry({target: "artist", id: "42", label: "Pink Floyd", artist: "Pink Floyd"},
       {artwork_id: 77, image: "https://example.test/artwork/77-300", previous: {artwork_id: 500}, results: []}, "iBroadcast", "https://example.test/artwork/500-300")]`);
   p.setFetch((url, options) => {
@@ -12166,6 +12166,50 @@ test("A late read-back cannot replace a deliberately selected local library",asy
   const done=p.run('followJob("old-library",state.history[0])');
   p.run('useLocal([],"local")'); p.flushTimers(2000);await done;
   assert.deepEqual(p.json('state.albums'),[]);
+});
+
+test('staged read-back waits for the editor and cannot survive logout or account replacement',async()=>{
+  for (const replacement of ['none','logout','account','snapshot']) {
+    const p=livePage();await settle();
+    p.run('Object.assign(state.connection,{connected:true,playback_session:"old"}); $("#editor").showModal()');
+    const staged=p.json('[{...state.albums[0],name:"Staged album from old snapshot"}]');
+    p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/jobs/')
+      ? {state:"done",results:[],albums:staged,editor_names:{genres:["Staged genre"],composers:[]}}
+      : url==='/api/queue-sync' ? {authenticated:false} : {}}));
+    const finished=p.run('followJob("staged", {changes:[],status:"sent"})');
+    p.flushTimers(2000);await finished;
+    assert.equal(p.run('pendingAlbums.albums[0].name'),"Staged album from old snapshot");
+    if (replacement==="logout") {
+      p.run('queueSync.enabled=true;queueSync.active=true');
+      await p.run('pollQueue()');
+      assert.equal(p.run('state.mode'),"demo");
+    } else if (replacement==="account") {
+      p.run('state.connection.playback_session="new"');
+    } else if (replacement==="snapshot") {
+      p.run('state.details=new Map()');
+    }
+    p.run('$("#editor").close()');
+    await p.nodes.get('#editor').emit('close');
+    assert.equal(p.run('pendingAlbums'),null);
+    assert.equal(p.run('state.albums.some(a=>a.name==="Staged album from old snapshot")'),replacement==="none");
+    assert.equal(p.run('state.editorNames.genres.includes("Staged genre")'),replacement==="none");
+  }
+});
+
+test('an old in-flight read-back retires after replacing the account',async()=>{
+  const p=livePage();await settle();
+  p.run('state.connection.playback_session="old"; state.history=[{status:"sent",source:"ibroadcast",changes:[{kind:"track",id:"100",status:"sent"}]}]');
+  let reply;
+  const old=p.json('[{...state.albums[0],name:"Old account"}]');
+  p.setFetch(()=>new Promise(resolve=>{reply=resolve;}));
+  const finished=p.run('followJob("old",state.history[0])');
+  p.flushTimers(2000);await settle();
+  p.run('state.connection.playback_session="new"');
+  reply({ok:true,json:async()=>({state:"done",results:[{kind:"track",id:"100",status:"saved"}],albums:old})});
+  await finished;
+  assert.equal(p.run('state.albums.some(a=>a.name==="Old account")'),false);
+  assert.equal(p.run('state.history[0].status'),"unverified");
+  assert.equal(p.run('checking'),0);
 });
 
 test("An editor response from a replaced library cannot open a stale draft",async()=>{
