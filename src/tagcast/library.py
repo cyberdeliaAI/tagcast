@@ -272,6 +272,8 @@ class Library:
                             number(i) for i in tracks if number(i) > 0))
                     break
         self._recent_rows = None
+        self._playlist_browse = None
+        self._playlist_browse_lock = Lock()
         self._stats = None
         self._search = None
         self._search_lock = Lock()

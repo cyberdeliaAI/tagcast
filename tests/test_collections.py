@@ -14,6 +14,7 @@ import certifi
 from test_client import client, mock_ibroadcast
 from test_library import change
 
+from tagcast.collections import playlist_track_search_text
 from tagcast.library import ConflictError, LibraryError
 from tagcast.queue_sync import QUEUE_SCOPES, clean_state
 
@@ -290,6 +291,45 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual([r['position'] for r in second['rows']], second['page_positions'])
         self.assertEqual(second['total'], 10106)
         self.assertFalse(mock_ibroadcast.STATE['writes'])
+
+    def test_playlist_detail_reuses_search_text_until_the_library_changes(self):
+        studio = self.studio
+        mock_ibroadcast.STATE["playlists"][888] = {"name": "Search", "tracks": [900, 901, 900]}
+        mock_ibroadcast.STATE["tracks"][900]["title"] = "Café"
+        studio.load_library(refresh=True)
+        with patch("tagcast.collections.playlist_track_search_text",
+                   wraps=playlist_track_search_text) as search:
+            before = studio.collections.playlists(playlist_id="888")
+            search.assert_not_called()
+            first = studio.collections.playlists("cafe", "888")
+            second = studio.collections.playlists("cafe", "888", "1")
+            self.assertEqual(search.call_count, 2)
+            self.assertEqual(first["before_token"], before["before_token"])
+            self.assertEqual(second["page_positions"], [2])
+            self.assertEqual(second["rows"][0]["stored_position"], 2)
+            mock_ibroadcast.STATE["tracks"][900]["title"] = "Different"
+            mock_ibroadcast.STATE["playlists"][888]["tracks"] = [900]
+            studio.load_library(refresh=True)
+            fresh = studio.collections.playlists("cafe", "888")
+            self.assertEqual(search.call_count, 3)
+            self.assertEqual(fresh["matched_total"], 0)
+            self.assertNotEqual(fresh["before_token"], before["before_token"])
+
+    def test_playlist_detail_cache_caps_positions_and_normalized_text(self):
+        studio = self.studio
+        mock_ibroadcast.STATE["playlists"][888] = {"name": "Search", "tracks": [900, 901]}
+        mock_ibroadcast.STATE["tracks"][900]["title"] = "Café"
+        studio.load_library(refresh=True)
+        with patch("tagcast.collections.PLAYLIST_CACHE_POSITIONS", 1):
+            over_limit = studio.collections.playlists("cafe", "888")
+        self.assertIsNone(studio.library._playlist_browse)
+        with patch("tagcast.collections.PLAYLIST_CACHE_SEARCH_BYTES", 1):
+            text_limit = studio.collections.playlists("cafe", "888")
+        self.assertEqual(over_limit, text_limit)
+        cached = studio.library._playlist_browse[1]
+        self.assertTrue(cached.search_limited)
+        self.assertIsNone(cached.search_text)
+        self.assertEqual(studio.collections.playlists("cafe", "888"), text_limit)
 
     def test_empty_playlist_duration_is_zero(self):
         mock_ibroadcast.STATE['playlists'][888] = {'name': 'Empty', 'tracks': []}
