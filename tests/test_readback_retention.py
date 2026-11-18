@@ -29,9 +29,10 @@ class ReadbackRetentionTests(unittest.TestCase):
         snapshot = Mock()
         snapshot.album_index.return_value = [{'name': 'Large summary', 'id': '1'}]
         snapshot.editor_names.return_value = {'artists': ['Artist']}
+        studio.client, studio.library = object(), snapshot
         with patch.object(studio, '_current', return_value=(snapshot, None)), \
                 patch.object(studio.collections, 'playlist_count', return_value=1):
-            job = studio._check_later(None, 0, lambda after: [{'status': 'saved'}])
+            job = studio._check_later(studio.client, 0, lambda after: [{'status': 'saved'}])
             self.wait(studio, job)
         first = studio.job(job)
         self.assertIn('albums', first)
