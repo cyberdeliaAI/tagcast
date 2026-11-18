@@ -63,12 +63,16 @@ async function restoreQueueMemory() {
       for (const track of result.tracks) {
         const position = offset + track.position, entry = saved.entries[position];
         if (!Number.isInteger(track.position) || track.position < 0 || track.position >= 1000 || !entry || track.id !== entry.id) return;
-        restored.push({track: {...track, upNext: entry.upNext === true}, position});
+        const {details: metadata, ...playback} = track;
+        restored.push({track: {...playback, upNext: entry.upNext === true}, position, metadata});
       }
     }
     if (!current() || !restored.length) return;
     queueMemory.restoring = true;
     player.queue = restored.map(item => item.track);
+    if (typeof rememberWorkspaceQueueDetails === "function") for (const {track, metadata} of restored) {
+      rememberWorkspaceQueueDetails(track, metadata || {track});
+    }
     const next = restored.findIndex(item => item.position >= saved.index);
     player.index = next < 0 ? restored.length - 1 : next;
     player.repeat = saved.repeat; player.shuffle = saved.shuffle; player.epoch += 1;

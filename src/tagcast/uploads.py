@@ -19,8 +19,9 @@ The MD5 is of the complete file, so it recognises byte-identical files only. The
 recording with different tags or a different encoding has a different MD5.
 
 An unclear outcome is never resent automatically. The engine looks for the file's MD5
-in a fresh list; if it is not there (yet), the file stays ``uncertain`` until the user
-plans again. Interrupted transfers are reported as uncertain as well, because how
+in a fresh list; if it is not there (yet), the file stays ``uncertain``. The integration
+retains recent outcomes across reviews within the same account/session. Interrupted
+transfers are reported as uncertain as well, because how
 iBroadcast treats incomplete requests is not verified.
 
 This module is the engine only. Connection state, session binding, review and the user
@@ -80,6 +81,15 @@ class UploadError(Exception):
 
 class UncertainUpload(UploadError):
     """The file may have arrived. Only the MD5 list can confirm it."""
+
+
+class StorageLimitReached(UploadError):
+    """An account-wide limit: stop subsequent audio, retaining ambiguous outcomes."""
+
+    def __init__(self, *, uncertain=False):
+        super().__init__("iBroadcast's storage limit was reached. Check available storage "
+                         "before preparing another upload. The remaining files were not sent.")
+        self.uncertain = uncertain
 
 
 class AuthRejected(UploadError):
@@ -661,6 +671,11 @@ class UploadService:
             if transfer.body_started:
                 raise UncertainUpload(_redirect_message(status, response))
             raise Unreachable(_redirect_message(status, response))
+        if data.get("storage_limit") is True:
+            # This is a machine-readable flag, never inferred from translated
+            # messages. A missing/contradictory result must not become a refusal.
+            raise StorageLimitReached(uncertain=status == 429 or status >= 500
+                                      or data.get("result") is not False)
         if status == 429 or status >= 500:
             raise UncertainUpload(f"iBroadcast answered HTTP {status}.")
         if not response.ok:
@@ -748,14 +763,15 @@ class UploadJob:
 
     def view(self):
         with self._lock:
+            sendable = [item for item in self._sendable if item.status != UPLOADED]
             counts = {}
             for item in self.items:
                 counts[item.status] = counts.get(item.status, 0) + 1
             sent = sum(item.size if item.status in (SENT, CONFIRMED) else item.sent
-                       for item in self._sendable)
+                       for item in sendable)
             return {"state": self.state, "message": self.message, "current": self.current,
                     "counts": counts,
-                    "bytes": {"total": sum(item.size for item in self._sendable), "sent": sent},
+                    "bytes": {"total": sum(item.size for item in sendable), "sent": sent},
                     "items": [item.view() for item in self.items]}
 
     # work ----------------------------------------------------------------------------------
@@ -773,24 +789,56 @@ class UploadJob:
 
     def _run(self):
         try:
-            for item in self.items:
-                if item.status != QUEUED:
-                    continue
-                while not self._running.wait(0.2):
-                    pass
-                if self._stop.is_set():
-                    raise _EndJob("stopped", "Stopped. Files not sent yet can be planned again.")
-                if not self.valid():
-                    raise _EndJob("stopped", "The iBroadcast session changed.")
-                with self._lock:
-                    item.status, self.current = SENDING, item.label
-                self._send(item)
+            self._preflight()
+            try:
+                for item in self.items:
+                    if item.status != QUEUED:
+                        continue
+                    while not self._running.wait(0.2):
+                        pass
+                    if self._stop.is_set():
+                        raise _EndJob("stopped", "Stopped. Files not sent yet can be planned again.")
+                    if not self.valid():
+                        raise _EndJob("stopped", "The iBroadcast session changed.")
+                    with self._lock:
+                        item.status, self.current = SENDING, item.label
+                    self._send(item)
+            except StorageLimitReached as error:
+                self._verify()
+                raise _EndJob("failed", str(error)) from None
             self._verify()
             self._finish("done")
         except _EndJob as end:
             self._finish(end.state, end.message)
         except Exception as error:  # never leave the job running blindly
             self._finish("failed", str(error) or error.__class__.__name__)
+
+    def _preflight(self):
+        """Recheck account MD5s; skip only reviewed files, before any audio leaves."""
+        transfer = self._new_transfer()
+        with self._lock:
+            self.message = "Checking iBroadcast's file list before uploading."
+        try:
+            remote = self.service.remote_md5s(transfer)
+            transfer.begin()  # Reject a replaced session or Stop after the read.
+        except Stopped:
+            raise _EndJob("stopped", "Stopped before uploading. No files were sent.") from None
+        except SessionChanged as error:
+            raise _EndJob("stopped", str(error)) from None
+        except AuthRejected as error:
+            raise _EndJob("failed", f"{error} No files were sent.") from None
+        except UploadError:
+            raise _EndJob("failed", "iBroadcast's file list could not be checked before uploading. "
+                          "No files were sent. Prepare and review again.") from None
+        finally:
+            transfer.close()
+        with self._lock:
+            for item in self.items:
+                if item.status in (QUEUED, UNCERTAIN) and item.md5 in remote:
+                    item.status = UPLOADED if item.status == QUEUED else CONFIRMED
+                    item.verified = True
+                    item.note = "Listed by iBroadcast before uploading. It was not sent again."
+            self.message = ""
 
     def _progress(self, item):
         def update(sent):
@@ -818,6 +866,11 @@ class UploadJob:
         try:
             try:
                 item.track_id = self.service.upload(item, transfer, on_bytes=self._progress(item))
+            except StorageLimitReached as error:
+                item.status = UNCERTAIN if error.uncertain else FAILED
+                item.note = str(error) + (f" The current file needs checking. {CHECK_AGAIN}"
+                                          if error.uncertain else "")
+                raise
             except UncertainUpload as error:
                 problem = str(error)
             except Stopped:

@@ -114,6 +114,12 @@ class AlbumSplitTests(unittest.TestCase):
 
     def test_creation_receipt_cannot_reuse_an_orphaned_album_id(self):
         self.studio.raw["library"]["tracks"]["201"]["album_id"] = 44
+        # An active foreign membership now blocks even the initial review.
+        with self.assertRaises(LibraryError):
+            self.review()
+        self.assertFalse(self.studio.writes)
+        # A trashed orphan is not a combined view, but its ID still cannot be reused.
+        self.studio.raw["library"]["tracks"]["201"]["trashed"] = True
         result = self.save()
         self.assertIn("could not be confirmed", result["error"])
         self.assertEqual(len(self.studio.writes), 1)
@@ -127,6 +133,31 @@ class AlbumSplitTests(unittest.TestCase):
                 result = self.save()
                 self.assertEqual(len(self.studio.writes), 2)
                 self.assertEqual(self.studio.jobs[result["job"]]["results"][0]["status"], "unverified")
+
+    def test_created_album_receipt_survives_conflict_or_failed_move_without_cleanup(self):
+        for phase in ("conflict", "move"):
+            with self.subTest(phase=phase):
+                self.setUp()
+                if phase == "conflict":
+                    self.studio.after_create = lambda: self.studio.raw["library"]["tracks"]["103"].update(title="Changed")
+                else:
+                    self.studio.fail = True
+                result = self.save()
+                self.assertEqual(result["write_effects"], {"album_created": "44"})
+                self.assertTrue(result["error"])
+                self.assertEqual([m for m, _ in self.studio.writes],
+                                 ["create_album"] if phase == "conflict" else ["create_album", "update_track"])
+                self.assertIn("44", self.studio.raw["library"]["albums"])
+
+    def test_lost_creation_receipt_reports_possibility_without_id_or_replay(self):
+        from tagcast.client import UncertainWrite
+
+        with patch.object(self.studio, "_jsonrequest", side_effect=UncertainWrite("Lost receipt")) as send:
+            result = self.save()
+        self.assertEqual(result["write_effects"], {"album_uncertain": True})
+        self.assertEqual(result["target"], "")
+        self.assertEqual(send.call_count, 1)
+        self.assertEqual(self.studio.jobs[result["job"]]["results"][0]["status"], "not_sent")
 
     def test_target_validation_and_existing_album_collision(self):
         for target in ({"name": ""}, {"name": "x" * 1001}, {"year": True}, {"year": 1700},

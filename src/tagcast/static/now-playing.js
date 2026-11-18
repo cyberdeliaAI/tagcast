@@ -94,7 +94,13 @@ function syncNowPlayingPage() {
 function closeNowPlayingView() {
   if (state.screen === "now-playing") goBack("artists");
   else setNowPlaying(false);
-  $("#player-queue").focus();
+  const focus = typeof workspacePanel !== "undefined" ? workspacePanel.focus : null;
+  // The queue shortcut can be inside collapsed navigation, and the panel button
+  // is hidden on the listening page until asynchronous Back navigation finishes.
+  const target = [focus, $("#player-queue"), $("#workspace-panel-toggle"), $("#navigation-toggle"), $("#menu-toggle")]
+    .find(node => node && node.isConnected !== false && (typeof node.getClientRects === "function"
+      ? node.getClientRects().length > 0 : !node.hidden));
+  target?.focus();
 }
 
 // Keep the same ratings beside the transport and Sound in the sidebar.
