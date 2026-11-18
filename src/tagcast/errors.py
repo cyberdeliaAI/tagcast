@@ -30,4 +30,30 @@ def error_payload(error, **extra):
         payload["code"] = code
         if getattr(error, "params", None):
             payload["params"] = error.params
+    effects = write_effects_payload(getattr(error, "write_effects", None))
+    if effects:
+        payload["write_effects"] = effects
     return payload
+
+
+def write_effects_payload(value):
+    """Bounded creation receipts, separate from assignment/read-back status.
+
+    Only fixed fields cross the API boundary. No provider bodies, paths, tokens
+    or unverified object labels belong in this diagnostic data.
+    """
+    if not isinstance(value, dict):
+        return {}
+    effects = {}
+    count = value.get("artists_created")
+    if type(count) is int and 0 < count <= 1_000_000:
+        effects["artists_created"] = count
+    for key in ("artist_uncertain", "artwork_uncertain", "album_uncertain"):
+        if value.get(key) is True:
+            effects[key] = True
+    for key in ("artwork_created", "album_created"):
+        item_id = value.get(key)
+        if isinstance(item_id, str) and item_id.isascii() and item_id.isdigit() \
+                and len(item_id) <= 32 and int(item_id) > 0:
+            effects[key] = item_id
+    return effects

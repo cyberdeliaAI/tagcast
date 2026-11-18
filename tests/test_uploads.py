@@ -170,6 +170,12 @@ class FakeUploadService:
                     "accept_then_503": (503, {"result": False, "message": "Busy"}),
                     "lose_with_502": (502, {}),
                     "refuse": (200, {"result": False, "message": "File type not supported"}),
+                    "storage_limit": (200, {"result": False, "storage_limit": True}),
+                    "storage_unclear": (200, {"result": True, "storage_limit": True,
+                                               "message": "Track (1234) uploaded successfully"}),
+                    "storage_error": (503, {"result": False, "storage_limit": True}),
+                    "storage_message": (200, {"result": False, "storage_limit": False,
+                                               "message": "Storage limit mentioned without its flag"}),
                     "unknown_ok_stored": (200, {"result": True, "message": "Queued"}),
                     "unknown_ok_lost": (200, {"result": True, "message": "Queued"}),
                 }
@@ -418,7 +424,81 @@ class TransferTests(unittest.TestCase):
         self.assertEqual((item.status, item.track_id, item.sent, item.verified),
                          (SENT, "7001", len(data), True))
         self.assertEqual(job.view()["bytes"], {"total": len(data), "sent": len(data)})
-        self.assertEqual((self.fake.lists, self.fake.attempts), (2, 1))  # plan, read-back
+        self.assertEqual((self.fake.lists, self.fake.attempts), (3, 1))  # plan, preflight, read-back
+
+    def test_preflight_skips_a_file_uploaded_after_review_and_counts_only_remaining_bytes(self):
+        items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
+        self.fake.md5s.add(items[0].md5)
+        job = UploadJob(self.service(), items)
+        job.run()
+        self.assertEqual((job.state, self.statuses(items)), ("done", [uploads.UPLOADED, SENT]))
+        self.assertTrue(items[0].verified)
+        self.assertEqual(self.fake.attempts, 1)
+        self.assertEqual(job.view()["bytes"], {"total": len(b"two"), "sent": len(b"two")})
+
+    def test_failed_preflight_sends_no_audio(self):
+        items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
+        self.fake.fail_lists = 99
+        job = UploadJob(self.service(), items)
+        job.run()
+        self.assertEqual((job.state, self.statuses(items)), ("failed", [NOT_SENT, NOT_SENT]))
+        self.assertEqual(self.fake.attempts, 0)
+        self.assertIn("No files were sent", job.message)
+
+    def test_replacement_during_preflight_sends_no_audio(self):
+        items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
+        replaced = threading.Event()
+        service = self.service()
+        original = service.remote_md5s
+
+        def listing(transfer):
+            remote = original(transfer)
+            replaced.set()
+            return remote
+
+        service.remote_md5s = listing
+        job = UploadJob(service, items, valid=lambda: not replaced.is_set())
+        job.run()
+        self.assertEqual((job.state, self.statuses(items)), ("stopped", [NOT_SENT, NOT_SENT]))
+        self.assertEqual(self.fake.attempts, 0)
+
+    def test_storage_limit_stops_remaining_files_and_verifies_earlier_uploads(self):
+        for successful in (0, 1):
+            with self.subTest(successful=successful):
+                items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"),
+                                  ("A/03.flac", b"three"))
+                self.fake.script = ["ok"] * successful + ["storage_limit"]
+                before = self.fake.attempts
+                job = UploadJob(self.service(), items)
+                job.run()
+                expected = [SENT] * successful + [FAILED] + [NOT_SENT] * (2 - successful)
+                self.assertEqual((job.state, self.statuses(items)), ("failed", expected))
+                self.assertEqual(self.fake.attempts - before, successful + 1)
+                self.assertIn("storage limit", job.message)
+                self.assertIn("remaining files were not sent", job.message)
+                for item in items[:successful]:
+                    self.assertTrue(item.verified)
+                self.fake.md5s.clear()
+
+    def test_ambiguous_storage_answers_stop_without_claiming_a_refusal_or_success(self):
+        for action in ("storage_unclear", "storage_error"):
+            with self.subTest(action=action):
+                items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
+                self.fake.script = [action]
+                before = self.fake.attempts
+                job = UploadJob(self.service(), items)
+                job.run()
+                self.assertEqual((job.state, self.statuses(items)), ("failed", [UNCERTAIN, NOT_SENT]))
+                self.assertEqual(self.fake.attempts - before, 1)
+                self.assertFalse(items[0].verified)
+
+    def test_storage_message_without_the_machine_flag_is_only_a_file_refusal(self):
+        items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
+        self.fake.script = ["storage_message"]
+        job = UploadJob(self.service(), items)
+        job.run()
+        self.assertEqual((job.state, self.statuses(items)), ("done", [FAILED, SENT]))
+        self.assertEqual(self.fake.attempts, 2)
 
     # 1. Unclear answers are confirmed through the MD5 list, never resent.
 
@@ -442,8 +522,17 @@ class TransferTests(unittest.TestCase):
     def test_failed_md5_check_after_unclear_answer_ends_the_job_without_resending(self):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
         self.fake.script = ["lose_with_502"]
-        self.fake.fail_lists = 99
-        job = UploadJob(self.service(), items)
+        service = self.service()
+        original = service.upload
+
+        def upload(*args, **kwargs):
+            try:
+                return original(*args, **kwargs)
+            finally:
+                self.fake.fail_lists = 99
+
+        service.upload = upload
+        job = UploadJob(service, items)
         job.run()
         self.assertEqual((job.state, self.statuses(items)), ("failed", [UNCERTAIN, NOT_SENT]))
         self.assertEqual(self.fake.attempts, 1)
@@ -453,7 +542,15 @@ class TransferTests(unittest.TestCase):
     def test_session_is_checked_before_the_resend_after_a_token_refresh(self):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
         replaced = threading.Event()
-        service = self.service(token="old", renewed="good", before_refresh=replaced.set)
+        service = self.service(renewed="good", before_refresh=replaced.set)
+        original = service.remote_md5s
+
+        def listing(transfer):
+            result = original(transfer)
+            service.client.token = "old"  # Force the upload, not preflight, to refresh.
+            return result
+
+        service.remote_md5s = listing
         job = UploadJob(service, items, valid=lambda: not replaced.is_set())
         job.run()
         self.assertEqual((job.state, self.statuses(items)), ("stopped", [STOPPED, NOT_SENT]))
@@ -477,7 +574,7 @@ class TransferTests(unittest.TestCase):
         lists = self.fake.lists
         job.run()
         self.assertEqual((job.state, self.statuses(items)), ("stopped", [UNCERTAIN, NOT_SENT]))
-        self.assertEqual(self.fake.lists, lists)  # no read with the replaced session
+        self.assertEqual(self.fake.lists, lists + 1)  # preflight only; none after replacement
 
     def test_replaced_session_stops_before_the_next_file(self):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
@@ -539,10 +636,10 @@ class TransferTests(unittest.TestCase):
     def test_stop_preserves_uncertainty_when_waiting_for_its_answer(self):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
         self.fake.script = ["hold_then_503"]
-        lists_before = self.fake.lists
         job = UploadJob(self.service(), items)
         job.start()
         self.assertTrue(self.fake.received.wait(5))
+        lists_before = self.fake.lists
         started = time.monotonic()
         job.stop()
         if sys.platform == "win32":
@@ -689,7 +786,16 @@ class TransferTests(unittest.TestCase):
     def test_failed_token_refresh_after_a_refusal_settles_the_file(self):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
         expired = client.NotConnected("Your iBroadcast session expired. Connect again.")
-        job = UploadJob(self.service(token="old", refresh_error=expired), items)
+        service = self.service(refresh_error=expired)
+        original = service.remote_md5s
+
+        def listing(transfer):
+            result = original(transfer)
+            service.client.token = "old"  # Rejected after a successful preflight.
+            return result
+
+        service.remote_md5s = listing
+        job = UploadJob(service, items)
         job.run()
         self.assertEqual((job.state, self.statuses(items)), ("failed", [FAILED, NOT_SENT]))
         self.assertIn("Connect again", job.message)
@@ -697,8 +803,12 @@ class TransferTests(unittest.TestCase):
     def test_failed_proactive_refresh_settles_the_file(self):
         items = self.plan(("A/01.flac", b"one"),)
 
+        calls = []
+
         def expire():
-            raise client.NotConnected("Your iBroadcast session expired. Connect again.")
+            calls.append(True)
+            if len(calls) > 1:  # Preflight succeeds, proactive upload refresh fails.
+                raise client.NotConnected("Your iBroadcast session expired. Connect again.")
 
         job = UploadJob(self.service(before_send=expire), items)
         job.run()
@@ -708,7 +818,8 @@ class TransferTests(unittest.TestCase):
         items = self.plan(("A/01.flac", b"one"), ("A/02.flac", b"two"))
         job = UploadJob(self.service(token="expired"), items)
         job.run()
-        self.assertEqual((job.state, self.statuses(items)), ("failed", [FAILED, NOT_SENT]))
+        self.assertEqual((job.state, self.statuses(items)), ("failed", [NOT_SENT, NOT_SENT]))
+        self.assertEqual(self.fake.attempts, 0)
         self.assertIn("Connect again", job.message)
 
     def test_unreachable_service_fails_without_sending_or_guessing(self):
@@ -716,8 +827,11 @@ class TransferTests(unittest.TestCase):
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             closed = f"http://127.0.0.1:{probe.getsockname()[1]}/upload"
-        job = UploadJob(UploadService(FakeClient(), url=closed), items)
-        job.run()
+        service = UploadService(FakeClient(), url=closed)
+        job = UploadJob(service, items)
+        # A connection can disappear after a successful preflight.
+        with patch.object(service, "remote_md5s", return_value=frozenset()):
+            job.run()
         self.assertEqual((job.state, self.statuses(items)), ("failed", [FAILED, NOT_SENT]))
         self.assertIn("Not uploaded", items[0].note)
 
