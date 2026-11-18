@@ -166,20 +166,14 @@ desktop app and the browser version. See the
 ## Code signing policy
 
 The macOS downloads are Developer ID signed and notarized by Apple. Windows
-downloads are **not yet signed**. Tagcast has applied for Windows code signing
-through SignPath; approval and integration are pending.
-
-The planned signing service, subject to approval and integration, is: free code
-signing provided by [SignPath.io](https://signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/).
+downloads are **not Authenticode signed**.
 
 - **Committers and reviewers:** [kaosnews](https://github.com/kaosnews).
 - **Approvers:** [kaosnews](https://github.com/kaosnews).
 - People with source-code or signing approval access are required to use MFA on
-  GitHub and SignPath. This policy does not certify individual account settings.
-- Once enabled, release signing requests must be manually approved by the
-  designated approver. Only verified builds from this repository will be submitted,
-  and release notes will say which downloads are signed.
+  GitHub. This policy does not certify individual account settings.
+- Release signing is limited to verified builds from this repository. Release
+  notes identify which downloads are signed.
 
 See the [privacy policy](PRIVACY.md) for iBroadcast connections, optional lookups,
 automatic update checks and the public service-status feed.
