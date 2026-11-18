@@ -176,7 +176,7 @@ function healthCard(s) {
     ["artist_image", "overview.health.artistImage", "overview.health.artistImageMissing", "artist_image"],
     ["cover", "overview.health.cover", "overview.health.coverMissing", "cover"],
   ];
-  return `<section class="card"><h2>${TagcastI18n.html("overview.health.heading")}</h2><button class="button small" data-cleanup-open>${TagcastI18n.html("overview.health.cleanup")}</button><p class="muted">${TagcastI18n.html("overview.health.intro")}</p>${rows.map(([key, labelKey, missingKey, filter]) => {
+  return `<section class="card"><h2>${TagcastI18n.html("overview.health.heading")}</h2><button class="button small" data-cleanup-open>${TagcastI18n.html("overview.health.cleanup")}</button> <button type="button" class="button small" data-artist-cleanup-open>${TagcastI18n.html("artistCleanup.open")}</button><p class="muted">${TagcastI18n.html("overview.health.intro")}</p>${rows.map(([key, labelKey, missingKey, filter]) => {
     const h = s.health[key] || {missing: 0, total: 0}, done = h.total ? (h.total - h.missing) / h.total : 1, digits = done < 1 && done > 0.995 ? 2 : 1;
     // The meter keeps a machine-readable value; the visible percentage follows the language.
     const pct = (done * 100).toFixed(digits), label = TagcastI18n.html(labelKey);

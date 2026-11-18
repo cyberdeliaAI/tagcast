@@ -14966,3 +14966,40 @@ test('empty and replaced trash reviews cannot write or accept late data',async()
     assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,0,change);
   }
 });
+
+test("Artist cleanup scans only on request and opens the existing track editor without a patch or lookup", async () => {
+  const p = livePage(); await settle();
+  p.run('const CSS = {escape: value => String(value)}; $("#artist-cleanup").contains = () => false; $("#track-inline").scrollIntoView = () => {}');
+  const id = p.run('String(state.details.get("1").tracks[0].id)');
+  p.setFetch(url => {
+    assert.equal(url, "/api/artist-cleanup?offset=0");
+    return {ok: true, json: async () => ({albums: [{id: "1", title: "Example Album", artist: "Main",
+      tracks: [{id, title: "<Track>", artist: "Main", guest: "Guest & Co."}]}],
+      total_tracks: 1, total_albums: 1, offset: 0, limit: 50})};
+  });
+  const before = p.requests.length;
+  p.run("openArtistCleanup()");
+  assert.equal(p.requests.length, before);
+  await p.run("analyseArtistCleanup()");
+  assert.match(p.nodes.get("#artist-cleanup-results").innerHTML, /&lt;Track&gt;.*Possible guest: Guest &amp; Co\./s);
+  await p.run(`openArtistCleanupTrack("1", ${JSON.stringify(id)})`);
+  assert.equal(p.nodes.get("#editor").open, true);
+  assert.equal(p.nodes.get("#track-inline").dataset.track, id);
+  assert.equal(p.run("Object.keys(editing.trackPatches).length"), 0);
+  assert.deepEqual(p.requests.slice(before).map(r => [r.url, r.options.method ?? "GET"]),
+    [["/api/artist-cleanup?offset=0", "GET"]]);
+});
+
+test("Artist cleanup discards results when the library changes during analysis", async () => {
+  const p = livePage(); await settle();
+  p.run('$("#artist-cleanup").contains = () => false; openArtistCleanup()');
+  let reply;
+  p.setFetch(() => new Promise(resolve => { reply = resolve; }));
+  const pendingScan = p.run("analyseArtistCleanup()");
+  p.run("state.details = new Map()");
+  reply({ok: true, json: async () => ({albums: [], total_tracks: 0})});
+  await pendingScan;
+  assert.equal(p.run("artistCleanupView.data"), null);
+  assert.match(p.nodes.get("#artist-cleanup-status").textContent, /library changed/);
+  assert.equal(p.nodes.get("#artist-cleanup-analyse").disabled, false);
+});

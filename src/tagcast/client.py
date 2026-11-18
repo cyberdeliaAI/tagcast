@@ -29,6 +29,7 @@ from .album_info import AlbumInformation
 from .album_merge import AlbumMerge
 from .album_split import AlbumSplit
 from .artist_bios import ArtistBiographies
+from .artist_cleanup import guest_credit_page
 from .cleanup import Cleanup
 from .collections import Collections
 from .discover import ArtistDiscover
@@ -962,6 +963,16 @@ class Studio:
                 return {"enabled": False, "available": False, "tracks": [], "total": 0}
         return {"enabled": True, **library.recently_played(query, offset, limit)}
 
+    def artist_cleanup(self, offset="0"):
+        try:
+            offset = int(offset)
+        except (ValueError, TypeError):
+            raise ApiError("Choose a valid page.") from None
+        if offset < 0:
+            raise ApiError("Choose a valid page.")
+        with self._browse_library(loaded_only=True) as library:
+            return guest_credit_page(library.guest_credit_rows, offset)
+
     def browse(self, kind, key=None, query="", offset="0", limit="50", sort="az"):
         query = str(query or "").strip()
         try:
@@ -1401,10 +1412,17 @@ class Studio:
         return library, user_id
 
     @contextmanager
-    def _browse_library(self, tags=False):
+    def _browse_library(self, tags=False, *, loaded_only=False):
         """Read the loaded snapshot; fresh remote checks belong to reloads and writes."""
         client = self._require_client()
-        library, account = self._library()
+        if loaded_only:
+            with self.lock:
+                library, account = self.library, self.library_user
+            if library is None:
+                raise ApiError("Load the library before analysing guest credits.",
+                               code="artist_cleanup.load_library")
+        else:
+            library, account = self._library()
         with self.lock:
             owner = client, account, self.playback_session
 

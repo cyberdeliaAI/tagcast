@@ -233,6 +233,7 @@ function useLocal(albums, mode) {
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
   if (typeof resetCleanup === "function") resetCleanup(true);
+  if (typeof resetArtistCleanup === "function") resetArtistCleanup(true);
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
   if (typeof resetEmptyTrashReview === "function") resetEmptyTrashReview();
@@ -930,7 +931,7 @@ function syncAlbumArtistControls() {
   }
 }
 
-async function openEditor(ids, {onlineSuggestions = true} = {}) {
+async function openEditor(ids, {onlineSuggestions = true, canOpen} = {}) {
   if (opening) return;
   const chosen = ids.map(id => state.albums.find(a => String(a.id) === String(id))).filter(Boolean);
   if (!chosen.length) return;
@@ -952,6 +953,7 @@ async function openEditor(ids, {onlineSuggestions = true} = {}) {
   if (details !== state.details || loadRequest !== libraryLoadRequest) {
     toast(TagcastI18n.text("editor.open.libraryChanged")); return;
   }
+  if (canOpen && !canOpen()) return;
   if (albums.length !== chosen.length) { toast(TagcastI18n.text("editor.open.albumMissing")); return; }
   if (whole) albums.sort((a, b) => (a.disc || 0) - (b.disc || 0));
   const album = albums[0], bulk = albums.length > 1 && !whole, single = !bulk;
@@ -1609,6 +1611,7 @@ function resetLiveLibraryViews() {
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
   if (typeof resetCleanup === "function") resetCleanup();
+  if (typeof resetArtistCleanup === "function") resetArtistCleanup(true);
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
   if (typeof resetEmptyTrashReview === "function") resetEmptyTrashReview();

@@ -290,6 +290,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(lambda: self.studio.cleanup.view(query.get("offset", "0"), query.get("limit", "25")))
         elif url.path == "/api/cleanup/report":
             self._run(lambda: self.studio.cleanup.view(report=True))
+        elif url.path == "/api/artist-cleanup":
+            self._run(lambda: self.studio.artist_cleanup(query.get("offset", "0")))
         elif url.path == "/api/year-review":
             self._run(lambda: self.studio.year_review.view(query.get("id"), query.get("q", ""),
                                                           query.get("category", "differences"), query.get("offset", "0")))

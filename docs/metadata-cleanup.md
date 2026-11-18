@@ -155,3 +155,15 @@ never titles, years, artwork or track numbers. It checks the account, active alb
 reviewed original values before writing. A conflicting edit, request error or
 unconfirmed result stops further batches. A failed artist creation is not retried
 in the background; explicit resume first checks the fresh library for that name.
+
+## Possible missing guest credits
+
+In **Overview → Metadata health → Artist cleanup…**, choose **Analyse guest credits**.
+Tagcast checks track titles in the loaded library for explicit guest credits
+such as `(feat. Artist)`. It lists possible omissions by album when the guest
+matches a unique existing artist and no matching track credit is found. The
+analysis uses local metadata and makes no changes.
+
+Choose **Open track editor** next to a result to inspect its existing credits.
+Any edits go through the standard metadata review and save. If the library
+changes, run the analysis again to see the current results.
