@@ -610,6 +610,112 @@ class ClientTests(unittest.TestCase):
                                         lambda: studio._connect(replacement)), [])
         self.assertEqual(studio._read("tokens.json")["token_set"], replacement.to_dict())
 
+    def test_late_rejections_cannot_disconnect_a_replacement_client(self):
+        for mode in ("status", "library", "account_name", "overview"):
+            with self.subTest(mode=mode):
+                studio = self.local_connection()
+                old = studio.client
+                entered = threading.Barrier(3)
+                release = threading.Event()
+                errors = []
+
+                def reject(*args):
+                    entered.wait(timeout=5)
+                    if not release.wait(5):
+                        raise TimeoutError("Test did not resume the request")
+                    raise client.NotConnected("Old credentials expired.")
+
+                if mode == "library":
+                    old.fetch_library = reject
+                    # Full downloads are serialized, so the second caller is a
+                    # delayed request for the old account's display name.
+                    action = (studio.load_library, studio.status)
+                    old._jsonrequest = lambda *_: (
+                        {"status": {"lastmodified": ""}, "user": {"id": 1}}
+                        if threading.current_thread().name == "old-library" else reject())
+                else:
+                    old._jsonrequest = reject
+                    operation = {"status": studio.load_library, "account_name": studio.status,
+                                 "overview": studio.overview}[mode]
+                    action = (operation, operation)
+
+                def run(operation):
+                    try:
+                        operation()
+                    except Exception as error:
+                        errors.append(error)
+
+                threads = [threading.Thread(target=run, args=(operation,),
+                                            name="old-library" if index == 0 else "old-status")
+                           for index, operation in enumerate(action)]
+                for worker in threads:
+                    worker.start()
+                try:
+                    entered.wait(timeout=5)
+                    tokens = client.oauth.TokenSet("replacement", "new-refresh", time.time() + 3600)
+                    studio._connect(tokens)
+                    new_client, session = studio.client, studio.playback_session
+                finally:
+                    release.set()
+                    for worker in threads:
+                        worker.join(6)
+                self.assertFalse(any(worker.is_alive() for worker in threads))
+                self.assertEqual(len(errors), {"status": 2, "library": 1, "account_name": 0,
+                                              "overview": 2}[mode])
+                self.assertTrue(all(isinstance(error, client.NotConnected) for error in errors))
+                self.assertIs(studio.client, new_client)
+                self.assertEqual(studio.playback_session, session)
+                self.assertEqual(studio._read("tokens.json")["token_set"], tokens.to_dict())
+
+    def test_late_success_cannot_publish_old_account_flags(self):
+        studio = self.local_connection()
+        old = studio.client
+        tokens = client.oauth.TokenSet("replacement", "new-refresh", time.time() + 3600)
+        entered = threading.Event()
+        release = threading.Event()
+        errors = []
+
+        def status(*args):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Test did not resume the request")
+            return {"user": {"id": 1, "premium": True, "username": "Old",
+                             "preferences": {"combine_sets": True}}}
+
+        def run():
+            try:
+                studio.load_library()
+            except Exception as error:
+                errors.append(error)
+
+        old._jsonrequest = status
+        worker = threading.Thread(target=run)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(5))
+            studio._connect(tokens)
+        finally:
+            release.set()
+            worker.join(6)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], client.NotConnected)
+        self.assertFalse(studio.premium)
+        self.assertFalse(studio.combine_sets)
+        self.assertIsNone(studio.library)
+        self.assertIsNone(studio.account)
+        self.assertIsNone(studio.library_user)
+
+    def test_auth_rejection_of_the_current_client_still_clears_tokens(self):
+        studio = self.local_connection()
+        with patch.object(studio.client, "_jsonrequest",
+                          side_effect=client.NotConnected("Credentials expired.")):
+            with self.assertRaises(client.NotConnected):
+                studio.load_library()
+        self.assertIsNone(studio.client)
+        self.assertEqual(studio.playback_session, "")
+        self.assertFalse(Path(self.home, "tokens.json").exists())
+
     def test_disconnect_cancels_pending_browser_sign_in(self):
         studio = self.local_connection()
         url = studio.browser_url("http://127.0.0.1/callback")
@@ -1244,6 +1350,32 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(third["source"], "memory")
         self.assertEqual(status.call_count, 2)
         self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
+
+    def test_read_back_keeps_verified_results_but_omits_superseded_summaries(self):
+        studio = self.connect()
+        studio.load_library()
+        entered = threading.Event()
+        release = threading.Event()
+
+        def check(_):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Test did not resume the read-back")
+            return [{"status": "saved"}]
+
+        job_id = studio._check_later(studio.client, studio.downloads, check)
+        try:
+            self.assertTrue(entered.wait(5))
+            checked = studio.library
+            studio.load_library(refresh=True)
+            self.assertIsNot(studio.library, checked)
+        finally:
+            release.set()
+        job = self.wait_job(studio, job_id)
+        self.assertEqual(job["results"], [{"status": "saved"}])
+        self.assertNotIn("albums", job)
+        self.assertNotIn("editor_names", job)
+        self.wait_for_cache(studio)
 
     def test_read_back_replaces_cached_summaries_even_at_the_same_revision(self):
         studio = self.connect()

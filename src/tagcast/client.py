@@ -546,6 +546,8 @@ class Studio:
 
     def _forget_cache(self):
         with self.cache_lock:
+            if self.client is not None:  # a new sign-in won the race with logout
+                return
             try:
                 (self.home / CACHE_FILE).unlink()
             except OSError:
@@ -591,17 +593,27 @@ class Studio:
                 self._write("tokens.json", {"client_id": self.client_id,
                                             "token_set": token_set.to_dict()})
 
-    def _connect(self, token_set, save=True):
-        self.audio_downloads.close()
+    def _retire_connection_services(self):
+        """Detach the current owner's services under Studio.lock without waiting on I/O."""
+        if self.client is not None:
+            # Downloads have a separate lock. Close only the retiring owner's
+            # work, without waiting for that lock while holding Studio.lock.
+            threading.Thread(target=self.audio_downloads.close,
+                             args=((self.client, self.playback_session),),
+                             daemon=True, name="tagcast-retire-downloads").start()
         self.music_uploads.close()
-        self.queue_sync.disconnect()
-        client = StudioClient(access_token=token_set.access_token,
-                              refresh_token=token_set.refresh_token,
-                              client_id=self.client_id,
-                              token_refreshed_callback=lambda tokens: self._save_tokens(tokens, client))
-        client.token_set = token_set
+        self.queue_sync.disconnect(background=True)
+
+    def _connect(self, token_set, save=True):
         with self.lock:
-            self.client, self.library, self.account = client, None, None
+            client = StudioClient(access_token=token_set.access_token,
+                                  refresh_token=token_set.refresh_token,
+                                  client_id=self.client_id,
+                                  token_refreshed_callback=lambda tokens: self._save_tokens(tokens, client))
+            client.token_set = token_set
+            self._retire_connection_services()
+            self.client, self.library, self.library_user, self.account = client, None, None, None
+            self.combine_sets = self.premium = False
             self.jobs.clear()
             self.trash_emptying.reviews.clear()
             self.playback_session = secrets.token_hex(16)
@@ -609,12 +621,13 @@ class Studio:
             if save:
                 self._save_tokens(token_set, client)
 
-    def _disconnect(self):
-        self.audio_downloads.close()
-        self.music_uploads.close()
-        self.queue_sync.disconnect()
+    def _disconnect(self, *, expected_client=None):
         with self.lock:
-            self.client = self.library = self.account = self.device = None
+            if expected_client is not None and expected_client is not self.client:
+                return
+            self._retire_connection_services()
+            self.client = self.library = self.library_user = self.account = self.device = None
+            self.combine_sets = self.premium = False
             self.jobs.clear()
             self.trash_emptying.reviews.clear()
             self.playback_session = ""
@@ -631,41 +644,44 @@ class Studio:
 
     def status(self):
         with self.lock:
-            device = dict(self.device) if self.device else None
             client = self.client
-        if client and self.account is None:
+            needs_name = client is not None and self.account is None
+        if needs_name:
             account = self._account_name(client)
             with self.lock:
                 if self.client is client:
                     self.account = account
         with self.lock:
             client = self.client
-        return {
-            "configured": bool(self.client_id),
-            "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
-            "using_default_client": self.client_id == DEFAULT_CLIENT_ID,
-            "connected": bool(client),
-            "combine_sets": self.combine_sets,
-            "premium": self.premium,
-            "account": self.account or "",
-            "device": device,
-            "scopes": self.scopes,
-            "music_uploads_authorized": upload_authorized(client),
-            "playback_session": self.playback_session if client else "",
-        }
+            return {
+                "configured": bool(self.client_id),
+                "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
+                "using_default_client": self.client_id == DEFAULT_CLIENT_ID,
+                "connected": bool(client),
+                "combine_sets": self.combine_sets,
+                "premium": self.premium,
+                "account": self.account or "",
+                "device": dict(self.device) if self.device else None,
+                "scopes": self.scopes,
+                "music_uploads_authorized": upload_authorized(client),
+                "playback_session": self.playback_session if client else "",
+            }
 
     def _account_name(self, client):
         try:
             data = client._jsonrequest("status")
         except NotConnected:
-            self._disconnect()
+            self._disconnect(expected_client=client)
             return None
         except (ConnectionUnavailable, ConnectionSecurityError):
             return None
         except ApiError:
             return ""
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
-        self.premium = user.get("premium") in (True, 1, "1")
+        with self.lock:
+            if client is not self.client:
+                return None
+            self.premium = user.get("premium") in (True, 1, "1")
         return str(user.get("username") or user.get("email") or "")
 
     def start_device(self):
@@ -776,11 +792,15 @@ class Studio:
                 raise NotConnected("Connect your iBroadcast account first.", code="account.not_connected")
             return self.client
 
+    def _check_client(self, client):
+        if client is not self.client:
+            raise NotConnected("You disconnected from iBroadcast.")
+
     def _fetch(self, client):
         try:
             return client.fetch_library()
         except NotConnected:
-            self._disconnect()
+            self._disconnect(expected_client=client)
             raise
 
     def _remote_state(self, client):
@@ -788,13 +808,15 @@ class Studio:
         try:
             data = client._jsonrequest("status")
         except NotConnected:
-            self._disconnect()
+            self._disconnect(expected_client=client)
             raise
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
         status = data.get("status") if isinstance(data.get("status"), dict) else {}
         prefs = user.get("preferences") if isinstance(user.get("preferences"), dict) else {}
-        self.premium = user.get("premium") in (True, 1, "1")
-        self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
+        with self.lock:
+            self._check_client(client)
+            self.premium = user.get("premium") in (True, 1, "1")
+            self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
         return text(status.get("lastmodified")), text(user.get("id") or user.get("user_id"))
 
     def _keep(self, library, user_id, started, client):
@@ -819,24 +841,23 @@ class Studio:
         """
         lastmodified, user_id = self._remote_state(client)
         if lastmodified and not refresh and after is None:  # a read-back always reads fresh data
-            if library := self._in_memory(user_id, lastmodified):
+            if library := self._in_memory(client, user_id, lastmodified):
                 return library, "memory"
             if library := self._read_cache(user_id, lastmodified):
                 with self.lock:
-                    if client is not self.client:
-                        raise NotConnected("You disconnected from iBroadcast.")
+                    self._check_client(client)
                     self.library, self.library_user = library, user_id
                 return library, "cache"
         with self.download_lock:
             # a download that finished while we waited (e.g. a read-back) may be current
             if lastmodified and not refresh and after is None \
-                    and (library := self._in_memory(user_id, lastmodified)):
+                    and (library := self._in_memory(client, user_id, lastmodified)):
                 return library, "memory"
             with self.lock:
+                self._check_client(client)
                 if after is not None and self.library and self.library_user == user_id \
                         and self.library_started > after:
                     return self.library, "memory"
-            with self.lock:
                 self.downloads += 1
                 started = self.downloads
             library = self._fetch(client)
@@ -845,22 +866,27 @@ class Studio:
                 raise NotConnected("You disconnected from iBroadcast.")
         return library, "download"
 
-    def _in_memory(self, user_id, lastmodified):
+    def _in_memory(self, client, user_id, lastmodified):
         with self.lock:
-            library, owner = self.library, self.library_user
+            self._check_client(client)
+            library, owner, combine_sets = self.library, self.library_user, self.combine_sets
         if library and owner == user_id and library.lastmodified == lastmodified \
-                and library.combine_sets == self.combine_sets \
+                and library.combine_sets == combine_sets \
                 and not (not library.combine_sets and library.combined_view):
             return library
         return None
 
     def account_settings(self):
         """iBroadcast settings that change what can be saved, checked now."""
-        self._remote_state(self._require_client())
-        return {"combine_sets": self.combine_sets}
+        client = self._require_client()
+        self._remote_state(client)
+        with self.lock:
+            self._check_client(client)
+            return {"combine_sets": self.combine_sets}
 
     def load_library(self, refresh=False):
-        library, source = self._current(self._require_client(), refresh)
+        client = self._require_client()
+        library, source = self._current(client, refresh)
         albums = library.album_index()
         try:
             favourites = self.collections.album_favourites(library)
@@ -871,15 +897,19 @@ class Studio:
                 library, {entry["id"] for a in albums for entry in a["album_artists"] if entry["id"] != "0"})
         except LibraryError as error:
             artist_favourites = {"artists": None, "error": str(error)}
-        return {"albums": albums, "artists": library.artist_names(),
+        result = {"albums": albums, "artists": library.artist_names(),
                 "playback_profile": self.collections.playback_profile(library),
                 "editor_names": library.editor_names(),
                 "album_favourites": favourites,
                 "artist_favourites": artist_favourites,
                 "playlists_count": self.collections.playlist_count(library),
-                "favourites_count": library.favourites()["count"], "premium": self.premium,
+                "favourites_count": library.favourite_count(),
                 "source": source, "lastmodified": library.lastmodified,
-                "combine_sets": self.combine_sets, "combined_view": library.combined_view}
+                "combine_sets": library.combine_sets, "combined_view": library.combined_view}
+        with self.lock:
+            self._check_client(client)
+            result["premium"] = self.premium
+            return result
 
     def album_details(self, ids):
         with self.lock:
@@ -1150,6 +1180,13 @@ class Studio:
 
     # -- read-back -----------------------------------------------------------
 
+    def _store_finished_job(self, job_id, result):
+        # Called under Studio.lock. Active workers keep their slots until settled.
+        self.jobs[job_id] = result
+        finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
+        for old in finished[:-20]:
+            del self.jobs[old]
+
     def _check_later(self, client, written, check, include_albums=True):
         """Download the library in the background and run check(library) -> results.
 
@@ -1160,8 +1197,15 @@ class Studio:
         """
         job_id = secrets.token_urlsafe(9)
         marker = {"state": "checking"}
+        session_changed = ("The account or session changed. The write outcome is unknown; "
+                           "check iBroadcast before any new review.")
         with self.lock:
-            owner = (self.client, self.library_user, self.playback_session)
+            if client is not self.client:
+                # The request was already sent. Return a terminal, data-free
+                # receipt rather than an authentication error for a blocked write.
+                self._store_finished_job(job_id, {"state": "error", "error": session_changed})
+                return job_id
+            owner = (client, self.library_user, self.playback_session)
             self.jobs[job_id] = marker
             self.readbacks[job_id] = marker
 
@@ -1184,16 +1228,17 @@ class Studio:
                 result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
                 if owner != (self.client, self.library_user, self.playback_session):
-                    result = {"state": "error", "error": "The account or session changed. The write outcome is unknown; check iBroadcast before any new review."}
+                    result = {"state": "error", "error": session_changed}
+                elif "albums" in result and self.library is not after:
+                    # The outcome was verified, but a newer snapshot superseded its view.
+                    result.pop("albums")
+                    result.pop("editor_names")
                 # A drainer can retain this marker even if logout cleared the
                 # account-scoped job view. Never publish old account data there.
                 marker.update(result)
                 self.readbacks.pop(job_id, None)
                 if self.jobs.get(job_id) is marker:
-                    self.jobs[job_id] = result
-                    finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
-                    for old in finished[:-20]:
-                        del self.jobs[old]
+                    self._store_finished_job(job_id, result)
 
         threading.Thread(target=run, daemon=True).start()
         return job_id
@@ -1217,10 +1262,15 @@ class Studio:
         try:
             data = client._jsonrequest("status")
         except NotConnected:
-            self._disconnect()
+            self._disconnect(expected_client=client)
             raise
+        with self.lock:
+            self._check_client(client)
         library, _ = self._library()
-        return {"account": account_view(data), "stats": library.stats()}
+        result = {"account": account_view(data), "stats": library.stats()}
+        with self.lock:
+            self._check_client(client)
+            return result
 
     # -- settings and online sources ------------------------------------------
 

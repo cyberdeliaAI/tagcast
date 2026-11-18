@@ -1,6 +1,6 @@
 /* Explicit, optional fullscreen effects; the original cover/lyrics layout remains the default. */
 .music-visualization-choice > span{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-#player-stage .music-visualization-choice select{max-width:170px;min-height:44px;padding:8px 28px 8px 12px;border-radius:12px;font-size:13px}
+#player-stage .music-visualization-choice select{max-width:232px;min-height:44px;padding:8px 28px 8px 12px;border-radius:12px;font-size:13px}
 #music-visualization-surface[hidden],#music-visualization-status[hidden]{display:none}
 #player-stage .music-visualization-active .visual-player-content{position:relative;isolation:isolate;overflow:hidden;min-height:200px;border-radius:16px;margin-block:20px;padding:24px;display:flex;align-items:center;justify-content:flex-end;flex-direction:column;color:#f4f6f5;background:#080d0c}
 #music-visualization-surface{position:absolute;inset:0;z-index:-1;background:#080d0c}
@@ -16,7 +16,7 @@
 #player-stage .music-visualization-active .visual-player-content.lyrics-visible .visual-lyrics{position:static;grid-column:2;grid-row:1;width:100%;height:100%;min-height:0;padding:16px;background:#08100de0;border-radius:12px;--expanded-link:#d2e69e;--muted:#cbd4cf}
 @media(max-width:1100px){#player-stage .visual-player-tools{flex-wrap:wrap;justify-content:flex-end}}
 @media(max-width:600px),(max-height:520px){
-  #player-stage .music-visualization-choice select{max-width:135px;min-height:36px}
+  #player-stage .music-visualization-choice select{max-width:202px;min-height:36px}
   #player-stage .music-visualization-active .visual-player-content{height:55dvh;flex:none;padding:16px}
   #player-stage .music-visualization-active .visual-player-content.lyrics-visible{height:auto;min-height:70dvh;display:flex;gap:16px}
   #player-stage .music-visualization-active .visual-player-content.lyrics-visible .visual-lyrics{height:300px;width:100%;flex:none}

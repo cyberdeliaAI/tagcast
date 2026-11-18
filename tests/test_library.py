@@ -1,5 +1,7 @@
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from threading import Event, Lock
 from unittest.mock import patch
 
 from tagcast.library import (
@@ -158,6 +160,50 @@ class SummaryTests(unittest.TestCase):
                 self.assertEqual(library.track_view(100)["uploaded_on"], day[:10])
                 self.assertEqual(library.album_summary(10)["uploaded_at"], expected)
 
+    def test_overlapping_track_searches_share_one_snapshot_index(self):
+        library = lib()
+        started, waiting, finish = Event(), Event(), Event()
+        mutex = Lock()
+
+        class SearchLock:
+            def __enter__(self):
+                if mutex.locked():
+                    waiting.set()
+                mutex.acquire()
+
+            def __exit__(self, *_):
+                mutex.release()
+
+        library._search_lock = SearchLock()
+        original = library._search_index
+
+        def build():
+            started.set()
+            self.assertTrue(finish.wait(5))
+            return original()
+
+        with patch.object(library, "_search_index", side_effect=build) as builder:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(library.search_tracks, "song")
+                try:
+                    self.assertTrue(started.wait(5))
+                    second = pool.submit(library.search_tracks, "elsewhere")
+                    self.assertTrue(waiting.wait(5))
+                finally:
+                    finish.set()
+                self.assertEqual(first.result(5)["total"], 2)
+                self.assertEqual(second.result(5)["total"], 1)
+            builder.assert_called_once_with()
+
+        self.assertEqual(edited("tracks", 100, "title", "Revised").search_tracks("song")["total"], 1)
+
+    def test_track_search_index_can_be_rebuilt_after_a_failure(self):
+        library = lib()
+        with patch.object(library, "_search_index", side_effect=ValueError("temporary failure")):
+            with self.assertRaises(ValueError):
+                library.search_tracks("song")
+        self.assertEqual(library.search_tracks("song")["total"], 2)
+
     def test_file_formats_reuse_stored_types_in_details_search_favourites_and_cache(self):
         for mime, expected in [("audio/flac", "FLAC"), ("audio/x-flac", "FLAC"),
                                (" Audio/MPEG ", "MP3"), ("audio/mp3", "MP3"),
@@ -208,6 +254,24 @@ class SummaryTests(unittest.TestCase):
         summary = lib().album_summary(10)  # Song One: no genre, no cover; Song Two: both
         self.assertEqual((summary["no_genre"], summary["no_cover"], summary["track_count"]), (1, 1, 2))
         self.assertNotIn("tracks", summary)
+
+    def test_favourite_count_shares_membership_without_building_search_rows(self):
+        data = raw()
+        tables = data["library"]
+        tables["tracks"]["map"]["rating"] = 8
+        for track in ("100", "101", "102", "103", "104"):
+            tables["tracks"][track].append(5)
+        tables["albums"]["10"][2].extend([100, 102])
+        tables["albums"]["11"][2].append(100)
+        tables["albums"]["12"][2] = []
+        library = Library(data)
+        with patch.object(library, "track_row", side_effect=AssertionError("No search rows")):
+            self.assertEqual(library.favourite_count(), 3)
+            self.assertEqual(library.favourite_count(), 3)
+        self.assertIsNone(library._favourites)
+        visible = library.favourites("artist b")
+        self.assertEqual(visible["count"], 3)
+        self.assertEqual(library.favourite_count(), visible["count"])
 
     def test_native_favourites_include_top_ratings_only_and_search_and_paginate_on_server(self):
         data = raw()

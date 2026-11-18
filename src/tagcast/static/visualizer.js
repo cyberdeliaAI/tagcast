@@ -40,13 +40,22 @@ function visualizerListeningPage() {
 }
 function visualizerNeeded() { return visualizerActiveMode() !== "off" || visualizerListeningPage()
   || typeof musicVisualizationActive === "function" && musicVisualizationActive(); }
-function visualizerStereo() {
-  if (!visualizerListeningPage() || nowPlayingPreferences.meter !== "vu" || visualizer.stereo || !visualizer.context) return;
+function syncVisualizerStereo() {
+  const needed = !document.hidden && ((visualizerListeningPage() && nowPlayingPreferences.meter === "vu")
+    || (typeof musicVisualizationNeedsStereo === "function" && musicVisualizationNeedsStereo()));
+  if (!needed) { releaseVisualizerStereo(); return; }
+  if (visualizer.stereo || !visualizer.context) return;
   const context = visualizer.context, splitter = context.createChannelSplitter(2);
   const analysers = [context.createAnalyser(), context.createAnalyser()];
   analysers.forEach((a, i) => { a.fftSize = 2048; splitter.connect(a, i); });
   visualizer.stereo = {splitter, analysers, samples: analysers.map(a => new Float32Array(a.fftSize))};
   visualizer.source?.connect(splitter);
+}
+function readVisualizerStereoSamples() {
+  const stereo = visualizer.stereo;
+  if (!stereo) return null;
+  stereo.analysers.forEach((analyser, i) => analyser.getFloatTimeDomainData(stereo.samples[i]));
+  return stereo.samples;
 }
 function releaseVisualizerStereo() {
   if (!visualizer.stereo) return;
@@ -196,9 +205,8 @@ function applyVisualizer() {
   document.documentElement.dataset.playerVisualizer = mode;
   placeVisualizer(mode);
   if (!visualizerNeeded()) { stopVisualizer(); releaseVisualizerGraph(); return; }
-  if (!visualizerListeningPage() || nowPlayingPreferences.meter !== "vu") releaseVisualizerStereo();
   if (!audio.paused) { ensureVisualizerGraph(); visualizer.context?.resume?.().catch(() => {}); }
-  visualizerStereo();
+  syncVisualizerStereo();
   startVisualizer();
 }
 
@@ -230,10 +238,7 @@ function visualizerFrame(time) {
   }
   visualizerSmooth(fresh, dt);
   if (visualizerListeningPage()) {
-    visualizerStereo();
-    const stereo = visualizer.stereo;
-    if (listening && stereo) stereo.analysers.forEach((a, i) => a.getFloatTimeDomainData(stereo.samples[i]));
-    drawListeningMeter(dt, listening ? stereo?.samples : null, visualizer.levels);
+    drawListeningMeter(dt, listening ? readVisualizerStereoSamples() : null, visualizer.levels);
   }
   if (typeof drawMusicVisualization === "function") drawMusicVisualization(time, listening);
   drawVisualizer(mode);
@@ -306,6 +311,7 @@ function markVisualizerRow(clear) {
 audio.addEventListener("play", () => {
   if (!visualizerNeeded()) return;
   ensureVisualizerGraph();
+  syncVisualizerStereo();
   visualizer.context?.resume?.().catch(() => {});
   startVisualizer();
 });
