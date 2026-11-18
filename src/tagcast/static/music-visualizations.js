@@ -2,9 +2,10 @@
 
 // Presentation-only listeners of visualizer.js's existing captureStream graph.
 // Butterchurn receives sample arrays, never an AudioContext or an output node.
-const MUSIC_VISUAL_EFFECTS = ["aurora", "orbit", "ribbons", "led", "scope", "radial", "stars", "waterfall"];
+const MUSIC_VISUAL_EFFECTS = ["aurora", "orbit", "ribbons", "ember", "kaleido",
+  "led", "scope", "vectorscope", "radial", "stars", "waterfall"];
 const MUSIC_VISUAL_MODES = ["off", "random", ...MUSIC_VISUAL_EFFECTS];
-const MUSIC_VISUAL_CANVAS = ["led", "scope", "radial", "stars", "waterfall"];
+const MUSIC_VISUAL_CANVAS = ["led", "scope", "vectorscope", "radial", "stars", "waterfall"];
 const musicVisualization = {mode: storedMusicVisualization(), canvas: null, renderer: null,
   generation: 0, pending: false, failed: false, loader: null, last: 0, width: 0, height: 0,
   bytes: new Uint8Array(1024), samples: new Float32Array(2048), message: "",
@@ -34,6 +35,7 @@ function advanceMusicVisualization() {
   } else {
     releaseMusicVisualization();
     musicVisualization.effect = effect;
+    syncVisualizerStereo();
     prepareMusicVisualization();
   }
 }
@@ -49,6 +51,10 @@ function storedMusicVisualization() {
 function musicVisualizationActive() {
   return visualPlayer.open && musicVisualization.mode !== "off" && !musicVisualization.failed
     && !visualizerReducedMotion() && visualizerSupported() && !document.hidden;
+}
+
+function musicVisualizationNeedsStereo() {
+  return musicVisualization.effect === "vectorscope" && musicVisualizationActive();
 }
 
 function musicVisualizationOptions() {
@@ -112,8 +118,10 @@ function loadMusicVisualizationLibrary() {
   return pending;
 }
 
-// Original, bounded function presets; no imported equations or remote image dependencies.
+// Bundled, bounded function presets with no runtime compilation or remote image dependencies.
 function musicVisualizationPreset(mode) {
+  if (mode === "ember") return musicVisualizationEmberTunnel();
+  if (mode === "kaleido") return musicVisualizationKaleidoBloom();
   const variant = {aurora: 0, orbit: 1, ribbons: 2}[mode] || 0;
   return {baseVals: {decay: .96, gammaadj: 1.7, wave_a: .85, wave_scale: 1.1,
     wave_mode: variant === 1 ? 0 : 7, wave_thick: 1, additivewave: 1, wave_smoothing: .65,
@@ -128,6 +136,97 @@ function musicVisualizationPreset(mode) {
     m.warp = variant === 2 ? .08 : .25 + .08 * Math.sin(m.time * .2);
     return m;
   }, pixel_eqs: m => m, warp: "", comp: ""};
+}
+
+// Ember Tunnel and Kaleido Bloom are adapted from Audiofilus (MIT).
+// Copyright (c) 2026 Juan Villacorta. See vendor/audiofilus/LICENSE.
+function musicVisualizationClamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+
+function musicVisualizationEmberTunnel() {
+  return {
+    baseVals: {
+      gammaadj: 1.3, decay: .96, echo_zoom: 1.006, echo_alpha: .3, wave_mode: 0,
+      wave_thick: 1, wave_brighten: 1, darken_center: 1, wave_a: .7, wave_scale: 1.2,
+      wave_mystery: -.2, zoom: 1.04, rot: .01, warp: .3, wave_r: 1, wave_g: .5, wave_b: .1,
+    },
+    init_eqs: state => { state.spin = 0; return state; },
+    frame_eqs: state => {
+      state.spin += .002 + .01 * musicVisualizationClamp(state.bass_att - 1, 0, 2);
+      state.rot = .02 * Math.sin(state.time * .3 + state.spin) + .03 * musicVisualizationClamp(state.bass_att - 1, -1, 2);
+      state.zoom = 1.03 + .04 * musicVisualizationClamp(state.bass - 1, 0, 2);
+      state.wave_r = .9 + .1 * Math.sin(state.time * 1.3);
+      state.wave_g = .35 + .2 * Math.sin(state.time * .7 + state.treb_att);
+      state.wave_b = .05 + .05 * Math.sin(state.time * .5);
+      state.wave_mystery = -.2 + .15 * musicVisualizationClamp(state.mid_att - 1, -1, 2);
+      state.q1 = .5 + .5 * Math.sin(state.time * .4);
+      return state;
+    },
+    pixel_eqs: state => {
+      state.rot += .04 * Math.sin(state.rad * 6 - state.time * 2) * state.q1;
+      state.zoom += .02 * state.rad;
+      return state;
+    },
+    shapes: [], waves: [], warp: "", comp: "",
+  };
+}
+
+function musicVisualizationKaleidoBloom() {
+  const identity = state => state;
+  return {
+    baseVals: {
+      gammaadj: 1.2, decay: .95, echo_zoom: 1, echo_alpha: .5, echo_orient: 3,
+      wave_mode: 1, wave_brighten: 1, wave_a: .6, wave_scale: .8,
+      zoom: .985, rot: .01, warp: .1, wave_r: 1, wave_g: .8, wave_b: 1,
+    },
+    init_eqs: state => { state.q3 = 0; return state; },
+    frame_eqs: state => {
+      state.q1 = .6 + .4 * Math.sin(state.time * .31);
+      state.q2 = .4 + .4 * Math.sin(state.time * .47 + 2);
+      state.q3 = musicVisualizationClamp(state.mid_att - 1, -1, 2);
+      state.rot = .01 + .02 * Math.sin(state.time * .13);
+      state.wave_r = state.q1;
+      state.wave_g = state.q2;
+      return state;
+    },
+    pixel_eqs: identity,
+    shapes: [
+      {
+        baseVals: {
+          enabled: 1, sides: 6, thickoutline: 1, num_inst: 6, x: .5, y: .5, rad: .06,
+          r: 1, g: .3, b: .6, a: .6, r2: .2, g2: .1, b2: .8, a2: 0, border_a: .25,
+        },
+        init_eqs: identity,
+        frame_eqs: state => {
+          const angle = state.instance / 6 * Math.PI * 2 + state.time * .5;
+          const radius = .22 + .05 * state.q3;
+          state.x = .5 + radius * Math.cos(angle) * state.aspecty;
+          state.y = .5 + radius * Math.sin(angle);
+          state.rad = .04 + .04 * musicVisualizationClamp(state.bass_att, 0, 2);
+          state.ang = -angle * 2;
+          state.r = state.q1;
+          state.g = .25 * state.q2;
+          state.b = 1 - state.q1 * .6;
+          return state;
+        },
+      },
+      {
+        baseVals: {
+          enabled: 1, sides: 24, textured: 1, num_inst: 1, x: .5, y: .5,
+          rad: .2, tex_zoom: 1.6, r: 1, g: 1, b: 1, a: .6, r2: 1, g2: 1, b2: 1, a2: 0, border_a: 0,
+        },
+        init_eqs: identity,
+        frame_eqs: state => {
+          state.tex_ang = state.time * .2;
+          state.rad = .18 + .03 * Math.sin(state.time * .9);
+          return state;
+        },
+      },
+      // Butterchurn visits all four shape slots when custom shapes are present.
+      {baseVals: {enabled: 0}},
+      {baseVals: {enabled: 0}},
+    ],
+    waves: [], warp: "", comp: "",
+  };
 }
 
 function musicVisualizationSize() {
@@ -205,6 +304,37 @@ function setMusicVisualization(mode) {
   syncMusicVisualization();
 }
 
+function drawMusicVectorscope(g, width, height) {
+  const x = width / 2, y = height * .46, radius = Math.min(width, height) * .39;
+  g.strokeStyle = "#234348";
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(x, y - radius); g.lineTo(x + radius, y);
+  g.lineTo(x, y + radius); g.lineTo(x - radius, y); g.lineTo(x, y - radius);
+  g.moveTo(x - radius, y); g.lineTo(x + radius, y);
+  g.moveTo(x, y - radius); g.lineTo(x, y + radius);
+  g.stroke();
+  const samples = readVisualizerStereoSamples();
+  if (!samples) return;
+  const [left, right] = samples;
+  const scale = radius * .46;
+  g.strokeStyle = "#92f7ea";
+  g.lineWidth = Math.max(1, radius / 120);
+  g.lineJoin = "round";
+  g.shadowColor = "#36e0c8";
+  g.shadowBlur = 8;
+  g.beginPath();
+  for (let i = 0; i < left.length; i += 4) {
+    const l = musicVisualizationClamp(left[i], -1, 1);
+    const r = musicVisualizationClamp(right[i], -1, 1);
+    // In-phase audio runs vertically. The horizontal axis shows the difference.
+    const px = x + (l - r) * scale, py = y - (l + r) * scale;
+    if (i) g.lineTo(px, py); else g.moveTo(px, py);
+  }
+  g.stroke();
+  g.shadowBlur = 0;
+}
+
 function drawMusicVisualization(time, listening) {
   if (!musicVisualizationActive() || !listening || audio.seeking || audio.readyState < 3) {
     musicVisualization.last = 0;
@@ -274,6 +404,8 @@ function drawMusicVisualization(time, listening) {
           g.beginPath();g.moveTo(x, y);
           g.lineTo(x + Math.cos(angle) * depth * (3 + energy * 35), y + Math.sin(angle) * depth * (3 + energy * 35));g.stroke();
         }
+      } else if (mode === "vectorscope") {
+        drawMusicVectorscope(g, width, height);
       } else if (mode === "scope") {
         g.strokeStyle = "#14322a"; g.lineWidth = 1;
         g.beginPath();

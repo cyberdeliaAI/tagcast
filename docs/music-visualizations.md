@@ -9,12 +9,18 @@ artwork presentation. Lyrics can remain visible alongside an effect.
 Available presentations:
 
 - MilkDrop · Aurora, Orbit and Ribbons: three original bundled Butterchurn presets.
+- **MilkDrop · Ember Tunnel and Kaleido Bloom** bring a bass-reactive orange tunnel and
+  rotating, mirrored purple shapes, adapted from
+  [Audiofilus](https://github.com/juanvillacortac/audiofilus/tree/f8b1e3f7d6357ea8ef7a300d1e96228e618cc96d/internal/milkdrop/presets).
+  The [MIT notice](../src/tagcast/static/vendor/audiofilus/LICENSE) is bundled with Tagcast.
 - Retro · LED spectrum: amber segmented frequency bars.
 - Retro · Oscilloscope: a green waveform with a grid and rising-edge alignment.
+- **Stereo · Vectorscope** shows the phase relationship between both channels. The sum runs
+  vertically and the difference runs horizontally.
 - Spectrum · Neon ring: a circular frequency spectrum.
 - Space · Starfield: moving stars with bass-reactive trails.
 - Spectrum · Waterfall: a rolling coloured frequency history.
-- Random: a shuffled rotation through all eight effects, every 30 seconds of
+- Random: a shuffled rotation through all eleven effects, every 30 seconds of
   visible playback. Every effect gets a turn before the bag repeats, with no
   adjacent repeat between bags. Pause, buffering, seeking and hidden views do
   not advance the clock. Choosing a fixed effect stops the rotation.
@@ -32,9 +38,10 @@ This does not import arbitrary MilkDrop presets or provide the MilkDrop desktop 
 Effects read samples from Tagcast's existing `captureStream` analyser and share its
 animation loop. There is one authoritative audio element. Butterchurn receives a
 null AudioContext and sample arrays, so it creates no audio nodes or output path.
-Its left/right inputs currently both contain the existing mono mix; these effects
-are not independent stereo meters. Native speed/output controls, queue and Gapless
-continue through the existing playback path.
+Its left/right inputs both contain the existing mono mix. The vectorscope shares
+the listening page's two-channel analyser, which disconnects when neither view
+uses it. Native speed/output controls, queue and Gapless continue through the
+existing playback path.
 
 Rendering is capped at 30 frames/second and a 1280 × 720 backing surface, with a
 32 × 24 Butterchurn mesh. These are upper limits, not a guaranteed frame rate.
@@ -45,7 +52,7 @@ artwork without stopping music; selecting an effect again permits recovery.
 
 Butterchurn 2.6.7 is bundled locally under MIT with its license and provenance in
 `src/tagcast/static/vendor/butterchurn/README.md`. It loads only when a MilkDrop
-effect is first needed. Tagcast's small presets use function equations; the
+effect is first needed. Bundled presets use function equations; the
 upstream string-to-code compiler is removed from the vendored build. No CDN,
 external visualization service, preset downloads, `unsafe-eval`, CSP relaxation,
 Electron permission changes or sandbox changes are introduced.

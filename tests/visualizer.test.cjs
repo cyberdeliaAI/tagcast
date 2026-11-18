@@ -225,6 +225,25 @@ test("leaving the VU page removes stereo analysers but retains a requested compa
 });
 
 
+test("fullscreen vectorscope shares the VU stereo tap and releases it when the effect ends", () => {
+  const p = page({listening:true});
+  p.audio.paused = false; p.audio.emit("play"); p.stream.add(p.track("first"));
+  const stereo = p.run("visualizer.stereo");
+  p.run(`let fullscreenStereo = true;
+    function musicVisualizationNeedsStereo() { return fullscreenStereo; }
+    pageVisible = false; applyVisualizer()`);
+  assert.equal(p.run("visualizer.stereo"), stereo);
+  stereo.analysers[0].level = .25;
+  stereo.analysers[1].level = -.5;
+  assert.deepEqual(Array.from(p.run("readVisualizerStereoSamples()"), samples => samples[0]), [.25, -.5]);
+  p.run("fullscreenStereo = false; syncVisualizerStereo()");
+  assert.equal(p.run("visualizer.stereo"), null);
+  assert.equal(stereo.splitter.disconnected, true);
+  assert.equal(p.log.captures, 1);
+  assert.equal(p.log.contexts[0].state, "running");
+  assert.equal(p.audio.paused, false);
+});
+
 test("the queue's active occurrence reuses the analyser levels without another capture",()=>{
   const p=page(), original=p.document.querySelector;
   const row={isConnected:true,classList:{contains:c=>c==='playing'},style:{properties:{},setProperty(k,v){this.properties[k]=v;},removeProperty(k){delete this.properties[k];}}};
