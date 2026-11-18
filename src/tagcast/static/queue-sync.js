@@ -3,7 +3,7 @@
 // One explicitly connected browser owns the bridge. Other tabs cannot play its queue.
 // `error` is "" or a function that returns the message in the current interface language.
 const queueSync = {enabled: false, active: false, browser: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-  view: null, timer: null, publishing: false, applying: false, allowed: false, choicePending: false, sourceLoad: null, request: 0, revision: -1, error: ""};
+  view: null, timer: null, publishing: false, applying: false, allowed: false, choicePending: false, sourceLoad: null, restored: null, request: 0, revision: -1, error: ""};
 // Display keys for the bridge's status, role and repeat codes; unknown codes are shown as sent.
 const QUEUE_SYNC_STATUS = {connected: "queueSync.status.connected", connecting: "queueSync.status.connecting", reconnecting: "queueSync.status.reconnecting", disconnected: "queueSync.status.disconnected"};
 const QUEUE_SYNC_ROLES = {player: "queueSync.role.player", controller: "queueSync.role.controller"};
@@ -15,7 +15,7 @@ function applyQueueSettings(data) {
   lookup.queueSync = data.queue_sync === true; queueSync.enabled = lookup.queueSync;
   $("#devices-button").hidden = !queueSync.enabled;
   if (!queueSync.enabled) {
-    clearTimeout(queueSync.timer); clearQueueSyncSource(); queueSync.active = false; queueSync.view = null; queueSync.allowed = false; queueSync.choicePending = false;
+    clearTimeout(queueSync.timer); clearQueueSyncSource(); queueSync.restored = null; queueSync.active = false; queueSync.view = null; queueSync.allowed = false; queueSync.choicePending = false;
     $("#player").hidden = !player.queue.length;
     document.body.classList.toggle("has-player", Boolean(player.queue.length));
   }
@@ -94,26 +94,54 @@ function finishQueueSyncSource() {
 audio.addEventListener("loadedmetadata", finishQueueSyncSource);
 audio.addEventListener("error", clearQueueSyncSource);
 
-async function restoreQueue(view, resume = false) {
+function queueSyncRowsMatch(rows, ids, insert, nextCount) {
+  return rows.length === ids.length && rows.every((row, i) =>
+    row.id === String(ids[i]) && Boolean(row.upNext) === (i >= insert && i < insert + nextCount));
+}
+
+function queueSyncMetadataCurrent(view) {
+  const restored = queueSync.restored;
+  return restored?.details === state.details && restored.session === state.connection.playback_session
+    && restored.snapshot === view.library_snapshot;
+}
+
+async function restoreQueue(view, resume = false, metadataOnly = false) {
   const q = view.state, data = q?.data;
   if (!data || !view.own || q.role !== "player" || view.owner !== queueSync.browser) return;
   const request = ++queueSync.request, details = state.details, session = state.connection.playback_session;
-  const revision = view.revision;
+  const revision = view.revision, snapshot = view.library_snapshot;
   const current = () => request === queueSync.request && details === state.details
     && session === state.connection.playback_session && queueSync.active
-    && queueSync.view?.revision === revision && queueSync.view?.owner === queueSync.browser
+    && queueSync.view?.revision === revision && queueSync.view?.library_snapshot === snapshot
+    && queueSync.view?.owner === queueSync.browser
     && queueSync.view?.own && queueSync.view.state?.role === "player";
   queueSync.applying = true;
   try {
     const index = Math.min(data.play_index, q.tracks.length), insert = data.play_from === "play_next" ? index : Math.min(index + 1, q.tracks.length), ids = [...q.tracks.slice(0, insert), ...q.play_next, ...q.tracks.slice(insert)];
-    const fingerprint = `${ids.join(",")}:${index}:${q.play_next.length}`;
-    let rows = player.queue;
-    if (fingerprint !== queueSync.fingerprint || player.queue !== queueSync.restoredRows) {
-      rows = await selectedQueueTracks(ids, current);
-      for (let i = insert; i < insert + q.play_next.length; i += 1) rows[i].upNext = true;
+    const nextCount = q.play_next.length;
+    const restored = queueSync.restored, previous = player.queue;
+    const reusableRows = restored?.rows === previous && queueSyncRowsMatch(previous, ids, insert, nextCount);
+    if (metadataOnly && (!reusableRows || queueSync.sourceLoad || audioRecoveryCurrent())) return;
+
+    let rows = previous;
+    if (!reusableRows || !queueSyncMetadataCurrent(view)) {
+      const context = snapshot ? {session, library_snapshot: snapshot} : {};
+      rows = await selectedQueueTracks(ids, current, context);
+      for (let i = insert; i < insert + nextCount; i += 1) rows[i].upNext = true;
     }
     if (!current()) return;
-    queueSync.fingerprint = fingerprint; queueSync.restoredRows = rows;
+    if (metadataOnly) {
+      if (player.queue !== previous || queueSync.sourceLoad || audioRecoveryCurrent()
+          || !queueSyncRowsMatch(previous, ids, insert, nextCount)) return;
+      // Keep the currently playing occurrence and transport. Only labels and
+      // artwork changed when the bridge's revision and layout stayed the same.
+      previous.forEach((entry, i) => Object.assign(entry, rows[i]));
+      nowPlayingRows.editable = null;
+      queueSync.restored = {rows: previous, details, session, snapshot};
+      if (previous[player.index]) renderCurrentPlayerTrack();
+      return true;
+    }
+    queueSync.restored = {rows, details, session, snapshot};
     const currentIndex = data.play_from === "play_next" ? insert : index;
     const entry = rows[currentIndex];
     const newSource = entry && (player.queue[player.index]?.id !== entry.id || !audio.getAttribute("src"));
@@ -150,7 +178,14 @@ async function restoreQueue(view, resume = false) {
     } else { clearQueueSyncSource(); audio.pause(); }
     markPlaying(); renderStreamQuality();
     return true;
-  } catch (error) { if (current()) queueSync.error = () => TagcastI18n.text("errors.queueSync.restoreFailed", {error: TagcastI18n.errorText(error)}); }
+  } catch (error) {
+    if (current()) {
+      queueSync.error = () => TagcastI18n.text("errors.queueSync.restoreFailed", {error: TagcastI18n.errorText(error)});
+      // A snapshot conflict can be retried by the next read-only poll. Other
+      // failures settle this revision until the remote queue changes again.
+      if (error.status !== 409) return false;
+    }
+  }
   finally { if (request === queueSync.request) queueSync.applying = false; }
 }
 
@@ -163,18 +198,25 @@ async function pollQueue() {
     if (session !== state.connection.playback_session || !queueSync.enabled) return;
     queueSync.view = view;
     if (view.authenticated === false) {
-      queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource();
+      queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); queueSync.restored = null;
       state.connection.connected = false; state.connection.playback_session = "";
       queueSync.error = () => TagcastI18n.text("errors.queueSync.sessionEnded");
       useLocal(demoLibrary(), "demo"); updateChrome(); render(); renderDevices(); return;
     }
-    if (queueSync.active && view.session !== session) { queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); }
+    if (queueSync.active && view.session !== session) { queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); queueSync.restored = null; }
     if (queueSync.active && !localPlaybackAllowed()) { audio.pause(); playReporting.watch = null; }
-    if (queueSync.active && !queueSync.choicePending && view.revision !== queueSync.revision && !queueSync.publishing) {
-      queueSync.revision = view.revision;
-      if (view.own && view.state?.role === "player") await restoreQueue(view);
+    if (queueSync.active && !queueSync.choicePending && !queueSync.publishing
+        && view.own && view.state?.role === "player") {
+      if (view.revision !== queueSync.revision) {
+        const settled = await restoreQueue(view);
+        if (session !== state.connection.playback_session || queueSync.view !== view) return;
+        if (settled !== undefined) queueSync.revision = view.revision;
+      } else if (queueSync.restored?.rows === player.queue && !queueSyncMetadataCurrent(view)) {
+        await restoreQueue(view, false, true);
+        if (session !== state.connection.playback_session || queueSync.view !== view) return;
+      }
     }
-    if (view.state?.role === "controller") { queueSync.allowed = false; clearQueueSyncSource(); audio.pause(); playReporting.watch = null; closeVisualPlayer(); }
+    if (view.state?.role === "controller") { queueSync.allowed = false; clearQueueSyncSource(); queueSync.restored = null; audio.pause(); playReporting.watch = null; closeVisualPlayer(); }
     const controlling = queueSync.active && (!view.own || view.state?.role === "controller");
     $("#player").hidden = controlling || !player.queue.length;
     document.body.classList.toggle("has-player", !controlling && Boolean(player.queue.length));
@@ -202,7 +244,7 @@ async function connectQueue(target = "") {
   if (!queueSync.enabled || !live()) return;
   try {
     queueSync.view = await api("/api/queue-sync", {...bridgeBody("connect"), target});
-    clearQueueSyncSource(); queueSync.active = true; queueSync.allowed = false; queueSync.choicePending = !target; queueSync.request += 1; queueSync.revision = -1; queueSync.fingerprint = null;
+    clearQueueSyncSource(); queueSync.active = true; queueSync.allowed = false; queueSync.choicePending = !target; queueSync.request += 1; queueSync.revision = -1; queueSync.restored = null;
     queueSync.error = ""; audio.pause(); playReporting.watch = null; pollQueue();
   } catch (error) { queueSync.error = queueSyncFailure(error); renderDevices(); }
 }
@@ -258,7 +300,7 @@ document.addEventListener("click", async event => {
   }
   if (target.closest("[data-device-disconnect], [data-device-force]")) {
     if (target.closest("[data-device-force]") && !confirm(TagcastI18n.text("queueSync.confirm.force"))) return;
-    try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.choicePending = false; queueSync.request += 1; queueSync.view = null; clearQueueSyncSource(); clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
+    try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.choicePending = false; queueSync.request += 1; queueSync.view = null; clearQueueSyncSource(); queueSync.restored = null; clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
     catch (error) { toast(TagcastI18n.errorText(error)); }
   }
   if (target.closest("[data-device-local]")) { queueSync.allowed = true; if (await publishQueueState()) queueSync.choicePending = false; else queueSync.allowed = false; renderDevices(); }

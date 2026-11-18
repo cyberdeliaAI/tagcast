@@ -1128,6 +1128,22 @@ class CollectionTests(unittest.TestCase):
         self.assertIsNone(studio.client)
         self.assertFalse(bridge.binding)
 
+    def test_queue_metadata_chunks_require_the_advertised_loaded_snapshot_and_owner(self):
+        studio, bridge = self.studio, self.studio.queue_sync
+        bridge.binding = studio.playback_session
+        body = {"tracks": [900, 900], "session": studio.playback_session,
+                "library_snapshot": bridge.view()["library_snapshot"]}
+        rows = studio.collections.queue_tracks(body)
+        self.assertEqual([row["id"] for row in rows["tracks"]], ["900", "900"])
+        studio.load_library(refresh=True)
+        self.assertNotEqual(bridge.view()["library_snapshot"], body["library_snapshot"])
+        with self.assertRaises(ConflictError):
+            studio.collections.queue_tracks(body)
+        body["library_snapshot"] = bridge.view()["library_snapshot"]
+        with self.assertRaises(ConflictError):
+            studio.collections.queue_tracks({**body, "session": "previous-session"})
+        self.assertEqual(studio.collections.queue_tracks(body), rows)
+
     def test_queue_validation_preserves_up_next_and_rejects_invalid_timing(self):
         state = clean_state({'tracks': [900, 901], 'play_next': [903], 'data': {'play_index': 1, 'play_from': 'play_next', 'repeat_mode': 'queue'}})
         self.assertEqual((state['tracks'], state['play_next'], state['data']['play_index']), ([900, 901], [903], 1))

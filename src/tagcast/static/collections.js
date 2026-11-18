@@ -131,10 +131,10 @@ async function openAlbumPlaylist(id) {
   } catch (error) { if (current()) toast(TagcastI18n.errorText(error)); }
 }
 
-async function selectedQueueTracks(ids, current) {
+async function selectedQueueTracks(ids, current, context = {}) {
   const tracks = [];
   for (let offset = 0; offset < ids.length; offset += 1000) {
-    const result = await api("/api/queue-tracks", {tracks: ids.slice(offset, offset + 1000)});
+    const result = await api("/api/queue-tracks", {...context, tracks: ids.slice(offset, offset + 1000)});
     if (!current()) throw playlistFailure("errors.playlists.queue_changed");
     tracks.push(...result.tracks);
   }

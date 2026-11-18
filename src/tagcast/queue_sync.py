@@ -86,7 +86,8 @@ class QueueSync:
             return {"authenticated": bool(self.studio.client), "status": self.status, "error": self.error, "revision": self.revision,
                     "owner": self.owner, "session": self.binding, "own": self.target == self.own_session,
                     "state": state, "devices": copy.deepcopy(self.sessions),
-                    "library_changed": self.library_changed}
+                    "library_changed": self.library_changed,
+                    "library_snapshot": library.queue_snapshot if library is not None else ""}
 
     def disconnect(self, *, background=False):
         with self.lock:

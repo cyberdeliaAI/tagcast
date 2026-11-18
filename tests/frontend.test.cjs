@@ -6726,6 +6726,87 @@ test("Queue Sync rejects stale loading intent after a local Pause, role change o
   }
 });
 
+test("Queue Sync reuses 10,000 occurrences when only the play index changes", async()=>{
+  const p=livePage();await settle();
+  const fixtures=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+  p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/queue-tracks'
+    ? {tracks:JSON.parse(options.body).tracks.map(id=>fixtures.find(t=>t.id===String(id)))} : p.json('remoteView')}));
+  p.run(`state.connection.playback_session="remote"; queueSync.active=true; queueSync.enabled=true; queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,library_snapshot:"first",
+      state:{role:"player",tracks:Array.from({length:10000},(_,i)=>100+i%2),play_next:[],pause:true,start_position:0,
+        start_time:0,volume:.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('pollQueue()');
+  const audio=p.nodes.get('#audio');
+  await audio.emit("loadedmetadata");
+  const queries=()=>p.requests.filter(request=>request.url==='/api/queue-tracks');
+  assert.equal(queries().length,10);
+  assert.ok(queries().every(request=>{
+    const body=JSON.parse(request.options.body);
+    return body.session==="remote" && body.library_snapshot==="first" && body.tracks.length===1000;
+  }));
+  p.run('globalThis.originalRows=player.queue; remoteView.revision=2; remoteView.state.data.play_index=1');
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue===originalRows && player.index===1'),true);
+  assert.equal(queries().length,10,"Advancing across occurrences must not repeat a ten-request restore");
+  await audio.emit("loadedmetadata");
+  p.run('remoteView.revision=3; remoteView.state.tracks.splice(1,1); remoteView.state.play_next=[101]; remoteView.state.data.play_from="play_next"');
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue[1].upNext'),true);
+  assert.equal(queries().length,20,"Same IDs with a different Up Next insertion need a new mapping");
+});
+
+test("Queue Sync refreshes metadata after a library replacement without seeking or replaying audio", async()=>{
+  const p=livePage();await settle();
+  const fixtures=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+  p.setFetch((url,options)=>({ok:true,json:async()=>{
+    if (url!=='/api/queue-tracks') return p.json('remoteView');
+    const {tracks,library_snapshot}=JSON.parse(options.body);
+    return {tracks:tracks.map(id=>{
+      const fixture=fixtures.find(t=>t.id===String(id));
+      return library_snapshot==="second"?{...fixture,title:"New snapshot title"}:fixture;
+    })};
+  }}));
+  p.run(`state.connection.playback_session="remote"; queueSync.active=true; queueSync.enabled=true;queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser, own:true, session:"remote", status:"connected",revision:1,library_snapshot:"first",
+      state:{role:"player",tracks:[100,101],play_next:[],pause:false,start_position:0,start_time:Date.now()/1000,
+        volume:.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('pollQueue()');
+  const audio=p.nodes.get('#audio');
+  await audio.emit('loadedmetadata');
+  p.run('globalThis.entry=player.queue[0]; audio.currentTime=24; state.details=new Map(); remoteView.library_snapshot="second"');
+  const source=audio.src;
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue[0]===entry && player.queue[0].title==="New snapshot title"'),true);
+  assert.equal(audio.currentTime,24);
+  assert.equal(audio.src,source);
+  assert.equal(audio.paused,false);
+  assert.deepEqual(p.requests.filter(r=>r.url==='/api/queue-tracks')
+    .map(r=>JSON.parse(r.options.body).library_snapshot),["first","second"]);
+});
+
+test("Queue Sync retries a read-only restore when its advertised snapshot changed mid-request",async()=>{
+  const p=livePage();await settle();
+  const fixture=p.json('queueTracks(state.details.get("1"))[0]');
+  const snapshots=[];
+  p.setFetch((url,options)=>{
+    if (url!=='/api/queue-tracks') return {ok:true,json:async()=>p.json('remoteView')};
+    const snapshot=JSON.parse(options.body).library_snapshot;
+    snapshots.push(snapshot);
+    return snapshot==="old"?{ok:false,status:409,json:async()=>({error:"Snapshot changed"})}
+      :{ok:true,json:async()=>({tracks:[fixture]})};
+  });
+  p.run(`state.connection.playback_session="remote"; queueSync.active=true;queueSync.enabled=true;queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",revision:1,library_snapshot:"old",
+      state:{role:"player",tracks:[100],play_next:[],pause:true,start_position:0,start_time:0,volume:.5,
+      data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue.length'),0);
+  p.run('remoteView.library_snapshot="new"');
+  await p.run('pollQueue()');
+  assert.deepEqual(snapshots,["old","new"]);
+  assert.equal(p.run('player.queue[0].id'),"100");
+});
+
 test("Queue redraws only the previous and current rows for unchanged occurrences", async()=>{
   const p=livePage(); await settle();
   p.run('$("#now-playing-list")');

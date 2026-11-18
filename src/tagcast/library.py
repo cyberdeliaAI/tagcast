@@ -18,6 +18,7 @@ import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import date, time
+from secrets import token_urlsafe
 from threading import Lock
 
 from .errors import CodedError
@@ -223,6 +224,7 @@ class Library:
         self.artists = decode_table(raw["artists"])
         self.albums = decode_table(raw["albums"])
         self.tracks = decode_table(raw["tracks"])
+        self.queue_snapshot = token_urlsafe(12)  # Identifies this loaded copy, even at the same native revision.
         self.tags_loaded = isinstance(raw.get("tags"), dict)
         self.tags = {int(i): {"name": row["name"], "archived": row.get("archived") is True,
                              "tracks": list(dict.fromkeys(int(t) for t in row["tracks"]

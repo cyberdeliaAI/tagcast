@@ -665,10 +665,21 @@ class Collections:
 
     def queue_tracks(self, body):
         ids = track_ids(body.get("tracks"), 1000)
-        library, _ = self.studio._library()
-        with self.studio.lock:
+        studio = self.studio
+        if "library_snapshot" in body:
+            # A queue restore may span several requests. Every chunk must use
+            # the library actually advertised by the bridge and the same owner.
+            with studio.lock:
+                library = studio.library
+                if not studio.client or not studio.playback_session or library is None \
+                        or body.get("session") != studio.playback_session \
+                        or body["library_snapshot"] != library.queue_snapshot:
+                    raise ConflictError("The account or library changed. Reload the library.")
+                return self._queue_track_rows(library, ids, False)
+        library, _ = studio._library()
+        with studio.lock:
             if body.get("restore") is True:
-                if body.get("session") != self.studio.playback_session or not body.get("session") \
+                if body.get("session") != studio.playback_session or not body.get("session") \
                         or body.get("profile") != self.playback_profile(library):
                     raise ConflictError("The account or library changed. Reload the library.")
             return self._queue_track_rows(library, ids, body.get("restore") is True)
