@@ -7,6 +7,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 import webbrowser
 from contextlib import nullcontext
 from functools import partial
@@ -26,7 +27,14 @@ from .client import ApiError, NotConnected, Studio, UncertainWrite
 from .content_security import BASE_POLICY, content_policy
 from .errors import error_payload
 from .library import ConflictError, LibraryError
-from .mp3_playback import READ_SIZE, buffer_key, buffered_range, needs_buffer, read_prefix
+from .mp3_playback import (
+    READ_SIZE,
+    buffer_key,
+    buffered_range,
+    limit_reached,
+    needs_buffer,
+    read_prefix,
+)
 from .server_lifecycle import RequestDrain, ServerClosing, drain_server
 from .sources import SourceError
 from .track_comparison import view as track_comparison
@@ -456,31 +464,50 @@ class Handler(SimpleHTTPRequestHandler):
                     raise failure
                 self._run(failed)
 
-    def _serve_buffered_mp3(self, audio, byte_range):
+    def _serve_buffered_mp3(self, audio, byte_range, note=None):
         size = len(audio)
         status, start, end = buffered_range(byte_range, size)
+        content_range = (f"bytes {start}-{end - 1}/{size}" if status == 206
+                         else f"bytes */{size}" if status == 416 else None)
         self.send_response(status)
         self.send_header("Content-Type", "audio/mpeg")
         self.send_header("Content-Length", str(end - start))
         self.send_header("Accept-Ranges", "bytes")
-        if status == 206:
-            self.send_header("Content-Range", f"bytes {start}-{end - 1}/{size}")
-        elif status == 416:
-            self.send_header("Content-Range", f"bytes */{size}")
+        if content_range:
+            self.send_header("Content-Range", content_range)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
+        if note:
+            note(response=(status, {"Content-Length": str(end - start), "Accept-Ranges": "bytes",
+                                    "Content-Range": content_range}, "buffer"))
         if start < end:
             self.wfile.write(memoryview(audio)[start:end])
 
     def _stream(self, track_id, quality=None, request_id=None, session=None, *, diagnostic=False):
         """Pass a track's audio through, so the access token never reaches the page."""
+        started = time.monotonic()
         byte_range = self.headers.get("Range")
         local_range = None if self.headers.get("If-Range") else byte_range
+
+        def elapsed(since=started):
+            return round((time.monotonic() - since) * 1000)
+
+        def note(buffer=None, response=None):
+            """Opt-in diagnostics: what happened to the buffer and what the player was answered."""
+            if diagnostic and request_id:
+                if response:
+                    response = (*response[:2], byte_range, response[2], elapsed())
+                self.studio.note_mp3_proxy(request_id, session, buffer=buffer, response=response)
+
+        def refuse(status, message):
+            note(response=(status, {}, "error"))
+            self._json(status, {"error": message})
+
         key = buffer_key(session, request_id, track_id, quality)
         cached = self.studio.buffered_mp3(key) if key else None
         if cached is not None:
             try:
-                self._serve_buffered_mp3(cached, local_range)
+                self._serve_buffered_mp3(cached, local_range, note)
             except OSError:
                 self.close_connection = True
             return
@@ -490,29 +517,48 @@ class Handler(SimpleHTTPRequestHandler):
                 tracking["diagnostic"] = True
             upstream, mime = self.studio.stream(track_id, byte_range, quality, **tracking)
         except NotConnected as error:
-            self._json(401, {"error": str(error)})
+            refuse(401, str(error))
             return
         except (ApiError, LibraryError) as error:
-            self._json(404 if isinstance(error, LibraryError) else 502, {"error": str(error)})
+            refuse(404 if isinstance(error, LibraryError) else 502, str(error))
             return
         reader = getattr(self.server, "stream_reader", None)
         with upstream, reader(self.connection, upstream) if reader else nullcontext():
             prefix = b""
             headers_started = False
             try:
-                if key and needs_buffer(upstream, mime, byte_range) and self.studio.mp3_buffer_slot.acquire(False):
+                wanted = bool(key) and needs_buffer(upstream, mime, byte_range)
+                if wanted and self.studio.mp3_buffer_slot.acquire(False):
                     try:
+                        taken = time.monotonic()
+                        self.studio.mp3_buffer_holder = ("buffering", taken)
+                        note(buffer={"state": "buffering"})
                         chunks = iter(upstream.iter_content(READ_SIZE))
-                        prefix, complete = read_prefix(chunks)
+                        try:
+                            prefix, complete = read_prefix(chunks)
+                        except requests.RequestException:
+                            note(buffer={"state": "aborted", "reason": "upstream_error", "elapsed_ms": elapsed(taken)})
+                            raise
+                        read = {"bytes": len(prefix), "elapsed_ms": elapsed(taken)}
                         if complete:
+                            # The slot stays taken until the player has read this whole response.
+                            self.studio.mp3_buffer_holder = ("sending", taken)
                             if self.studio.buffered_mp3(key, prefix) is None:
-                                self._json(401, {"error": "The playback session changed. Connect again."})
+                                note(buffer={"state": "aborted", "reason": "not_stored", **read})
+                                refuse(401, "The playback session changed. Connect again.")
                             else:
-                                self._serve_buffered_mp3(prefix, local_range)
+                                note(buffer={"state": "completed", **read})
+                                self._serve_buffered_mp3(prefix, local_range, note)
                             return
+                        note(buffer={"state": "aborted", "reason": limit_reached(prefix), **read})
                     finally:
+                        self.studio.mp3_buffer_holder = None
                         self.studio.mp3_buffer_slot.release()
                 else:
+                    holder = self.studio.mp3_buffer_holder if wanted else None
+                    note(buffer={"state": "skipped", "reason": "slot_busy",
+                                 **({"slot_holder": holder[0], "slot_held_ms": elapsed(holder[1])} if holder else {})}
+                         if wanted else {"state": "not_needed"})
                     chunks = iter(upstream.iter_content(65536))
                 headers_started = True
                 self.send_response(upstream.status_code)
@@ -522,6 +568,7 @@ class Handler(SimpleHTTPRequestHandler):
                         self.send_header(name, upstream.headers[name])
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
+                note(response=(upstream.status_code, upstream.headers, "upstream"))
                 if prefix:
                     self.wfile.write(prefix)
                 for chunk in chunks:
@@ -531,7 +578,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.studio.record_stream_result(request_id, session, state)
                 logging.debug("Audio stream interrupted: %s", type(error).__name__)
                 if not headers_started:
-                    self._json(502, {"error": "Could not read this audio stream."})
+                    refuse(502, "Could not read this audio stream.")
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 # A cancellation is not itself a network diagnosis; retain the
                 # known header outcome for the browser's own MediaError code.

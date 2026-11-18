@@ -35,6 +35,11 @@ def read_prefix(chunks):
     return prefix, bool(prefix)
 
 
+def limit_reached(prefix):
+    """Name what ended an incomplete read. Diagnostics only."""
+    return "size_limit" if len(prefix) > MAX_MP3_BYTES else "time_limit" if prefix else "empty"
+
+
 def buffered_range(value, size):
     """Return the status and half-open byte interval for one local HTTP response."""
     match = re.fullmatch(r"bytes=([0-9]{0,20})-([0-9]{0,20})", value or "", re.IGNORECASE)

@@ -1769,7 +1769,7 @@
   "mp3Diagnostics.collect": "Collecter les données de diagnostic du flux MP3",
   "mp3Diagnostics.download": "Télécharger le rapport de diagnostic (JSON)",
   "mp3Diagnostics.heading": "Diagnostic du flux MP3",
-  "mp3Diagnostics.note": "Activez cette option avant de lancer un autre flux MP3. Tagcast enregistre la première réponse HTTP et la durée indiquée par le lecteur. Les données restent en mémoire jusqu’au rechargement ou à la déconnexion.",
+  "mp3Diagnostics.note": "Activez cette option avant de lancer un autre flux MP3. Tagcast enregistre la première réponse HTTP, si le proxy local a mis le flux en mémoire tampon, ce qu’il a répondu au lecteur et la durée indiquée par le lecteur. Les données restent en mémoire jusqu’au rechargement ou à la déconnexion.",
   "musicVisual.aurora": "MilkDrop · Aurora",
   "musicVisual.ember": "MilkDrop · Ember Tunnel",
   "musicVisual.failed": "Visualisation indisponible. La musique continue. Choisissez Pochette, CD ou un autre effet pour réessayer.",

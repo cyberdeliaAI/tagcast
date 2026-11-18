@@ -83,6 +83,8 @@ test("MP3 diagnostics are off on launch, opt in for new MP3 attempts, and use th
   assert.equal(attempt.quality_kbps, 192);
   assert.equal(attempt.library_duration_s, 289);
   assert.deepEqual(attempt.first_http_response, {status: 200, content_length: null});
+  // A local server from before buffer diagnostics answers without them; the report says so.
+  assert.deepEqual([report.schema, report.proxy_reports_buffer, attempt.buffer, attempt.local_responses], [2, false, null, null]);
   assert.equal(attempt.problem.position_s, 29);
   assert.deepEqual(attempt.events.map(event => event.duration_s), ["NaN", "Infinity", "Infinity", 288.261]);
   assert.doesNotMatch(JSON.stringify(report), /private-session|private-track|synthetic-playback-attempt|127\.0\.0\.1/);
@@ -107,6 +109,52 @@ test("recent observations stay bounded and a later working track cannot replace 
   assert.equal(report.attempts[0].problem.duration_s, "Infinity");
   assert.equal(report.attempts.at(-1).events.length, 24);
   assert.equal(report.attempts.at(-1).events[0].event, "playing");
+});
+
+test("the report names the buffer outcome and local answer of a replaced start and of the start that followed it", async () => {
+  const p = page();
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  let now = 0;
+  p.context.performance.now = () => now;
+  const answers = [];
+  p.context.fetch = url => {
+    p.requests.push(new URL(url, "http://localhost").searchParams.get("request"));
+    return Promise.resolve({ok: true, json: async () => answers.shift()});
+  };
+  const upstream = {status: 200, transfer_encoding: "chunked"};
+  const passed = {request_range: "bytes=0-", status: 200, source: "upstream", content_length: null, accept_ranges: "none", elapsed_ms: 3};
+  p.enable(true);
+
+  const replaced = new URL(p.start("256"), "http://localhost").searchParams.get("request");
+  p.emit("waiting");
+  assert.deepEqual(p.requests, []);
+  now = 780;
+  answers.push({state: "available", first_response: upstream, buffer: {state: "buffering"}, local_responses: []});
+  const next = new URL(p.start("256"), "http://localhost").searchParams.get("request");
+  await settle();
+  assert.deepEqual(p.requests, [replaced]);
+
+  p.audio.readyState = 1;
+  p.audio.duration = Infinity;
+  answers.push({state: "available", first_response: upstream, local_responses: [passed],
+    buffer: {state: "skipped", reason: "slot_busy", slot_holder: "buffering", slot_held_ms: 770}});
+  p.emit("loadedmetadata");
+  await settle();
+  assert.deepEqual(p.requests, [replaced, next]);
+
+  // On export the replaced start has its final outcome; the proxy has already forgotten the other one.
+  answers.push({state: "available", first_response: upstream, local_responses: [{...passed, elapsed_ms: 6004}],
+    buffer: {state: "aborted", reason: "time_limit", bytes: 191488, elapsed_ms: 6001}}, {state: "unknown"});
+  const report = await p.report();
+  assert.equal(report.proxy_reports_buffer, true);
+  assert.deepEqual(report.attempts.map(attempt => attempt.started_ms), [0, 780]);
+  assert.deepEqual(report.attempts[0].buffer, {state: "aborted", reason: "time_limit", bytes: 191488, elapsed_ms: 6001});
+  assert.equal(report.attempts[0].local_responses[0].elapsed_ms, 6004);
+  assert.equal(report.attempts[0].events.length, 1);
+  assert.deepEqual(report.attempts[1].buffer, {state: "skipped", reason: "slot_busy", slot_holder: "buffering", slot_held_ms: 770});
+  assert.deepEqual(report.attempts[1].local_responses, [passed]);
+  assert.equal(report.attempts[1].proxy_state, "available");
+  assert.doesNotMatch(JSON.stringify(report), /private-session|private-track|synthetic-playback-attempt|127\.0\.0\.1/);
 });
 
 test("a stale source cannot write observations and a session change during export discards the report", async () => {

@@ -1753,7 +1753,7 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "mp3Diagnostics.collect": "Collect MP3 stream diagnostics",
   "mp3Diagnostics.download": "Download diagnostic report (JSON)",
   "mp3Diagnostics.heading": "MP3 stream diagnostics",
-  "mp3Diagnostics.note": "Enable this before starting another MP3 stream. Tagcast records the first HTTP response and the duration reported by the player. Observations stay in memory until you reload or disconnect.",
+  "mp3Diagnostics.note": "Enable this before starting another MP3 stream. Tagcast records the first HTTP response, whether the local proxy buffered the stream, how it answered the player and the duration reported by the player. Observations stay in memory until you reload or disconnect.",
   "musicVisual.aurora": "MilkDrop · Aurora",
   "musicVisual.ember": "MilkDrop · Ember Tunnel",
   "musicVisual.failed": "Visualization unavailable. Playback continues. Choose Cover, CD or another effect to try again.",

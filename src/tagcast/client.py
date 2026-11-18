@@ -97,17 +97,16 @@ if _test_base:
     oauth.REVOKE_URL = f"{oauth.OAUTH_BASE}/revoke"
 
 
-def _mp3_response_diagnostic(response, request_range):
+def _mp3_response_diagnostic(status, headers, request_range):
     def header(value, pattern):
         if value is None:
             return None
         value = value.strip()
         return value if len(value) <= 96 and re.fullmatch(pattern, value, re.I | re.ASCII) else "unrecognized"
 
-    headers = response.headers
     mime = headers.get("Content-Type")
     return {
-        "status": response.status_code,
+        "status": status,
         "request_range": header(request_range, r"bytes=(?:\d{1,16}-\d{0,16}|-\d{1,16})"),
         "content_type": header(mime.split(";", 1)[0] if mime is not None else None,
                                r"[a-z0-9.+-]+/[a-z0-9.+-]+"),
@@ -117,6 +116,14 @@ def _mp3_response_diagnostic(response, request_range):
         "accept_ranges": header(headers.get("Accept-Ranges"), r"bytes|none"),
         "transfer_encoding": header(headers.get("Transfer-Encoding"), r"chunked|identity"),
     }
+
+
+def _mp3_local_diagnostic(status, headers, request_range, source, elapsed_ms):
+    """Describe one answer of the local proxy to the player: status and framing only."""
+    sent = _mp3_response_diagnostic(status, headers, request_range)
+    return {"request_range": sent["request_range"], "status": status, "source": source,
+            "content_length": sent["content_length"], "content_range": sent["content_range"],
+            "accept_ranges": sent["accept_ranges"], "elapsed_ms": elapsed_ms}
 
 
 def mask_email(value):
@@ -470,6 +477,7 @@ class Studio:
         self.stream_results = {}  # Bounded, session-scoped observations; no audio or URLs.
         self.mp3_buffers = {}
         self.mp3_buffer_slot = threading.Lock()
+        self.mp3_buffer_holder = None  # Diagnostics only: (phase, monotonic time the slot was taken).
         self.client = None
         self.library = None
         self.library_user = None
@@ -1737,15 +1745,17 @@ class Studio:
                 return
             now = time.monotonic()
             self.stream_results = {key: value for key, value in self.stream_results.items() if value[2] > now}
-            previous = self.stream_results.get(request_id)
+            previous, proxy = self.stream_results.get(request_id), None
             # A later browser Range request cannot hide a terminal rejection.
             if previous and previous[0] == session:
                 if priority[previous[1]] > priority[state]:
                     state = previous[1]
                 if previous[3] is not None:
-                    first_response = previous[3]
+                    first_response, proxy = previous[3], previous[4]
+            if first_response is not None and proxy is None:
+                proxy = {"buffer": None, "responses": []}
             self.stream_results.pop(request_id, None)
-            self.stream_results[request_id] = (session, state, now + 120, first_response)
+            self.stream_results[request_id] = (session, state, now + 120, first_response, proxy)
             while len(self.stream_results) > 64:
                 self.stream_results.pop(next(iter(self.stream_results)))
 
@@ -1759,7 +1769,24 @@ class Studio:
             result = self.stream_results.get(request_id)
             if not result or result[0] != session or result[2] <= time.monotonic():
                 return {"state": "unknown"}
-            return {"state": result[1], **({"first_response": result[3]} if result[3] is not None else {})}
+            if result[3] is None:
+                return {"state": result[1]}
+            buffer, responses = result[4]["buffer"], result[4]["responses"]
+            return {"state": result[1], "first_response": result[3], "buffer": buffer and dict(buffer),
+                    "local_responses": [dict(response) for response in responses]}
+
+    def note_mp3_proxy(self, request_id, session, *, buffer=None, response=None):
+        """Add what the local proxy did to an opted-in diagnostic record. Never creates one."""
+        with self.lock:
+            result = self.stream_results.get(request_id)
+            if not result or result[0] != session or result[3] is None:
+                return
+            proxy = result[4]
+            # The buffering decision belongs to the first response; a later Range request keeps it.
+            if buffer is not None and (proxy["buffer"] is None or proxy["buffer"]["state"] == "buffering"):
+                proxy["buffer"] = buffer
+            if response is not None and len(proxy["responses"]) < 8:
+                proxy["responses"].append(_mp3_local_diagnostic(*response))
 
     def stream(self, track_id, range_header=None, quality=None, *, request_id=None,
                playback_session=None, diagnostic=False):
@@ -1791,7 +1818,7 @@ class Studio:
         status = response.status_code
         state = ("auth" if status in (401, 403) else "network" if status in (408, 500, 502, 503, 504)
                  else "available" if response.ok else "unavailable")
-        first_response = (_mp3_response_diagnostic(response, range_header)
+        first_response = (_mp3_response_diagnostic(status, response.headers, range_header)
                           if diagnostic and request_id and quality != "orig" else None)
         self.record_stream_result(request_id, session, state, first_response=first_response)
         if response.status_code in (401, 403):

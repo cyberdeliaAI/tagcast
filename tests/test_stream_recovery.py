@@ -110,6 +110,7 @@ class StreamRecoveryTests(unittest.TestCase):
                 "content_length": None, "content_range": None, "accept_ranges": None,
                 "transfer_encoding": "chunked",
             },
+            "buffer": None, "local_responses": [],
         })
         self.assertEqual(self.transport.open_stream.call_count, 3)
 
@@ -206,6 +207,90 @@ class StreamRecoveryTests(unittest.TestCase):
                 self.assertEqual((status, headers["Accept-Ranges"], body), (200, "none", b"abcdefghi"))
                 self.assertNotIn("Content-Length", headers)
                 self.assertFalse(self.studio.mp3_buffers)
+
+    def proxy(self, request=None):
+        status = self.studio.stream_status(request or self.request, self.session)
+        return status["buffer"], status["local_responses"]
+
+    def test_diagnostic_names_a_complete_buffer_and_each_local_answer(self):
+        self.studio.premium = True
+        self.transport.open_stream.return_value = StreamResponse([b"abcd", b"efghi"])
+        for byte_range in ("bytes=0-", "bytes=5-6", "bytes=9-"):
+            self.serve(quality="256", byte_range=byte_range)
+        buffer, answers = self.proxy()
+        self.assertGreaterEqual(buffer.pop("elapsed_ms"), 0)
+        self.assertEqual(buffer, {"state": "completed", "bytes": 9})
+        self.assertGreaterEqual(answers[0].pop("elapsed_ms"), 0)
+        self.assertEqual(answers[0], {
+            "request_range": "bytes=0-", "status": 206, "source": "buffer", "content_length": "9",
+            "content_range": "bytes 0-8/9", "accept_ranges": "bytes",
+        })
+        self.assertEqual([(answer["request_range"], answer["status"], answer["source"], answer["content_range"])
+                          for answer in answers[1:]],
+                         [("bytes=5-6", 206, "buffer", "bytes 5-6/9"), ("bytes=9-", 416, "buffer", "bytes */9")])
+        self.assertIsNone(self.studio.mp3_buffer_holder)
+        self.assertFalse(self.studio.mp3_buffer_slot.locked())
+        for _ in range(20):
+            self.serve(quality="256", byte_range="bytes=1-2")
+        self.assertEqual(len(self.proxy()[1]), 8)
+
+    def test_diagnostic_names_a_skipped_or_aborted_buffer_and_the_upstream_answer(self):
+        seekable = {"Content-Length": "4", "Content-Range": "bytes 0-3/9", "Accept-Ranges": "bytes"}
+        self.transport.open_stream.return_value = StreamResponse([b"abcd"], 206, seekable)
+        self.assertEqual(self.serve()[0], 206)
+        buffer, answers = self.proxy()
+        self.assertEqual(buffer, {"state": "not_needed"})
+        self.assertEqual((answers[0]["status"], answers[0]["source"], answers[0]["content_range"]),
+                         (206, "upstream", "bytes 0-3/9"))
+
+        for request, limit, reason in (
+            ("limited-by-time-123456", patch.object(mp3_playback, "monotonic", side_effect=(0, 10)), "time_limit"),
+            ("limited-by-size-123456", patch.object(mp3_playback, "MAX_MP3_BYTES", 2), "size_limit"),
+            ("empty-response-1234567", patch.object(mp3_playback, "MAX_MP3_BYTES", 2), "empty"),
+        ):
+            with self.subTest(reason=reason), limit:
+                self.transport.open_stream.return_value = StreamResponse([] if reason == "empty" else [b"abcd", b"efghi"])
+                self.assertEqual(self.serve(request=request)[0], 200)
+                buffer, answers = self.proxy(request)
+                self.assertEqual((buffer["state"], buffer["reason"], buffer["bytes"]),
+                                 ("aborted", reason, 0 if reason == "empty" else 4))
+                self.assertEqual([(answer["status"], answer["source"], answer["content_length"], answer["accept_ranges"])
+                                  for answer in answers], [(200, "upstream", None, "none")])
+
+        # Another playback request still holds the only slot, as an abandoned start does.
+        self.transport.open_stream.return_value = StreamResponse([b"abcd"])
+        self.studio.mp3_buffer_slot.acquire()
+        self.studio.mp3_buffer_holder = ("buffering", app.time.monotonic() - 2)
+        try:
+            self.assertEqual(self.serve(request="slot-is-busy-12345678")[0], 200)
+        finally:
+            self.studio.mp3_buffer_slot.release()
+        buffer, answers = self.proxy("slot-is-busy-12345678")
+        self.assertEqual((buffer["state"], buffer["reason"], buffer["slot_holder"]), ("skipped", "slot_busy", "buffering"))
+        self.assertGreaterEqual(buffer["slot_held_ms"], 2000)
+        self.assertEqual(answers[0]["status"], 200)
+        self.assertFalse(self.studio.mp3_buffers)
+
+    def test_diagnostic_names_a_failed_buffer_and_stays_silent_without_opt_in(self):
+        def interrupted():
+            yield b"partial"
+            raise requests.exceptions.ChunkedEncodingError("lost")
+
+        self.transport.open_stream.return_value = StreamResponse(interrupted())
+        self.assertEqual(self.serve()[0], 502)
+        buffer, answers = self.proxy()
+        self.assertEqual((buffer["state"], buffer["reason"]), ("aborted", "upstream_error"))
+        self.assertEqual([(answer["status"], answer["source"]) for answer in answers], [(502, "error")])
+
+        request = "without-opt-in-123456"
+        self.transport.open_stream.return_value = StreamResponse([b"abcd"])
+        handler = Mock(studio=self.studio, headers={"Range": "bytes=0-"}, server=SimpleNamespace())
+        handler._serve_buffered_mp3.side_effect = lambda *args: app.Handler._serve_buffered_mp3(handler, *args)
+        app.Handler._stream(handler, "1", "128", request, self.session)
+        self.assertEqual(handler.send_response.call_args.args[0], 206)
+        self.assertEqual(self.studio.stream_status(request, self.session), {"state": "available"})
+        self.studio.note_mp3_proxy(request, self.session, buffer={"state": "completed"})
+        self.assertEqual(self.studio.stream_status(request, self.session), {"state": "available"})
 
     def test_ordinary_seekable_and_original_responses_keep_the_upstream_headers(self):
         self.studio.premium = True

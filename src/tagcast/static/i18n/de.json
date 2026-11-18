@@ -1703,7 +1703,7 @@
   "mp3Diagnostics.collect": "MP3-Streamdiagnose aufzeichnen",
   "mp3Diagnostics.download": "Diagnosebericht herunterladen (JSON)",
   "mp3Diagnostics.heading": "MP3-Streamdiagnose",
-  "mp3Diagnostics.note": "Aktiviere dies vor dem Start des nächsten MP3-Streams. Tagcast erfasst die erste HTTP-Antwort und die vom Player gemeldete Dauer. Die Daten bleiben bis zum Neuladen oder Trennen im Arbeitsspeicher.",
+  "mp3Diagnostics.note": "Aktiviere dies vor dem Start des nächsten MP3-Streams. Tagcast erfasst die erste HTTP-Antwort, ob der lokale Proxy den Stream gepuffert hat, was er dem Player geantwortet hat und die vom Player gemeldete Dauer. Die Daten bleiben bis zum Neuladen oder Trennen im Arbeitsspeicher.",
   "musicVisual.aurora": "MilkDrop · Aurora",
   "musicVisual.ember": "MilkDrop · Ember Tunnel",
   "musicVisual.failed": "Visualisierung nicht verfügbar. Die Musik läuft weiter. Wähle Cover, CD oder einen anderen Effekt, um es erneut zu versuchen.",
