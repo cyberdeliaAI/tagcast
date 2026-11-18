@@ -1058,6 +1058,7 @@ class CollectionTests(unittest.TestCase):
     def test_websocket_one_use_token_get_state_and_server_role(self):
         bridge = self.studio.queue_sync
         bridge.own_session = bridge.target = 'tagcast-session'
+        bridge.binding = self.studio.playback_session
         bridge.stop_event = threading.Event()
         socket = Mock()
         messages = [json.dumps({'command': 'set_state', 'role': 'player', 'tracks': [903], 'current_song': 903, 'data': {'repeat_mode': 'queue'}})]
@@ -1074,6 +1075,18 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(json.loads(socket.send.call_args.args[0])['command'], 'get_state')
         self.assertEqual(bridge.view()['state']['role'], 'player')
         self.assertNotIn('one-use-secret', json.dumps(bridge.view()))
+
+    def test_retired_websocket_cannot_end_the_active_session(self):
+        studio, bridge = self.studio, self.studio.queue_sync
+        old_stop = bridge.stop_event
+        bridge.stop_event = threading.Event()
+        bridge.binding = studio.playback_session
+        bridge.receive({"command": "end_session"}, client=studio.client, stop=old_stop)
+        self.assertIsNotNone(studio.client)
+        self.assertTrue(bridge.binding)
+        bridge.receive({"command": "end_session"}, client=studio.client, stop=bridge.stop_event)
+        self.assertIsNone(studio.client)
+        self.assertFalse(bridge.binding)
 
     def test_queue_validation_preserves_up_next_and_rejects_invalid_timing(self):
         state = clean_state({'tracks': [900, 901], 'play_next': [903], 'data': {'play_index': 1, 'play_from': 'play_next', 'repeat_mode': 'queue'}})
