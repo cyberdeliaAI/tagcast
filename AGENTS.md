@@ -939,6 +939,12 @@ their shared browsing/player state; a fast local response can otherwise race the
   and bounded media observations in memory. Reset on account/session replacement.
   Export only on explicit download with no audio, identifiers, URLs or credentials.
   The local status read never opens another audio response or changes playback.
+- Ordinary playback may buffer a chunked MP3 response without a length or byte ranges
+  at the selected quality. Serve local byte ranges only after a complete read, scoped
+  to the playback request, track, quality and session. Keep at most two complete tracks
+  of 24 MiB each in RAM and one buffering attempt in flight. If the attempt exceeds the
+  size or time budget, play the same response with its consumed prefix. Clear buffers
+  on session replacement, preserve upstream diagnostics and leave Original/Gapless alone.
 - Recently played appears only with optional iBroadcast play reporting enabled. Read
   the native playlist by type `recently-played`, never its display name. Preserve
   its ordering and unique track IDs; omit trashed or missing tracks and do not

@@ -26,6 +26,7 @@ from .client import ApiError, NotConnected, Studio, UncertainWrite
 from .content_security import BASE_POLICY, content_policy
 from .errors import error_payload
 from .library import ConflictError, LibraryError
+from .mp3_playback import READ_SIZE, buffer_key, buffered_range, needs_buffer, read_prefix
 from .server_lifecycle import RequestDrain, ServerClosing, drain_server
 from .sources import SourceError
 from .track_comparison import view as track_comparison
@@ -455,13 +456,39 @@ class Handler(SimpleHTTPRequestHandler):
                     raise failure
                 self._run(failed)
 
+    def _serve_buffered_mp3(self, audio, byte_range):
+        size = len(audio)
+        status, start, end = buffered_range(byte_range, size)
+        self.send_response(status)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Content-Length", str(end - start))
+        self.send_header("Accept-Ranges", "bytes")
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end - 1}/{size}")
+        elif status == 416:
+            self.send_header("Content-Range", f"bytes */{size}")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if start < end:
+            self.wfile.write(memoryview(audio)[start:end])
+
     def _stream(self, track_id, quality=None, request_id=None, session=None, *, diagnostic=False):
         """Pass a track's audio through, so the access token never reaches the page."""
+        byte_range = self.headers.get("Range")
+        local_range = None if self.headers.get("If-Range") else byte_range
+        key = buffer_key(session, request_id, track_id, quality)
+        cached = self.studio.buffered_mp3(key) if key else None
+        if cached is not None:
+            try:
+                self._serve_buffered_mp3(cached, local_range)
+            except OSError:
+                self.close_connection = True
+            return
         try:
             tracking = {"request_id": request_id, "playback_session": session} if request_id else {}
             if diagnostic and tracking:
                 tracking["diagnostic"] = True
-            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"), quality, **tracking)
+            upstream, mime = self.studio.stream(track_id, byte_range, quality, **tracking)
         except NotConnected as error:
             self._json(401, {"error": str(error)})
             return
@@ -470,20 +497,41 @@ class Handler(SimpleHTTPRequestHandler):
             return
         reader = getattr(self.server, "stream_reader", None)
         with upstream, reader(self.connection, upstream) if reader else nullcontext():
-            self.send_response(upstream.status_code)
-            self.send_header("Content-Type", upstream.headers.get("Content-Type") or mime or "audio/mpeg")
-            for name in ("Content-Length", "Content-Range", "Accept-Ranges"):
-                if upstream.headers.get(name):
-                    self.send_header(name, upstream.headers[name])
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
+            prefix = b""
+            headers_started = False
             try:
-                for chunk in upstream.iter_content(65536):
+                if key and needs_buffer(upstream, mime, byte_range) and self.studio.mp3_buffer_slot.acquire(False):
+                    try:
+                        chunks = iter(upstream.iter_content(READ_SIZE))
+                        prefix, complete = read_prefix(chunks)
+                        if complete:
+                            if self.studio.buffered_mp3(key, prefix) is None:
+                                self._json(401, {"error": "The playback session changed. Connect again."})
+                            else:
+                                self._serve_buffered_mp3(prefix, local_range)
+                            return
+                    finally:
+                        self.studio.mp3_buffer_slot.release()
+                else:
+                    chunks = iter(upstream.iter_content(65536))
+                headers_started = True
+                self.send_response(upstream.status_code)
+                self.send_header("Content-Type", upstream.headers.get("Content-Type") or mime or "audio/mpeg")
+                for name in ("Content-Length", "Content-Range", "Accept-Ranges"):
+                    if upstream.headers.get(name):
+                        self.send_header(name, upstream.headers[name])
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                if prefix:
+                    self.wfile.write(prefix)
+                for chunk in chunks:
                     self.wfile.write(chunk)
             except requests.RequestException as error:
                 state = "security" if isinstance(error, requests.exceptions.SSLError) else "network"
                 self.studio.record_stream_result(request_id, session, state)
                 logging.debug("Audio stream interrupted: %s", type(error).__name__)
+                if not headers_started:
+                    self._json(502, {"error": "Could not read this audio stream."})
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 # A cancellation is not itself a network diagnosis; retain the
                 # known header outcome for the browser's own MediaError code.

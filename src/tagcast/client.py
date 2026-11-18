@@ -468,6 +468,8 @@ class Studio:
         self.play_events = {}
         self.playback_session = ""
         self.stream_results = {}  # Bounded, session-scoped observations; no audio or URLs.
+        self.mp3_buffers = {}
+        self.mp3_buffer_slot = threading.Lock()
         self.client = None
         self.library = None
         self.library_user = None
@@ -639,6 +641,7 @@ class Studio:
             self.trash_emptying.reviews.clear()
             self.playback_session = secrets.token_hex(16)
             self.stream_results.clear()
+            self.mp3_buffers.clear()
             if save:
                 self._save_tokens(token_set, client)
 
@@ -653,6 +656,7 @@ class Studio:
             self.trash_emptying.reviews.clear()
             self.playback_session = ""
             self.stream_results.clear()
+            self.mp3_buffers.clear()
             self._device_gen += 1
             self._device_request_id = None
             self._device_stop.set()
@@ -1705,6 +1709,23 @@ class Studio:
         return {"results": [result(t, "sent") for t in wanted], "job": job}
 
     # -- playback -------------------------------------------------------------
+
+    def buffered_mp3(self, key, complete=None):
+        session, _, track_id, quality = key
+        with self.lock:
+            audio = self.mp3_buffers.get(key) if complete is None else complete
+            if (audio is None or not self.client or session != self.playback_session or self.library is None
+                    or (quality != "128" and not self.premium)):
+                return None
+            track = self.library.tracks.get(number(track_id))
+            if not track or track.get("trashed"):
+                self.mp3_buffers.pop(key, None)
+                return None
+            self.mp3_buffers.pop(key, None)
+            self.mp3_buffers[key] = audio
+            if len(self.mp3_buffers) > 2:
+                self.mp3_buffers.pop(next(iter(self.mp3_buffers)))
+            return audio
 
     def record_stream_result(self, request_id, session, state, *, first_response=None):
         """Observe an existing request, never contact the service to classify it."""
