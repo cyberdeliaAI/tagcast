@@ -6726,6 +6726,45 @@ test("Queue Sync rejects stale loading intent after a local Pause, role change o
   }
 });
 
+test("Queue redraws only the previous and current rows for unchanged occurrences", async()=>{
+  const p=livePage(); await settle();
+  p.run('$("#now-playing-list")');
+  const list=p.nodes.get("#now-playing-list"), audio=p.nodes.get("#audio");
+  const fakeRow=()=> {
+    const classes=new Set(), attributes=new Map(), number={innerHTML:""};
+    const classList={toggle(name,on){on?classes.add(name):classes.delete(name);},contains:name=>classes.has(name)};
+    const button={classList, firstElementChild:number, attributes,
+      setAttribute:(name,value)=>attributes.set(name,value), removeAttribute:name=>attributes.delete(name)};
+    return {classList, firstElementChild:button};
+  };
+  let writes=0, markup="";
+  Object.defineProperty(list,"innerHTML",{get:()=>markup,set(value){
+    writes++; markup=value;
+    list.children=Array.from(value.matchAll(/data-queue-position=/g),fakeRow);
+  }});
+  p.run('playTracks(state.details.get("1")); setNowPlaying(true)');
+  const rows=list.children.slice(), before=p.run("nowPlayingRows.revision");
+  list.scrollTop=280;
+  p.run('player.index=1; renderNowPlaying()');
+  assert.equal(writes,1);
+  assert.equal(list.scrollTop,280);
+  assert.equal(p.run("nowPlayingRows.revision"),before);
+  assert.equal(list.children[1],rows[1]);
+  assert.equal(rows[0].firstElementChild.attributes.has("aria-current"),false);
+  assert.equal(rows[1].firstElementChild.attributes.get("aria-current"),"true");
+  assert.equal(rows[1].classList.contains("playing"),true);
+  audio.paused=true;
+  p.run("renderNowPlaying()");
+  assert.equal(writes,1);
+  assert.equal(rows[1].classList.contains("playing"),false);
+  assert.equal(rows[1].firstElementChild.firstElementChild.innerHTML,"Ⅱ");
+  p.run("player.queue.reverse(); renderNowPlaying()");
+  assert.equal(writes,2);
+  assert.equal(p.run("nowPlayingRows.revision"),before+1);
+  assert.notEqual(list.children[1],rows[1]);
+  assert.equal(list.scrollTop,280);
+});
+
 test("Finishing Up next at the end consumes it, retains the base queue and appending starts at the first new track", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1"), state.details.get("1").tracks.at(-1).id); appendToQueue(state.details.get("2"), null, true); while (player.index < player.queue.length - 1) step(1); player.repeat = "none"');
