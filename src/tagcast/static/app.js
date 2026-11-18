@@ -46,6 +46,7 @@ const state = {playlistsCount: null, albums: [], details: new Map(), albumFavour
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
+let loadedLibrarySession = null;
 let combinedNoticeProfile = "";
 
 const combinedAlbumView = () => live() && Boolean(state.connection.combine_sets || state.connection.combined_view);
@@ -217,6 +218,7 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  loadedLibrarySession = null;
   saveOrder += 1;
   libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
@@ -1596,11 +1598,7 @@ async function boot() {
   else if (typeof restorePendingRoute === "function") restorePendingRoute();
 }
 
-async function loadLive(refresh = false) {
-  saveOrder += 1;
-  const request = ++libraryLoadRequest, session = state.connection.playback_session;
-  const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
-  let completed = false;
+function resetLiveLibraryViews() {
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
@@ -1622,17 +1620,37 @@ async function loadLive(refresh = false) {
   if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
-  state.loading = true; state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
+  state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
+}
+
+async function loadLive(refresh = false) {
+  saveOrder += 1;
+  const request = ++libraryLoadRequest, session = state.connection.playback_session;
+  const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
+  const retained = loadedLibrarySession !== null && loadedLibrarySession === session;
+  if (!retained) {
+    if (loadedLibrarySession !== null) {
+      if (typeof detachQueueMemory === "function") detachQueueMemory();
+      if (typeof stopPlayer === "function") stopPlayer();
+      loadedLibrarySession = null;
+    }
+    resetLiveLibraryViews();
+  }
+  state.loading = true;
   libraryLoadingRefresh = refresh;
   $("#library-loading-detail").textContent = libraryLoadingText(nextLibraryLoadingMessage(), refresh);
   updateChrome(); render();
+  let replaced = false, switchedToDemo = false;
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     if (!current()) return;
-    completed = true;
-    state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    const albums = colorize(data.albums);
+    if (retained) resetLiveLibraryViews();
+    replaced = true;
+    loadedLibrarySession = session;
+    state.albums = albums; state.artistNames = data.artists || [];
     combinedNoticeProfile = typeof data.playback_profile === "string" ? data.playback_profile : "";
     if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
     applyEditorNames(data.editor_names);
@@ -1648,18 +1666,24 @@ async function loadLive(refresh = false) {
     toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
   } catch (error) {
     if (!current()) return;
-    completed = true;
-    if (error.status === 401) state.connection.connected = false;
-    useLocal(demoLibrary(), "demo");
+    if (error.status === 401) {
+      Object.assign(state.connection, {connected: false, account: "", playback_session: ""});
+    }
+    if (error.status === 401 || !retained) {
+      useLocal(demoLibrary(), "demo");
+      switchedToDemo = true;
+    }
     toast(TagcastI18n.text("library.load.failed", {error: TagcastI18n.errorText(error)}));
   } finally {
-    if (!completed && request !== libraryLoadRequest) return;
-    if (!completed && session !== state.connection.playback_session) {
-      state.loading = false; updateChrome(); return;
+    if (!switchedToDemo && !current()) {
+      if (request === libraryLoadRequest) { state.loading = false; updateChrome(); }
+      return;
     }
     state.loading = false;
     if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
-    state.page = 0; updateChrome(); render();
+    if (replaced || switchedToDemo) state.page = 0;
+    updateChrome(); render();
+    if (!replaced && !switchedToDemo) return;
     if (state.screen === "overview" && typeof loadOverview === "function") loadOverview();
     if (typeof refreshPlayerRatings === "function") refreshPlayerRatings();
     if (typeof restorePendingRoute === "function") restorePendingRoute();

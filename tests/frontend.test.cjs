@@ -2176,6 +2176,44 @@ test('library loading has a global indeterminate indicator independent of the di
   assert.match(html,/<strong[^>]*>Loading your iBroadcast library…<\/strong>/);
 });
 
+test('temporary reload failures keep the loaded snapshot and active audio until a successful retry', async () => {
+  const p=livePage(); await settle();
+  const albums=p.json('state.albums');
+  const details=p.json('[...state.details.values()]');
+  p.run('Object.assign(state.connection,{connected:true,playback_session:"reload-session"})');
+  const fixture=(url, current=albums)=>({ok:true,json:async()=>url.startsWith('/api/library')
+    ? {albums:current,artists:[],favourites_count:1} : {albums:details}});
+  p.setFetch(url=>fixture(url));
+  await p.run('loadLive()');
+  await p.run('albumDetails(["1"])');
+  p.run('playTracks(state.details.get("1")); globalThis.beforeAlbums=state.albums; globalThis.beforeDetails=state.details; globalThis.beforeQueue=player.queue');
+  const source=p.run('audio.src');
+  for(const failure of [
+    ()=>({ok:false,status:502,json:async()=>({error:"Temporary mock error"})}),
+    ()=>Promise.reject(new TypeError("Offline")),
+  ]){
+    p.setFetch(url=>url.startsWith('/api/library')?failure():fixture(url));
+    await p.run('loadLive(true)');
+    assert.equal(p.run('state.albums===beforeAlbums && state.details===beforeDetails && player.queue===beforeQueue'),true);
+    assert.equal(p.run('state.mode'),"live");
+    assert.equal(p.run('state.connection.connected && !audio.paused && !state.loading'),true);
+    assert.equal(p.run('audio.src'),source);
+    assert.equal(p.nodes.get('#library-loading').hidden,true);
+  }
+  const next=[{...albums[0],name:"Fresh library"}];
+  p.setFetch(url=>fixture(url,next));
+  await p.run('loadLive(true)');
+  assert.equal(p.run('state.albums[0].name'),"Fresh library");
+  assert.equal(p.run('player.queue===beforeQueue && !audio.paused'),true);
+  assert.equal(p.run('audio.src'),source);
+
+  p.setFetch(()=>({ok:false,status:401,json:async()=>({error:"Sign-in expired"})}));
+  await p.run('loadLive()');
+  assert.equal(p.run('state.mode'),"demo");
+  assert.equal(p.run('state.connection.connected'),false);
+  assert.equal(p.run('player.queue.length'),0);
+});
+
 test('an older library reply cannot hide a newer load or replace its albums', async () => {
   const p=livePage(); await settle(); const albums=p.json('state.albums');
   let first,second;
