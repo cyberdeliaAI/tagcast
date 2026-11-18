@@ -31,6 +31,7 @@ from .album_split import AlbumSplit
 from .artist_bios import ArtistBiographies
 from .cleanup import Cleanup
 from .collections import Collections
+from .discover import ArtistDiscover
 from .downloads import AudioDownloads
 from .duplicate_cleanup import DuplicateCleanup
 from .errors import CodedError
@@ -55,6 +56,7 @@ from .service_status import ServiceStatus
 from .sources import KEYS as SOURCE_KEYS
 from .sources import Lookup
 from .tags import Tags
+from .trash_emptying import TrashEmptying
 from .updates import UpdateChecker
 from .year_review import YearReview
 
@@ -357,14 +359,21 @@ class StudioClient(ibroadcast.iBroadcast):
         try:
             response = self._with_fresh_token(send)
         except requests.RequestException as error:
-            raise ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).") from None
+            failure = ApiError(f"Could not reach iBroadcast ({error.__class__.__name__}).")
+            failure.write_effects = {"artwork_uncertain": True}
+            raise failure from None
         try:
             result = response.json()
         except ValueError:
             result = {}
+        if not isinstance(result, dict):
+            result = {}
         if not response.ok or result.get("result") is False or not number(result.get("artwork_id")):
-            raise ApiError(result.get("message")
-                           or f"iBroadcast did not accept the image (HTTP {response.status_code}).")
+            failure = ApiError(result.get("message")
+                               or f"iBroadcast did not accept the image (HTTP {response.status_code}).")
+            if response.status_code >= 500 or response.ok and result.get("result") is not False:
+                failure.write_effects = {"artwork_uncertain": True}
+            raise failure
         return number(result["artwork_id"])
 
     def open_download(self, track_id, user_id):
@@ -450,6 +459,7 @@ class Studio:
         self.tags = Tags(self)
         self.album_merge = AlbumMerge(self)
         self.album_split = AlbumSplit(self)
+        self.trash_emptying = TrashEmptying(self)
         self.queue_sync = QueueSync(self)
         self.combine_sets = False  # iBroadcast refuses update_album while this setting is on
         self.downloads = 0  # library downloads started so far; numbers each one
@@ -465,12 +475,16 @@ class Studio:
         self._device_stop = threading.Event()
         self._pkce = {}
         self._pkce_gen = 0
+        # First-run eligibility is read-only and excludes existing saved profiles.
+        self.setup_eligible = not any((self.home / name).exists() for name in (
+            "config.json", "tokens.json", CACHE_FILE, "updates.json"))
         self.config = self._read("config.json") or {}
         self.album_guide = AlbumGuide(self)
         self.updates = UpdateChecker(self._read, self._write)
         self.service_status = ServiceStatus()
         self.lookup = Lookup(self.source_keys, self.disabled_sources)
         self.artist_bios = ArtistBiographies(self)
+        self.discover = ArtistDiscover(self)
         self.album_info = AlbumInformation(self)
         self.cleanup = Cleanup(self)
         self.duplicate_cleanup = DuplicateCleanup(self)
@@ -508,12 +522,15 @@ class Studio:
             if data.get("user_id") != user_id or data.get("status", {}).get("lastmodified") != lastmodified \
                     or data.get("combine_sets") != self.combine_sets:
                 return None
-            return Library(data)
+            library = Library(data)
+            return None if not library.combine_sets and library.combined_view else library
         except (OSError, ValueError, AttributeError, EOFError, LibraryError):
             return None
 
     def _write_cache(self, library, user_id, client):
         """Write the library to disk in the background; a failed write only costs a download."""
+        if not library.combine_sets and library.combined_view:
+            return  # A transitional combined response must not become the final cache.
         def write():
             with self.cache_lock:
                 if client is not self.client:  # disconnected before the write started
@@ -585,6 +602,7 @@ class Studio:
         with self.lock:
             self.client, self.library, self.account = client, None, None
             self.jobs.clear()
+            self.trash_emptying.reviews.clear()
             self.playback_session = secrets.token_hex(16)
             self.stream_results.clear()
             if save:
@@ -597,6 +615,7 @@ class Studio:
         with self.lock:
             self.client = self.library = self.account = self.device = None
             self.jobs.clear()
+            self.trash_emptying.reviews.clear()
             self.playback_session = ""
             self.stream_results.clear()
             self._device_gen += 1
@@ -829,7 +848,8 @@ class Studio:
         with self.lock:
             library, owner = self.library, self.library_user
         if library and owner == user_id and library.lastmodified == lastmodified \
-                and library.combine_sets == self.combine_sets:
+                and library.combine_sets == self.combine_sets \
+                and not (not library.combine_sets and library.combined_view):
             return library
         return None
 
@@ -858,7 +878,7 @@ class Studio:
                 "playlists_count": self.collections.playlist_count(library),
                 "favourites_count": library.favourites()["count"], "premium": self.premium,
                 "source": source, "lastmodified": library.lastmodified,
-                "combine_sets": self.combine_sets}
+                "combine_sets": self.combine_sets, "combined_view": library.combined_view}
 
     def album_details(self, ids):
         with self.lock:
@@ -1061,10 +1081,13 @@ class Studio:
                     "error": "", "message": "iBroadcast already has these values."}
 
         failed, error = {}, ""
-        if self.combine_sets and any(i["kind"] == "album" for i in plan["items"]):
+        if fresh.album_writes_blocked and any(i["kind"] == "album" for i in plan["items"]):
             blocked = [i for i in plan["items"] if i["kind"] == "album"]
             failed.update({("album", i["id"]): "blocked" for i in blocked})
-            error = (f"{COMBINE_SETS_MESSAGE} {len(blocked)} album "
+            advice = COMBINE_SETS_MESSAGE if self.combine_sets else (
+                "The library still contains combined multi-disc albums. Reload after iBroadcast "
+                "has applied the setting change before editing album fields.")
+            error = (f"{advice} {len(blocked)} album "
                      f"{'change was' if len(blocked) == 1 else 'changes were'} not sent; "
                      "track changes were saved as usual.")
         sendable = {**plan, "items": [i for i in plan["items"] if (i["kind"], i["id"]) not in failed]}
@@ -1075,9 +1098,14 @@ class Studio:
             try:
                 artist_id = number(client._jsonrequest("create_artist", name=name).get("artist_id"))
             except ApiError as failure:
-                raise ApiError(f"Could not create artist “{name}”: {failure}") from None
+                problem = ApiError(f"Could not create artist “{name}”: {failure}")
+                problem.write_effects = {"artists_created": len(created),
+                                         "artist_uncertain": isinstance(failure, UncertainWrite)}
+                raise problem from None
             if not artist_id:
-                raise ApiError(f"iBroadcast did not return an ID for new artist “{name}”.")
+                problem = ApiError(f"iBroadcast did not return an ID for new artist “{name}”.")
+                problem.write_effects = {"artists_created": len(created), "artist_uncertain": True}
+                raise problem
             artist_ids[name] = artist_id
             created.append(name)
 
@@ -1106,7 +1134,8 @@ class Studio:
                     "status": failed.get((i["kind"], i["id"]), "sent")} for i in plan["items"]]
         job = self._check_later(client, self.downloads,
                                 lambda after: verify(after, plan, artist_ids, failed))
-        return {"results": results, "job": job, "created_artists": created, "error": error}
+        return {"results": results, "job": job, "created_artists": created, "error": error,
+                "write_effects": {"artists_created": len(created)} if created else {}}
 
     # -- read-back -----------------------------------------------------------
 
@@ -1193,6 +1222,7 @@ class Studio:
 
     def settings(self):
         return {"sources": self.lookup.describe(),
+                "setup_eligible": self.setup_eligible and self.client is None and not self.config,
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
                 "auto_lookup": self.config.get("auto_lookup", True),
                 "auto_updates": self.config.get("auto_updates", True),
@@ -1202,6 +1232,7 @@ class Studio:
                 "music_uploads": self.config.get("music_uploads") is True,
                 "music_uploads_authorized": upload_authorized(self.client),
                 "album_guide": self.config.get("album_guide") is True,
+                "discover_lastfm": self.config.get("discover_lastfm", True) is not False,
                 "artist_biographies": self.config.get("artist_biographies") is True,
                 "artist_biographies_revision": self.artist_bios.revision,
                 "album_information": self.config.get("album_information") is True,
@@ -1245,6 +1276,8 @@ class Studio:
                 raise ApiError("Choose whether artist biographies are enabled.")
             if "album_guide" in body and type(body["album_guide"]) is not bool:
                 raise ApiError("Choose whether 1001 Albums is enabled.")
+            if "discover_lastfm" in body and type(body["discover_lastfm"]) is not bool:
+                raise ApiError("Choose whether artist discovery uses Last.fm.")
             if "guide_matching_details" in body and type(body["guide_matching_details"]) is not bool:
                 raise ApiError("Choose whether matching details are shown.")
             if "auto_lookup" in body and type(body["auto_lookup"]) is not bool:
@@ -1284,6 +1317,8 @@ class Studio:
                 config["record_plays"] = body["record_plays"]
             if "album_guide" in body:
                 config["album_guide"] = body["album_guide"]
+            if "discover_lastfm" in body:
+                config["discover_lastfm"] = body["discover_lastfm"]
             if "artist_biographies" in body:
                 config["artist_biographies"] = body["artist_biographies"]
             if "album_information" in body:
@@ -1295,6 +1330,10 @@ class Studio:
                 self.artist_bios.revision += 1
             if config.get("album_information", False) != self.config.get("album_information", False):
                 self.album_info.revision += 1
+            if config.get("discover_lastfm", True) != self.config.get("discover_lastfm", True) or \
+                    config.get("lastfm_api_key") != self.config.get("lastfm_api_key") or (
+                    "lastfm" in config.get("disabled_sources", [])) != ("lastfm" in self.disabled_sources()):
+                self.discover.generation += 1
             self.config = config
         if not config.get("queue_sync"):
             self.queue_sync.disconnect()
@@ -1398,6 +1437,7 @@ class Studio:
         client = self._require_client()
         if not self.save_lock.acquire(blocking=False):
             raise ApiError("Another save is still running.")
+        effects = {}
         try:
             fresh, _ = self._current(client)
             with self.lock:
@@ -1433,6 +1473,8 @@ class Studio:
 
             if previous is None:  # a new image
                 new_id = self._image(client, source, user_id)
+                if not number(source.get("artwork_id")):
+                    effects["artwork_created"] = str(new_id)
                 if target == "album":
                     wanted = dict.fromkeys(now, new_id)
                     assign("set_artwork", tracks=list(now), artwork_id=new_id)
@@ -1481,10 +1523,14 @@ class Studio:
 
             job = self._check_later(client, self.downloads, check)
             return {"artwork_id": new_id, "image": fresh.art_url(new_id, 300), "job": job, "note": note,
+                    "write_effects": effects,
                     "previous": {"tracks": {str(k): v for k, v in now.items()}} if target == "album"
                     else {"artwork_id": now},
                     "results": [{"kind": target, "id": str(item_id), "label": label,
                                  "fields": [field], "status": "sent"}]}
+        except ApiError as failure:
+            failure.write_effects = {**effects, **getattr(failure, "write_effects", {})}
+            raise
         finally:
             self.save_lock.release()
 

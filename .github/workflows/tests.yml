@@ -55,6 +55,9 @@ jobs:
       - name: Frontend regressions
         if: needs.scope.outputs.full == 'true'
         run: node --test tests/*.test.cjs
+      - name: Install pinned desktop test dependencies
+        if: needs.scope.outputs.full == 'true' && (hashFiles('electron/package.json') != '')
+        run: npm ci --ignore-scripts --prefix electron
       - name: Electron shell regressions
         if: needs.scope.outputs.full == 'true' && (hashFiles('electron/package.json') != '')
         shell: bash

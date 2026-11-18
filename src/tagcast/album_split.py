@@ -58,7 +58,7 @@ class AlbumSplit(AlbumMerge):
 
     @staticmethod
     def _split_snapshot(library, album_id):
-        if library.combine_sets:
+        if library.album_writes_blocked:
             raise LibraryError("Turn off Combine Multi-Disc Album Sets in iBroadcast before splitting.")
         album = library.albums.get(album_id)
         members = library.active_track_ids(album_id)
@@ -169,18 +169,23 @@ class AlbumSplit(AlbumMerge):
                 self.selections.clear()
                 self.reviews.clear()
             target_id, attempted_move, error = 0, False, ""
+            effects = {}
             try:
                 response = client._jsonrequest("create_album", _retry=False, **target)
                 raw_id = response.get("album_id")
                 if response.get("result") is not True or type(raw_id) not in (int, str) \
                         or not str(raw_id).isdigit() or int(raw_id) <= 0 or int(raw_id) in old_ids:
+                    effects["album_uncertain"] = True
                     raise LibraryError("The new album could not be confirmed. No tracks were sent.")
                 target_id = int(raw_id)
+                effects["album_created"] = str(target_id)
                 # Recheck the source and any returned destination. Empty albums can
                 # be omitted by the library server; the confirmed creation receipt
                 # identifies that destination, not an invented library record.
                 after_create, _ = self.studio._current(client, refresh=True)
                 self._owner(body, owner)
+                if after_create.album_writes_blocked:
+                    raise ConflictError("The library view changed after creation. No tracks were sent. Reload the library.")
                 if self._split_snapshot(after_create, source) != snapshot:
                     raise ConflictError("The original album changed after creation. No tracks were sent.")
                 if not self._created_target_empty(after_create, target_id, target):
@@ -193,14 +198,16 @@ class AlbumSplit(AlbumMerge):
             except Exception as failure:
                 # Preserve an accepted/uncertain creation or move; never roll back or retry.
                 # Runtime imports avoid the Studio -> feature -> Studio import cycle.
-                from .client import ApiError
+                from .client import ApiError, UncertainWrite
                 if not isinstance(failure, (ApiError, LibraryError)):
                     raise
+                if not target_id and isinstance(failure, UncertainWrite):
+                    effects["album_uncertain"] = True
                 error = str(failure)
 
             def check(after):
                 current_owner = (self.studio.client, self.studio.library_user, self.studio.playback_session)
-                valid = current_owner == owner and not after.combine_sets and target_id not in old_ids \
+                valid = current_owner == owner and not after.album_writes_blocked and target_id not in old_ids \
                     and self._target_matches(after, target_id, target)
                 valid = valid and sorted(after.active_track_ids(target_id)) == sorted(chosen) \
                     and sorted(after.active_track_ids(source)) == sorted(set(snapshot["members"]) - chosen) \
@@ -213,6 +220,7 @@ class AlbumSplit(AlbumMerge):
                         for tid in review["chosen"]]
 
             job = self.studio._check_later(client, self.studio.downloads, check)
-            return {"job": job, "target": str(target_id) if target_id else "", "error": error}
+            return {"job": job, "target": str(target_id) if target_id else "", "error": error,
+                    "write_effects": effects}
         finally:
             self.studio.save_lock.release()

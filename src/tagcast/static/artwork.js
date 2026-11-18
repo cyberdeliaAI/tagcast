@@ -139,9 +139,11 @@ async function saveArtwork() {
   if (!t || !o) return;
   if (t.target === "playlist") return savePlaylistCover(t, o);
   const save = $("#art-save"), status = $("#art-status"), discs = t.discs || [t];
+  let attempted = t;
   save.disabled = true; save.textContent = TagcastI18n.text("review.saving");
   try {
     for (const d of discs.filter(d => !art.saved.includes(d.id))) {
+      attempted = d;
       setActionStatus("#art-status", discs.length > 1 ? TagcastI18n.text("artwork.status.savingDisc", {disc: art.saved.length + 1, count: discs.length}) : TagcastI18n.text("review.status.checkingAndSaving"), true);
       // After the first disc, the others reuse the image that is now in iBroadcast.
       const source = art.artworkId ? {artwork_id: art.artworkId} : o.artwork_id ? {artwork_id: o.artwork_id} : o.data ? {data: o.data, name: o.name} : {url: o.url};
@@ -157,10 +159,15 @@ async function saveArtwork() {
     // Only album covers are saved per disc; artist images have one target.
     toast(TagcastI18n.text(t.target !== "album" ? "artwork.saved.image" : discs.length > 1 ? "artwork.saved.coverDiscs" : "artwork.saved.cover", {count: discs.length}));
   } catch (error) {
+    const attempt = rememberWriteAttempt({scope: attempted.target,
+      selection: [{id: attempted.id, name: attempted.label, artist: attempted.artist}],
+      changes: [{kind: attempted.target, id: attempted.id, label: attempted.label,
+        fields: {[attempted.target === "album" ? "cover" : "image"]: {before: "", after: `image from ${o.source}`}}}]}, error);
     if (art.saved.length) render();
     save.disabled = false; save.textContent = TagcastI18n.text(art.saved.length ? "artwork.saveOtherDiscs" : "common.tryAgain");
     const part = art.saved.length ? TagcastI18n.text("artwork.error.partial", {saved: art.saved.length, count: discs.length}) : "";
     $("#art-status").innerHTML = `<span class="error-text">${escapeHtml([part, TagcastI18n.errorText(error)].filter(Boolean).join(" "))}</span>`;
+    if (attempt) $("#art-status").innerHTML += writeEffectsMarkup(attempt.write_effects);
     if (error.status === 409) { save.textContent = TagcastI18n.text("common.reloadLibrary"); save.onclick = () => { $("#artwork").close(); $("#editor").close(); loadLive(); }; }
   } finally { if ($("#art-status") === status) setActionStatus("#art-status", undefined); }
 }
@@ -168,7 +175,7 @@ async function saveArtwork() {
 function artworkEntry(t, result, from, beforeImage) {
   const field = t.target === "album" ? "cover" : "image";
   return {scope: t.target, selection: [{id: t.id, name: t.label, artist: t.artist}], created: new Date().toISOString(),
-    status: "sent", source: "ibroadcast", error: "",
+    status: "sent", source: "ibroadcast", error: "", write_effects: writeEffectsData(result.write_effects),
     changes: result.results.map(r => ({...r, albumId: t.id, fields: {[field]: {before: beforeImage ? "previous image" : "", after: `image from ${from}`}}})),
     artwork: {target: t.target, id: t.id, label: t.label, artist: t.artist, previous: result.previous, artwork_id: result.artwork_id, before: beforeImage, after: result.image}};
 }

@@ -8,14 +8,14 @@ const viewFailure = (key, params) => TagcastI18n.failure(key.replace(/^errors\./
 // Read-only album details use the same lazy library cache as the metadata editor.
 // trash: track IDs chosen for the trash; found: a track opened from Tracks; failure: a failed read to show again;
 // quiet: a language repaint from memory, which never starts lookups.
-const albumView = {id: null, request: 0, loading: false, trash: null, found: "", failure: null, quiet: false};
+const albumView = {id: null, request: 0, loading: false, trash: null, found: "", failure: null, quiet: false, discoveryArtist: null};
 const coverLightbox = {open: false, focus: null, timer: null, fallback: "", fallbackTried: false, album: null, status: ""};
-const albumActions = {trigger: null, details: null, id: null};
+const albumActions = {trigger: null, details: null, id: null, session: null};
 
 function closeAlbumActions(restoreFocus = false) {
   const trigger = albumActions.trigger;
   $("#album-action-menu").hidden = true;
-  albumActions.trigger = null; albumActions.details = null; albumActions.id = null;
+  albumActions.trigger = null; albumActions.details = null; albumActions.id = null; albumActions.session = null;
   trigger?.setAttribute("aria-expanded", "false");
   if (restoreFocus && trigger?.isConnected) trigger.focus();
 }
@@ -26,6 +26,7 @@ function openAlbumActions(trigger) {
   if (same || trigger.disabled || !live() || state.loading || state.screen !== "album"
       || albumView.loading || albumView.trash || saving || checking) return;
   albumActions.trigger = trigger; albumActions.details = state.details; albumActions.id = albumView.id;
+  albumActions.session = state.connection.playback_session;
   trigger.setAttribute("aria-expanded", "true");
   const menu = $("#album-action-menu"); menu.hidden = false;
   $("#album-action-lyrics").textContent = TagcastI18n.text(albumLyricsCheck?.running ? "album.actions.stopLyrics" : "album.actions.checkLyrics");
@@ -43,6 +44,12 @@ $("#album-action-lyrics").addEventListener("click", () => {
   closeAlbumActions(true);
   if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id) checkAlbumLyrics();
 });
+$("#album-action-playlist").addEventListener("click", () => {
+  const {trigger, details, id, session} = albumActions;
+  closeAlbumActions(true);
+  if (trigger?.isConnected && !trigger.disabled && details === state.details && id === albumView.id
+      && session === state.connection.playback_session) openAlbumPlaylist(id);
+});
 $("#album-action-lyrics-import").addEventListener("click", () => {
   const {trigger, details, id} = albumActions;
   closeAlbumActions(true);
@@ -59,7 +66,7 @@ $("#album-action-menu").addEventListener("keydown", event => {
     if (event.key === "Escape") event.preventDefault();
   } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     event.preventDefault();
-    const items = [$("#album-action-lyrics"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
+    const items = [$("#album-action-lyrics"), $("#album-action-playlist"), $("#album-action-lyrics-import"), $("#album-action-download"), $("#album-action-compare"), $("#album-action-split"), $("#album-action-trash")].filter(item => !item.hidden);
     const index = items.indexOf(document.activeElement);
     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
       : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
@@ -209,13 +216,14 @@ function trackNumberControl(track, position, action, canPlay) {
 }
 
 function albumTrackNumber(track, albumId, canPlay) {
-  return trackNumberControl(track, track.track || "–",
+  return trackNumberControl(track, displayedTrackNumber(track) || "–",
     `data-play="${escapeHtml(track.id)}" data-play-album-id="${escapeHtml(albumId)}"`, canPlay);
 }
 
 function resetAlbumView() {
   closeCoverLightbox(); closeAlbumActions();
   albumView.id = null; albumView.request += 1; albumView.loading = false; albumView.trash = null; albumView.failure = null;
+  albumView.discoveryArtist = null;
   if (state.screen === "album") showScreen("albums");
 }
 
@@ -239,10 +247,11 @@ function duplicateTrackBadge(track, titles, numbers) {
 }
 
 // The discs of a set open as one album page, under the address of the first disc.
-async function openAlbum(id, found = "") {
+async function openAlbum(id, found = "", discoveryArtist = null) {
   const summary = state.albums.find(a => String(a.id) === String(id));
   if (!summary) return;
   const ids = shelfIds(id);
+  albumView.discoveryArtist = state.screen === "albums" && discoveryArtist === state.artist ? discoveryArtist : null;
   if (albumView.id !== ids[0]) albumView.trash = null;
   albumView.id = ids[0]; albumView.found = String(found); albumView.failure = null;
   const request = ++albumView.request, details = state.details;
@@ -282,11 +291,13 @@ function albumViewReady() {
 }
 
 function renderAlbumView() {
+  if (typeof trackComparisonCurrent === "function" && $("#track-comparison").open && !trackComparisonCurrent()) resetTrackComparison();
   if (state.screen !== "album" || albumView.loading) return;
   if (!state.albums.some(a => String(a.id) === albumView.id)) { resetAlbumView(); return; }
   const ids = shelfIds(albumView.id), discs = ids.map(i => state.details.get(i));
   if (ids[0] !== albumView.id || !discs.every(Boolean)) { openAlbum(albumView.id); return; }
   const album = joinDiscs(discs), several = discs.length > 1, year = albumYear(discs);
+  const displayDiscs = albumDisplayDiscs(discs);
   const informationFocus = typeof albumInformationFocus === "function" ? albumInformationFocus() : "";
   const formats = albumTrackFormats(album.tracks);
   const id = escapeHtml(album.id), canPlay = live() && album.tracks.length > 0;
@@ -302,19 +313,19 @@ function renderAlbumView() {
   $("#album-page").innerHTML = `
     <div class="album-detail-header"><button type="button" class="album-cover-preview" data-cover-view aria-label="${TagcastI18n.html("album.cover.enlarge", {name: album.name})}" ${album.artwork ? "" : "disabled"}>${cover(album, false, true)}</button><div class="album-detail-info">
       <h1>${escapeHtml(album.name)}</h1><div class="album-artist-links">${albumArtistLinks(album)}</div>
-      <p class="muted album-detail-meta">${year ? `<button type="button" class="album-year-link" data-browse-kind="years" data-browse-key="${escapeHtml(year)}" data-browse-label="${escapeHtml(year)}" aria-label="${TagcastI18n.html("album.year.browse", {year})}">${escapeHtml(year)}</button>` : TagcastI18n.html("album.year.unknown")} · ${TagcastI18n.html("album.header.tracks", {count: album.tracks.length})}${several ? ` · ${discIcons(discs.length)}` : album.disc > 1 ? ` · ${TagcastI18n.html("common.disc", {disc: album.disc})}` : ""}${total}</p>
+      <p class="muted album-detail-meta">${year ? `<button type="button" class="album-year-link" data-browse-kind="years" data-browse-key="${escapeHtml(year)}" data-browse-label="${escapeHtml(year)}" aria-label="${TagcastI18n.html("album.year.browse", {year})}">${escapeHtml(year)}</button>` : TagcastI18n.html("album.year.unknown")} · ${TagcastI18n.html("album.header.tracks", {count: album.tracks.length})}${displayDiscs.length > 1 ? ` · ${discIcons(displayDiscs.length)}` : album.disc > 1 ? ` · ${TagcastI18n.html("common.disc", {disc: album.disc})}` : ""}${total}</p>
       <div class="album-labels" aria-label="${TagcastI18n.html("album.labels.label")}">${genres.map(g => `<button type="button" class="album-genre-chip" data-browse-kind="genres" data-browse-key="${escapeHtml(g.toLocaleLowerCase())}" data-browse-label="${escapeHtml(g)}" title="${TagcastI18n.html("album.labels.genre", {genre: g})}">${escapeHtml(g)}</button>`).join("")}${typeof albumTagChips === "function" ? albumTagChips(album) : ""}</div>
       ${albumRatingControls(discs)}
-      <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ ${TagcastI18n.html("album.actions.play")}</button><button type="button" class="button" data-shuffle-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>${TagcastI18n.html("album.actions.shuffle")}</button>
-        ${queueButton(album.id, null, false, true)}${playlistAlbumButton(album.id)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">${TagcastI18n.html("album.actions.edit")}</button>${live() ? `<button type="button" class="button album-more" data-album-more aria-label="${TagcastI18n.html("album.actions.more")}" aria-haspopup="menu" aria-controls="album-action-menu" aria-expanded="false" ${albumView.trash || saving || checking ? "disabled" : ""}>⋯</button>` : ""}</div>
+      <div class="album-detail-actions"><button class="button primary" data-play-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"}>▶ ${TagcastI18n.html("album.actions.play")}</button><button type="button" class="button album-shuffle" data-shuffle-album data-play-album-id="${id}" ${canPlay ? "" : "disabled"} aria-label="${TagcastI18n.html("album.actions.shuffle")}" title="${TagcastI18n.html("album.actions.shuffle")}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m18 2 4 4-4 4m0 4 4 4-4 4M2 6h2.5a6 6 0 0 1 5 2.5l5 7a6 6 0 0 0 5 2.5H22M2 18h2.5a6 6 0 0 0 5-2.5l5-7a6 6 0 0 1 5-2.5H22"/></svg></button>
+        ${queueButton(album.id, null, false, true)}<button class="button" data-edit-album="${escapeHtml(ids.join(","))}">${TagcastI18n.html("album.actions.edit")}</button>${live() ? `<button type="button" class="button album-more" data-album-more aria-label="${TagcastI18n.html("album.actions.more")}" aria-haspopup="menu" aria-controls="album-action-menu" aria-expanded="false" ${albumView.trash || saving || checking ? "disabled" : ""}>⋯</button>` : ""}</div>
       ${live() ? "" : `<p class="muted">${TagcastI18n.html("album.preview.note")}</p>`}</div></div>
     <section id="album-guide-notes" aria-label="${TagcastI18n.html("album.background.label")}" hidden></section>
     <section id="album-information" class="album-information artist-biography" aria-label="${TagcastI18n.html("album.information.label")}" hidden></section>
     <div class="tracks-heading"><h2>${TagcastI18n.html("album.tracks.heading")}</h2><span class="muted track-list-summary">${TagcastI18n.html("common.count.tracks", {count: album.tracks.length})}${total}${formats.label ? ` · ${escapeHtml(formats.label)}` : ""}${canPlay ? "" : ` · ${TagcastI18n.html("album.tracks.localPreview")}`}</span></div>
     <div id="album-lyrics-check" class="lyrics-actions" hidden><span id="album-lyrics-status" class="muted" role="status" aria-live="polite"></span><button type="button" class="text-action" id="album-lyrics-stop" hidden>${TagcastI18n.html("album.lyrics.stop")}</button></div>
     ${albumView.trash ? trashBar(discs, trashYears) : ""}<table class="album-tracks album-tracklist ${albumView.trash ? "trash-mode" : ""}"><thead><tr><th class="track-number"><span class="track-number-label">#</span></th><th>${TagcastI18n.html("album.table.title")}</th><th class="track-time">${TagcastI18n.html("tracks.table.time")}</th><th class="track-heart" aria-label="${TagcastI18n.html("album.table.actions")}"></th></tr></thead><tbody>
-      ${discs.map((d, i) => (several ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>${TagcastI18n.html("common.disc", {disc: d.disc || "?"})}</span><button class="text-action" data-edit-album="${escapeHtml(d.id)}">${TagcastI18n.html("album.disc.edit", {disc: d.disc || "?"})}</button></td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}${albumTrackNumber(t, album.id, canPlay)}</td>
-        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(d), repeated.get(d))}</strong>${albumLyricsLabel(t)}${albumTrackMetadata(album, t, formats)}${trashAdvice ? trashTrackNote(t, trashAdvice, trashYears) : ""}</td><td class="track-time">${trackDuration(t.length)}${albumView.trash ? trackFormatLabel(t) : ""}</td><td class="track-heart"><div class="track-row-actions">${typeof trackTagControls === "function" ? trackTagControls(album, t) : ""}${queueButton(album.id, t)}${heartButton(t)}</div></td></tr>`).join("")).join("")}
+      ${displayDiscs.map((d, i) => (displayDiscs.length > 1 ? `${i ? '<tr class="disc-gap" aria-hidden="true"><td colspan="4"></td></tr>' : ""}<tr class="disc-row"><td colspan="4"><span>${sourceDiscLabel(d)}</span>${d.virtualDisc ? "" : `<button class="text-action" data-edit-album="${escapeHtml(d.id)}">${TagcastI18n.html("album.disc.edit", {disc: d.disc || "?"})}</button>`}</td></tr>` : "") + d.tracks.map(t => `<tr data-row="${escapeHtml(t.id)}"${String(t.id) === albumView.found ? ' class="found"' : ""}><td class="track-number">${albumView.trash ? trashCheck(t) : ""}${albumTrackNumber(t, album.id, canPlay)}</td>
+        <td><strong>${escapeHtml(t.title)}${duplicateTrackBadge(t, doubled.get(discs.find(a => a.id === d.id)), repeated.get(discs.find(a => a.id === d.id)))}</strong>${albumLyricsLabel(t)}${albumTrackMetadata(album, t, formats)}${trashAdvice ? trashTrackNote(t, trashAdvice, trashYears) : ""}</td><td class="track-time">${trackDuration(t.length)}${albumView.trash ? trackFormatLabel(t) : ""}</td><td class="track-heart"><div class="track-row-actions">${typeof trackTagControls === "function" ? trackTagControls(album, t) : ""}${queueButton(album.id, t)}${heartButton(t)}</div></td></tr>`).join("")).join("")}
     </tbody></table>`;
   if (typeof syncHistory === "function") syncHistory();
   markPlaying();
