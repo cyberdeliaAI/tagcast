@@ -6659,6 +6659,73 @@ test("Restoring a native queue stays paused and inserts Up next after the curren
   assert.equal(p.run('player.repeat'), 'queue');
 });
 
+test("Queue Sync applies the latest Play or Pause to a new native source after seeking", async () => {
+  const p=livePage(); await settle();
+  const rows=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+  const audio=p.nodes.get('#audio');
+  audio.setAttribute("preload","none");
+  let loads=0;
+  audio.load=()=>{loads++; audio.readyState=0;};
+  p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/queue-tracks'
+    ? {tracks:JSON.parse(options.body).tracks.map(id=>rows.find(t=>t.id===String(id)))} : p.json('remoteView')}));
+  p.run(`state.connection.playback_session="remote"; playTracks(state.details.get("1"));
+    queueSync.enabled=true; queueSync.active=true; queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,
+      state:{role:"player",tracks:[100,101,102],play_next:[],pause:false,start_position:7,
+      start_time:Date.now()/1000,volume:.5,data:{play_index:1,play_from:"tracks",repeat_mode:"queue"}}}`);
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue[player.index].id'),"101");
+  assert.equal(audio.paused,true);
+  assert.equal(audio.getAttribute("preload"),"metadata");
+  assert.equal(loads,1);
+  await audio.emit("loadedmetadata");
+  assert.equal(audio.paused,false);
+  assert.ok(audio.currentTime>=7);
+  assert.equal(audio.getAttribute("preload"),"none");
+
+  p.run('remoteView.revision=2; remoteView.state.data.play_index=2');
+  await p.run('pollQueue()');
+  p.run('remoteView.revision=3; remoteView.state.pause=true; remoteView.state.start_position=17');
+  await p.run('pollQueue()');
+  assert.equal(loads,2,"A newer remote Pause must reuse the source already being prepared");
+  await audio.emit("loadedmetadata");
+  assert.equal(audio.paused,true);
+  assert.equal(audio.currentTime,17);
+
+  p.run('remoteView.revision=4; remoteView.state.pause=false; remoteView.state.start_time=Date.now()/1000');
+  await p.run('pollQueue()');
+  assert.equal(audio.paused,false);
+});
+
+test("Queue Sync rejects stale loading intent after a local Pause, role change or queue replacement", async()=>{
+  for (const change of ["pause","controller","reconnect","replacement"]) {
+    const p=livePage(); await settle();
+    const rows=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+    const audio=p.nodes.get("#audio");
+    p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/queue-tracks'
+      ? {tracks:JSON.parse(options.body).tracks.map(id=>rows.find(t=>t.id===String(id)))} : p.json('remoteView')}));
+    p.run(`state.connection.playback_session="remote"; playTracks(state.details.get("1"));
+      queueSync.enabled=true; queueSync.active=true; queueSync.allowed=true;
+      globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,
+        state:{role:"player",tracks:[100,101],play_next:[],pause:false,start_position:7,
+        start_time:Date.now()/1000,volume:.5,data:{play_index:1,play_from:"tracks",repeat_mode:"none"}}}`);
+    await p.run('pollQueue()');
+    if (change==="pause") p.run('pauseSystemPlayback()');
+    if (change==="controller") {
+      p.run('remoteView.revision=2;remoteView.state.role="controller"');
+      await p.run("pollQueue()");
+    }
+    if (change==="reconnect") p.run('state.connection.playback_session="new";');
+    if (change==="replacement") p.run('playTracks(state.details.get("2"), "200"); audio.currentTime=2');
+    await audio.emit("loadedmetadata");
+    assert.equal(audio.paused,change!=="replacement",change);
+    if (change==="replacement") {
+      assert.equal(audio.currentTime,2);
+      assert.match(audio.src,/\/api\/stream\/200/);
+    }
+  }
+});
+
 test("Finishing Up next at the end consumes it, retains the base queue and appending starts at the first new track", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1"), state.details.get("1").tracks.at(-1).id); appendToQueue(state.details.get("2"), null, true); while (player.index < player.queue.length - 1) step(1); player.repeat = "none"');
