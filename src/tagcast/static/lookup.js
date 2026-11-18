@@ -183,6 +183,7 @@ function settingsContentMarkup() {
     + (typeof playbackLyricsSettings === "function" ? playbackLyricsSettings() : "")
     + (typeof visualizerSettings === "function" ? visualizerSettings() : "")
     + (typeof gaplessSettings === "function" ? gaplessSettings() : "")
+    + (typeof mp3StreamDiagnosticsPanel === "function" ? mp3StreamDiagnosticsPanel() : "")
     + themeEditorPanel()
     + sidebarSettingsPanel()
     + metadataExportPanel()

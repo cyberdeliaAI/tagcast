@@ -97,6 +97,28 @@ if _test_base:
     oauth.REVOKE_URL = f"{oauth.OAUTH_BASE}/revoke"
 
 
+def _mp3_response_diagnostic(response, request_range):
+    def header(value, pattern):
+        if value is None:
+            return None
+        value = value.strip()
+        return value if len(value) <= 96 and re.fullmatch(pattern, value, re.I | re.ASCII) else "unrecognized"
+
+    headers = response.headers
+    mime = headers.get("Content-Type")
+    return {
+        "status": response.status_code,
+        "request_range": header(request_range, r"bytes=(?:\d{1,16}-\d{0,16}|-\d{1,16})"),
+        "content_type": header(mime.split(";", 1)[0] if mime is not None else None,
+                               r"[a-z0-9.+-]+/[a-z0-9.+-]+"),
+        "content_length": header(headers.get("Content-Length"), r"\d{1,16}"),
+        "content_range": header(headers.get("Content-Range"),
+                                r"bytes (?:\d{1,16}-\d{1,16}/(?:\d{1,16}|\*)|\*/\d{1,16})"),
+        "accept_ranges": header(headers.get("Accept-Ranges"), r"bytes|none"),
+        "transfer_encoding": header(headers.get("Transfer-Encoding"), r"chunked|identity"),
+    }
+
+
 def mask_email(value):
     name, at, domain = str(value or "").partition("@")
     if not at:
@@ -1684,7 +1706,7 @@ class Studio:
 
     # -- playback -------------------------------------------------------------
 
-    def record_stream_result(self, request_id, session, state):
+    def record_stream_result(self, request_id, session, state, *, first_response=None):
         """Observe an existing request, never contact the service to classify it."""
         if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,100}", request_id):
             return
@@ -1696,10 +1718,13 @@ class Studio:
             self.stream_results = {key: value for key, value in self.stream_results.items() if value[2] > now}
             previous = self.stream_results.get(request_id)
             # A later browser Range request cannot hide a terminal rejection.
-            if previous and previous[0] == session and priority[previous[1]] > priority[state]:
-                state = previous[1]
+            if previous and previous[0] == session:
+                if priority[previous[1]] > priority[state]:
+                    state = previous[1]
+                if previous[3] is not None:
+                    first_response = previous[3]
             self.stream_results.pop(request_id, None)
-            self.stream_results[request_id] = (session, state, now + 120)
+            self.stream_results[request_id] = (session, state, now + 120, first_response)
             while len(self.stream_results) > 64:
                 self.stream_results.pop(next(iter(self.stream_results)))
 
@@ -1711,9 +1736,12 @@ class Studio:
             if not session or session != self.playback_session:
                 raise NotConnected("The playback session changed. Connect again.")
             result = self.stream_results.get(request_id)
-            return {"state": result[1] if result and result[0] == session and result[2] > time.monotonic() else "unknown"}
+            if not result or result[0] != session or result[2] <= time.monotonic():
+                return {"state": "unknown"}
+            return {"state": result[1], **({"first_response": result[3]} if result[3] is not None else {})}
 
-    def stream(self, track_id, range_header=None, quality=None, *, request_id=None, playback_session=None):
+    def stream(self, track_id, range_header=None, quality=None, *, request_id=None,
+               playback_session=None, diagnostic=False):
         """Open a track's audio from iBroadcast. Returns (response, mime); close the response."""
         with self.lock:
             client = self._require_client()
@@ -1742,7 +1770,9 @@ class Studio:
         status = response.status_code
         state = ("auth" if status in (401, 403) else "network" if status in (408, 500, 502, 503, 504)
                  else "available" if response.ok else "unavailable")
-        self.record_stream_result(request_id, session, state)
+        first_response = (_mp3_response_diagnostic(response, range_header)
+                          if diagnostic and request_id and quality != "orig" else None)
+        self.record_stream_result(request_id, session, state, first_response=first_response)
         if response.status_code in (401, 403):
             response.close()
             raise NotConnected("iBroadcast did not accept the session for playback. Connect again.")

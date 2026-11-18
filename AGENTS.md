@@ -934,6 +934,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   deduplicate local requests and never automatically retry an ambiguous history write.
   Use cached membership; never download the whole library per play. Keep these events
   separate from metadata History. Tagcast itself does not send Last.fm scrobbles.
+- MP3 stream diagnostics are off per launch and observe only new, ordinary MP3
+  attempts after opt-in. Keep the first upstream HTTP response per playback request
+  and bounded media observations in memory. Reset on account/session replacement.
+  Export only on explicit download with no audio, identifiers, URLs or credentials.
+  The local status read never opens another audio response or changes playback.
 - Recently played appears only with optional iBroadcast play reporting enabled. Read
   the native playlist by type `recently-played`, never its display name. Preserve
   its ordering and unique track IDs; omit trashed or missing tracks and do not

@@ -64,6 +64,50 @@ class StreamRecoveryTests(unittest.TestCase):
                     self.stream()
                 self.assertEqual(self.state(), expected)
 
+    def test_opt_in_mp3_diagnostic_keeps_only_the_first_response_and_safe_headers(self):
+        first = Mock(status_code=200, ok=True, headers={
+            "Content-Type": "audio/mpeg; token=not-for-report",
+            "Transfer-Encoding": "chunked",
+            "Set-Cookie": "not-for-report",
+        })
+        seek = Mock(status_code=206, ok=True, headers={
+            "Content-Length": "16", "Content-Range": "bytes 100-115/10000", "Accept-Ranges": "bytes",
+        })
+        self.transport.open_stream.side_effect = (first, first, seek)
+        self.stream()
+        self.assertEqual(self.studio.stream_status(self.request, self.session), {"state": "available"})
+
+        request = "diagnostic-request-1234"
+        for byte_range in ("bytes=0-", "bytes=100-115"):
+            self.studio.stream("1", byte_range, "128", request_id=request,
+                               playback_session=self.session, diagnostic=True)
+        self.studio.record_stream_result(request, self.session, "network")
+        self.assertEqual(self.studio.stream_status(request, self.session), {
+            "state": "network",
+            "first_response": {
+                "status": 200, "request_range": "bytes=0-", "content_type": "audio/mpeg",
+                "content_length": None, "content_range": None, "accept_ranges": None,
+                "transfer_encoding": "chunked",
+            },
+        })
+        self.assertEqual(self.transport.open_stream.call_count, 3)
+
+    def test_original_is_excluded_and_non_header_data_is_not_returned(self):
+        self.studio.premium = True
+        self.transport.open_stream.return_value = Mock(status_code=206, ok=True, headers={
+            "Content-Range": "https://example.test/private",
+            "Content-Length": "not-a-number",
+        })
+        self.studio.stream("1", "bytes=0-", "orig", request_id=self.request,
+                           playback_session=self.session, diagnostic=True)
+        self.assertEqual(self.studio.stream_status(self.request, self.session), {"state": "available"})
+        request = "diagnostic-request-1234"
+        self.studio.stream("1", "secret=not-for-report", "192", request_id=request,
+                           playback_session=self.session, diagnostic=True)
+        diagnostic = self.studio.stream_status(request, self.session)["first_response"]
+        for name in ("content_range", "content_length", "request_range"):
+            self.assertEqual(diagnostic[name], "unrecognized")
+
     def test_session_replacement_rejects_late_results_and_never_opens_a_foreign_stream(self):
         self.studio.record_stream_result(self.request, self.session, "network")
         self.studio.playback_session = "replacement-session"

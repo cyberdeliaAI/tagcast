@@ -34,7 +34,8 @@ function normalStreamUrl(track, quality) {
   const session = state.connection.playback_session;
   player.streamRequest = session ? globalThis.crypto?.randomUUID?.()
     || `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}` : "";
-  return session ? `${base}&request=${encodeURIComponent(player.streamRequest)}&session=${encodeURIComponent(session)}` : base;
+  const source = session ? `${base}&request=${encodeURIComponent(player.streamRequest)}&session=${encodeURIComponent(session)}` : base;
+  return typeof beginMp3StreamDiagnostic === "function" ? beginMp3StreamDiagnostic(source, session, player.streamRequest, quality, track.length) : source;
 }
 function renderAudioRecovery() {
   if (typeof gaplessRenderTransport === "function") gaplessRenderTransport();

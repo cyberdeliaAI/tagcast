@@ -202,7 +202,8 @@ class Handler(SimpleHTTPRequestHandler):
     def _get(self, url):
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path.startswith("/api/stream/"):
-            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"), query.get("request"), query.get("session"))
+            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"), query.get("request"),
+                         query.get("session"), diagnostic=query.get("diagnostic") == "1")
             return
         if url.path == "/api/playback/stream-status":
             return self._run(lambda: self.studio.stream_status(query.get("request"), query.get("session")))
@@ -454,10 +455,12 @@ class Handler(SimpleHTTPRequestHandler):
                     raise failure
                 self._run(failed)
 
-    def _stream(self, track_id, quality=None, request_id=None, session=None):
+    def _stream(self, track_id, quality=None, request_id=None, session=None, *, diagnostic=False):
         """Pass a track's audio through, so the access token never reaches the page."""
         try:
             tracking = {"request_id": request_id, "playback_session": session} if request_id else {}
+            if diagnostic and tracking:
+                tracking["diagnostic"] = True
             upstream, mime = self.studio.stream(track_id, self.headers.get("Range"), quality, **tracking)
         except NotConnected as error:
             self._json(401, {"error": str(error)})
