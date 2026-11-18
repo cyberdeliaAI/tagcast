@@ -1878,7 +1878,14 @@ async function saveDraft() {
     if (attempt) $("#review-status").innerHTML += writeEffectsMarkup(attempt.write_effects);
   } finally {
     saving = false;
-    setActionStatus("#review-status", undefined);
+    if (pending === draft) {
+      setActionStatus("#review-status", undefined);
+      if (!readBackLibraryCurrent(owner)) {
+        if (yearReviewContext) yearReviewContext.saving = false;
+        pending = null; editing = null;
+        $("#review").close(); $("#editor").close();
+      }
+    } else if (!$("#review").open) setActionStatus("#review-status", "");
   }
 }
 

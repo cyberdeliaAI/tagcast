@@ -3,7 +3,7 @@
 // One explicitly connected browser owns the bridge. Other tabs cannot play its queue.
 // `error` is "" or a function that returns the message in the current interface language.
 const queueSync = {enabled: false, active: false, browser: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-  view: null, timer: null, publishing: false, applying: false, allowed: false, choicePending: false, sourceLoad: null, restored: null, request: 0, revision: -1, error: ""};
+  view: null, timer: null, publishing: false, applying: false, allowed: false, choicePending: false, restoreIntent: null, sourceLoad: null, restored: null, request: 0, revision: -1, error: ""};
 // Display keys for the bridge's status, role and repeat codes; unknown codes are shown as sent.
 const QUEUE_SYNC_STATUS = {connected: "queueSync.status.connected", connecting: "queueSync.status.connecting", reconnecting: "queueSync.status.reconnecting", disconnected: "queueSync.status.disconnected"};
 const QUEUE_SYNC_ROLES = {player: "queueSync.role.player", controller: "queueSync.role.controller"};
@@ -15,7 +15,7 @@ function applyQueueSettings(data) {
   lookup.queueSync = data.queue_sync === true; queueSync.enabled = lookup.queueSync;
   $("#devices-button").hidden = !queueSync.enabled;
   if (!queueSync.enabled) {
-    clearTimeout(queueSync.timer); clearQueueSyncSource(); queueSync.restored = null; queueSync.active = false; queueSync.view = null; queueSync.allowed = false; queueSync.choicePending = false;
+    clearTimeout(queueSync.timer); clearQueueSyncSource(); queueSync.restoreIntent = null; queueSync.restored = null; queueSync.active = false; queueSync.view = null; queueSync.allowed = false; queueSync.choicePending = false;
     $("#player").hidden = !player.queue.length;
     document.body.classList.toggle("has-player", Boolean(player.queue.length));
   }
@@ -69,7 +69,15 @@ function clearQueueSyncSource() {
   else audio.setAttribute("preload", load.preload);
 }
 
+function rememberQueueSyncPlaybackIntent(playing) {
+  const intent = queueSync.restoreIntent;
+  if (intent?.current() && localPlaybackAllowed()) intent.playing = playing;
+}
+
 function setQueueSyncPlaybackIntent(playing) {
+  // An in-flight row lookup still leaves the previous audio in the player's
+  // hands. Record the user's choice and let the ordinary control act on it.
+  rememberQueueSyncPlaybackIntent(playing);
   const load = queueSync.sourceLoad;
   if (!load || load.source !== audio.getAttribute("src") || !load.current() || !localPlaybackAllowed()) return false;
   load.wantsPlay = playing;
@@ -91,6 +99,8 @@ function finishQueueSyncSource() {
   if (load.wantsPlay && localPlaybackAllowed()) playQueueSyncSource(load.explicit);
   else if (load.localIntent) scheduleQueuePublish();
 }
+audio.addEventListener("play", () => rememberQueueSyncPlaybackIntent(true));
+audio.addEventListener("pause", () => rememberQueueSyncPlaybackIntent(false));
 audio.addEventListener("loadedmetadata", finishQueueSyncSource);
 audio.addEventListener("error", clearQueueSyncSource);
 
@@ -108,20 +118,29 @@ function queueSyncMetadataCurrent(view) {
 async function restoreQueue(view, resume = false, metadataOnly = false) {
   const q = view.state, data = q?.data;
   if (!data || !view.own || q.role !== "player" || view.owner !== queueSync.browser) return;
+  // Finish seeking the selected audio before starting a metadata-only refresh.
+  if (metadataOnly && (queueSync.sourceLoad || audioRecoveryCurrent())) return;
   const request = ++queueSync.request, details = state.details, session = state.connection.playback_session;
   const revision = view.revision, snapshot = view.library_snapshot;
-  const current = () => request === queueSync.request && details === state.details
+  const ownsRevision = () => request === queueSync.request
     && session === state.connection.playback_session && queueSync.active
-    && queueSync.view?.revision === revision && queueSync.view?.library_snapshot === snapshot
-    && queueSync.view?.owner === queueSync.browser
+    && queueSync.view?.revision === revision && queueSync.view?.owner === queueSync.browser
     && queueSync.view?.own && queueSync.view.state?.role === "player";
+  const current = () => ownsRevision() && details === state.details && queueSync.view?.library_snapshot === snapshot;
+  let publishIntent = false;
   queueSync.applying = true;
   try {
     const index = Math.min(data.play_index, q.tracks.length), insert = data.play_from === "play_next" ? index : Math.min(index + 1, q.tracks.length), ids = [...q.tracks.slice(0, insert), ...q.play_next, ...q.tracks.slice(insert)];
     const nextCount = q.play_next.length;
     const restored = queueSync.restored, previous = player.queue;
     const reusableRows = restored?.rows === previous && queueSyncRowsMatch(previous, ids, insert, nextCount);
-    if (metadataOnly && (!reusableRows || queueSync.sourceLoad || audioRecoveryCurrent())) return;
+    if (metadataOnly && !reusableRows) return;
+
+    // Carry a local choice across a read-only snapshot retry of this revision.
+    const earlier = queueSync.restoreIntent;
+    const intent = !metadataOnly ? {current: ownsRevision, session, revision,
+      playing: earlier && earlier.session === session && earlier.revision === revision ? earlier.playing : null} : null;
+    if (intent) queueSync.restoreIntent = intent;
 
     let rows = previous;
     if (!reusableRows || !queueSyncMetadataCurrent(view)) {
@@ -149,7 +168,10 @@ async function restoreQueue(view, resume = false, metadataOnly = false) {
     player.queue = rows; player.index = rows.length ? currentIndex : -1; player.repeat = data.repeat_mode; player.shuffle = q.shuffle;
     const desired = Number(q.start_position) + (q.pause ? 0 : Math.max(0, Date.now() / 1000 - Number(q.start_time)));
     if (resume) queueSync.allowed = true; // Explicit "Restore and play here".
-    const wantsPlay = (resume || !q.pause) && queueSync.allowed;
+    const localIntent = intent.playing !== null;
+    const wantsPlay = (intent.playing ?? (resume || !q.pause)) && queueSync.allowed;
+    queueSync.restoreIntent = null; // Later controls belong to the selected source.
+    publishIntent = localIntent;
     audio.volume = q.volume;
     if (newSource) {
       clearQueueSyncSource();
@@ -163,7 +185,10 @@ async function restoreQueue(view, resume = false, metadataOnly = false) {
       audio.setAttribute("preload", "metadata");
     }
     if (entry && queueSync.sourceLoad && queueSync.sourceLoad.source === audio.getAttribute("src")) {
-      Object.assign(queueSync.sourceLoad, {entry, current, position: desired, wantsPlay, explicit: resume});
+      // Once selected, the audio belongs to the target occurrence/session.
+      // A new library snapshot may refresh its labels without interrupting it.
+      Object.assign(queueSync.sourceLoad, {entry, current: ownsRevision, position: desired,
+        wantsPlay, explicit: resume, localIntent});
       if (newSource) audio.load();
       else if (audio.readyState >= 1) finishQueueSyncSource();
     } else if (entry) {
@@ -183,10 +208,18 @@ async function restoreQueue(view, resume = false, metadataOnly = false) {
       queueSync.error = () => TagcastI18n.text("errors.queueSync.restoreFailed", {error: TagcastI18n.errorText(error)});
       // A snapshot conflict can be retried by the next read-only poll. Other
       // failures settle this revision until the remote queue changes again.
-      if (error.status !== 409) return false;
+      if (error.status !== 409) {
+        if (!metadataOnly) queueSync.restoreIntent = null;
+        if (queueSync.sourceLoad && !queueSync.sourceLoad.current()) clearQueueSyncSource();
+        return false;
+      }
+    }
+  } finally {
+    if (request === queueSync.request) {
+      queueSync.applying = false;
+      if (publishIntent && ownsRevision()) scheduleQueuePublish();
     }
   }
-  finally { if (request === queueSync.request) queueSync.applying = false; }
 }
 
 async function pollQueue() {
@@ -198,12 +231,12 @@ async function pollQueue() {
     if (session !== state.connection.playback_session || !queueSync.enabled) return;
     queueSync.view = view;
     if (view.authenticated === false) {
-      queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); queueSync.restored = null;
+      queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); queueSync.restoreIntent = null; queueSync.restored = null;
       state.connection.connected = false; state.connection.playback_session = "";
       queueSync.error = () => TagcastI18n.text("errors.queueSync.sessionEnded");
       useLocal(demoLibrary(), "demo"); updateChrome(); render(); renderDevices(); return;
     }
-    if (queueSync.active && view.session !== session) { queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); queueSync.restored = null; }
+    if (queueSync.active && view.session !== session) { queueSync.active = false; queueSync.allowed = false; clearQueueSyncSource(); queueSync.restoreIntent = null; queueSync.restored = null; }
     if (queueSync.active && !localPlaybackAllowed()) { audio.pause(); playReporting.watch = null; }
     if (queueSync.active && !queueSync.choicePending && !queueSync.publishing
         && view.own && view.state?.role === "player") {
@@ -216,7 +249,7 @@ async function pollQueue() {
         if (session !== state.connection.playback_session || queueSync.view !== view) return;
       }
     }
-    if (view.state?.role === "controller") { queueSync.allowed = false; clearQueueSyncSource(); queueSync.restored = null; audio.pause(); playReporting.watch = null; closeVisualPlayer(); }
+    if (view.state?.role === "controller") { queueSync.allowed = false; clearQueueSyncSource(); queueSync.restoreIntent = null; queueSync.restored = null; audio.pause(); playReporting.watch = null; closeVisualPlayer(); }
     const controlling = queueSync.active && (!view.own || view.state?.role === "controller");
     $("#player").hidden = controlling || !player.queue.length;
     document.body.classList.toggle("has-player", !controlling && Boolean(player.queue.length));
@@ -244,7 +277,7 @@ async function connectQueue(target = "") {
   if (!queueSync.enabled || !live()) return;
   try {
     queueSync.view = await api("/api/queue-sync", {...bridgeBody("connect"), target});
-    clearQueueSyncSource(); queueSync.active = true; queueSync.allowed = false; queueSync.choicePending = !target; queueSync.request += 1; queueSync.revision = -1; queueSync.restored = null;
+    clearQueueSyncSource(); queueSync.restoreIntent = null; queueSync.active = true; queueSync.allowed = false; queueSync.choicePending = !target; queueSync.request += 1; queueSync.revision = -1; queueSync.restored = null;
     queueSync.error = ""; audio.pause(); playReporting.watch = null; pollQueue();
   } catch (error) { queueSync.error = queueSyncFailure(error); renderDevices(); }
 }
@@ -300,7 +333,7 @@ document.addEventListener("click", async event => {
   }
   if (target.closest("[data-device-disconnect], [data-device-force]")) {
     if (target.closest("[data-device-force]") && !confirm(TagcastI18n.text("queueSync.confirm.force"))) return;
-    try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.choicePending = false; queueSync.request += 1; queueSync.view = null; clearQueueSyncSource(); queueSync.restored = null; clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
+    try { await api("/api/queue-sync", {...bridgeBody("disconnect"), force: Boolean(target.closest("[data-device-force]"))}); queueSync.active = false; queueSync.allowed = false; queueSync.choicePending = false; queueSync.request += 1; queueSync.view = null; clearQueueSyncSource(); queueSync.restoreIntent = null; queueSync.restored = null; clearTimeout(queueSync.timer); $("#player").hidden = !player.queue.length; document.body.classList.toggle("has-player", Boolean(player.queue.length)); renderDevices(); }
     catch (error) { toast(TagcastI18n.errorText(error)); }
   }
   if (target.closest("[data-device-local]")) { queueSync.allowed = true; if (await publishQueueState()) queueSync.choicePending = false; else queueSync.allowed = false; renderDevices(); }

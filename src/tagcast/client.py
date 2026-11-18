@@ -1169,6 +1169,13 @@ class Studio:
 
     # -- read-back -----------------------------------------------------------
 
+    def _store_finished_job(self, job_id, result):
+        # Called under Studio.lock. Active workers keep their slots until settled.
+        self.jobs[job_id] = result
+        finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
+        for old in finished[:-20]:
+            del self.jobs[old]
+
     def _check_later(self, client, written, check, include_albums=True):
         """Download the library in the background and run check(library) -> results.
 
@@ -1179,8 +1186,14 @@ class Studio:
         """
         job_id = secrets.token_urlsafe(9)
         marker = {"state": "checking"}
+        session_changed = ("The account or session changed. The write outcome is unknown; "
+                           "check iBroadcast before any new review.")
         with self.lock:
-            self._check_client(client)
+            if client is not self.client:
+                # The request was already sent. Return a terminal, data-free
+                # receipt rather than an authentication error for a blocked write.
+                self._store_finished_job(job_id, {"state": "error", "error": session_changed})
+                return job_id
             owner = (client, self.library_user, self.playback_session)
             self.jobs[job_id] = marker
             self.readbacks[job_id] = marker
@@ -1204,7 +1217,7 @@ class Studio:
                 result = {"state": "error", "error": "The write could not be verified. Reload the library before reviewing another change."}
             with self.lock:
                 if owner != (self.client, self.library_user, self.playback_session):
-                    result = {"state": "error", "error": "The account or session changed. The write outcome is unknown; check iBroadcast before any new review."}
+                    result = {"state": "error", "error": session_changed}
                 elif "albums" in result and self.library is not after:
                     # The outcome was verified, but a newer snapshot superseded its view.
                     result.pop("albums")
@@ -1214,10 +1227,7 @@ class Studio:
                 marker.update(result)
                 self.readbacks.pop(job_id, None)
                 if self.jobs.get(job_id) is marker:
-                    self.jobs[job_id] = result
-                    finished = [key for key, value in self.jobs.items() if value["state"] != "checking"]
-                    for old in finished[:-20]:
-                        del self.jobs[old]
+                    self._store_finished_job(job_id, result)
 
         threading.Thread(target=run, daemon=True).start()
         return job_id

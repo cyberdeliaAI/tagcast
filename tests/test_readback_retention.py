@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from tagcast.client import ApiError, Studio
+from tagcast.client import ApiError, Studio, UncertainWrite
 
 
 class ReadbackRetentionTests(unittest.TestCase):
@@ -41,6 +41,45 @@ class ReadbackRetentionTests(unittest.TestCase):
         self.assertNotIn('editor_names', studio.jobs[job])
         self.assertEqual(studio.job(job)['results'], first['results'])
         self.assertIn('albums', first, 'Returning the payload must not mutate a response being serialized')
+
+    def test_sent_trash_write_gets_an_unverified_receipt_after_session_replacement(self):
+        for confirmed in (True, False):
+            with self.subTest(confirmed=confirmed):
+                studio = self.studio()
+                old, replacement = Mock(), Mock()
+                library = Mock(combine_sets=False)
+                library.tracks = {1: {"trashed": True, "title": "Old track", "album_id": 1}}
+                library.albums = {1: {"name": "Old album"}}
+                library.artist_name.return_value = "Old artist"
+                studio.client, studio.library = old, library
+                studio.library_user, studio.playback_session = "old", "old-session"
+
+                def replace_session(*args, **kwargs):
+                    studio._disconnect()
+                    with studio.lock:
+                        studio.client, studio.library = replacement, Mock()
+                        studio.library_user, studio.playback_session = "new", "new-session"
+                    if not confirmed:
+                        raise UncertainWrite("The write response was lost.")
+                    return {"result": True}
+
+                old._jsonrequest.side_effect = replace_session
+                with patch.object(studio, "_current", return_value=(library, "memory")) as current:
+                    body = {"session": studio.playback_session}
+                    review = studio.trash_emptying.review(body)
+                    receipt = studio.trash_emptying.save({
+                        **body, "review": review["review"], "approved": True, "acknowledged": True,
+                    })
+                    self.assertEqual(current.call_count, 2, "No read-back under the new owner")
+                old._jsonrequest.assert_called_once_with("empty_trash", _retry=False, tracks=[1])
+                replacement._jsonrequest.assert_not_called()
+                self.assertEqual(receipt["count"], 1)
+                job = studio.job(receipt["job"])
+                self.assertEqual(set(job), {"state", "error"})
+                self.assertEqual(job["state"], "error")
+                self.assertIn("write outcome is unknown", job["error"])
+                self.assertNotIn("Old", job["error"])
+                self.assertFalse(studio.readbacks)
 
     def test_checking_jobs_are_not_pruned_and_disconnect_prevents_reinsertion(self):
         studio = self.studio()
