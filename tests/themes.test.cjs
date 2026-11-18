@@ -99,14 +99,32 @@ test("optional sidebar icon colours restore per variant and clear on legacy or b
   assert.deepEqual(snapshot({document:'d',entry:'e',segment:'s',sequence:1,colours:{'nav-icon':'#C8102E'}}).colours,{'nav-icon':'#c8102e'});
 });
 
-test("existing portable theme collection round-trips without adding icon overrides",()=>{
+test("portable theme collection round-trips without changing optional icon overrides",()=>{
   const api=browser().api, directory=path.join(__dirname,'../docs/themes');
   for(const file of fs.readdirSync(directory).filter(file=>file.endsWith('.json'))){
     const raw=fs.readFileSync(path.join(directory,file),'utf8'), imported=api.importTheme(raw,'custom-legacyimport');
     for(const mode of ['light','dark']){
-      assert.equal(Object.hasOwn(imported[mode],'nav-icon'),false,file);
+      assert.equal(Object.hasOwn(imported[mode],'nav-icon'),Object.hasOwn(JSON.parse(raw).theme[mode],'nav-icon'),file);
       assert.deepEqual(JSON.parse(api.exportTheme(imported)).theme[mode],JSON.parse(raw).theme[mode],file);
     }
+  }
+});
+
+test("Amber Midnight imports both variants with readable text, icons and focus colours",()=>{
+  const api=browser().api;
+  const raw=fs.readFileSync(path.join(__dirname,'../docs/themes/tagcast-amber-midnight.json'),'utf8');
+  const theme=api.importTheme(raw,'custom-midnight1');
+  assert.equal(theme.name,'Amber · Midnight');assert.equal(theme.base,'amber');
+  assert.notEqual(theme.light.paper,theme.dark.paper,'Light and Dark remain separate variants');
+  assert.ok(api.contrast(theme.dark.ink,theme.dark.paper)>api.contrast(theme.dark.ink,'#16181a'),'Content is darker than original Amber');
+  for(const mode of ['light','dark']){
+    const c=api.colours(theme,mode), pairs=[];
+    assert.equal(c['nav-icon'],c.accent,'Navigation uses the same gold as the accents');
+    for(const fg of ['ink','muted','link'])for(const bg of ['paper','surface','soft','tint'])pairs.push([fg,bg,4.5]);
+    for(const fg of ['shell-ink','shell-muted','nav-icon'])for(const bg of ['sidebar','shell-active'])pairs.push([fg,bg,fg==='nav-icon'?3:4.5]);
+    for(const bg of ['primary','primary-hover'])pairs.push(['primary-ink',bg,4.5]);
+    for(const bg of ['paper','surface','sidebar'])pairs.push(['focus',bg,3]);
+    for(const [fg,bg,minimum]of pairs)assert.ok(api.contrast(c[fg],c[bg])>=minimum,`${mode}/${fg}/${bg}`);
   }
 });
 

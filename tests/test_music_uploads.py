@@ -71,6 +71,190 @@ class MusicUploadsTests(unittest.TestCase):
         self.assertFalse(view["error"], view)
         return view
 
+    def upload_review(self, view):
+        self.uploads.start(self.body(review=view["review"]))
+        self.wait(lambda: self.uploads.job.state not in {"ready", "running", "paused"})
+
+    def test_accepted_but_unlisted_upload_is_not_new_in_a_later_review(self):
+        chosen = self.file()
+        self.upload_review(self.prepare([chosen]))
+        self.assertEqual(self.uploads.job.items[0].status, engine.SENT)
+        self.assertFalse(self.uploads.job.items[0].verified)
+        view = self.prepare([chosen])
+        self.assertEqual(view["summary"]["counts"], {"uploaded": 1})
+        self.assertIn("not listed yet", view["items"][0]["note"])
+        self.assertEqual(self.service.upload.call_count, 1)
+        with self.assertRaises(LibraryError):
+            self.uploads.start(self.body(review=view["review"]))
+
+    def test_clearing_results_keeps_recent_hashes_for_identical_other_paths(self):
+        self.upload_review(self.prepare())
+        self.uploads.control("clear", self.body())
+        copy = self.file("copy.flac")
+        view = self.prepare([copy])
+        self.assertEqual(view["summary"]["counts"], {"uploaded": 1})
+        self.assertEqual(self.service.upload.call_count, 1)
+
+    def test_uncertain_upload_stays_uncertain_across_clear_and_prepare(self):
+        def unclear(item, transfer, **kwargs):
+            transfer.begin()
+            transfer.body_started = True
+            raise engine.UncertainUpload("Synthetic unclear answer")
+
+        self.service.upload.side_effect = unclear
+        with patch.object(engine, "RETRY_DELAYS", ()):
+            self.upload_review(self.prepare())
+        self.assertEqual(self.uploads.job.items[0].status, engine.UNCERTAIN)
+        self.uploads.control("clear", self.body())
+        view = self.prepare()
+        self.assertEqual(view["summary"]["counts"], {"uncertain": 1})
+        self.assertIn("not sent again", view["items"][0]["note"])
+        self.assertEqual(self.service.upload.call_count, 1)
+
+    def test_stop_after_sending_keeps_the_uncertain_hash_for_the_next_plan(self):
+        def stopped(item, transfer, **kwargs):
+            transfer.begin()
+            transfer.body_started = True
+            raise engine.Stopped()
+
+        self.service.upload.side_effect = stopped
+        self.upload_review(self.prepare())
+        view = self.prepare()
+        self.assertEqual(view["summary"]["counts"], {"uncertain": 1})
+        self.assertEqual(self.service.upload.call_count, 1)
+
+    def test_refused_files_and_changed_contents_are_not_blocked_as_recent_uploads(self):
+        self.service.upload.side_effect = engine.UploadError("Synthetic file refusal")
+        self.upload_review(self.prepare())
+        view = self.prepare()
+        self.assertEqual(view["summary"]["counts"], {"new": 1})
+        self.service.upload.side_effect = self.send
+        self.upload_review(view)
+        view = self.prepare([self.file(data=b"changed synthetic audio")])
+        self.assertEqual(view["summary"]["counts"], {"new": 1})
+
+    def test_fresh_native_membership_releases_the_remembered_outcome(self):
+        self.upload_review(self.prepare())
+        digest = self.uploads.job.items[0].md5
+        self.service.remote_md5s.return_value = frozenset({digest})
+        view = self.prepare()
+        self.assertEqual(view["summary"]["counts"], {"uploaded": 1})
+        self.assertEqual(self.uploads.recent, {})
+        self.service.remote_md5s.return_value = frozenset()
+        self.assertEqual(self.prepare()["summary"]["counts"], {"new": 1})
+
+    def test_recent_results_are_bounded_without_evicting_unlisted_outcomes(self):
+        with patch("tagcast.music_uploads.MAX_RECENT_UPLOADS", 2):
+            self.upload_review(self.prepare())
+            first = self.uploads.job.items[0].md5
+            self.upload_review(self.prepare([self.file("two.flac", b"second")]))
+            third = self.file("three.flac", b"third")
+            self.uploads.prepare(self.body(paths=[str(third)]))
+            self.wait(lambda: not self.uploads.preparing)
+            view = self.uploads.view("upload-session")
+            self.assertIn("Too many recent uploads", view["error"])
+            self.assertIsNone(view["review"])
+            self.assertEqual(len(self.uploads.recent), 2)
+            self.assertEqual(self.service.upload.call_count, 2)
+            self.service.remote_md5s.return_value = frozenset({first})
+            self.assertEqual(self.prepare([third])["summary"]["counts"], {"new": 1})
+
+    def test_recent_results_do_not_cross_accounts_sessions_or_new_wrapper_instances(self):
+        for change in ("account", "session", "wrapper"):
+            with self.subTest(change=change):
+                self.uploads.close()
+                self.studio.playback_session = "upload-session"
+                self.upload_review(self.prepare())
+                if change == "account":
+                    self.studio.library_user += "-replacement"
+                elif change == "session":
+                    self.studio.playback_session = "replacement-session"
+                else:
+                    self.uploads = MusicUploads(self.studio)
+                    self.addCleanup(self.uploads.close)
+                self.uploads.prepare({"session": self.studio.playback_session,
+                                      "paths": [str(self.file())]})
+                self.wait(lambda: not self.uploads.preparing)
+                view = self.uploads.view(self.studio.playback_session)
+                self.assertEqual(view["summary"]["counts"], {"new": 1})
+                self.assertEqual(self.uploads.recent, {})
+
+    def test_late_old_account_upload_answer_cannot_populate_new_accounts_memory(self):
+        entered, release = threading.Event(), threading.Event()
+
+        def late(item, transfer, **kwargs):
+            transfer.begin()
+            entered.set()
+            release.wait(3)
+            return "old-account-track"
+
+        self.service.upload.side_effect = late
+        view = self.prepare()
+        self.uploads.start(self.body(review=view["review"]))
+        self.assertTrue(entered.wait(3))
+        old = self.uploads.job
+        try:
+            self.uploads.close()
+            self.studio.library_user = "other-account"
+            self.assertEqual(self.prepare()["summary"]["counts"], {"new": 1})
+            release.set()
+            old.join(3)
+            self.assertFalse(old._thread.is_alive())
+            self.assertEqual(self.prepare()["summary"]["counts"], {"new": 1})
+            self.assertEqual(self.uploads.recent, {})
+        finally:
+            release.set()
+            old.join(3)
+
+    def test_last_moment_md5_check_skips_newly_present_files(self):
+        view = self.prepare()
+        self.service.remote_md5s.return_value = frozenset({self.uploads.items[0].md5})
+        self.upload_review(view)
+        self.service.upload.assert_not_called()
+        self.assertEqual(self.uploads.job.view()["counts"], {"uploaded": 1})
+
+    def test_last_moment_md5_failure_consumes_review_and_sends_no_audio(self):
+        view = self.prepare()
+        self.service.remote_md5s.side_effect = engine.UploadError("Synthetic list failure")
+        self.upload_review(view)
+        self.assertEqual(self.uploads.job.state, "failed")
+        self.assertEqual(self.uploads.job.view()["counts"], {"not_sent": 1})
+        self.service.upload.assert_not_called()
+        with self.assertRaises(ConflictError):
+            self.uploads.start(self.body(review=view["review"]))
+
+    def test_stop_during_last_moment_md5_read_does_not_hold_studio_lock_or_send_audio(self):
+        view = self.prepare()
+        entered = threading.Event()
+
+        def listing(transfer):
+            transfer.begin()
+            entered.set()
+            transfer.stop.wait(3)
+            raise engine.Stopped()
+
+        self.service.remote_md5s.side_effect = listing
+        self.uploads.start(self.body(review=view["review"]))
+        self.assertTrue(entered.wait(3))
+        self.uploads.control("stop", self.body())
+        self.wait(lambda: self.uploads.job.state == "stopped")
+        self.assertEqual(self.uploads.job.view()["counts"], {"not_sent": 1})
+        self.service.upload.assert_not_called()
+
+    def test_storage_limit_keeps_earlier_unlisted_acceptances_for_later_reviews(self):
+        def send(item, transfer, **kwargs):
+            if not self.sent:
+                return self.send(item, transfer, **kwargs)
+            raise engine.StorageLimitReached()
+
+        first, second = self.file(), self.file("two.flac", b"second")
+        self.service.upload.side_effect = send
+        self.upload_review(self.prepare([first, second]))
+        self.assertEqual(self.uploads.job.view()["counts"], {"sent": 1, "failed": 1})
+        self.assertEqual(self.prepare([first, second])["summary"]["counts"],
+                         {"uploaded": 1, "new": 1})
+        self.assertEqual(self.service.upload.call_count, 2)
+
     def test_disabled_by_default_and_upload_scope_is_opt_in_and_persisted(self):
         studio = Studio(self.root / "other-settings")
         self.assertFalse(studio.settings()["music_uploads"])

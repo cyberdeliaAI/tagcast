@@ -1,6 +1,6 @@
 # Standalone downloads and builds
 
-Tagcast 1.6.5 packages the shared Python server and editor/player in an Electron
+Tagcast 1.7.0 packages the shared Python server and editor/player in an Electron
 desktop app. No separate browser, Python or Node.js installation is required.
 Python/source installs and the bundled terminal CLI retain browser use. See
 [Electron desktop and Python/browser use](electron.md) for the shared-code design.
@@ -9,11 +9,11 @@ Python/source installs and the bundled terminal CLI retain browser use. See
 
 | System | Download | Start |
 |---|---|---|
-| macOS, Apple Silicon | `tagcast-1.6.5-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| macOS, Intel | `tagcast-1.6.5-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
-| Windows, x64 | `tagcast-1.6.5-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
-| Linux, x64 | `tagcast-1.6.5-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
-| Debian / Ubuntu, x64 | `tagcast-1.6.5-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.6.5-linux-amd64.deb`; open Tagcast from the app menu. |
+| macOS, Apple Silicon | `tagcast-1.9.7-macos-arm64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| macOS, Intel | `tagcast-1.9.7-macos-x64.zip` | Extract `Tagcast.app`, move it to Applications and open it. |
+| Windows, x64 | `tagcast-1.9.7-windows-x64.zip` | Extract the whole folder and open `Tagcast.exe`. |
+| Linux, x64 | `tagcast-1.9.7-linux-x64.tar.gz` | Extract with permissions and symlinks preserved; run `./Tagcast` inside the `Tagcast` folder. |
+| Debian / Ubuntu, x64 | `tagcast-1.9.7-linux-amd64.deb` | Install with `sudo apt install ./tagcast-1.9.7-linux-amd64.deb`; open Tagcast from the app menu. |
 
 Keep the complete extracted Windows/Linux package together and the macOS app's
 Contents intact. Closing the last window or choosing Quit stops the server owned
@@ -63,6 +63,27 @@ installation hooks. Do not use `--no-sandbox` or globally disable AppArmor.
 The portable TAR.GZ does not install these hooks: Ubuntu 24.04 can require
 additional sandbox integration for that archive. Other Linux distributions are
 not covered by these Debian installation checks.
+
+## Validation scope
+
+Application changes run the automated Tests and Builds workflows before merging
+and again on main. Documentation-only changes use the separate
+[lightweight checks](documentation.md#checks-for-documentation-changes).
+Official releases also require verification of the final signed macOS archives
+and the complete distribution; an earlier PR build does not establish the
+integrity or signing of a later package.
+
+Physical Linux Wayland validation remains incomplete. CI's virtual
+Linux display does not replace testing on a physical Wayland desktop. Audio
+compatibility depends on the device, driver and operating system; automated
+package/PCM checks do not cover every output, sleep/wake or device-change path.
+See [Gapless validation and platform scope](gapless-playback.md#validation-and-platform-scope)
+for the measured audio guarantees and fallback limits.
+
+Native pointer and focus checks need an isolated desktop: competing desktop
+automation can steal focus and invalidate a test run. Investigate those failures
+rather than relaxing assertions. Successful automated checks still need targeted
+hands-on validation on the affected desktop and audio output.
 
 ## CLI and Python/browser use
 
@@ -132,6 +153,15 @@ see the [0.50.0 standalone guide](https://github.com/cyberdeliaAI/tagcast/blob/v
 
 ## Releases
 
+The native workspace and first-setup viewport matrices run in separate disposable
+application processes, just like track comparison. Their original pointer/keyboard
+matrix functions and 45-second deadlines are retained. `check_electron.py` requires
+all eight width/theme results from each matrix, the expected version and owned-server
+shutdown; a missing or failed report blocks distribution. This prevents cumulative
+mini-player/theme/workspace/setup runtime from exhausting one unrelated deadline on
+slower hosted Intel runners. The core startup/restart, CLI, CSP and security smoke
+checks retain their existing deadline and assertions.
+
 Keep `pyproject.toml`, `src/tagcast/__init__.py`, the version badge in `index.html`,
 the Tagcast entry in `uv.lock` and the Electron package/lockfile versions consistent.
 `python tools/release_info.py` checks them. Store release notes in
@@ -161,4 +191,6 @@ Existing release assets are never overwritten automatically. Replacing a public
 archive requires a separate, explicitly reviewed publication procedure.
 The tag must match its application version. Tags from before 0.10.1 retain the
 earlier single-console executable format, using the pinned legacy recipe. Only
-publication jobs have write permission. There is no automatic app updater.
+publication jobs have write permission. The [desktop updater](desktop-updates.md)
+is available from 1.9.0 for supported installations; installation always requires
+explicit confirmation. 1.8.0 users install 1.9.0 manually once.

@@ -227,7 +227,7 @@ class Cleanup:
             raise LibraryError("Another save is still running.")
         try:
             library, _ = self.studio._current(client)
-            if category == "album-artists" and library.combine_sets:
+            if category == "album-artists" and library.album_writes_blocked:
                 raise LibraryError("Disable Combine Multi-Disc Album Sets in iBroadcast before changing album artists.")
             library._browse_index("genres")  # displayed, merged album membership
             with self.lock:
@@ -392,7 +392,7 @@ class Cleanup:
         return wire
 
     def _settings(self, library):
-        if self.task["category"] == "album-artists" and (library.combine_sets
+        if self.task["category"] == "album-artists" and (library.album_writes_blocked
                 or bool(library.combine_sets) != self.task.get("combine_sets", False)):
             raise LibraryError("Combine Multi-Disc Album Sets changed or is enabled. Prepare a new album artist preview.")
 

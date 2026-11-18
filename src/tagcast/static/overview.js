@@ -37,10 +37,12 @@ function screenBreadcrumb(name) {
 }
 
 function showScreen(name) {
+  if (typeof leaveArtistDiscover === "function") leaveArtistDiscover();
   const wasSettings = state.screen === "settings";
   closeBrowseOptions();
   if (typeof rememberNavigationScroll === "function") rememberNavigationScroll();
   if (!["playlists", "album-favourites"].includes(name) && typeof rememberFavouriteView === "function") rememberFavouriteView();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (name !== "album-guide") $("#guide-link-dialog").close();
   if (typeof closeQueueActions === "function") closeQueueActions();

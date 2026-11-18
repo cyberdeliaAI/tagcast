@@ -21,10 +21,10 @@ function albumSplitStatus(message, working = false) {
   setActionStatus("#album-split-status", message, working);
 }
 
-function albumSplitError(error, afterSave = false) {
+function albumSplitError(error, afterSave = false, effects = error.data?.write_effects) {
   albumSplitStatus("");
   $("#album-split-content").innerHTML = `<p class="error-text" role="alert">${escapeHtml(TagcastI18n.errorText(error))}</p>
-    ${afterSave ? `<p>${TagcastI18n.html("albumSplit.noRetry")}</p>` : ""}<div class="dialog-footer"><button type="button" class="button" data-close="album-split">${TagcastI18n.html("common.close")}</button><button type="button" class="button" id="album-split-reload">${TagcastI18n.html("common.reloadLibrary")}</button></div>`;
+    ${writeEffectsMarkup(effects)}${afterSave ? `<p>${TagcastI18n.html("albumSplit.noRetry")}</p>` : ""}<div class="dialog-footer"><button type="button" class="button" data-close="album-split">${TagcastI18n.html("common.close")}</button><button type="button" class="button" id="album-split-reload">${TagcastI18n.html("common.reloadLibrary")}</button></div>`;
 }
 
 async function openAlbumSplit(sourceId = albumView.id) {
@@ -140,18 +140,20 @@ async function saveAlbumSplit() {
     const result = await api("/api/albums/split/save", {session: view.session, review: review.review, approved: true});
     if (!albumSplitCurrent(request)) return;
     entry.error = result.error || "";
+    entry.write_effects = writeEffectsData(result.write_effects);
     albumSplitStatus(TagcastI18n.text("albumSplit.verifying"), true);
     const job = await followJob(result.job, entry, null, () => albumSplitCurrent(request));
     if (!job || request !== view.request || view.session !== state.connection.playback_session) return;
     view.details = state.details;
     if (!$("#album-split").open) return;
     if (entry.status !== "saved") {
-      albumSplitError(Error(entry.error || TagcastI18n.text("albumSplit.unconfirmed")), true); return;
+      albumSplitError(Error(entry.error || TagcastI18n.text("albumSplit.unconfirmed")), true, entry.write_effects); return;
     }
     albumSplitStatus(TagcastI18n.text("albumSplit.done"));
     $("#album-split-content").innerHTML = `<p>${TagcastI18n.html("albumSplit.confirmed", {album: review.target.name})}</p><div class="dialog-footer"><button type="button" class="button" data-close="album-split">${TagcastI18n.html("common.close")}</button><button type="button" class="button primary" id="album-split-open" data-target="${escapeHtml(result.target)}">${TagcastI18n.html("albumSplit.open")}</button></div>`;
     $("#album-split-open").focus();
   } catch (error) {
+    entry.write_effects = writeEffectsData(error.data?.write_effects);
     entry.status = error.status === 409 ? "blocked" : "unverified"; entry.error = error.message;
     for (const row of entry.changes) if (row.status === "sent") row.status = entry.status;
     rememberHistory();

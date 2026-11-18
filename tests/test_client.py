@@ -65,6 +65,153 @@ class ClientTests(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"device login did not finish: {studio.device}")
 
+    def test_setup_eligibility_is_read_only_and_excludes_existing_profiles(self):
+        for filename in (None, "config.json", "tokens.json", client.CACHE_FILE, "updates.json"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as home:
+                if filename:
+                    Path(home, filename).write_text("{}", encoding="utf-8")
+                before = {p.name: p.read_bytes() for p in Path(home).iterdir()}
+                studio = client.Studio(home)
+                self.assertEqual(studio.settings()["setup_eligible"], filename is None)
+                self.assertEqual({p.name: p.read_bytes() for p in Path(home).iterdir()}, before)
+                studio.client = object()
+                self.assertFalse(studio.settings()["setup_eligible"])
+                studio.client = None
+                studio.config["record_plays"] = False
+                self.assertFalse(studio.settings()["setup_eligible"])
+
+    def test_trash_reuses_checked_memory_or_disk_but_always_downloads_readback(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        original_home = self.home
+        try:
+            for disk in (False, True):
+                with self.subTest(disk=disk), tempfile.TemporaryDirectory() as home:
+                    self.home = home
+                    mock_ibroadcast.STATE.clear()
+                    mock_ibroadcast.STATE.update(copy.deepcopy(original))
+                    mock_ibroadcast.STATE["frozen"] = True
+                    studio = self.connect()
+                    try:
+                        studio.load_library(refresh=True)
+                        self.wait_for_cache(studio)
+                        if disk:
+                            with studio.lock:
+                                studio.library = None
+                        downloads = mock_ibroadcast.STATE["downloads"]
+                        with patch.object(studio.client, "_jsonrequest", wraps=studio.client._jsonrequest) as request:
+                            body = {"session": studio.playback_session}
+                            review = studio.trash_emptying.review(body)
+                            self.assertEqual([row["id"] for row in review["tracks"]], ["902"])
+                            self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads)
+                            studio.trash_emptying.page({**body, "review": review["review"]})
+                            self.assertEqual([c.args[0] for c in request.call_args_list], ["status"])
+                            saved = studio.trash_emptying.save({**body, "review": review["review"],
+                                                               "approved": True, "acknowledged": True})
+                            job = self.wait_job(studio, saved["job"])
+                            self.assertEqual([c.args[0] for c in request.call_args_list],
+                                             ["status", "status", "empty_trash", "status", "library"])
+                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+                        self.assertEqual(job["results"][0]["status"], "saved")
+                        self.assertNotIn(902, studio.library.tracks)
+                        self.assertIn(902, mock_ibroadcast.STATE["emptied_tracks"])
+                        self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [902])
+                    finally:
+                        studio._disconnect()
+                        with studio.cache_lock:
+                            pass  # Finish an accepted cache write before removing this test home.
+        finally:
+            self.home = original_home
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
+    def test_trash_downloads_on_changed_or_unknown_revision_before_review(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        original_home = self.home
+        try:
+            for unknown in (False, True):
+                with self.subTest(unknown=unknown), tempfile.TemporaryDirectory() as home:
+                    self.home = home
+                    mock_ibroadcast.STATE.clear()
+                    mock_ibroadcast.STATE.update(copy.deepcopy(original))
+                    studio = self.connect()
+                    try:
+                        studio.load_library(refresh=True)
+                        downloads = mock_ibroadcast.STATE["downloads"]
+                        mock_ibroadcast.STATE["tracks"][900]["trashed"] = True
+                        mock_ibroadcast.STATE["version"] += 1
+                        with patch.object(mock_ibroadcast, "lastmodified", return_value="") if unknown else \
+                                patch.object(mock_ibroadcast, "lastmodified", wraps=mock_ibroadcast.lastmodified):
+                            body = {"session": studio.playback_session}
+                            review = studio.trash_emptying.review(body)
+                            self.assertEqual([row["id"] for row in review["tracks"]], ["900", "902"])
+                            self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+                            saved = studio.trash_emptying.save({**body, "review": review["review"],
+                                                               "approved": True, "acknowledged": True})
+                            self.assertEqual(self.wait_job(studio, saved["job"])["results"][0]["status"], "saved")
+                            self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + (3 if unknown else 2))
+                    finally:
+                        studio._disconnect()
+                        with studio.cache_lock:
+                            pass  # Finish an accepted cache write before removing this test home.
+        finally:
+            self.home = original_home
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
+    def test_trash_refreshes_and_blocks_changed_membership_identity_or_combine_before_save(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        original_home = self.home
+        changes = [lambda: mock_ibroadcast.STATE["tracks"][900].update(trashed=True),
+                   lambda: mock_ibroadcast.STATE["tracks"][902].update(trashed=False),
+                   lambda: mock_ibroadcast.STATE["tracks"][902].update(title="External change"),
+                   lambda: mock_ibroadcast.STATE.update(combine_sets=True)]
+        try:
+            for index, change in enumerate(changes):
+                with self.subTest(change=index), tempfile.TemporaryDirectory() as home:
+                    self.home = home
+                    mock_ibroadcast.STATE.clear()
+                    mock_ibroadcast.STATE.update(copy.deepcopy(original))
+                    studio = self.connect()
+                    try:
+                        studio.load_library(refresh=True)
+                        body = {"session": studio.playback_session}
+                        review = studio.trash_emptying.review(body)
+                        downloads, writes = mock_ibroadcast.STATE["downloads"], len(mock_ibroadcast.STATE["writes"])
+                        change()
+                        if index != 3:  # The combine setting invalidates a cache even at the same revision.
+                            mock_ibroadcast.STATE["version"] += 1
+                        with self.assertRaises(ConflictError):
+                            studio.trash_emptying.save({**body, "review": review["review"],
+                                                       "approved": True, "acknowledged": True})
+                        self.assertEqual(mock_ibroadcast.STATE["downloads"], downloads + 1)
+                        self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes)
+                        with self.assertRaises(ConflictError):
+                            studio.trash_emptying.save({**body, "review": review["review"],
+                                                       "approved": True, "acknowledged": True})
+                    finally:
+                        studio._disconnect()
+                        with studio.cache_lock:
+                            pass  # Finish an accepted cache write before removing this test home.
+        finally:
+            self.home = original_home
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
+    def test_failed_trash_revision_checks_never_fall_back_to_stale_library_or_write(self):
+        studio = self.connect()
+        studio.load_library()
+        body = {"session": studio.playback_session}
+        review = studio.trash_emptying.review(body)
+        before = len(mock_ibroadcast.STATE["writes"])
+        with patch.object(studio.client, "_jsonrequest", side_effect=client.ApiError("Status unavailable")) as request:
+            with self.assertRaisesRegex(client.ApiError, "Status unavailable"):
+                studio.trash_emptying.review(body)
+            with self.assertRaisesRegex(client.ApiError, "Status unavailable"):
+                studio.trash_emptying.save({**body, "review": review["review"],
+                                           "approved": True, "acknowledged": True})
+            self.assertEqual([c.args[0] for c in request.call_args_list], ["status", "status"])
+        self.assertEqual(len(mock_ibroadcast.STATE["writes"]), before)
+
     def test_lyrics_import_reuses_review_reads_and_verifies_each_write_over_http(self):
         original = copy.deepcopy(mock_ibroadcast.STATE)
         try:
@@ -757,6 +904,27 @@ class ClientTests(unittest.TestCase):
             with self.assertRaises(client.ApiError):
                 studio.save_settings({"auto_updates": bad})
 
+    def test_discovery_defaults_to_lastfm_and_persists_local_only_without_provider_reads(self):
+        studio = client.Studio(self.home)
+        self.assertTrue(studio.settings()["discover_lastfm"])
+        with patch.object(studio.discover.lastfm, "read", side_effect=AssertionError("No lookup on save")):
+            settings = studio.save_settings({"lastfm_api_key": "keep-key", "discover_lastfm": False})
+            self.assertFalse(settings["discover_lastfm"])
+            self.assertNotIn("keep-key", json.dumps(settings))
+            restarted = client.Studio(self.home)
+            self.assertFalse(restarted.settings()["discover_lastfm"])
+            restarted.save_settings({"auto_lookup": False})
+            self.assertFalse(restarted.settings()["discover_lastfm"])
+            self.assertTrue(restarted.save_settings({"discover_lastfm": True})["discover_lastfm"])
+        self.assertEqual(restarted.config["lastfm_api_key"], "keep-key")
+        self.assertPrivate(Path(self.home, "config.json"))
+        original = Path(self.home, "config.json").read_bytes()
+        for bad in (None, "false", 0, 1, [], {}):
+            with self.subTest(value=bad), self.assertRaises(client.ApiError):
+                restarted.save_settings({"discover_lastfm": bad, "lastfm_api_key": "not-saved"})
+            self.assertEqual(Path(self.home, "config.json").read_bytes(), original)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
     def test_source_selection_persists_without_account_preserving_keys_and_other_settings(self):
         studio = client.Studio(self.home)
         settings = studio.save_settings({"discogs_token": "keep-source-key", "auto_lookup": False,
@@ -977,6 +1145,60 @@ class ClientTests(unittest.TestCase):
         self.assertEqual([r["status"] for r in result["results"]], ["sent"])
         self.assertEqual(len(mock_ibroadcast.STATE["writes"]), 0)
         self.assertEqual(job["results"][0]["status"], "unverified")
+
+    def test_combined_shape_saves_second_disc_tracks_and_blocks_album_writes_during_lag(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            mock_ibroadcast.STATE["albums"][75] = {
+                "name": "Hounds of Love", "artist_id": 41, "year": 0, "disc": 2, "tracks": [905]}
+            mock_ibroadcast.STATE["tracks"][905] = {
+                **mock_ibroadcast.STATE["tracks"][900], "title": "Second disc", "album_id": 75}
+            mock_ibroadcast.STATE.update(combine_sets=True, combined_albums={72: [72, 75]})
+            studio = self.connect()
+            loaded = studio.load_library()
+            self.assertTrue(loaded["combined_view"])
+            self.assertNotIn("75", [a["id"] for a in loaded["albums"]])
+            result = studio.save([edit("track", 905, 72, genre=("", "Soul"))])
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [{"file_id": 905, "genre": "Soul"}])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][905]["album_id"], 75)
+            mock_ibroadcast.STATE.update(combine_sets=False, combined_shape=True)
+            writes = len(mock_ibroadcast.STATE["writes"])
+            result = studio.save([edit("album", 72, 72, artist=("Kate Bush", "Must not create"))])
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "blocked")
+            self.assertEqual(len(mock_ibroadcast.STATE["writes"]), writes)
+            before = mock_ibroadcast.STATE["downloads"]
+            studio.load_library()
+            studio.load_library()
+            self.assertEqual(mock_ibroadcast.STATE["downloads"], before + 2)
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
+
+    def test_numeric_combined_track_save_preserves_received_and_stored_positions(self):
+        original = copy.deepcopy(mock_ibroadcast.STATE)
+        try:
+            mock_ibroadcast.STATE["albums"][75] = {
+                "name": "Hounds of Love", "artist_id": 41, "year": 0, "disc": 2, "tracks": [905]}
+            mock_ibroadcast.STATE["tracks"][905] = {
+                **mock_ibroadcast.STATE["tracks"][900], "title": "Second disc", "album_id": 75}
+            mock_ibroadcast.STATE.update(combine_sets=True, combined_albums={72: [72, 75]}, combined_rewrite_ids=True)
+            studio = self.connect()
+            self.assertTrue(studio.load_library()["combined_view"])
+            track = studio.library.track_view(905)
+            self.assertEqual((track["album_id"], track["track"], track["display_track"], track["disc"]), ("72", 201, 1, 2))
+            draft = edit("track", 905, 72, title=("Second disc", "Correct title"))
+            draft.update(sourceAlbumId="72", sourceTrack=201,
+                         libraryView={"combine_sets": True, "combined_view": True})
+            result = studio.save([draft])
+            self.assertEqual(self.wait_job(studio, result["job"])["results"][0]["status"], "saved")
+            self.assertEqual(mock_ibroadcast.STATE["writes"][-1]["tracks"], [{"file_id": 905, "title": "Correct title"}])
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][905]["track"], 1)
+            self.assertEqual(mock_ibroadcast.STATE["tracks"][905]["album_id"], 75)
+            self.assertEqual(studio.library.track_view(905)["track"], 201)
+        finally:
+            mock_ibroadcast.STATE.clear()
+            mock_ibroadcast.STATE.update(original)
 
     def test_switching_combine_sets_downloads_the_library_again(self):
         studio = self.connect()

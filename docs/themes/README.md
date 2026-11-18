@@ -1,7 +1,8 @@
 # Tagcast colour themes
 
-Portable examples for **Tagcast 1.2.0 and later**. Every JSON file contains one
-custom theme with separate Light and Dark variants. Built-in palettes are unchanged.
+Portable examples with separate Light and Dark variants. The established palette
+examples support **Tagcast 1.2.0 and later**; **Amber Midnight requires 1.7.0**.
+Every JSON file contains one custom theme. Built-in palettes are unchanged.
 
 **[Browse previews and download the collection on tagcast.app](https://tagcast.app/themes.html)**
 
@@ -45,3 +46,22 @@ and semantic warning/error styling retain their existing presentation.
 The earlier [Amber · Original (ibfetch) example](ibfetch-amber-original.json) remains
 available. For creating and sharing your own colours, see the
 [Custom themes guide](https://github.com/cyberdeliaAI/tagcast/wiki/Custom-themes).
+
+## Amber Midnight
+
+[Download Amber · Midnight](tagcast-amber-midnight.json) for Tagcast 1.7.0 and later.
+Its Dark variant uses near-black content, a muted plum sidebar, cream text, soft
+gold controls and matching gold navigation icons, inspired by the maintainer's reference
+screenshots. Light keeps the plum navigation beside warm pale surfaces. Choose
+**Theme → Dark** after importing for the requested dark appearance; Light and
+Auto retain their normal independent behavior.
+
+This file changes colour roles only. It keeps Tagcast's typography, layout,
+navigation, metadata workflows and semantic warning/error colours. It does not
+add the reference application's details panel or sorting controls. Import it
+through **Settings → Appearance → Import JSON…**, then **Save & use**.
+
+The 46 representative contrast pairs in this theme meet at least 4.5:1 for text
+and 3:1 for icons and focus indicators. Import, preview isolation, saving and
+reload were checked in Chromium at 420, 760, 768 and 1280 pixels in both variants.
+These checks do not constitute a full accessibility audit of every screen.

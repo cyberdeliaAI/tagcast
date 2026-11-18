@@ -28,26 +28,32 @@ Available for macOS, Windows and Linux. [Project](https://github.com/cyberdeliaA
 | Logo with light lettering, for dark backgrounds | [Vector](logos/tagcast-lockup-light.svg) | [1600 × 448](logos/tagcast-lockup-light.png) |
 | Monochrome icon | [Vector](logos/tagcast-icon-monochrome.svg) | [1024](logos/tagcast-icon-monochrome.png) |
 | GitHub / social preview | [Editable source](social/tagcast-social-preview.svg) | [1280 × 640](social/tagcast-social-preview.png) |
-| Album details (22 October development build) | — | [App screenshot](screenshots/album-details.png) |
-| Album editor tabs (22 October development build) | — | [App screenshot](screenshots/editor-album-tab.png) |
+| Album details (Tagcast 1.7.0) | — | [App screenshot](screenshots/album-details.png) |
+| Album editor (Tagcast 1.7.0) | — | [App screenshot](screenshots/editor-album-tab.png) |
+| Album browsing (Tagcast 1.7.0) | — | [App screenshot](screenshots/albums.png) |
+| Now playing, lyrics and queue (Tagcast 1.7.0) | — | [App screenshot](screenshots/now-playing.png) |
+| Expanded CD with lyrics (Tagcast 1.7.0) | — | [App screenshot](screenshots/fullscreen-cd-lyrics.png) |
+| Expanded cover with lyrics (Tagcast 1.7.0) | — | [App screenshot](screenshots/fullscreen-cover-lyrics.png) |
 | Playlists with durations (22 October development build) | — | [App screenshot](screenshots/playlists.png) |
 | Playlist details and search (22 October development build) | — | [App screenshot](screenshots/playlist-details.png) |
 | Playlist ordering and search (22 October development build) | — | [App screenshot](screenshots/playlist-order.png) |
 | Native iBroadcast tags | — | [App screenshot](screenshots/album-tags.png) |
 | 1001 Albums background texts | — | [App screenshot](screenshots/1001-albums-background.png) |
 
-The new app screenshots are byte-for-byte copies of the contributor's 22 October
-2026 development/test captures, made before the 0.75.0 release and retaining the
-earlier 0.70.2 version badge. The Sinatra
-background-text capture remains from 16 October, with its original attribution.
-See the [complete dated inventory](../docs/screenshots/2026-10-22/README.md).
+Six current screenshots are unchanged copies of the maintainer's **11 November
+2026 Tagcast 1.7.0** captures. The [original inventory](../docs/screenshots/2026-11-11-interface/README.md)
+records source filenames and SHA-256 hashes. They retain complete frames and provider
+attribution. A metadata draft or image selection is not a completed save; online
+lyrics display is temporary.
+
+The playlist examples remain explicitly labelled **22 October development captures**
+(retaining the 0.70.2 badge), and the tag/background examples are historical too.
+Their [dated inventory](../docs/screenshots/2026-10-22/README.md) and original
+attribution remain available. Fresh captures for these workflows are listed in the
+[current capture plan](../docs/screenshot-checklist.md); do not label them 1.7.0.
 
 PNG logos have transparent corners/backgrounds. SVG wordmarks use Arial with a
 Helvetica/sans-serif fallback; use the PNG when exact lettering is required.
-Screenshots were captured on **16 October 2026** while preparing Tagcast 0.50.0,
-with the cassette icon, compact sidebar, context breadcrumb and inline tag chips.
-Some captures still show the previous development version beside Settings;
-the original pixels are preserved.
 
 ## Colours and use
 

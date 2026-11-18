@@ -111,6 +111,15 @@ time. This feature does not change the library cache or existing save engine.
 Selections/reviews are bounded and expire after fifteen minutes. They are not
 restored after restart. Change history records results without offering a retry.
 
+## Creation receipts after an incomplete split
+
+If iBroadcast confirms creation but the move or read-back fails, the dialog and
+Change history retain the new album ID. The notice explains that it may be empty
+or contain only some selected tracks; it does not claim the album is unused.
+A lost creation receipt is reported as a possibility without inventing an ID.
+History export includes this diagnostic data. A fully confirmed split does not
+show a leftover warning. Nothing is automatically removed or retried.
+
 ## Verification scope
 
 Automated tests cover proposals, manual overrides, stale membership, invalid

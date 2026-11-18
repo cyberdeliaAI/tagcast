@@ -46,6 +46,24 @@ const state = {playlistsCount: null, albums: [], details: new Map(), albumFavour
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
+let combinedNoticeProfile = "";
+
+const combinedAlbumView = () => live() && Boolean(state.connection.combine_sets || state.connection.combined_view);
+function updateCombinedNotice() {
+  const banner = $("#combined-albums-notice");
+  if (!banner) return;
+  let dismissed = false;
+  if (combinedNoticeProfile) try {
+    const key = `tagcast-combined-notice:${combinedNoticeProfile}`;
+    dismissed = localStorage.getItem(key) === "hidden";
+    if (live() && !state.connection.combine_sets && !state.connection.combined_view && !state.loading) localStorage.removeItem(key);
+  } catch { /* private window */ }
+  banner.hidden = !combinedAlbumView() || !state.connection.connected || state.loading || !combinedNoticeProfile || dismissed;
+}
+$("#combined-notice-dismiss").addEventListener("click", () => {
+  if (combinedNoticeProfile) try { localStorage.setItem(`tagcast-combined-notice:${combinedNoticeProfile}`, "hidden"); } catch { /* private window */ }
+  $("#combined-albums-notice").hidden = true; $("#mode-badge").focus();
+});
 // Interface text keys; the visible text follows the interface language.
 const libraryLoadingMessages = [
   "library.loading.void",
@@ -146,6 +164,7 @@ function demoLibrary() {
   }));
 }
 
+const displayedTrackNumber = track => track.display_track ?? track.track;
 const trackGenres = t => t.genres ?? (t.genre?.trim() ? [t.genre.trim()] : []);
 // Match the server: ignore case, spacing and quotation marks; retain version text.
 const titleKey = title => String(title || "").replace(/['"‘’‚‛“”„‟«»‹›]/g, "").toLocaleLowerCase().split(/\s+/).filter(Boolean).join(" ");
@@ -183,7 +202,15 @@ function summarize(album) {
     no_genre: album.tracks.filter(t => !trackGenres(t).length).length,
     combined_genres: album.tracks.filter(t => hasCombined(trackGenres(t))).length,
     no_composer: album.tracks.filter(t => !(t.composers || []).length).length,
-    track_gaps: (numbers => numbers.size ? Math.max(...numbers) - numbers.size : 0)(new Set(album.tracks.map(t => t.track).filter(Boolean))),
+    track_gaps: (() => {
+      const groups = new Map();
+      for (const t of album.tracks) {
+        const key = JSON.stringify([t.album_id || album.id, t.disc || 0]);
+        if (!groups.has(key)) groups.set(key, new Set());
+        const n = Number(displayedTrackNumber(t)); if (n > 0) groups.get(key).add(n);
+      }
+      return [...groups.values()].reduce((n, positions) => n + (positions.size ? Math.max(...positions) - positions.size : 0), 0);
+    })(),
     duplicates: (keys => keys.length - new Set(keys).size)(album.tracks.map(duplicateTrackKey).filter(Boolean)),
     repeated_numbers: (numbers => numbers.length - new Set(numbers).size)(album.tracks.map(duplicateTrackPosition).filter(Boolean)),
     no_cover: album.tracks.filter(t => !(t.artwork_id ?? album.artwork)).length};
@@ -198,12 +225,14 @@ function useLocal(albums, mode) {
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof resetAlbumSplit === "function") resetAlbumSplit();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
   if (typeof resetCleanup === "function") resetCleanup(true);
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
+  if (typeof resetEmptyTrashReview === "function") resetEmptyTrashReview();
   resetAlbumOrder();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
@@ -337,8 +366,9 @@ function syncBrowseChoices(kind, filters, sorts, defaultSort) {
   ];
   browseChoices.views.set(kind, options);
   const trigger = $(`#${kind}-browse-options`);
-  const label = `<span><strong>${escapeHtml(filter.label)}</strong><small>${escapeHtml(sorts[inputs.sort.value])}</small></span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>`;
+  const label = `<span><strong>${TagcastI18n.html("workspace.filters")}</strong><small>${escapeHtml(filter.label)}</small></span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>`;
   if (trigger.innerHTML !== label) trigger.innerHTML = label;
+  if (typeof syncWorkspaceSort === "function") syncWorkspaceSort(kind);
   if (browseChoices.kind === kind) {
     if (browseChoices.details !== state.details) closeBrowseOptions(true);
     else paintBrowseOptions();
@@ -355,8 +385,7 @@ function closeBrowseOptions(restoreFocus = false) {
 
 function paintBrowseOptions() {
   const menu = $("#browse-options-menu"), options = browseChoices.views.get(browseChoices.kind) || [];
-  const html = `<div class="browse-options-title" role="presentation"><span>${TagcastI18n.html("library.browse.title")}</span><button type="button" role="menuitem" data-browse-close aria-label="${TagcastI18n.html("library.browse.close")}" tabindex="-1">×</button></div>`
-    + [["sort", "library.browse.sort"], ["filter", "library.browse.show"]].map(([kind, label]) => `<div role="group" aria-label="${TagcastI18n.html(label)}"><div class="browse-options-heading" role="presentation">${TagcastI18n.html(label)}</div>${options.filter(option => option.key.startsWith(`${kind}:`)).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`).join("");
+  const html = options.filter(option => option.key.startsWith("filter:")).map(option => `<button type="button" role="menuitemradio" aria-checked="${option.selected}" data-browse-choice="${option.key}" tabindex="-1" ${option.disabled ? "disabled" : ""}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>${escapeHtml(option.label)}</span></button>`).join("");
   if (menu.innerHTML === html) return;
   const focused = document.activeElement?.getAttribute?.("data-browse-choice"), scroll = menu.scrollTop;
   menu.innerHTML = html;
@@ -402,8 +431,7 @@ function chooseBrowseOption(key) {
 
 document.addEventListener("click", event => {
   const trigger = event.target.closest("[data-browse-options]"), option = event.target.closest("[data-browse-choice]");
-  if (event.target.closest("[data-browse-close]")) closeBrowseOptions(true);
-  else if (trigger) openBrowseOptions(trigger);
+  if (trigger) openBrowseOptions(trigger);
   else if (option) chooseBrowseOption(option.dataset.browseChoice);
   else if (!event.target.closest("#browse-options-menu")) closeBrowseOptions();
 });
@@ -435,6 +463,7 @@ let discCache = {albums: null, sets: new Map()};
 const discSetKey = a => JSON.stringify([a.name.trim().toLocaleLowerCase(), a.artist,
   Number(a.year) || 0, a.upload_dates || [""], albumArtistEntries(a).slice(1).map(entry => entry.id)]);
 function discSet(album) {
+  if (combinedAlbumView()) return null;
   if (discCache.albums !== state.albums) {
     const sets = new Map();
     for (const a of state.albums) {
@@ -489,6 +518,29 @@ function shelfIds(id) {
 const joinDiscs = albums => albums.length === 1 ? albums[0]
   : {...albums[0], artwork: albums.find(a => a.artwork)?.artwork || "", tracks: albums.flatMap(a => a.tracks)};
 
+function albumDisplayDiscs(albums) {
+  return albums.flatMap(album => {
+    const groups = new Map();
+    for (const track of album.tracks) {
+      const source = String(track.album_id || album.id);
+      const key = JSON.stringify([source, track.encoded_disc ? track.disc : null]);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(track);
+    }
+    if (groups.size < 2) return [album];
+    return [...groups].map(([, tracks]) => {
+      const source = String(tracks[0].album_id || album.id);
+      const numbers = new Set(tracks.map(t => Number(t.disc) || 0));
+      return {...album, source_album_id: source, virtualDisc: true,
+        disc: numbers.size === 1 ? [...numbers][0] : 0, tracks};
+    });
+  });
+}
+function sourceDiscLabel(disc) {
+  return disc.disc ? TagcastI18n.html("common.disc", {disc: disc.disc})
+    : TagcastI18n.html("combined.sourceDisc", {id: disc.source_album_id || disc.id});
+}
+
 function thumb(album) {
   const art = album.artwork ? `<img src="${escapeHtml(album.artwork.replace(/-300$/, "-150"))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-image-error="remove">` : "";
   return `<span class="thumb" style="--cover-color:${album.color}">${art}<span>${escapeHtml(initials(album.artist))}</span></span>`;
@@ -514,6 +566,7 @@ function artistGroups() {
 }
 
 function setArtist(artist) {
+  if (artist !== state.artist && typeof leaveArtistDiscover === "function") leaveArtistDiscover();
   state.artist = artist; state.selected.clear(); state.page = 0;
   $("#search").value = "";
   if (state.screen && state.screen !== "albums") showScreen("albums");
@@ -595,6 +648,7 @@ function render() {
   if (typeof renderAlbumView === "function") renderAlbumView();
   if (typeof renderArtistBrowse === "function") renderArtistBrowse();
   if (typeof renderArtistProfile === "function") renderArtistProfile();
+  if (typeof renderArtistDiscover === "function") renderArtistDiscover();
   if (typeof renderTrackSearch === "function") renderTrackSearch();
   if (typeof renderFavourites === "function") renderFavourites();
   if (typeof renderFavouriteArtists === "function") renderFavouriteArtists();
@@ -632,7 +686,6 @@ function renderLibrary(relabel = false) {
   $("#all-albums").classList.toggle("active", !state.artist && (!state.screen || state.screen === "albums"));
   for (const button of document.querySelectorAll("[data-view]")) button.setAttribute("aria-pressed", String(button.dataset.view === state.view));
   const items = filteredAlbums(), size = pageSize(), maxPage = Math.max(0, Math.ceil(items.length / size) - 1);
-  $("#albums-random-order").disabled = state.loading || items.length < 2;
   $("#per-page").value = albumContinuous.enabled ? "continuous" : String(size);
   state.page = Math.min(state.page, maxPage);
   $("#results-count").textContent = state.artist ? TagcastI18n.text("library.results.byArtist", {count: items.length, artist: state.artist})
@@ -874,7 +927,7 @@ function syncAlbumArtistControls() {
   }
 }
 
-async function openEditor(ids) {
+async function openEditor(ids, {onlineSuggestions = true} = {}) {
   if (opening) return;
   const chosen = ids.map(id => state.albums.find(a => String(a.id) === String(id))).filter(Boolean);
   if (!chosen.length) return;
@@ -906,8 +959,9 @@ async function openEditor(ids) {
   const sameSet = bulk && albums.some(a => (discSet(a) || []).filter(d => editing.ids.includes(String(d.id))).length > 1);
   const mixed = key => whole && !common(albums, key) && albums.some(a => a[key]) ? {placeholder: TagcastI18n.text("editor.field.mixedDiscs")} : {};
   const noGenre = TagcastI18n.html("editor.track.noGenre");
-  const trackRow = t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button type="button" class="play" data-play="${escapeHtml(t.id)}" aria-label="${TagcastI18n.html("editor.track.play", {title: t.title})}">▶</button>` : ""}${t.track || "–"}</td><td>${escapeHtml(t.title)}${t.composers?.length ? `<small class="track-composer">${escapeHtml(t.composers.join(", "))}</small>` : ""}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${genresText(t.genres) ? escapeHtml(genresText(t.genres)) : noGenre}</span></td><td><button type="button" class="track-edit" data-track="${escapeHtml(t.id)}">${TagcastI18n.html("editor.track.edit")}</button></td></tr>`;
-  const trackRows = whole ? albums.map(a => `<tr class="disc-row"><td colspan="4">${TagcastI18n.html("common.disc", {disc: a.disc || "?"})}</td></tr>${a.tracks.map(trackRow).join("")}`).join("") : album.tracks.map(trackRow).join("");
+  const trackRow = t => `<tr data-row="${escapeHtml(t.id)}"><td>${live() ? `<button type="button" class="play" data-play="${escapeHtml(t.id)}" aria-label="${TagcastI18n.html("editor.track.play", {title: t.title})}">▶</button>` : ""}${escapeHtml(displayedTrackNumber(t) || "–")}</td><td>${escapeHtml(t.title)}${t.composers?.length ? `<small class="track-composer">${escapeHtml(t.composers.join(", "))}</small>` : ""}</td><td>${t.year || "–"} / <span data-genre-cell="${escapeHtml(t.id)}" class="${hasCombined(t.genres) ? "combined" : ""}">${genresText(t.genres) ? escapeHtml(genresText(t.genres)) : noGenre}</span></td><td><button type="button" class="track-edit" data-track="${escapeHtml(t.id)}">${TagcastI18n.html("editor.track.edit")}</button></td></tr>`;
+  const displayDiscs = albumDisplayDiscs(albums);
+  const trackRows = whole || displayDiscs.length > 1 ? displayDiscs.map(a => `<tr class="disc-row"><td colspan="4">${sourceDiscLabel(a)}</td></tr>${a.tracks.map(trackRow).join("")}`).join("") : album.tracks.map(trackRow).join("");
   const editorTabs = bulk ? "" : `<div id="editor-tabs" class="favourites-tabs editor-tabs" role="tablist" aria-label="${TagcastI18n.html("editor.tabs.label")}"><button type="button" id="editor-tab-album" role="tab" data-editor-tab="album" aria-selected="true" aria-controls="editor-album-panel" tabindex="0">${TagcastI18n.html("editor.editAlbum")}</button><button type="button" id="editor-tab-tracks" role="tab" data-editor-tab="tracks" aria-selected="false" aria-controls="editor-tracks-panel" tabindex="-1">${TagcastI18n.html("editor.tabs.tracks")} <span>${allTracks.length}</span></button></div>`;
   const trackPanel = bulk ? '<div id="track-inline"></div>' : `<section id="editor-tracks-panel" role="tabpanel" aria-labelledby="editor-tab-tracks" hidden><div class="tracks-heading"><h3>${TagcastI18n.html("editor.tracks.heading")} <span class="muted">(${allTracks.length})</span></h3><span class="muted">${TagcastI18n.html("editor.tracks.choose")}</span></div><div class="editor-track-workspace"><div class="editor-track-list"><table class="track-table"><thead><tr><th>#</th><th>${TagcastI18n.html("editor.tracks.columnTitle")}</th><th>${TagcastI18n.html("editor.tracks.columnYearGenre")}</th><th></th></tr></thead><tbody>${trackRows}</tbody></table></div><div id="track-inline"><p class="empty">${TagcastI18n.html("editor.tracks.empty")}</p></div></div></section>`;
   const eyebrow = whole ? TagcastI18n.html("editor.eyebrow.set", {count: albums.length}) : TagcastI18n.html(bulk ? "editor.eyebrow.bulk" : "editor.eyebrow.album");
@@ -917,24 +971,39 @@ async function openEditor(ids) {
   const combined = allTracks.filter(t => hasCombined(t.genres));
   const scope = whole ? TagcastI18n.html("editor.scope.set", {count: albums.length}) : bulk ? TagcastI18n.html("editor.scope.bulk", {count: albums.length}) : TagcastI18n.html("editor.scope.album");
   const sources = bulk ? `<aside class="sources"><div class="eyebrow">${TagcastI18n.html("editor.selection.eyebrow")}</div><h3>${TagcastI18n.html("editor.selection.heading")}</h3>` + albums.map(a => `<p class="muted">${escapeHtml(a.name)}${discLabel(a) ? ` · ${escapeHtml(discLabel(a))}` : ""}</p>`).join("") + `<div class="year-note"><strong>${TagcastI18n.html("editor.selection.lookupHeading")}</strong>${TagcastI18n.html("editor.selection.lookupNote")}</div></aside>` : lookupPanel(album);
-  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${TagcastI18n.html(bulk ? "editor.heading.bulk" : "editor.editAlbum")}</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="editing" aria-label="${help}" title="${help}">?</button><button class="close" data-close="editor" aria-label="${TagcastI18n.html("editor.close")}">×</button></div></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="${TagcastI18n.html("editor.cover.changeTitle")}">${cover(album, true)}<span>${TagcastI18n.html("editor.cover.change")}</span></button>`}<div><h3>${bulk ? TagcastI18n.html("editor.bulk.heading", {count: albums.length, artist: state.artist || album.artist}) : escapeHtml(album.name)}</h3><div class="muted">${escapeHtml(album.artist)}${dot}${TagcastI18n.html("editor.header.tracks", {count: allTracks.length})}${whole || !bulk ? `${dot}${discText}` : ""}${!bulk && !whole && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">${TagcastI18n.html("editor.header.editSet", {count: discSet(album).length})}</button>` : ""}</div><div class="header-actions"><span class="pill">${TagcastI18n.html(live() ? "editor.header.live" : "editor.header.sample")}</span>${live() && single ? `<button class="text-action" data-play-album>${TagcastI18n.html("editor.header.playAlbum")}</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}${TagcastI18n.html("editor.header.artistImage")}</button>` : ""}` : ""}</div></div></div>${editorTabs}<div class="edit-layout" id="editor-layout"><form id="metadata-form"><section id="editor-album-panel" ${bulk ? "" : 'role="tabpanel" aria-labelledby="editor-tab-album"'}><div class="fields">${bulk ? "" : field("name", TagcastI18n.html("editor.field.albumTitle"), whole ? common(albums, "name") : album.name, {wide: true, ...mixed("name")})}${albumArtistField(albums, bulk)}${creditsField(albums[0], {album: true, bulk: bulk || !albums.every(a => sameValue(a.credits || [], albums[0].credits || [])), mixed: !albums.every(a => sameValue(a.credits || [], albums[0].credits || []))})}${field("year", TagcastI18n.html("editor.field.releaseYear"), common(albums, "year"), {type: "number", bulk, hint: TagcastI18n.html("editor.field.releaseYearHint"), ...mixed("year")})}${whole || sameSet ? "" : field("disc", TagcastI18n.html("editor.field.discNumber"), common(albums, "disc"), {type: "number", bulk})}${genreField("genres", TagcastI18n.html("editor.field.genres"), allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: TagcastI18n.html("editor.field.genresHint")})}${combined.length ? `<p class="genre-note wide">${TagcastI18n.html("editor.genres.combinedNote", {count: combined.length, example: combined[0].genres.find(g => g.includes(";"))})} <button type="button" class="text-action" data-split-album-genres>${TagcastI18n.html("editor.genres.split")}</button></p>` : ""}${genreField("composers", TagcastI18n.html("editor.field.composers"), allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: TagcastI18n.html("editor.field.composersHint")})}</div><label class="checkline"><input type="checkbox" id="track-years"> ${TagcastI18n.html("editor.field.trackYears")}</label><div class="scope-note">${scope}</div></section>${trackPanel}</form>${sources}</div><div class="dialog-footer"><span class="muted">${TagcastI18n.html(live() ? "editor.footer.live" : "editor.footer.demo")}</span><button class="button" data-close="editor">${TagcastI18n.html("common.cancel")}</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>${TagcastI18n.html("editor.footer.nextAlbum")}</button>`}<button class="button primary" id="review-button">${TagcastI18n.html("editor.footer.review")}</button></div>`;
+  $("#editor-content").innerHTML = `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${TagcastI18n.html(bulk ? "editor.heading.bulk" : "editor.editAlbum")}</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="editing" aria-label="${help}" title="${help}">?</button><button class="close" data-close="editor" aria-label="${TagcastI18n.html("editor.close")}">×</button></div></div><div class="album-header">${bulk || !live() ? cover(album, true) : `<button class="cover-button" id="change-cover" title="${TagcastI18n.html("editor.cover.changeTitle")}">${cover(album, true)}<span>${TagcastI18n.html("editor.cover.change")}</span></button>`}<div><h3>${bulk ? TagcastI18n.html("editor.bulk.heading", {count: albums.length, artist: state.artist || album.artist}) : escapeHtml(album.name)}</h3><div class="muted">${escapeHtml(album.artist)}${dot}${TagcastI18n.html("editor.header.tracks", {count: allTracks.length})}${whole || !bulk ? `${dot}${discText}` : ""}${!bulk && !whole && discSet(album) ? ` <button class="text-action" data-edit-set="${escapeHtml(album.id)}">${TagcastI18n.html("editor.header.editSet", {count: discSet(album).length})}</button>` : ""}</div><div class="header-actions"><span class="pill">${TagcastI18n.html(live() ? "editor.header.live" : "editor.header.sample")}</span>${live() && single ? `<button class="text-action" data-play-album>${TagcastI18n.html("editor.header.playAlbum")}</button>${album.artist_id ? `<button class="text-action" id="change-artist-image">${avatar(album.artist, album.artist_image)}${TagcastI18n.html("editor.header.artistImage")}</button>` : ""}` : ""}</div></div></div>${editorTabs}<div class="edit-layout" id="editor-layout"><form id="metadata-form"><section id="editor-album-panel" ${bulk ? "" : 'role="tabpanel" aria-labelledby="editor-tab-album"'}>${combinedAlbumView() ? `<p class="warn-box">${TagcastI18n.html("combined.editorNote")}</p>` : ""}<div class="fields">${bulk ? "" : field("name", TagcastI18n.html("editor.field.albumTitle"), whole ? common(albums, "name") : album.name, {wide: true, ...mixed("name")})}${albumArtistField(albums, bulk)}${creditsField(albums[0], {album: true, bulk: bulk || !albums.every(a => sameValue(a.credits || [], albums[0].credits || [])), mixed: !albums.every(a => sameValue(a.credits || [], albums[0].credits || []))})}${field("year", TagcastI18n.html("editor.field.releaseYear"), common(albums, "year"), {type: "number", bulk, hint: TagcastI18n.html("editor.field.releaseYearHint"), ...mixed("year")})}${whole || sameSet ? "" : field("disc", TagcastI18n.html("editor.field.discNumber"), common(albums, "disc"), {type: "number", bulk})}${genreField("genres", TagcastI18n.html("editor.field.genres"), allTracks.every(t => sameValue(t.genres, allTracks[0].genres)) ? allTracks[0].genres : [], {bulk, mixed: !allTracks.every(t => sameValue(t.genres, allTracks[0].genres)), hint: TagcastI18n.html("editor.field.genresHint")})}${combined.length ? `<p class="genre-note wide">${TagcastI18n.html("editor.genres.combinedNote", {count: combined.length, example: combined[0].genres.find(g => g.includes(";"))})} <button type="button" class="text-action" data-split-album-genres>${TagcastI18n.html("editor.genres.split")}</button></p>` : ""}${genreField("composers", TagcastI18n.html("editor.field.composers"), allTracks.every(t => sameValue(t.composers, allTracks[0].composers)) ? allTracks[0].composers : [], {bulk, ordered: false, noun: "composer", mixed: !allTracks.every(t => sameValue(t.composers, allTracks[0].composers)), hint: TagcastI18n.html("editor.field.composersHint")})}</div><label class="checkline"><input type="checkbox" id="track-years"> ${TagcastI18n.html("editor.field.trackYears")}</label><div class="scope-note">${scope}</div></section>${trackPanel}</form>${sources}</div><div class="dialog-footer"><span class="muted">${TagcastI18n.html(live() ? "editor.footer.live" : "editor.footer.demo")}</span><button class="button" data-close="editor">${TagcastI18n.html("common.cancel")}</button>${bulk ? "" : `<button class="button" id="next-album" ${nextAlbumId(album.id) ? "" : "disabled"}>${TagcastI18n.html("editor.footer.nextAlbum")}</button>`}<button class="button primary" id="review-button">${TagcastI18n.html("editor.footer.review")}</button></div>`;
+  editing.combineSets = Boolean(state.connection.combine_sets);
+  editing.combinedView = Boolean(state.connection.combined_view);
+  if (combinedAlbumView()) {
+    for (const key of ["name", "artist", "year", "disc"]) {
+      const input = $("#metadata-form").elements.namedItem(key); if (input) input.disabled = true;
+    }
+    $("#album-various-artists").disabled = true;
+    $("#track-years").disabled = true;
+    const credits = $("#metadata-form").querySelector('[data-credit-editor="album-credits"]');
+    if (credits) { credits.classList.add("disabled"); for (const input of credits.querySelectorAll("input,button,select")) input.disabled = true; }
+    for (const input of $("#editor-album-panel").querySelectorAll("[data-enable]")) {
+      if (["name", "artist", "year", "disc", "credits"].includes(input.dataset.enable)) input.disabled = true;
+    }
+  }
   $("#metadata-form").addEventListener("submit", e => e.preventDefault());
   // A mixed disc-set year is a blank placeholder, not an instruction to clear tracks.
   $("#track-years").checked = metadataEditingDefaults.applyYearToTracks && !bulk
-    && albums.every(a => a.year === album.year);
+    && albums.every(a => a.year === album.year) && !combinedAlbumView();
   const various = albums.map(a => a.artist_id === 0 && a.artist === "Various Artists");
   $("#album-various-artists").checked = various.every(Boolean);
   $("#album-various-artists").indeterminate = various.some(Boolean) && !various.every(Boolean);
-  syncAlbumArtistControls();
+  if (!combinedAlbumView()) syncAlbumArtistControls();
   $("#editor").showModal();
   if (!bulk) setEditorTab("album");
-  if (!bulk) startLookups(album);
+  if (!bulk && onlineSuggestions) startLookups(album);
 }
 
-function setEditorTab(tab, focus = false) {
+function setEditorTab(tab, focus = false, {loadLyrics = true} = {}) {
   if (!editing || editing.bulk || !["album", "tracks"].includes(tab) || !$("#editor").open) return;
   closeEditorArtistChoices();
   editing.tab = tab;
+  if (tab === "tracks") editing.deferTrackLyrics = !loadLyrics;
   for (const kind of ["album", "tracks"]) {
     const selected = kind === tab, button = $(`#editor-tab-${kind}`);
     button.setAttribute("aria-selected", String(selected));
@@ -950,7 +1019,7 @@ function setEditorTab(tab, focus = false) {
     help.setAttribute("aria-label", TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album"));
     help.title = TagcastI18n.text(tab === "tracks" ? "editor.help.tracks" : "editor.help.album");
   }
-  if (tab === "tracks" && typeof renderLyrics === "function") renderLyrics("track");
+  if (tab === "tracks" && loadLyrics && typeof renderLyrics === "function") renderLyrics("track");
   if (focus) $(`#editor-tab-${tab}`).focus({preventScroll: true});
 }
 
@@ -988,6 +1057,7 @@ function stashTrack() {
   const original = editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === pane.dataset.track);
   const data = {};
   for (const input of pane.querySelectorAll("input[data-key]")) {
+    if (input.disabled) continue;
     if (input.dataset.key === "year" && input.validity?.badInput) {
       throw editorFailure("errors.editor.year_range");
     }
@@ -1003,25 +1073,25 @@ function stashTrack() {
   editing.trackPatches[pane.dataset.track] = Object.fromEntries(Object.entries(data).filter(([key, value]) => !sameValue(original[key], value)));
 }
 
-function editTrack(id) {
+function editTrack(id, {loadLyrics = true, scrollBehavior = "smooth"} = {}) {
   try { stashTrack(); } catch (error) { toast(TagcastI18n.errorText(error)); return; }
   showTrackGenres();
   const original = editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === id);
   if (!original) return;
-  setEditorTab("tracks");
+  setEditorTab("tracks", false, {loadLyrics});
   const track = {...original, ...(editing.trackPatches[id] || {})};
   const pane = $("#track-inline"); pane.dataset.track = id;
   const fields = [["title", "editor.track.titleField", "text"], ["artist", "editor.track.artistField", "text"], ["year", "editor.track.yearField", "number"], ["track", "editor.track.numberField", "number"]];
-  pane.innerHTML = `<div class="track-inline"><h3>${TagcastI18n.html("editor.track.heading", {number: original.track, title: original.title})}</h3><div class="fields">${fields.map(([key, labelKey, type]) => {
+  pane.innerHTML = `<div class="track-inline"><h3>${TagcastI18n.html("editor.track.heading", {number: displayedTrackNumber(original), title: original.title})}</h3><div class="fields">${fields.map(([key, labelKey, type]) => {
     const label = TagcastI18n.html(labelKey);
-    return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml(track[key] || "")}">`}</label>`;
+    return `<label class="field ${key === "title" ? "wide" : ""}"><span>${label}</span>${key === "artist" ? artistChoiceInput(`data-key="artist" aria-label="${label}" type="text" maxlength="1000" value="${escapeHtml(track.artist || "")}" placeholder="${TagcastI18n.html("editor.choices.findArtist")}"`) : `<input data-key="${key}" ${key === "track" && combinedAlbumView() ? "disabled" : ""} aria-label="${label}" type="${type}" ${type === "number" ? numberInputAttributes(key, original[key]) : 'maxlength="1000"'} value="${escapeHtml((key === "track" && combinedAlbumView() ? displayedTrackNumber(track) : track[key]) || "")}">`}</label>`;
   }).join("")}${genreField("track-genres", TagcastI18n.html("editor.track.genresField"), track.genres || [])}${creditsField(track)}</div><section id="track-lyrics" class="track-lyrics" hidden></section><p class="muted">${TagcastI18n.html("editor.track.note")}</p></div>`;
-  renderLyrics("track", lyricsSelection(original));
+  if (loadLyrics) renderLyrics("track", lyricsSelection(original));
   for (const button of document.querySelectorAll("#editor-tracks-panel button[data-track]")) {
     button.setAttribute("aria-pressed", String(button.dataset.track === id));
     button.closest("tr")?.classList.toggle("editing-track", button.dataset.track === id);
   }
-  pane.scrollIntoView({block: "start", behavior: "smooth"});
+  pane.scrollIntoView({block: "start", behavior: scrollBehavior});
 }
 
 function buildReview() {
@@ -1076,7 +1146,10 @@ function buildReview() {
         fields.artist_id.before_name = item.artist === "Various Artists" ? "Various Artists (named artist)" : item.artist;
         fields.artist_id.after_name = "Various Artists";
       }
-      if (Object.keys(fields).length) changes.push({kind, id: item.id, albumId, label: (item.name || item.title) + disc, fields});
+      if (Object.keys(fields).length) changes.push({kind, id: item.id, albumId, label: (item.name || item.title) + disc, fields,
+        ...(live() ? {libraryView: {combine_sets: Boolean(editing.combineSets), combined_view: Boolean(editing.combinedView)},
+          ...(kind === "track" ? {sourceAlbumId: item.album_id,
+            ...(combinedAlbumView() ? {sourceTrack: Object.hasOwn(item, "native_track") ? item.native_track : item.track} : {})} : {})} : {})});
     }
     for (const album of editing.originals) {
       diff("album", album, albumPatch, album.id);
@@ -1134,7 +1207,7 @@ function showReview(changes) {
   if (live() && changes.some(c => c.kind === "album")) {
     api("/api/account-settings").then(settings => {
       if (Boolean(settings.combine_sets) === Boolean(state.connection.combine_sets) || !$("#review").open) return;
-      state.connection.combine_sets = settings.combine_sets; renderReviewChrome(changes);
+      state.connection.combine_sets = settings.combine_sets; updateCombinedNotice(); renderReviewChrome(changes);
     }).catch(() => { /* the save checks again */ });
   }
     $("#review-changes").innerHTML = reviewList(changes);
@@ -1143,7 +1216,7 @@ function showReview(changes) {
 
 // Put the changes of a save that didn't (fully) go through back in review.
 function reviewRest(entry) {
-  if (entry.albumSplit) return;
+  if (entry.albumSplit || entry.writeAttempt || entry.emptyTrash) return;
   const changes = entry.changes.filter(c => ["failed", "not_sent", "blocked"].includes(c.status)).map(({status, ...change}) => change);
   if (!changes.length) return;
   pending = {scope: entry.scope || "album", selection: entry.selection, changes};
@@ -1236,8 +1309,42 @@ function historyDate(value) {
   return Number.isNaN(date.getTime()) ? "" : TagcastI18n.dateTime(date);
 }
 
+// Creation receipts never establish that an object is unused. Keep only fixed,
+// bounded diagnostics in History, including when a write failed before a job.
+function writeEffectsData(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const effects = {};
+  if (Number.isInteger(value.artists_created) && value.artists_created > 0 && value.artists_created <= 1000000) effects.artists_created = value.artists_created;
+  for (const key of ["artist_uncertain", "artwork_uncertain", "album_uncertain"]) if (value[key] === true) effects[key] = true;
+  for (const key of ["artwork_created", "album_created"]) if (typeof value[key] === "string" && /^[0-9]{1,32}$/.test(value[key]) && /[1-9]/.test(value[key])) effects[key] = value[key];
+  return effects;
+}
+
+function writeEffectsMarkup(value, status = "unverified", error = "") {
+  if (status === "saved" || status === "sent" && !error) return "";
+  const effects = writeEffectsData(value), notes = [];
+  if (effects.artists_created) notes.push(TagcastI18n.html("writeEffects.artists", {count: effects.artists_created}));
+  if (effects.artist_uncertain) notes.push(TagcastI18n.html("writeEffects.artistUncertain"));
+  if (effects.artwork_created) notes.push(TagcastI18n.html("writeEffects.artwork", {id: effects.artwork_created}));
+  if (effects.artwork_uncertain) notes.push(TagcastI18n.html("writeEffects.artworkUncertain"));
+  if (effects.album_created) notes.push(TagcastI18n.html("writeEffects.album", {id: effects.album_created}));
+  if (effects.album_uncertain) notes.push(TagcastI18n.html("writeEffects.albumUncertain"));
+  return notes.length ? `<div class="warn-box"><strong>${TagcastI18n.html("writeEffects.heading")}</strong>${notes.map(note => `<p>${note}</p>`).join("")}<p>${TagcastI18n.html("writeEffects.noCleanup")}</p></div>` : "";
+}
+
+function rememberWriteAttempt(draft, error) {
+  const effects = writeEffectsData(error.data?.write_effects);
+  if (!Object.keys(effects).length) return;
+  const entry = {...structuredClone(draft), writeAttempt: true, write_effects: effects,
+    source: "ibroadcast", created: new Date().toISOString(),
+    status: effects.artist_uncertain || effects.artwork_uncertain ? "unverified" : "failed", error: error.message,
+    changes: draft.changes.map(c => ({...structuredClone(c), status: effects.artwork_created ? "failed" : "not_sent"}))};
+  state.history.unshift(entry); rememberHistory();
+  return entry;
+}
+
 function renderHistory() {
-  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${!entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
+  $("#history-content").innerHTML = state.history.length ? state.history.map((entry, index) => entry.emptyTrash ? emptyTrashHistoryMarkup(entry) : `<section class="history-item">${statusPill(entry.status)}${entry.artwork && !entry.undone && ["saved", "sent", "unverified"].includes(entry.status) ? `<button class="button small history-undo" data-undo="${index}" ${artworkUndoNote(entry) ? `disabled title="${escapeHtml(artworkUndoNote(entry))}"` : ""}>${TagcastI18n.html("history.undo")}</button>` : ""}${entry.artwork ? `<div class="history-art">${entry.artwork.before ? `<img src="${escapeHtml(entry.artwork.before)}" alt="${TagcastI18n.html("history.art.before")}" referrerpolicy="no-referrer">` : ""}<span>→</span><img src="${escapeHtml(entry.artwork.after)}" alt="${TagcastI18n.html("history.art.after")}" referrerpolicy="no-referrer"></div>` : ""}${entry.artwork && !entry.undone && artworkUndoNote(entry) ? `<p class="muted">${escapeHtml(artworkUndoNote(entry))}</p>` : ""}<h3>${escapeHtml([...new Set(entry.selection.map(a => a.name))].join(", "))}</h3><p class="muted">${[escapeHtml(historyDate(entry.created)), TagcastI18n.html("history.records", {count: entry.changes.length})].filter(Boolean).join(" · ")}</p>${entry.error ? `<div class="error-box">${escapeHtml(entry.error)}</div>` : ""}${writeEffectsMarkup(entry.write_effects, entry.status, entry.error)}${!entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && !entry.writeAttempt && entry.source === "ibroadcast" && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status)) ? `<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button></p>` : ""}${entry.changes.map(c => `<p class="muted">${c.status ? statusPill(c.status) + " " : ""}${escapeHtml(c.label)}: ${Object.entries(c.fields).map(([key, v]) => `${escapeHtml(fieldLabel(key))}: ${escapeHtml(fieldShown(key, v, "before"))} → ${escapeHtml(fieldShown(key, v, "after"))}`).join(" · ")}</p>`).join("")}</section>`).join("")
     : `<p class="empty">${TagcastI18n.html(historyView.cleared ? "history.cleared" : "history.empty")}</p>`;
 }
 
@@ -1249,6 +1356,7 @@ document.addEventListener("click", event => {
       if (typeof requestClosePlaylistImport === "function") requestClosePlaylistImport();
       else toast(TagcastI18n.text("app.update.reloadImport"));
     }
+    else if (close.dataset.close === "track-comparison") requestCloseTrackComparison();
     else $(`#${close.dataset.close}`).close();
     return;
   }
@@ -1258,7 +1366,11 @@ document.addEventListener("click", event => {
   if (artist) { setArtist(artist.dataset.artist); return; }
   const album = event.target.closest("[data-album]");
   if (album) {
-    coverClick(event, () => openAlbum(album.dataset.album), coverPreviewFor(event.target)); return;
+    const discoveryArtist = event.target.closest("#artist-discover-cards") ? state.artist : null;
+    coverClick(event, () => {
+      if (discoveryArtist && (state.screen !== "albums" || state.artist !== discoveryArtist)) return;
+      openAlbum(album.dataset.album, "", discoveryArtist);
+    }, coverPreviewFor(event.target)); return;
   }
   const track = event.target.closest("button[data-track]");
   if (track) { editTrack(track.dataset.track); return; }
@@ -1315,14 +1427,6 @@ $("#all-albums").addEventListener("click", () => setArtist(null));
 for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
   if (id === "#sort") albumOrder.ids = [];
   state.page = 0; render();
-});
-// This shortcut also reshuffles an already random shelf, without changing playback or filters.
-$("#albums-random-order").addEventListener("click", () => {
-  if (state.loading || filteredAlbums().length < 2) return;
-  $("#sort").value = "random";
-  albumOrder.ids = [];
-  state.page = 0;
-  render();
 });
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {
@@ -1432,6 +1536,7 @@ function updatePlaylistCount(value = state.playlistsCount) {
 }
 
 function updateChrome() {
+  if (typeof updateEmptyTrashControls === "function") updateEmptyTrashControls();
   updatePlaylistCount();
   if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
   if (typeof updateSelectedAlbumTagControls === "function") updateSelectedAlbumTagControls();
@@ -1467,6 +1572,7 @@ function paintChrome() {
   badge.setAttribute("aria-label", `${badge.textContent}. ${badge.title}`);
   $("#data-notice").textContent = TagcastI18n.text(live() ? "connection.notice.live" : "connection.notice.demo");
   $("#library-notice").hidden = !libraryNotice.visible;
+  updateCombinedNotice();
   $("#library-loading").hidden = !state.loading;
   $("#history-note").textContent = TagcastI18n.text(live() ? "history.note.live" : "history.note.demo");
 }
@@ -1480,8 +1586,10 @@ async function boot() {
     state.connection = await api("/api/status");
   } catch {
     if (typeof restorePendingRoute === "function") restorePendingRoute();
+    if (typeof firstSetupBootReady === "function") firstSetupBootReady();
     return; // opened without the Python server: the demo still works
   }
+  if (typeof firstSetupBootReady === "function") firstSetupBootReady();
   updateChrome();
   checkForUpdates();
   if (state.connection.connected) loadLive();
@@ -1497,12 +1605,14 @@ async function loadLive(refresh = false) {
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
   if (typeof resetAlbumSplit === "function") resetAlbumSplit();
+  if (typeof resetTrackComparison === "function") resetTrackComparison();
   if (typeof closeHelp === "function") closeHelp(false);
   if (typeof resetGuideAlbumNotes === "function") resetGuideAlbumNotes();
   if (typeof resetAlbumGuide === "function") resetAlbumGuide(false);
   if (typeof resetCleanup === "function") resetCleanup();
   if (typeof resetDuplicateCleanup === "function") resetDuplicateCleanup(true);
   if (typeof resetSelectedAlbumTrash === "function") resetSelectedAlbumTrash();
+  if (typeof resetEmptyTrashReview === "function") resetEmptyTrashReview();
   resetAlbumOrder();
   if (typeof resetArtistBrowse === "function") resetArtistBrowse();
   if (typeof resetAlbumInformation === "function") resetAlbumInformation();
@@ -1523,6 +1633,7 @@ async function loadLive(refresh = false) {
     if (!current()) return;
     completed = true;
     state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    combinedNoticeProfile = typeof data.playback_profile === "string" ? data.playback_profile : "";
     if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
     applyEditorNames(data.editor_names);
     updatePlaylistCount(data.playlists_count);
@@ -1531,6 +1642,7 @@ async function loadLive(refresh = false) {
     state.artistFavourites = new Set(data.artist_favourites?.artists || []);
     state.artistFavouriteError = data.artist_favourites?.error || "";
     state.connection.combine_sets = Boolean(data.combine_sets);
+    state.connection.combined_view = Boolean(data.combined_view);
     if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
     if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
     toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
@@ -1662,7 +1774,7 @@ function renderReviewChrome(changes) {
     const known = knownArtists();
     const fresh = [...new Set(changes.flatMap(c => [...(c.fields.artist ? [c.fields.artist.after] : []), ...(c.fields.composers?.after || [])]))].filter(n => !known.has(n.toLocaleLowerCase()));
     if (fresh.length) warnings.push(TagcastI18n.html("review.warning.newArtists", {count: fresh.length, names: TagcastI18n.trusted(fresh.map(n => `“${escapeHtml(n)}”`).join(", "))}));
-    if (state.connection.combine_sets && changes.some(c => c.kind === "album")) warnings.push(TagcastI18n.html("review.warning.combineSets"));
+    if (combinedAlbumView() && changes.some(c => c.kind === "album")) warnings.push(TagcastI18n.html("review.warning.combineSets"));
     if (changes.some(c => c.kind === "album" && c.fields.artist)) warnings.push(TagcastI18n.html("review.warning.albumArtist"));
   }
   $("#review-warnings").innerHTML = warnings.map(w => `<div class="warn-box">${w}</div>`).join("");
@@ -1691,6 +1803,7 @@ async function saveDraft() {
     const next = thenNext();
     const newArtist = pending.scope === "artist" ? pending.changes.find(c => c.kind === "album" && c.fields.artist)?.fields.artist.after : null;
     const entry = {...structuredClone(pending), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
+      write_effects: writeEffectsData(result.write_effects),
       created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
     state.history.unshift(entry);
     pendingAlbums = null; // an older read-back; this save's own read-back follows
@@ -1709,6 +1822,7 @@ async function saveDraft() {
     } else if (yearReviewContext) finishedYearReviewSave(yearReviewContext, null, entry);
     if (next && overall !== "failed") openEditor(shelfIds(next));
   } catch (error) {
+    const attempt = rememberWriteAttempt(pending, error);
     if (yearReviewContext) yearReviewContext.saving = false;
     apply.disabled = false; $("#review-cancel").disabled = false;
     apply.textContent = TagcastI18n.text("common.tryAgain");
@@ -1724,6 +1838,7 @@ async function saveDraft() {
     } else {
       $("#review-status").innerHTML = `<span class="error-text">${TagcastI18n.html("review.error.notConfirmed", {error: TagcastI18n.errorText(error)})}</span>`;
     }
+    if (attempt) $("#review-status").innerHTML += writeEffectsMarkup(attempt.write_effects);
   } finally {
     saving = false;
     setActionStatus("#review-status", undefined);
@@ -1760,7 +1875,9 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   if (job.state === "error") {
     entry.status = "unverified"; entry.error = [entry.error, job.error].filter(Boolean).join(" ");
     for (const c of entry.changes) if (c.status === "sent") c.status = "unverified";
-    rememberHistory(); toast(shownError || job.error); return job;
+    rememberHistory();
+    if (!entry.albumSplit && Object.keys(writeEffectsData(entry.write_effects)).length) showResults({error: entry.error}, entry.status, entry);
+    toast(shownError || job.error); return job;
   }
   const byId = new Map(job.results.map(r => [`${r.kind}:${r.id}`, r.status]));
   for (const c of entry.changes) {
@@ -1780,7 +1897,7 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   onDone?.(job);
   const done = job.results.filter(r => r.status === "saved").length;
   if (entry.status === "saved") toast(TagcastI18n.text("review.confirmed", {count: done}));
-  else if (!entry.albumSplit) showResults({results: job.results, error: entry.error}, entry.status, entry);
+  else if (!entry.albumSplit && !entry.emptyTrash) showResults({results: job.results, error: entry.error}, entry.status, entry);
   return job;
 }
 
@@ -1798,11 +1915,12 @@ function showResults(result, overall, entry) {
   const notes = [];
   if (result.message) notes.push(`<p class="muted">${escapeHtml(result.message)}</p>`);
   if (result.error) notes.push(`<div class="error-box">${escapeHtml(result.error)}</div>`);
+  notes.push(writeEffectsMarkup(result.write_effects || entry?.write_effects, overall, result.error));
   if (result.created_artists?.length) notes.push(`<p class="muted">${TagcastI18n.html("review.results.createdArtists", {count: result.created_artists.length, names: TagcastI18n.trusted(result.created_artists.map(n => `“${escapeHtml(n)}”`).join(", "))})}</p>`);
   if (overall === "unverified") notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.unverified")}</div>`);
   if (result.readBackFailed) notes.push(`<div class="warn-box">${TagcastI18n.html("review.results.readBackFailed")}</div>`);
   const index = entry ? state.history.indexOf(entry) : -1;
-  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
+  if (index >= 0 && !entry.artwork && !entry.trash && !entry.albumMerge && !entry.albumSplit && !entry.writeAttempt && entry.changes.some(c => ["failed", "not_sent", "blocked"].includes(c.status))) {
     notes.push(`<p><button class="button small" data-review-rest="${index}">${TagcastI18n.html("history.reviewRest")}</button> <span class="muted">${TagcastI18n.html("review.results.restNote")}</span></p>`);
   }
   $("#results-content").innerHTML = notes.join("") + rows.map(r => `<div class="result-row"><div>${TagcastI18n.html(r.kind === "album" ? "review.results.album" : "review.results.track")} · ${escapeHtml(r.label)}<small>${escapeHtml(r.fields.map(resultFieldName).join(", "))}</small></div>${statusPill(r.status)}</div>`).join("");
@@ -1893,12 +2011,7 @@ $("#theme-menu").addEventListener("change", event => {
   if (event.target.dataset.customThemeChoice !== undefined) {
     try { TagcastThemes.activate(event.target.value); showTheme(); } catch { showTheme(); toast(TagcastI18n.text("app.theme.applyFailed")); }
   } else if (event.target.dataset.appearanceChoice !== undefined) {
-    const value = event.target.value;
-    if (!["auto", "light", "dark"].includes(value)) return;
-    if (value === "auto") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = value;
-    try { localStorage.setItem("tagcast-theme", value); } catch { /* private window */ }
-    showTheme();
+    setColourAppearance(event.target.value);
   } else if (event.target.dataset.paletteChoice !== undefined) {
     const palette = setColourPalette(event.target.value);
     try { localStorage.setItem("tagcast-palette", palette); } catch { /* private window */ }
@@ -1913,6 +2026,14 @@ document.addEventListener("keydown", event => {
     setThemeMenu(false, true);
   }
 });
+
+function setColourAppearance(value) {
+  if (!["auto", "light", "dark"].includes(value)) return;
+  if (value === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = value;
+  try { localStorage.setItem("tagcast-theme", value); } catch { /* private window */ }
+  showTheme();
+}
 
 function setColourPalette(value) {
   const palette = TagcastThemes.builtin(value);
