@@ -758,7 +758,7 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(self.fake.uploads, [])
 
     def test_file_changed_while_sending_is_cut_off_and_uncertain(self):
-        data = os.urandom(64 * 1024)
+        data = b"a" * (64 * 1024)
         items = self.plan(("A/01.flac", data), ("A/02.flac", b"two"))
 
         class ChangeAfterFirstChunk(UploadJob):
@@ -773,13 +773,26 @@ class TransferTests(unittest.TestCase):
                             handle.write(b"XXXX")
                 return change
 
+        checked_open = uploads.open_checked
+
+        def unbuffered(path, identity):
+            # Preserve the production file/identity check. Control read-ahead
+            # so the bytes changed by this fixture have not been read yet.
+            with checked_open(path, identity) as handle:
+                return os.fdopen(os.dup(handle.fileno()), "rb", buffering=0)
+
         job = ChangeAfterFirstChunk(self.service(), items)
-        with patch.object(uploads, "CHUNK", 16 * 1024):
+        with patch.object(uploads, "CHUNK", 16 * 1024), \
+                patch.object(uploads, "open_checked", side_effect=unbuffered):
             job.run()
         self.assertEqual(self.statuses(items), [UNCERTAIN, SENT])
         self.assertIn("file changed", items[0].note)
         self.wait_for(lambda: self.fake.incomplete == 1)
-        self.assertEqual(len(self.fake.uploads), 1)
+        self.assertEqual(self.fake.attempts, 2)
+        self.assertEqual([(upload["filename"], upload["data"]) for upload in self.fake.uploads],
+                         [("02.flac", b"two")])
+        self.assertEqual(items[0].path.read_bytes(), data[:-4] + b"XXXX")
+        self.assertNotIn(items[0].md5, self.fake.md5s)
 
     # 6. Every failure path settles the file.
 

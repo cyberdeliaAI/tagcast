@@ -2176,6 +2176,44 @@ test('library loading has a global indeterminate indicator independent of the di
   assert.match(html,/<strong[^>]*>Loading your iBroadcast library…<\/strong>/);
 });
 
+test('temporary reload failures keep the loaded snapshot and active audio until a successful retry', async () => {
+  const p=livePage(); await settle();
+  const albums=p.json('state.albums');
+  const details=p.json('[...state.details.values()]');
+  p.run('Object.assign(state.connection,{connected:true,playback_session:"reload-session"})');
+  const fixture=(url, current=albums)=>({ok:true,json:async()=>url.startsWith('/api/library')
+    ? {albums:current,artists:[],favourites_count:1} : {albums:details}});
+  p.setFetch(url=>fixture(url));
+  await p.run('loadLive()');
+  await p.run('albumDetails(["1"])');
+  p.run('playTracks(state.details.get("1")); globalThis.beforeAlbums=state.albums; globalThis.beforeDetails=state.details; globalThis.beforeQueue=player.queue');
+  const source=p.run('audio.src');
+  for(const failure of [
+    ()=>({ok:false,status:502,json:async()=>({error:"Temporary mock error"})}),
+    ()=>Promise.reject(new TypeError("Offline")),
+  ]){
+    p.setFetch(url=>url.startsWith('/api/library')?failure():fixture(url));
+    await p.run('loadLive(true)');
+    assert.equal(p.run('state.albums===beforeAlbums && state.details===beforeDetails && player.queue===beforeQueue'),true);
+    assert.equal(p.run('state.mode'),"live");
+    assert.equal(p.run('state.connection.connected && !audio.paused && !state.loading'),true);
+    assert.equal(p.run('audio.src'),source);
+    assert.equal(p.nodes.get('#library-loading').hidden,true);
+  }
+  const next=[{...albums[0],name:"Fresh library"}];
+  p.setFetch(url=>fixture(url,next));
+  await p.run('loadLive(true)');
+  assert.equal(p.run('state.albums[0].name'),"Fresh library");
+  assert.equal(p.run('player.queue===beforeQueue && !audio.paused'),true);
+  assert.equal(p.run('audio.src'),source);
+
+  p.setFetch(()=>({ok:false,status:401,json:async()=>({error:"Sign-in expired"})}));
+  await p.run('loadLive()');
+  assert.equal(p.run('state.mode'),"demo");
+  assert.equal(p.run('state.connection.connected'),false);
+  assert.equal(p.run('player.queue.length'),0);
+});
+
 test('an older library reply cannot hide a newer load or replace its albums', async () => {
   const p=livePage(); await settle(); const albums=p.json('state.albums');
   let first,second;
@@ -3045,7 +3083,7 @@ test("artist image Undo survives an older read-back waiting for the editor to cl
   const p = page();
   p.run(`state.mode = "live";
     state.albums = state.albums.map(a => a.artist === "Pink Floyd" ? {...a, artist_id: 42, artist_artwork_id: 77, artist_image: "https://example.test/artwork/77-150"} : a);
-    $("#editor").open = true; pendingAlbums = structuredClone(state.albums);
+    $("#editor").open = true; pendingAlbums = {owner:readBackOwner(), order:saveOrder, albums:structuredClone(state.albums)};
     state.history = [artworkEntry({target: "artist", id: "42", label: "Pink Floyd", artist: "Pink Floyd"},
       {artwork_id: 77, image: "https://example.test/artwork/77-300", previous: {artwork_id: 500}, results: []}, "iBroadcast", "https://example.test/artwork/500-300")]`);
   p.setFetch((url, options) => {
@@ -6619,6 +6657,273 @@ test("Restoring a native queue stays paused and inserts Up next after the curren
   assert.deepEqual(p.json('encodedLocalQueue().tracks'), [100, 101, 102]);
   assert.deepEqual(p.json('encodedLocalQueue().play_next'), [200]);
   assert.equal(p.run('player.repeat'), 'queue');
+});
+
+test("Queue Sync applies the latest Play or Pause to a new native source after seeking", async () => {
+  const p=livePage(); await settle();
+  const rows=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+  const audio=p.nodes.get('#audio');
+  audio.setAttribute("preload","none");
+  let loads=0;
+  audio.load=()=>{loads++; audio.readyState=0;};
+  p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/queue-tracks'
+    ? {tracks:JSON.parse(options.body).tracks.map(id=>rows.find(t=>t.id===String(id)))} : p.json('remoteView')}));
+  p.run(`state.connection.playback_session="remote"; playTracks(state.details.get("1"));
+    queueSync.enabled=true; queueSync.active=true; queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,
+      state:{role:"player",tracks:[100,101,102],play_next:[],pause:false,start_position:7,
+      start_time:Date.now()/1000,volume:.5,data:{play_index:1,play_from:"tracks",repeat_mode:"queue"}}}`);
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue[player.index].id'),"101");
+  assert.equal(audio.paused,true);
+  assert.equal(audio.getAttribute("preload"),"metadata");
+  assert.equal(loads,1);
+  await audio.emit("loadedmetadata");
+  assert.equal(audio.paused,false);
+  assert.ok(audio.currentTime>=7);
+  assert.equal(audio.getAttribute("preload"),"none");
+
+  p.run('remoteView.revision=2; remoteView.state.data.play_index=2');
+  await p.run('pollQueue()');
+  p.run('remoteView.revision=3; remoteView.state.pause=true; remoteView.state.start_position=17');
+  await p.run('pollQueue()');
+  assert.equal(loads,2,"A newer remote Pause must reuse the source already being prepared");
+  await audio.emit("loadedmetadata");
+  assert.equal(audio.paused,true);
+  assert.equal(audio.currentTime,17);
+
+  p.run('remoteView.revision=4; remoteView.state.pause=false; remoteView.state.start_time=Date.now()/1000');
+  await p.run('pollQueue()');
+  assert.equal(audio.paused,false);
+});
+
+test("Queue Sync rejects stale loading intent after a local Pause, role change or queue replacement", async()=>{
+  for (const change of ["pause","controller","reconnect","replacement"]) {
+    const p=livePage(); await settle();
+    const rows=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+    const audio=p.nodes.get("#audio");
+    p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/queue-tracks'
+      ? {tracks:JSON.parse(options.body).tracks.map(id=>rows.find(t=>t.id===String(id)))} : p.json('remoteView')}));
+    p.run(`state.connection.playback_session="remote"; playTracks(state.details.get("1"));
+      queueSync.enabled=true; queueSync.active=true; queueSync.allowed=true;
+      globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,
+        state:{role:"player",tracks:[100,101],play_next:[],pause:false,start_position:7,
+        start_time:Date.now()/1000,volume:.5,data:{play_index:1,play_from:"tracks",repeat_mode:"none"}}}`);
+    await p.run('pollQueue()');
+    if (change==="pause") p.run('pauseSystemPlayback()');
+    if (change==="controller") {
+      p.run('remoteView.revision=2;remoteView.state.role="controller"');
+      await p.run("pollQueue()");
+    }
+    if (change==="reconnect") p.run('state.connection.playback_session="new";');
+    if (change==="replacement") p.run('playTracks(state.details.get("2"), "200"); audio.currentTime=2');
+    await audio.emit("loadedmetadata");
+    assert.equal(audio.paused,change!=="replacement",change);
+    if (change==="replacement") {
+      assert.equal(audio.currentTime,2);
+      assert.match(audio.src,/\/api\/stream\/200/);
+    }
+  }
+});
+
+test("Queue Sync reuses 10,000 occurrences when only the play index changes", async()=>{
+  const p=livePage();await settle();
+  const fixtures=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+  p.setFetch((url,options)=>({ok:true,json:async()=>url==='/api/queue-tracks'
+    ? {tracks:JSON.parse(options.body).tracks.map(id=>fixtures.find(t=>t.id===String(id)))} : p.json('remoteView')}));
+  p.run(`state.connection.playback_session="remote"; queueSync.active=true; queueSync.enabled=true; queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,library_snapshot:"first",
+      state:{role:"player",tracks:Array.from({length:10000},(_,i)=>100+i%2),play_next:[],pause:true,start_position:0,
+        start_time:0,volume:.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('pollQueue()');
+  const audio=p.nodes.get('#audio');
+  await audio.emit("loadedmetadata");
+  const queries=()=>p.requests.filter(request=>request.url==='/api/queue-tracks');
+  assert.equal(queries().length,10);
+  assert.ok(queries().every(request=>{
+    const body=JSON.parse(request.options.body);
+    return body.session==="remote" && body.library_snapshot==="first" && body.tracks.length===1000;
+  }));
+  p.run('globalThis.originalRows=player.queue; remoteView.revision=2; remoteView.state.data.play_index=1');
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue===originalRows && player.index===1'),true);
+  assert.equal(queries().length,10,"Advancing across occurrences must not repeat a ten-request restore");
+  await audio.emit("loadedmetadata");
+  p.run('remoteView.revision=3; remoteView.state.tracks.splice(1,1); remoteView.state.play_next=[101]; remoteView.state.data.play_from="play_next"');
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue[1].upNext'),true);
+  assert.equal(queries().length,20,"Same IDs with a different Up Next insertion need a new mapping");
+});
+
+test("Queue Sync refreshes metadata after a library replacement without seeking or replaying audio", async()=>{
+  const p=livePage();await settle();
+  const fixtures=p.json('[...state.details.values()].flatMap(a=>queueTracks(a))');
+  p.setFetch((url,options)=>({ok:true,json:async()=>{
+    if (url!=='/api/queue-tracks') return p.json('remoteView');
+    const {tracks,library_snapshot}=JSON.parse(options.body);
+    return {tracks:tracks.map(id=>{
+      const fixture=fixtures.find(t=>t.id===String(id));
+      return library_snapshot==="second"?{...fixture,title:"New snapshot title"}:fixture;
+    })};
+  }}));
+  p.run(`state.connection.playback_session="remote"; queueSync.active=true; queueSync.enabled=true;queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser, own:true, session:"remote", status:"connected",revision:1,library_snapshot:"first",
+      state:{role:"player",tracks:[100,101],play_next:[],pause:false,start_position:0,start_time:Date.now()/1000,
+        volume:.5,data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('pollQueue()');
+  const audio=p.nodes.get('#audio');
+  await audio.emit('loadedmetadata');
+  p.run('globalThis.entry=player.queue[0]; audio.currentTime=24; state.details=new Map(); remoteView.library_snapshot="second"');
+  const source=audio.src;
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue[0]===entry && player.queue[0].title==="New snapshot title"'),true);
+  assert.equal(audio.currentTime,24);
+  assert.equal(audio.src,source);
+  assert.equal(audio.paused,false);
+  assert.deepEqual(p.requests.filter(r=>r.url==='/api/queue-tracks')
+    .map(r=>JSON.parse(r.options.body).library_snapshot),["first","second"]);
+});
+
+test("Queue Sync finishes a pending seek when the library changes at the same queue revision", async () => {
+  const p = livePage(); await settle();
+  const audio = p.nodes.get("#audio");
+  audio.setAttribute("preload", "none");
+  const fixtures = p.json('queueTracks(state.details.get("1"))');
+  const snapshots = [];
+  p.setFetch((url, options) => ({
+    ok: true, json: async () => {
+      if (url !== "/api/queue-tracks") return p.json("remoteView");
+      const {tracks, library_snapshot} = JSON.parse(options.body);
+      snapshots.push(library_snapshot);
+      return {tracks: tracks.map(id => {
+        const track = fixtures.find(t => t.id === String(id));
+        return library_snapshot === "new" ? {...track, title: "Updated title"} : track;
+      })};
+    },
+  }));
+  p.run(`state.connection.playback_session="remote"; playTracks(state.details.get("1"));
+    queueSync.enabled=true; queueSync.active=true; queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,library_snapshot:"old",
+      state:{role:"player",tracks:[100,101],play_next:[],pause:false,start_position:7,
+        start_time:Date.now()/1000,volume:.5,data:{play_index:1,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run("pollQueue()");
+  assert.equal(audio.paused, true);
+  p.run('globalThis.originalEntry=player.queue[player.index]; state.details=new Map(); remoteView.library_snapshot="new"');
+  await p.run("pollQueue()");
+  assert.deepEqual(snapshots, ["old"], "Wait for the current source before refreshing its labels");
+  await audio.emit("loadedmetadata");
+  assert.equal(audio.paused, false);
+  assert.ok(audio.currentTime >= 7);
+  assert.equal(audio.getAttribute("preload"), "none");
+  assert.equal(p.run("queueSync.sourceLoad"), null);
+  await p.run("pollQueue()");
+  assert.deepEqual(snapshots, ["old", "new"]);
+  assert.equal(p.run('player.queue[player.index]===originalEntry && originalEntry.title==="Updated title"'), true);
+});
+
+test("Queue Sync honours Pause while queue rows are still being read, even after a snapshot conflict", async () => {
+  for (const conflict of [false, true]) {
+    const p = livePage(); await settle();
+    const fixtures = p.json('queueTracks(state.details.get("1"))');
+    const audio = p.nodes.get("#audio");
+    let completeLookup;
+    p.setFetch((url, options) => {
+      if (url !== "/api/queue-tracks") return {ok: true, json: async () => p.json("remoteView")};
+      const {tracks, library_snapshot} = JSON.parse(options.body);
+      const result = {ok: true, json: async () => ({tracks: tracks.map(id => fixtures.find(t => t.id === String(id)))})};
+      if (library_snapshot === "new") return result;
+      return new Promise(resolve => {
+        completeLookup = () => resolve(conflict ? {ok: false, status: 409,
+          json: async () => ({error: "Library changed"})} : result);
+      });
+    });
+    p.run(`state.connection.playback_session="remote"; playTracks(state.details.get("1"));
+      queueSync.enabled=true; queueSync.active=true; queueSync.allowed=true;
+      globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",status:"connected",revision:1,library_snapshot:"old",
+        state:{role:"player",tracks:[100,101],play_next:[],pause:false,start_position:7,
+          start_time:Date.now()/1000,volume:.5,data:{play_index:1,play_from:"tracks",repeat_mode:"none"}}}`);
+    assert.equal(audio.paused, false);
+    const restore = p.run("pollQueue()");
+    await settle();
+    assert.equal(typeof completeLookup, "function");
+    p.run("pauseSystemPlayback()");
+    assert.equal(audio.paused, true);
+    completeLookup(); await restore;
+    if (conflict) {
+      p.run('state.details=new Map(); remoteView.library_snapshot="new"');
+      await p.run("pollQueue()");
+    }
+    assert.equal(p.run("player.queue[player.index].id"), "101");
+    await audio.emit("loadedmetadata");
+    assert.ok(audio.currentTime >= 7);
+    assert.equal(audio.paused, true, "An earlier remote Play must not override the later local Pause");
+    p.flushTimers(250);
+    await settle();
+    const published = p.requests.find(r => r.url === "/api/queue-sync" && r.options.method === "POST");
+    assert.equal(JSON.parse(published.options.body).state.pause, true);
+  }
+});
+
+test("Queue Sync retries a read-only restore when its advertised snapshot changed mid-request",async()=>{
+  const p=livePage();await settle();
+  const fixture=p.json('queueTracks(state.details.get("1"))[0]');
+  const snapshots=[];
+  p.setFetch((url,options)=>{
+    if (url!=='/api/queue-tracks') return {ok:true,json:async()=>p.json('remoteView')};
+    const snapshot=JSON.parse(options.body).library_snapshot;
+    snapshots.push(snapshot);
+    return snapshot==="old"?{ok:false,status:409,json:async()=>({error:"Snapshot changed"})}
+      :{ok:true,json:async()=>({tracks:[fixture]})};
+  });
+  p.run(`state.connection.playback_session="remote"; queueSync.active=true;queueSync.enabled=true;queueSync.allowed=true;
+    globalThis.remoteView={owner:queueSync.browser,own:true,session:"remote",revision:1,library_snapshot:"old",
+      state:{role:"player",tracks:[100],play_next:[],pause:true,start_position:0,start_time:0,volume:.5,
+      data:{play_index:0,play_from:"tracks",repeat_mode:"none"}}}`);
+  await p.run('pollQueue()');
+  assert.equal(p.run('player.queue.length'),0);
+  p.run('remoteView.library_snapshot="new"');
+  await p.run('pollQueue()');
+  assert.deepEqual(snapshots,["old","new"]);
+  assert.equal(p.run('player.queue[0].id'),"100");
+});
+
+test("Queue redraws only the previous and current rows for unchanged occurrences", async()=>{
+  const p=livePage(); await settle();
+  p.run('$("#now-playing-list")');
+  const list=p.nodes.get("#now-playing-list"), audio=p.nodes.get("#audio");
+  const fakeRow=()=> {
+    const classes=new Set(), attributes=new Map(), number={innerHTML:""};
+    const classList={toggle(name,on){on?classes.add(name):classes.delete(name);},contains:name=>classes.has(name)};
+    const button={classList, firstElementChild:number, attributes,
+      setAttribute:(name,value)=>attributes.set(name,value), removeAttribute:name=>attributes.delete(name)};
+    return {classList, firstElementChild:button};
+  };
+  let writes=0, markup="";
+  Object.defineProperty(list,"innerHTML",{get:()=>markup,set(value){
+    writes++; markup=value;
+    list.children=Array.from(value.matchAll(/data-queue-position=/g),fakeRow);
+  }});
+  p.run('playTracks(state.details.get("1")); setNowPlaying(true)');
+  const rows=list.children.slice(), before=p.run("nowPlayingRows.revision");
+  list.scrollTop=280;
+  p.run('player.index=1; renderNowPlaying()');
+  assert.equal(writes,1);
+  assert.equal(list.scrollTop,280);
+  assert.equal(p.run("nowPlayingRows.revision"),before);
+  assert.equal(list.children[1],rows[1]);
+  assert.equal(rows[0].firstElementChild.attributes.has("aria-current"),false);
+  assert.equal(rows[1].firstElementChild.attributes.get("aria-current"),"true");
+  assert.equal(rows[1].classList.contains("playing"),true);
+  audio.paused=true;
+  p.run("renderNowPlaying()");
+  assert.equal(writes,1);
+  assert.equal(rows[1].classList.contains("playing"),false);
+  assert.equal(rows[1].firstElementChild.firstElementChild.innerHTML,"Ⅱ");
+  p.run("player.queue.reverse(); renderNowPlaying()");
+  assert.equal(writes,2);
+  assert.equal(p.run("nowPlayingRows.revision"),before+1);
+  assert.notEqual(list.children[1],rows[1]);
+  assert.equal(list.scrollTop,280);
 });
 
 test("Finishing Up next at the end consumes it, retains the base queue and appending starts at the first new track", async () => {
@@ -12130,6 +12435,77 @@ test("A late read-back cannot replace a deliberately selected local library",asy
   assert.deepEqual(p.json('state.albums'),[]);
 });
 
+test('staged read-back waits for the editor and cannot survive logout or account replacement',async()=>{
+  for (const replacement of ['none','logout','account','snapshot']) {
+    const p=livePage();await settle();
+    p.run('Object.assign(state.connection,{connected:true,playback_session:"old"}); $("#editor").showModal()');
+    const staged=p.json('[{...state.albums[0],name:"Staged album from old snapshot"}]');
+    p.setFetch(url=>({ok:true,json:async()=>url.startsWith('/api/jobs/')
+      ? {state:"done",results:[],albums:staged,editor_names:{genres:["Staged genre"],composers:[]}}
+      : url==='/api/queue-sync' ? {authenticated:false} : {}}));
+    const finished=p.run('followJob("staged", {changes:[],status:"sent"})');
+    p.flushTimers(2000);await finished;
+    assert.equal(p.run('pendingAlbums.albums[0].name'),"Staged album from old snapshot");
+    if (replacement==="logout") {
+      p.run('queueSync.enabled=true;queueSync.active=true');
+      await p.run('pollQueue()');
+      assert.equal(p.run('state.mode'),"demo");
+    } else if (replacement==="account") {
+      p.run('state.connection.playback_session="new"');
+    } else if (replacement==="snapshot") {
+      p.run('state.details=new Map()');
+    }
+    p.run('$("#editor").close()');
+    await p.nodes.get('#editor').emit('close');
+    assert.equal(p.run('pendingAlbums'),null);
+    assert.equal(p.run('state.albums.some(a=>a.name==="Staged album from old snapshot")'),replacement==="none");
+    assert.equal(p.run('state.editorNames.genres.includes("Staged genre")'),replacement==="none");
+  }
+});
+
+test('an old in-flight read-back retires after replacing the account',async()=>{
+  const p=livePage();await settle();
+  p.run('state.connection.playback_session="old"; state.history=[{status:"sent",source:"ibroadcast",changes:[{kind:"track",id:"100",status:"sent"}]}]');
+  let reply;
+  const old=p.json('[{...state.albums[0],name:"Old account"}]');
+  p.setFetch(()=>new Promise(resolve=>{reply=resolve;}));
+  const finished=p.run('followJob("old",state.history[0])');
+  p.flushTimers(2000);await settle();
+  p.run('state.connection.playback_session="new"');
+  reply({ok:true,json:async()=>({state:"done",results:[{kind:"track",id:"100",status:"saved"}],albums:old})});
+  await finished;
+  assert.equal(p.run('state.albums.some(a=>a.name==="Old account")'),false);
+  assert.equal(p.run('state.history[0].status'),"unverified");
+  assert.equal(p.run('checking'),0);
+});
+
+test("A settled metadata save closes its stale review when Queue Sync disconnects", async () => {
+  for (const accepted of [true, false]) {
+    const p = livePage(); await settle();
+    p.run(`state.connection.playback_session="remote"; queueSync.enabled=true; queueSync.active=true;
+      pending={scope:"album",selection:[{id:"1",name:"Album"}],changes:[{
+        kind:"track",id:"100",label:"Track",albumId:"1",fields:{title:{before:"Before",after:"After"}}}]};
+      $("#editor").showModal(); $("#review").showModal();`);
+    let respond;
+    p.setFetch(url => url === "/api/save" ? new Promise(resolve => { respond = resolve; })
+      : {ok: true, json: async () => ({authenticated: false})});
+    const save = p.run("saveDraft()");
+    await settle();
+    await p.run("pollQueue()");
+    assert.equal(p.run("state.mode"), "demo");
+    respond(accepted ? {ok: true, json: async () => ({
+      results: [{kind: "track", id: "100", status: "sent"}], job: "old",
+    })} : {ok: false, status: 401, json: async () => ({error: "Session ended"})});
+    await save;
+    assert.equal(p.run('$("#review").open || $("#editor").open'), false);
+    assert.equal(p.run("saving"), false);
+    assert.equal(p.run("pending"), null);
+    assert.equal(p.run("state.history[0]?.status"), accepted ? "unverified" : undefined);
+    assert.equal(p.requests.filter(r => r.url === "/api/save").length, 1);
+    assert.equal(p.requests.some(r => r.url.startsWith("/api/jobs/")), false);
+  }
+});
+
 test("An editor response from a replaced library cannot open a stale draft",async()=>{
   const p=livePage();await settle();
   const album=p.json('state.details.get("1")');
@@ -14570,7 +14946,7 @@ test('empty-trash conflicts, uncertain writes and failed read-backs never offer 
     });
     const task=p.run('saveEmptyTrash()');await settle();p.flushTimers(2000);await task;await p.run('saveEmptyTrash()');
     assert.equal(p.requests.filter(r=>r.url.endsWith('/save')).length,1,phase);
-    assert.notEqual(p.run('state.history[0].status'),'saved',phase);
+    assert.equal(p.run('state.history[0].status'),phase==='conflict'?'blocked':'unverified',phase);
     assert.doesNotMatch(p.nodes.get('#empty-trash-footer').innerHTML,/id="empty-trash-save"/,phase);
     assert.equal(p.run('saving || checking || emptyTrashView.busy'),false);
   }

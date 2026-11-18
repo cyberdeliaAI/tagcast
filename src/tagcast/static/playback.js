@@ -191,6 +191,7 @@ function seekSystemPlayback(position, fast = false) {
 function playSystemPlayback() {
   const track = systemPlaybackTrack(), details = state.details;
   if (!track) return;
+  if (typeof setQueueSyncPlaybackIntent === "function" && setQueueSyncPlaybackIntent(true)) return;
   if (audioRecoveryCurrent()) {
     if (audioRecovery.failed && !audio.error && audio.getAttribute("src") && audio.readyState >= 2) {
       // A prepared source may only need a fresh user gesture after autoplay rejection.
@@ -211,6 +212,7 @@ function playSystemPlayback() {
 
 function pauseSystemPlayback() {
   if (!systemPlaybackTrack()) return;
+  if (typeof setQueueSyncPlaybackIntent === "function" && setQueueSyncPlaybackIntent(false)) return;
   audioRecoveryIntent(false);
   if (typeof gaplessTrial !== "undefined" && gaplessTrial.active?.ready === false) gaplessTrial.active.autoPlay = false;
   audio.pause();

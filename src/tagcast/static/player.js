@@ -12,7 +12,7 @@ const playerTrackDuration = () => (typeof audioRecoveryDuration === "function" ?
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null, status: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
 const queueActions = {trigger: null, details: null, row: null};
-const nowPlayingRows = {revision: 0, entries: []};
+const nowPlayingRows = {revision: 0, entries: [], index: -1, paused: true, editable: null, disabled: null};
 const playerDisplay = {quality: storedPlayerDisplay("quality"), trackArtists: storedPlayerDisplay("track-artists")};
 let visualPlayerMode = storedVisualPlayerMode();
 
@@ -463,6 +463,7 @@ function markPlaying() {
 // no queue, index, audio or focus change. The other player labels are rewritten from
 // memory; nothing reloads artwork, prepares audio or publishes the queue.
 TagcastI18n.subscribe(() => {
+  nowPlayingRows.editable = null; // Row labels follow the active catalogue, including pseudo-localization.
   renderVisualPlayerButton(); renderRepeatButton();
   if (typeof browseView !== "undefined") renderRandomLabels();
   if (player.queue[player.index]) { renderPlayerTrackLabels(); renderStreamQuality(); }
@@ -486,22 +487,64 @@ function setNowPlaying(open) {
   if (typeof placePlayerExtras === "function") placePlayerExtras();
 }
 
+function queueNumberMarkup(index) {
+  if (index !== player.index) return String(index + 1);
+  return audio.paused ? "Ⅱ" : '<span class="queue-playing-icon">▶</span><span class="queue-playing-bars"></span>';
+}
+
+function paintQueuePosition(list, index) {
+  const row = list.children[index];
+  if (!row) return;
+  const current = index === player.index, button = row.firstElementChild;
+  row.classList.toggle("playing", current && !audio.paused);
+  row.classList.toggle("queue-current", current);
+  button.classList.toggle("current", current);
+  if (current) button.setAttribute("aria-current", "true");
+  else button.removeAttribute("aria-current");
+  button.firstElementChild.innerHTML = queueNumberMarkup(index);
+}
+
+function renderNowPlayingQueue(list, focused) {
+  const editable = live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
+  const disabled = !live() || state.loading;
+  const rows = nowPlayingRows, queue = player.queue;
+  if (rows.editable === editable && rows.disabled === disabled
+      && rows.entries.length === queue.length && list.children.length === queue.length
+      && queue.every((entry, index) => rows.entries[index] === entry)) {
+    if (rows.index !== player.index) paintQueuePosition(list, rows.index);
+    if (rows.index !== player.index || rows.paused !== audio.paused) paintQueuePosition(list, player.index);
+    rows.index = player.index; rows.paused = audio.paused;
+    if (focused && focused !== document.activeElement && list.contains(focused)) focused?.focus({preventScroll: true});
+    return;
+  }
+
+  const focusedRow = focused?.closest?.("[data-queue-position]");
+  const focusedIndex = focusedRow ? Number(focusedRow.dataset.queuePosition)
+    : focused?.closest?.("#now-playing-list") ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
+  const focusedEntry = rows.entries[focusedIndex];
+  const focusedAction = focused?.dataset.queueRow !== undefined ? "queueRow" : null;
+  const removeFocused = focused?.dataset.queueRemove !== undefined;
+  const scroll = list.scrollTop;
+  rows.revision += 1;
+  Object.assign(rows, {entries: queue.slice(), index: player.index, paused: audio.paused, editable, disabled});
+  list.innerHTML = queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}${index === player.index && !audio.paused ? " playing" : ""}${index === player.index ? " queue-current" : ""}" data-queue-position="${index}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
+    <span class="queue-number" aria-hidden="true">${queueNumberMarkup(index)}</span><span class="queue-art" aria-hidden="true">${cover(t.album, true)}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button><button type="button" class="queue-row-more" data-queue-album="${escapeHtml(t.album.id)}" data-queue-track="${escapeHtml(t.id)}" data-queue-row="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-haspopup="menu" aria-controls="queue-action-menu" aria-expanded="false" aria-label="${TagcastI18n.html("player.queueMenu.moreLabel", {title: t.title})}" ${disabled ? "disabled" : ""}>⋯</button></li>`).join("");
+  if (focusedEntry) {
+    const index = queue.indexOf(focusedEntry);
+    const attribute = focusedAction?.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`);
+    if (index >= 0) (attribute ? list.querySelector(`[data-queue-position="${index}"] [data-${attribute}]`)
+      : list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`))?.focus({preventScroll: true});
+  }
+  list.scrollTop = scroll;
+}
+
 function renderNowPlaying() {
   if ($("#now-playing-panel").hidden) return;
   if (typeof workspacePanel !== "undefined" && workspacePanel.tab === "details" && state.screen !== "now-playing") { syncWorkspacePanel(); return; }
   const list = $("#now-playing-list"), active = document.activeElement;
   const focused = queueActions.row && $("#queue-action-menu").contains?.(active) ? queueActions.trigger : active;
   if (queueActions.row) closeQueueActions();
-  const focusedRow = focused?.closest?.("[data-queue-position]");
-  const focusedIndex = focusedRow ? Number(focusedRow.dataset.queuePosition)
-    : focused?.closest?.("#now-playing-list") ? Number(focused.dataset.queueRemove ?? focused.dataset.queueIndex) : -1;
-  const focusedEntry = nowPlayingRows.entries[focusedIndex];
-  const focusedAction = focused?.dataset.queueRow !== undefined ? "queueRow" : null;
   const lyricsOpen = $("#now-playing-current").querySelector(".listening-lyrics")?.open;
-  const removeFocused = focused?.dataset.queueRemove !== undefined;
-  const editable = live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
-  nowPlayingRows.revision += 1;
-  nowPlayingRows.entries = player.queue.slice();
   const track = player.queue[player.index], album = track?.album;
   $("#now-playing-close").hidden = state.screen === "now-playing";
   const page = state.screen === "now-playing", title = listeningTitleParts(track?.title || "");
@@ -524,14 +567,7 @@ function renderNowPlaying() {
   if (state.screen !== "now-playing") renderLyrics("player", lyricsSelection(track));
   $("#now-playing-count").textContent = page && track ? TagcastI18n.text("listening.queue.position", {position: player.index + 1, count: player.queue.length}) : TagcastI18n.text("player.queue.count", {count: player.queue.length});
   $("#queue-clear").disabled = !player.queue.length;
-  list.innerHTML = player.queue.map((t, index) => `<li class="queue-row${editable ? " queue-editable" : ""}${index === player.index && !audio.paused ? " playing" : ""}${index === player.index ? " queue-current" : ""}" data-queue-position="${index}"><button type="button" class="queue-track ${index === player.index ? "current" : ""}" data-queue-index="${index}" ${index === player.index ? 'aria-current="true"' : ""}>
-    <span class="queue-number" aria-hidden="true">${index === player.index ? audio.paused ? "Ⅱ" : '<span class="queue-playing-icon">▶</span><span class="queue-playing-bars"></span>' : index + 1}</span><span class="queue-art" aria-hidden="true">${cover(t.album, true)}</span><span class="queue-label"><strong>${escapeHtml(t.title)}</strong><small>${TagcastI18n.html(t.upNext ? "player.queue.rowDetailsUpNext" : "player.queue.rowDetails", {artist: t.artist, album: t.album.name})}</small></span><span class="queue-time">${trackDuration(t.length)}</span></button><button type="button" class="queue-row-more" data-queue-album="${escapeHtml(t.album.id)}" data-queue-track="${escapeHtml(t.id)}" data-queue-row="${index}" data-queue-revision="${nowPlayingRows.revision}" aria-haspopup="menu" aria-controls="queue-action-menu" aria-expanded="false" aria-label="${TagcastI18n.html("player.queueMenu.moreLabel", {title: t.title})}" ${!live() || state.loading ? "disabled" : ""}>⋯</button></li>`).join("");
-  if (focusedEntry) {
-    const index = player.queue.indexOf(focusedEntry);
-    const attribute = focusedAction?.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`);
-    if (index >= 0) (attribute ? list.querySelector(`[data-queue-position="${index}"] [data-${attribute}]`)
-      : list.querySelector(`[data-queue-${removeFocused ? "remove" : "index"}="${index}"]`))?.focus({preventScroll: true});
-  }
+  renderNowPlayingQueue(list, focused);
   if (typeof syncWorkspacePanel === "function") syncWorkspacePanel();
 }
 

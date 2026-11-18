@@ -18,6 +18,7 @@ class AccountCapabilityTests(unittest.TestCase):
                     studio = Studio(home)
                     transport = Mock()
                     transport._jsonrequest.return_value = data
+                    studio.client = transport
                     studio._remote_state(transport)
                     self.assertIs(studio.premium, expected)
                     studio._account_name(transport)

@@ -58,6 +58,7 @@ function miniApplyCommand(command) {
   switch (command.action) {
     case "pause": pauseSystemPlayback(); break;
     case "play":
+      if (typeof setQueueSyncPlaybackIntent === "function" && setQueueSyncPlaybackIntent(true)) break;
       if (audioRecoveryCurrent()) { playSystemPlayback(); break; }
       if (g?.ready === false) { g.autoPlay = true; break; }
       if (!audio.getAttribute("src") || audio.error) return false;
