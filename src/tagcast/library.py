@@ -18,6 +18,7 @@ import unicodedata
 from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import date, time
+from functools import cached_property
 from threading import Lock
 
 from .errors import CodedError
@@ -431,6 +432,12 @@ class Library:
         return [{"id": str(i), "name": self.artist_name(i), "rating": number(self.artists.get(i, {}).get("rating")),
                  "image": self.artist_image(i), "artwork_id": number(self.artists.get(i, {}).get("artwork_id"))}
                 for i in self.album_artist_ids(album)]
+
+    @cached_property
+    def guest_credit_rows(self):
+        from .artist_cleanup import scan_guest_credits
+
+        return scan_guest_credits(self)
 
     def performer_entries(self, track):
         return [e for e in self.extra_artists(track) if e.get("type") in (None, "", "artist", "band")]

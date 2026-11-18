@@ -60,6 +60,7 @@
   <script src="overview.js" defer></script>
   <script src="cleanup.js" defer></script>
   <script src="year-review.js" defer></script>
+  <script src="artist-cleanup.js" defer></script>
   <script src="collections.js" defer></script>
   <script src="playlist-tools.js" defer></script>
   <script src="playlist-order.js" defer></script>
@@ -231,6 +232,13 @@
     <footer class="main-footer" data-i18n="page.footer.motto">Your collection. Your choices.<span data-i18n="page.footer.sources">Suggestions from MusicBrainz, Deezer, Discogs and more inside each album.</span></footer>
   </main>
   <dialog id="cleanup" class="review-dialog cleanup-dialog"><div class="dialog-heading"><div><div class="eyebrow" data-i18n="page.cleanup.eyebrow">REVIEW / SPLIT / VERIFY</div><h2 data-i18n="page.cleanup.heading">Clean up metadata</h2></div><button class="close" data-close="cleanup" aria-label="Close cleanup" data-i18n-attr="aria-label=page.cleanup.close">×</button></div><p id="cleanup-status" class="error-text" role="status"></p><div id="cleanup-content"></div></dialog>
+  <dialog id="artist-cleanup" class="review-dialog cleanup-dialog" aria-labelledby="artist-cleanup-heading">
+    <div class="dialog-heading"><div><h2 id="artist-cleanup-heading" data-i18n="artistCleanup.heading">Possible missing guest credits</h2></div><button class="close" data-close="artist-cleanup" aria-label="Close" data-i18n-attr="aria-label=common.close">×</button></div>
+    <p class="muted" data-i18n="artistCleanup.intro">Find tracks where the title names a guest artist already in your library and the track has no matching credit.</p>
+    <button type="button" class="button" id="artist-cleanup-analyse" data-i18n="artistCleanup.analyse">Analyse guest credits</button>
+    <p id="artist-cleanup-status" role="status"></p>
+    <div id="artist-cleanup-results"></div>
+  </dialog>
   <dialog id="duplicate-cleanup" class="review-dialog cleanup-dialog"><div class="dialog-heading"><div><div class="eyebrow" data-i18n="page.duplicates.eyebrow">ALL ALBUMS / REVIEW / TRASH</div><h2 data-i18n="page.duplicates.heading">Suggested duplicate copies</h2></div><div class="dialog-heading-actions"><button class="button small help-trigger" data-help-context="duplicate-cleanup" aria-label="Help with duplicate cleanup" data-i18n-attr="aria-label=page.duplicates.help">?</button><button class="close" data-close="duplicate-cleanup" aria-label="Close duplicate cleanup" data-i18n-attr="aria-label=page.duplicates.close">×</button></div></div><p id="duplicate-cleanup-status" role="status"></p><div id="duplicate-cleanup-content"></div></dialog>
   <dialog id="editor" class="editor-dialog"><div id="editor-content"></div><div id="editor-artist-names" class="artist-choices-menu" role="listbox" aria-label="Existing artists" hidden></div></dialog>
   <dialog id="review" class="review-dialog"><div class="dialog-heading"><div><div class="eyebrow" data-i18n="page.review.eyebrow">BEFORE / AFTER</div><h2 data-i18n="page.review.heading">Review your draft</h2></div><div class="dialog-heading-actions"><button type="button" class="button small help-trigger" data-help-context="review" aria-label="Help with draft review" title="Help with draft review" data-i18n-attr="aria-label=page.review.help;title=page.review.help">?</button><button class="close" data-close="review" aria-label="Close review" data-i18n-attr="aria-label=page.review.close">×</button></div></div><p class="muted" id="review-intro">These changes apply only to the preview. Live saving is not connected.</p><div id="review-warnings"></div><div id="review-changes"></div><div class="dialog-footer"><label class="checkline then-next" id="then-next-label"><input type="checkbox" id="then-next"> <span data-i18n="page.review.thenNext">Open the next album afterwards</span></label><span class="muted" id="review-status"></span><button class="button" data-close="review" id="review-cancel" data-i18n="page.review.keepEditing">Keep editing</button><button class="button primary" id="apply-draft">Apply to preview</button></div></dialog>
