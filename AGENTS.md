@@ -906,9 +906,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   Production Electron retains its normal app/profile/home and stable default port; do not
   carry the isolated listening app's temporary port or write restrictions into releases.
 - Expanded-player effects in `music-visualizations.js` share the existing analyser and animation
-  loop, remain off by default and preserve the same audio element. Keep the eight
-  local effects, bounded Canvas/WebGL resources and shuffled 30-second visible-playback
-  rotation. Pauses, stalls, seeks and hidden views freeze the clock. Release hidden
+  loop, remain off by default and preserve the same audio element. The vectorscope shares
+  the listening page's two-channel tap. Keep the bundled effects, bounded Canvas/WebGL
+  resources and shuffled 30-second visible-playback rotation. Pauses, stalls, seeks
+  and hidden views freeze the clock. Release hidden
   surfaces; reduced motion or rendering failure returns to artwork. Butterchurn is
   bundled with its MIT license, accepts precompiled function presets only and receives
   sample arrays without another audio graph, external service or CSP relaxation.

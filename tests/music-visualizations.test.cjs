@@ -39,6 +39,7 @@ function page({stored = null, reduced = false, supported = true, paused = false,
     visualPlayer:{open:true},visualizerReducedMotion:()=>reduced,visualizerSupported:()=>supported,
     visualizer:{analyser:{getByteTimeDomainData(a){a.fill(140);},getFloatTimeDomainData(a){for(let i=0;i<a.length;i++)a[i]=Math.sin(i*.1);}}},
     visualizerLevelAt:()=>.5,applyVisualizer:()=>log.graph++,
+    syncVisualizerStereo() {}, readVisualizerStereoSamples:()=>log.stereo ?? null,
     setTimeout(f){const id=++serial;log.timers.set(id,f);return id;},clearTimeout(id){log.timers.delete(id);},
     matchMedia:()=>({addEventListener(){}})});
   if(library)context.butterchurn=butterchurn;
@@ -71,25 +72,46 @@ test("precompiled local presets consume samples, cap GPU size and share the exis
   assert.equal(p.storage["tagcast-fullscreen-visualization"],"off");
 });
 
-test("all five canvas effects work without Butterchurn and never load it",async()=>{
+test("all canvas effects work without Butterchurn and never load it",async()=>{
   const p=page({library:false});
-  for(const mode of ["led","scope","radial","stars","waterfall"]){p.run(`setMusicVisualization("${mode}")`);await settle();p.run("drawMusicVisualization(100,true)");}
+  for(const mode of p.run("MUSIC_VISUAL_CANVAS")){p.run(`setMusicVisualization("${mode}")`);await settle();p.run("drawMusicVisualization(100,true)");}
   assert.equal(p.log.scripts.length,0);assert.equal(p.log.renderers.length,0);
   assert.ok(p.log.calls.some(c=>c[0]==="fillRect"));assert.ok(p.log.calls.some(c=>c[0]==="lineTo"));
   assert.ok(p.log.calls.some(c=>c[0]==="drawImage"));
 });
 
+test("the fullscreen vectorscope plots stereo sum and difference and freezes when paused", () => {
+  const p = page({library:false});
+  p.run('setMusicVisualization("vectorscope")');
+  assert.equal(p.run("musicVisualizationNeedsStereo()"), true);
+  const left = new Float32Array([0, 0, 0, 0, .75]);
+  p.log.stereo = [left, left];
+  p.run("drawMusicVisualization(100,true)");
+  const lastPoint = () => p.log.calls.filter(([name]) => name === "lineTo").at(-1).slice(1);
+  const [monoX, monoY] = lastPoint();
+  p.log.stereo = [left, new Float32Array([0, 0, 0, 0, -.75])];
+  p.run("drawMusicVisualization(140,true)");
+  const [stereoX, stereoY] = lastPoint();
+  assert.ok(stereoX > monoX && stereoY > monoY);
+  const calls = p.log.calls.length;
+  p.run("drawMusicVisualization(180,false)");
+  assert.equal(p.log.calls.length, calls);
+  p.run("visualPlayer.open=false;syncMusicVisualization()");
+  assert.equal(p.run("musicVisualizationNeedsStereo()"), false);
+});
+
 test("random visits every effect before repeating and avoids repeats at bag boundaries",async()=>{
   const p=page({stored:"random"});p.run("syncMusicVisualization()");await settle();
+  const expected = new Set(p.run("MUSIC_VISUAL_EFFECTS"));
   const effects=[];
-  for(let i=0;i<24;i++){
+  for(let i=0;i<expected.size*3;i++){
     effects.push(p.run("musicVisualization.effect"));
     p.run("advanceMusicVisualization()");await settle();
     assert.ok(p.run("!!musicVisualization.canvas"));
     assert.equal(p.run("musicVisualization.failed"),false);
   }
   for(let i=1;i<effects.length;i++)assert.notEqual(effects[i],effects[i-1]);
-  for(let i=0;i<24;i+=8)assert.equal(new Set(effects.slice(i,i+8)).size,8);
+  for(let i=0;i<effects.length;i+=expected.size)assert.deepEqual(new Set(effects.slice(i,i+expected.size)),expected);
   assert.equal(p.run("musicVisualization.mode"),"random");
 });
 
@@ -180,4 +202,5 @@ test("vendored renderer has no dynamic script compilation and is packaged with i
   assert.doesNotMatch(vendor,/new Function\s*\(|\beval\s*\(/);
   assert.match(vendor,/Only precompiled presets are supported/);
   assert.match(fs.readFileSync(path.join(dir,"vendor/butterchurn/LICENSE"),"utf8"),/MIT License/);
+  assert.match(fs.readFileSync(path.join(dir,"vendor/audiofilus/LICENSE"),"utf8"),/Copyright \(c\) 2026 Juan Villacorta/);
 });
