@@ -86,11 +86,12 @@ class QueueSync:
             return {"authenticated": bool(self.studio.client), "status": self.status, "error": self.error, "revision": self.revision,
                     "owner": self.owner, "session": self.binding, "own": self.target == self.own_session,
                     "state": state, "devices": copy.deepcopy(self.sessions),
-                    "library_changed": self.library_changed}
+                    "library_changed": self.library_changed,
+                    "library_snapshot": library.queue_snapshot if library is not None else ""}
 
-    def disconnect(self):
-        self.stop_event.set()
+    def disconnect(self, *, background=False):
         with self.lock:
+            self.stop_event.set()
             sock, self.socket = self.socket, None
             self.status = "disconnected"
             self.owner = self.binding = ""
@@ -98,10 +99,16 @@ class QueueSync:
             self.sessions = []
             self.revision += 1
         if sock:
-            try:
-                sock.close()
-            except Exception:
-                pass
+            def close():
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
+            if background:
+                threading.Thread(target=close, daemon=True, name="tagcast-close-queue").start()
+            else:
+                close()
 
     def check_owner(self, body):
         if body.get("session") != self.studio.playback_session or not self.studio.client:
@@ -170,8 +177,12 @@ class QueueSync:
         with self.send_lock:
             self.socket.send(json.dumps(payload))
 
-    def receive(self, message):
+    def receive(self, message, *, client=None, stop=None):
         with self.lock:
+            if stop is not None and (stop is not self.stop_event or stop.is_set()
+                                     or client is not self.studio.client
+                                     or self.binding != self.studio.playback_session):
+                return
             if message.get("result") is False:
                 raise LibraryError("iBroadcast refused the queue connection.")
             command = message.get("command")
@@ -183,8 +194,7 @@ class QueueSync:
             elif command == "update_library":
                 self.library_changed = text(message.get("lastmodified"))[:100]
             elif command == "end_session":
-                self.disconnect()
-                self.studio._disconnect()
+                self.studio._disconnect(expected_client=client)
                 return
             else:
                 return
@@ -216,7 +226,7 @@ class QueueSync:
                         if len(raw) > 2_000_000:
                             raise LibraryError("Queue response is too large.")
                         if not stop.is_set() and stop is self.stop_event:
-                            self.receive(json.loads(raw))
+                            self.receive(json.loads(raw), client=client, stop=stop)
                     except websocket.WebSocketTimeoutException:
                         pass
                     if time.monotonic() - ping_at > 30:
@@ -224,8 +234,10 @@ class QueueSync:
                         ping_at = time.monotonic()
             except Exception as failure:
                 from .client import NotConnected
-                if isinstance(failure, NotConnected) and client is self.studio.client:
-                    self.studio._disconnect()
+                if isinstance(failure, NotConnected):
+                    with self.lock:
+                        if stop is self.stop_event and not stop.is_set():
+                            self.studio._disconnect(expected_client=client)
                 # Exceptions from WebSocket libraries can include the URL/token.
                 with self.lock:
                     if not stop.is_set():

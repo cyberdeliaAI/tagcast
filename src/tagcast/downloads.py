@@ -193,6 +193,7 @@ class AudioDownloads:
         self._workers = []  # Keep in-flight workers even after account/queue replacement.
         self.preparing = self.picker = False
         self.picker_stop = threading.Event()
+        self.picker_owner = None
         self.error = ""
         self.stop = threading.Event()
         self.options = self._read_options()
@@ -246,6 +247,8 @@ class AudioDownloads:
             return s.client, s.library, s.library_user, s.playback_session, s.premium
 
     def _bind(self, context):
+        if context[0] is not self.studio.client or context[3] != self.studio.playback_session:
+            raise ConflictError("The connection changed.")
         owner = context[0], context[2], context[3]
         if owner != self.owner:
             self._cancel()
@@ -475,9 +478,13 @@ class AudioDownloads:
         with self.lock:
             self._workers = []
 
-    def close(self):
-        self.picker_stop.set()
+    def close(self, connection=None):
         with self.lock:
+            if connection is None or self.picker_owner == connection:
+                self.picker_stop.set()
+            if connection is not None and (
+                    self.owner is None or (self.owner[0], self.owner[2]) != connection):
+                return
             self._cancel()
             self.generation += 1
             self.preparing = False
@@ -490,7 +497,10 @@ class AudioDownloads:
         with self.lock:
             if self.picker:
                 raise ConflictError("A folder chooser is already open.")
+            if context[0] is not self.studio.client or context[3] != self.studio.playback_session:
+                raise ConflictError("The connection changed.")
             self.picker = True
+            self.picker_owner = context[0], context[3]
             self.picker_stop.clear()
         try:
             folder = engine.choose_folder(self.options["out"], cancel=self.picker_stop)
@@ -500,3 +510,4 @@ class AudioDownloads:
         finally:
             with self.lock:
                 self.picker = False
+                self.picker_owner = None

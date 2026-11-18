@@ -2,8 +2,15 @@
 
 import hashlib
 import json
+from dataclasses import dataclass
+from sys import getsizeof
 
 from .library import ConflictError, LibraryError, fold, number, text
+
+# One detail view per immutable Library. Very large lists stay browseable
+# without retaining their position mapping or a library-sized text index.
+PLAYLIST_CACHE_POSITIONS = 120_000
+PLAYLIST_CACHE_SEARCH_BYTES = 16 * 1024 * 1024
 
 
 def track_ids(values, maximum=10000):
@@ -29,6 +36,58 @@ def playlist_track_search_text(library, track_id):
         text(album.get("name")),
         *(library.artist_name(a) for a in library.album_artist_ids(album)),
     ]))
+
+
+@dataclass
+class PlaylistBrowseRows:
+    active: list[tuple[int, int]]
+    duration: int
+    duration_missing: int
+    search_text: dict[int, str] | None = None
+    search_limited: bool = False
+
+    @classmethod
+    def build(cls, library, stored):
+        active, duration, missing = [], 0, 0
+        for position, track_id in enumerate(track_ids(stored, maximum=None)):
+            track = library.tracks.get(track_id)
+            if track is not None and not track.get("trashed"):
+                active.append((position, track_id))
+                length = max(0, number(track.get("length")))
+                duration += length
+                missing += length == 0
+        return cls(active, duration, missing)
+
+    def prepare_search(self, library):
+        if self.search_text is not None or self.search_limited:
+            return
+        indexed, size = {}, 0
+        for _, track_id in self.active:
+            if track_id not in indexed:
+                folded = playlist_track_search_text(library, track_id)
+                size += getsizeof(folded)
+                if size > PLAYLIST_CACHE_SEARCH_BYTES:
+                    self.search_limited = True
+                    return
+                indexed[track_id] = folded
+        self.search_text = indexed
+
+    def page(self, library, words, offset):
+        if not words:
+            return len(self.active), [(i, track_id)
+                                      for i, (_, track_id) in enumerate(self.active[offset:offset + 100], offset)]
+        indexed = self.search_text
+        page, total, matched = [], 0, {}
+        for i, (_, track_id) in enumerate(self.active):
+            if track_id not in matched:
+                haystack = (indexed[track_id] if indexed is not None
+                            else playlist_track_search_text(library, track_id))
+                matched[track_id] = all(word in haystack for word in words)
+            if matched[track_id]:
+                if offset <= total < offset + 100:
+                    page.append((i, track_id))
+                total += 1
+        return total, page
 
 
 class Collections:
@@ -260,9 +319,10 @@ class Collections:
             return None
         return sum(1 for row in library.playlists.values() if self.editable(row))
 
-    def playlist_snapshot(self, row, playlist_id):
-        payload = [str(playlist_id), self.studio.library_user, self.studio.playback_session,
-                   self.studio.library.combine_sets, text(row.get("name")),
+    def playlist_snapshot(self, row, playlist_id, *, owner=None):
+        if owner is None:
+            owner = (self.studio.library_user, self.studio.playback_session, self.studio.library.combine_sets)
+        payload = [str(playlist_id), *owner, text(row.get("name")),
                    text(row.get("description")), row.get("tracks") or [],
                    row.get("type"), bool(row.get("system_created")), row.get("artwork_id")]
         return hashlib.sha256(json.dumps(payload, ensure_ascii=True).encode()).hexdigest()
@@ -276,9 +336,23 @@ class Collections:
         if not matches or text(row.get("name")) != body.get("before_name"):
             raise ConflictError("This playlist changed in iBroadcast. Open a new review.")
 
+    @staticmethod
+    def _playlist_browse_rows(library, playlist_id, stored, search):
+        if len(stored) > PLAYLIST_CACHE_POSITIONS:
+            return PlaylistBrowseRows.build(library, stored)
+        with library._playlist_browse_lock:
+            cached = library._playlist_browse
+            if cached is None or cached[0] != playlist_id:
+                cached = (playlist_id, PlaylistBrowseRows.build(library, stored))
+                library._playlist_browse = cached
+            rows = cached[1]
+            if search:
+                rows.prepare_search(library)
+            return rows
+
     def playlists(self, query="", playlist_id=None, offset="0", browse=False):
         # Browsing shares the loaded library; writes still check the remote revision.
-        _, library = self.library(cached=True)
+        client, library = self.library(cached=True)
         try:
             offset = int(offset)
         except (TypeError, ValueError):
@@ -287,44 +361,45 @@ class Collections:
             raise LibraryError("Choose a valid playlist page or shorter search.")
         counts = {"playlists_count": self.playlist_count(library)}
         if playlist_id is not None:
-            row = library.playlists.get(number(playlist_id))
+            native_id = number(playlist_id)
+            row = library.playlists.get(native_id)
             if row and self.folder(row):
                 return {**self.folder_view(library, number(playlist_id), offset), **counts}
             if not row or not self.editable(row):
                 raise LibraryError("This playlist is unavailable or managed by iBroadcast.")
-            active = [(position, i) for position, i in enumerate(
-                track_ids(row.get("tracks") or [], maximum=None))
-                if i in library.tracks and not library.tracks[i].get("trashed")]
-            ids = [i for _, i in active]
-            large = len(row.get("tracks") or []) > 10000
-            # Count playlist positions, including repeats, across every page of active tracks.
-            lengths = [max(0, number(library.tracks[i].get("length"))) for i in ids]
+            studio = self.studio
+            with studio.lock:
+                account, session = studio.library_user, studio.playback_session
+                if client is not studio.client or library is not studio.library:
+                    raise ConflictError("The account or library changed. Reload the library.")
+            stored = row.get("tracks") or []
+            large = len(stored) > 10000
             words = fold(query).split()
-            matches, searched = [], {}
-            for index, i in enumerate(ids):
-                if words and i not in searched:
-                    haystack = playlist_track_search_text(library, i)
-                    searched[i] = all(word in haystack for word in words)
-                if not words or searched.get(i):
-                    matches.append((index, i))
-            page = matches[offset:offset + 100]
+            view = self._playlist_browse_rows(library, native_id, stored, bool(words))
+            matched_total, page = view.page(library, words, offset)
             rows = []
             for index, i in page:
                 try:
                     rows.append({**library.track_row(i, library.active_track_album(i)),
-                                 "position": index, "stored_position": active[index][0]})
+                                 "position": index, "stored_position": view.active[index][0]})
                 except LibraryError:
                     continue
-            return {**counts, "id": str(number(playlist_id)), "name": text(row.get("name")),
-                    "description": text(row.get("description")),
-                    **self.playlist_image(library, row),
-                    "tracks": [i for _, i in page] if large else ids,
-                    "before": [] if large else row.get("tracks") or [],
-                    "before_token": self.playlist_snapshot(row, playlist_id), "large": large,
-                    "stored_total": len(row.get("tracks") or []),
-                    "rows": rows, "offset": offset, "total": len(ids),
-                    "matched_total": len(matches), "page_positions": [index for index, _ in page],
-                    "duration": sum(lengths), "duration_missing": lengths.count(0)}
+            result = {**counts, "id": str(native_id), "name": text(row.get("name")),
+                      "description": text(row.get("description")),
+                      **self.playlist_image(library, row),
+                      "tracks": [i for _, i in page] if large else [i for _, i in view.active],
+                      "before": [] if large else list(stored),
+                      "before_token": self.playlist_snapshot(row, playlist_id,
+                          owner=(account, session, library.combine_sets)), "large": large,
+                      "stored_total": len(stored), "rows": rows, "offset": offset,
+                      "total": len(view.active), "matched_total": matched_total,
+                      "page_positions": [index for index, _ in page],
+                      "duration": view.duration, "duration_missing": view.duration_missing}
+            with studio.lock:
+                if (client, library, account, session) != (
+                        studio.client, studio.library, studio.library_user, studio.playback_session):
+                    raise ConflictError("The account or library changed. Reload the library.")
+            return result
         if browse:
             return {**self.playlist_catalogue(library, query, offset), **counts}
         words = fold(query).split()
@@ -590,10 +665,21 @@ class Collections:
 
     def queue_tracks(self, body):
         ids = track_ids(body.get("tracks"), 1000)
-        library, _ = self.studio._library()
-        with self.studio.lock:
+        studio = self.studio
+        if "library_snapshot" in body:
+            # A queue restore may span several requests. Every chunk must use
+            # the library actually advertised by the bridge and the same owner.
+            with studio.lock:
+                library = studio.library
+                if not studio.client or not studio.playback_session or library is None \
+                        or body.get("session") != studio.playback_session \
+                        or body["library_snapshot"] != library.queue_snapshot:
+                    raise ConflictError("The account or library changed. Reload the library.")
+                return self._queue_track_rows(library, ids, False)
+        library, _ = studio._library()
+        with studio.lock:
             if body.get("restore") is True:
-                if body.get("session") != self.studio.playback_session or not body.get("session") \
+                if body.get("session") != studio.playback_session or not body.get("session") \
                         or body.get("profile") != self.playback_profile(library):
                     raise ConflictError("The account or library changed. Reload the library.")
             return self._queue_track_rows(library, ids, body.get("restore") is True)

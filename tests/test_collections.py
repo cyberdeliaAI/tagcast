@@ -14,6 +14,7 @@ import certifi
 from test_client import client, mock_ibroadcast
 from test_library import change
 
+from tagcast.collections import playlist_track_search_text
 from tagcast.library import ConflictError, LibraryError
 from tagcast.queue_sync import QUEUE_SCOPES, clean_state
 
@@ -290,6 +291,45 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual([r['position'] for r in second['rows']], second['page_positions'])
         self.assertEqual(second['total'], 10106)
         self.assertFalse(mock_ibroadcast.STATE['writes'])
+
+    def test_playlist_detail_reuses_search_text_until_the_library_changes(self):
+        studio = self.studio
+        mock_ibroadcast.STATE["playlists"][888] = {"name": "Search", "tracks": [900, 901, 900]}
+        mock_ibroadcast.STATE["tracks"][900]["title"] = "Café"
+        studio.load_library(refresh=True)
+        with patch("tagcast.collections.playlist_track_search_text",
+                   wraps=playlist_track_search_text) as search:
+            before = studio.collections.playlists(playlist_id="888")
+            search.assert_not_called()
+            first = studio.collections.playlists("cafe", "888")
+            second = studio.collections.playlists("cafe", "888", "1")
+            self.assertEqual(search.call_count, 2)
+            self.assertEqual(first["before_token"], before["before_token"])
+            self.assertEqual(second["page_positions"], [2])
+            self.assertEqual(second["rows"][0]["stored_position"], 2)
+            mock_ibroadcast.STATE["tracks"][900]["title"] = "Different"
+            mock_ibroadcast.STATE["playlists"][888]["tracks"] = [900]
+            studio.load_library(refresh=True)
+            fresh = studio.collections.playlists("cafe", "888")
+            self.assertEqual(search.call_count, 3)
+            self.assertEqual(fresh["matched_total"], 0)
+            self.assertNotEqual(fresh["before_token"], before["before_token"])
+
+    def test_playlist_detail_cache_caps_positions_and_normalized_text(self):
+        studio = self.studio
+        mock_ibroadcast.STATE["playlists"][888] = {"name": "Search", "tracks": [900, 901]}
+        mock_ibroadcast.STATE["tracks"][900]["title"] = "Café"
+        studio.load_library(refresh=True)
+        with patch("tagcast.collections.PLAYLIST_CACHE_POSITIONS", 1):
+            over_limit = studio.collections.playlists("cafe", "888")
+        self.assertIsNone(studio.library._playlist_browse)
+        with patch("tagcast.collections.PLAYLIST_CACHE_SEARCH_BYTES", 1):
+            text_limit = studio.collections.playlists("cafe", "888")
+        self.assertEqual(over_limit, text_limit)
+        cached = studio.library._playlist_browse[1]
+        self.assertTrue(cached.search_limited)
+        self.assertIsNone(cached.search_text)
+        self.assertEqual(studio.collections.playlists("cafe", "888"), text_limit)
 
     def test_empty_playlist_duration_is_zero(self):
         mock_ibroadcast.STATE['playlists'][888] = {'name': 'Empty', 'tracks': []}
@@ -1058,6 +1098,7 @@ class CollectionTests(unittest.TestCase):
     def test_websocket_one_use_token_get_state_and_server_role(self):
         bridge = self.studio.queue_sync
         bridge.own_session = bridge.target = 'tagcast-session'
+        bridge.binding = self.studio.playback_session
         bridge.stop_event = threading.Event()
         socket = Mock()
         messages = [json.dumps({'command': 'set_state', 'role': 'player', 'tracks': [903], 'current_song': 903, 'data': {'repeat_mode': 'queue'}})]
@@ -1074,6 +1115,34 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(json.loads(socket.send.call_args.args[0])['command'], 'get_state')
         self.assertEqual(bridge.view()['state']['role'], 'player')
         self.assertNotIn('one-use-secret', json.dumps(bridge.view()))
+
+    def test_retired_websocket_cannot_end_the_active_session(self):
+        studio, bridge = self.studio, self.studio.queue_sync
+        old_stop = bridge.stop_event
+        bridge.stop_event = threading.Event()
+        bridge.binding = studio.playback_session
+        bridge.receive({"command": "end_session"}, client=studio.client, stop=old_stop)
+        self.assertIsNotNone(studio.client)
+        self.assertTrue(bridge.binding)
+        bridge.receive({"command": "end_session"}, client=studio.client, stop=bridge.stop_event)
+        self.assertIsNone(studio.client)
+        self.assertFalse(bridge.binding)
+
+    def test_queue_metadata_chunks_require_the_advertised_loaded_snapshot_and_owner(self):
+        studio, bridge = self.studio, self.studio.queue_sync
+        bridge.binding = studio.playback_session
+        body = {"tracks": [900, 900], "session": studio.playback_session,
+                "library_snapshot": bridge.view()["library_snapshot"]}
+        rows = studio.collections.queue_tracks(body)
+        self.assertEqual([row["id"] for row in rows["tracks"]], ["900", "900"])
+        studio.load_library(refresh=True)
+        self.assertNotEqual(bridge.view()["library_snapshot"], body["library_snapshot"])
+        with self.assertRaises(ConflictError):
+            studio.collections.queue_tracks(body)
+        body["library_snapshot"] = bridge.view()["library_snapshot"]
+        with self.assertRaises(ConflictError):
+            studio.collections.queue_tracks({**body, "session": "previous-session"})
+        self.assertEqual(studio.collections.queue_tracks(body), rows)
 
     def test_queue_validation_preserves_up_next_and_rejects_invalid_timing(self):
         state = clean_state({'tracks': [900, 901], 'play_next': [903], 'data': {'play_index': 1, 'play_from': 'play_next', 'repeat_mode': 'queue'}})

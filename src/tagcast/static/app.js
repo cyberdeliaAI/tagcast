@@ -46,6 +46,7 @@ const state = {playlistsCount: null, albums: [], details: new Map(), albumFavour
 const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
+let loadedLibrarySession = null;
 let combinedNoticeProfile = "";
 
 const combinedAlbumView = () => live() && Boolean(state.connection.combine_sets || state.connection.combined_view);
@@ -217,6 +218,8 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  pendingAlbums = null;
+  loadedLibrarySession = null;
   saveOrder += 1;
   libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
@@ -1596,11 +1599,7 @@ async function boot() {
   else if (typeof restorePendingRoute === "function") restorePendingRoute();
 }
 
-async function loadLive(refresh = false) {
-  saveOrder += 1;
-  const request = ++libraryLoadRequest, session = state.connection.playback_session;
-  const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
-  let completed = false;
+function resetLiveLibraryViews() {
   resetEditorArtistChoices();
   if (typeof resetTags === "function") resetTags();
   if (typeof resetAlbumMerge === "function") resetAlbumMerge();
@@ -1622,17 +1621,38 @@ async function loadLive(refresh = false) {
   if (typeof resetPlaylistImport === "function") resetPlaylistImport();
   if (typeof resetRecentlyPlayed === "function") resetRecentlyPlayed();
   if (typeof resetAlbumView === "function") resetAlbumView();
-  state.loading = true; state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
+  state.mode = "live"; state.playlistsCount = null; state.albums = []; state.details = new Map(); state.selected.clear(); state.editorNames = {genres: [], composers: []};
   state.albumFavourites = new Set(); state.albumFavouriteError = "";
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
+}
+
+async function loadLive(refresh = false) {
+  pendingAlbums = null;
+  saveOrder += 1;
+  const request = ++libraryLoadRequest, session = state.connection.playback_session;
+  const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
+  const retained = loadedLibrarySession !== null && loadedLibrarySession === session;
+  if (!retained) {
+    if (loadedLibrarySession !== null) {
+      if (typeof detachQueueMemory === "function") detachQueueMemory();
+      if (typeof stopPlayer === "function") stopPlayer();
+      loadedLibrarySession = null;
+    }
+    resetLiveLibraryViews();
+  }
+  state.loading = true;
   libraryLoadingRefresh = refresh;
   $("#library-loading-detail").textContent = libraryLoadingText(nextLibraryLoadingMessage(), refresh);
   updateChrome(); render();
+  let replaced = false, switchedToDemo = false;
   try {
     const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
     if (!current()) return;
-    completed = true;
-    state.albums = colorize(data.albums); state.artistNames = data.artists || [];
+    const albums = colorize(data.albums);
+    if (retained) resetLiveLibraryViews();
+    replaced = true;
+    loadedLibrarySession = session;
+    state.albums = albums; state.artistNames = data.artists || [];
     combinedNoticeProfile = typeof data.playback_profile === "string" ? data.playback_profile : "";
     if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
     applyEditorNames(data.editor_names);
@@ -1648,18 +1668,24 @@ async function loadLive(refresh = false) {
     toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
   } catch (error) {
     if (!current()) return;
-    completed = true;
-    if (error.status === 401) state.connection.connected = false;
-    useLocal(demoLibrary(), "demo");
+    if (error.status === 401) {
+      Object.assign(state.connection, {connected: false, account: "", playback_session: ""});
+    }
+    if (error.status === 401 || !retained) {
+      useLocal(demoLibrary(), "demo");
+      switchedToDemo = true;
+    }
     toast(TagcastI18n.text("library.load.failed", {error: TagcastI18n.errorText(error)}));
   } finally {
-    if (!completed && request !== libraryLoadRequest) return;
-    if (!completed && session !== state.connection.playback_session) {
-      state.loading = false; updateChrome(); return;
+    if (!switchedToDemo && !current()) {
+      if (request === libraryLoadRequest) { state.loading = false; updateChrome(); }
+      return;
     }
     state.loading = false;
     if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
-    state.page = 0; updateChrome(); render();
+    if (replaced || switchedToDemo) state.page = 0;
+    updateChrome(); render();
+    if (!replaced && !switchedToDemo) return;
     if (state.screen === "overview" && typeof loadOverview === "function") loadOverview();
     if (typeof refreshPlayerRatings === "function") refreshPlayerRatings();
     if (typeof restorePendingRoute === "function") restorePendingRoute();
@@ -1741,7 +1767,7 @@ async function connectAction(target) {
     } else if (target.id === "connect-logout" || target.id === "logout-button") {
       if (!confirm(TagcastI18n.text("connection.disconnectConfirm"))) return;
       await api("/api/auth/logout", {});
-      state.connection = {...state.connection, connected: false, account: "", device: null};
+      state.connection = {...state.connection, connected: false, account: "", device: null, playback_session: ""};
       if ($("#connect").open) $("#connect").close();
       useLocal(demoLibrary(), "demo"); state.artist = null; state.selected.clear();
       updateChrome(); render(); toast(TagcastI18n.text("connection.disconnected"));
@@ -1790,22 +1816,32 @@ function overallStatus(statuses) {
 
 async function saveDraft() {
   if (saving || !pending) return;
+  const draft = pending, owner = readBackOwner();
   saving = true;
   const yearReviewContext = typeof beginYearReviewSave === "function" ? beginYearReviewSave(editing) : null;
   const apply = $("#apply-draft");
   apply.disabled = true; $("#review-cancel").disabled = true; apply.textContent = TagcastI18n.text("review.saving");
   setActionStatus("#review-status", TagcastI18n.text("review.status.checkingAndSaving"), true);
   try {
-    const result = await api("/api/save", {changes: pending.changes});
+    const result = await api("/api/save", {changes: draft.changes});
     const byId = new Map((result.results || []).map(r => [`${r.kind}:${r.id}`, r.status]));
     const statuses = [...byId.values()];
     const overall = statuses.length ? overallStatus(statuses) : "saved";
-    const next = thenNext();
-    const newArtist = pending.scope === "artist" ? pending.changes.find(c => c.kind === "album" && c.fields.artist)?.fields.artist.after : null;
-    const entry = {...structuredClone(pending), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
+    const entry = {...structuredClone(draft), created: new Date().toISOString(), status: overall, source: "ibroadcast", error: result.error || "",
       write_effects: writeEffectsData(result.write_effects),
-      created_artists: result.created_artists || [], changes: pending.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
+      created_artists: result.created_artists || [], changes: draft.changes.map(c => ({...c, status: byId.get(`${c.kind}:${c.id}`) || "saved"}))};
     state.history.unshift(entry);
+    if (!readBackLibraryCurrent(owner) || pending !== draft) {
+      if (!readBackSessionCurrent(owner)) {
+        for (const change of entry.changes) if (change.status === "sent") change.status = "unverified";
+        if (entry.status === "sent") entry.status = "unverified";
+      }
+      rememberHistory();
+      if (result.job && readBackSessionCurrent(owner)) followJob(result.job, entry, null, undefined, owner);
+      return;
+    }
+    const next = thenNext();
+    const newArtist = draft.scope === "artist" ? draft.changes.find(c => c.kind === "album" && c.fields.artist)?.fields.artist.after : null;
     pendingAlbums = null; // an older read-back; this save's own read-back follows
     if (result.albums) { state.albums = colorize(result.albums); state.details = new Map(); applyEditorNames(result.editor_names); }
     else applyLocally(pending.changes.filter(c => byId.get(`${c.kind}:${c.id}`) === "sent"));
@@ -1822,8 +1858,9 @@ async function saveDraft() {
     } else if (yearReviewContext) finishedYearReviewSave(yearReviewContext, null, entry);
     if (next && overall !== "failed") openEditor(shelfIds(next));
   } catch (error) {
-    const attempt = rememberWriteAttempt(pending, error);
+    const attempt = rememberWriteAttempt(draft, error);
     if (yearReviewContext) yearReviewContext.saving = false;
+    if (!readBackLibraryCurrent(owner) || pending !== draft) return;
     apply.disabled = false; $("#review-cancel").disabled = false;
     apply.textContent = TagcastI18n.text("common.tryAgain");
     if (error.status === 401) {
@@ -1841,7 +1878,14 @@ async function saveDraft() {
     if (attempt) $("#review-status").innerHTML += writeEffectsMarkup(attempt.write_effects);
   } finally {
     saving = false;
-    setActionStatus("#review-status", undefined);
+    if (pending === draft) {
+      setActionStatus("#review-status", undefined);
+      if (!readBackLibraryCurrent(owner)) {
+        if (yearReviewContext) yearReviewContext.saving = false;
+        pending = null; editing = null;
+        $("#review").close(); $("#editor").close();
+      }
+    } else if (!$("#review").open) setActionStatus("#review-status", "");
   }
 }
 
@@ -1856,14 +1900,29 @@ function readbackDelay() {
   });
 }
 
-async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
+function readBackOwner() {
+  return {session: state.connection.playback_session, mode: state.mode,
+    details: state.details, request: libraryLoadRequest};
+}
+
+function readBackSessionCurrent(owner) {
+  return owner.session === state.connection.playback_session && owner.mode === state.mode;
+}
+
+function readBackLibraryCurrent(owner) {
+  return readBackSessionCurrent(owner) && owner.details === state.details && owner.request === libraryLoadRequest;
+}
+
+async function followJob(jobId, entry, onDone, stillCurrent = () => true, owner = readBackOwner()) {
   const order = ++saveOrder;
+  pendingAlbums = null;
   rememberHistory();
   checking += 1; updateChrome();
   let job, shownError = "";
   try {
-    for (;;) {
+    while (readBackSessionCurrent(owner)) {
       await readbackDelay();
+      if (!readBackSessionCurrent(owner)) break;
       job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
       if (job.state !== "checking") break;
     }
@@ -1871,6 +1930,12 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
     // The history entry keeps the English message; the toast shows a known code translated.
     job = {state: "error", error: error.message}; shownError = TagcastI18n.errorText(error);
   } finally { checking -= 1; updateChrome(); }
+  if (!readBackSessionCurrent(owner)) {
+    for (const change of entry.changes) if (change.status === "sent") change.status = "unverified";
+    if (entry.status === "sent") entry.status = "unverified";
+    rememberHistory();
+    return null;
+  }
   if (!stillCurrent()) return null;
   if (job.state === "error") {
     entry.status = "unverified"; entry.error = [entry.error, job.error].filter(Boolean).join(" ");
@@ -1887,13 +1952,10 @@ async function followJob(jobId, entry, onDone, stillCurrent = () => true) {
   }
   entry.status = overallStatus(entry.changes.map(c => c.status));
   rememberHistory();
-  if (order !== saveOrder || !Array.isArray(job.albums)) { /* summaries are delivered once; keep the current library otherwise */ }
-  else if (!$("#editor").open && !$("#review").open) {
-    applyEditorNames(job.editor_names);
-    state.albums = colorize(job.albums); state.details = new Map();
-    if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
-    render();
-  } else { applyEditorNames(job.editor_names); pendingAlbums = job.albums; }
+  if (order === saveOrder && readBackLibraryCurrent(owner) && Array.isArray(job.albums)) {
+    pendingAlbums = {owner, order, albums: job.albums, editorNames: job.editor_names};
+    flushPendingAlbums();
+  }
   onDone?.(job);
   const done = job.results.filter(r => r.status === "saved").length;
   if (entry.status === "saved") toast(TagcastI18n.text("review.confirmed", {count: done}));
@@ -1936,7 +1998,11 @@ $("#mode-badge").addEventListener("click", openConnect);
 
 function flushPendingAlbums() {
   if (!pendingAlbums || $("#editor").open || $("#review").open || (typeof settingsView !== "undefined" && settingsView.editor)) return;
-  state.albums = colorize(pendingAlbums); state.details = new Map(); pendingAlbums = null;
+  const {owner, order, albums, editorNames} = pendingAlbums;
+  pendingAlbums = null;
+  if (order !== saveOrder || !readBackLibraryCurrent(owner)) return;
+  applyEditorNames(editorNames);
+  state.albums = colorize(albums); state.details = new Map();
   if (state.artist && !state.albums.some(a => albumHasArtist(a, state.artist))) state.artist = null;
   render();
 }
