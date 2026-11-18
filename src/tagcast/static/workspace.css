@@ -6,6 +6,8 @@
 .workspace-location .page-breadcrumbs{margin-right:0}
 .workspace-location [data-breadcrumb-root]{flex:none;white-space:nowrap}
 #albums-page>.toolbar,#artists-page>.toolbar{flex-wrap:wrap}
+#albums-page>.toolbar>.selection-bar{flex:0 0 100%;margin-bottom:0;min-width:0}
+#albums-page>.toolbar>.selection-bar>.button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
 body.navigation-collapsed main{margin-left:0}
 body.navigation-collapsed .player{left:0}
 .browse-sort-buttons{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
