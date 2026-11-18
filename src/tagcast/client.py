@@ -49,6 +49,7 @@ from .library import (
 )
 from .lyrics import Lyrics
 from .metadata_export import MetadataExport
+from .mp3_playback import NewestStart
 from .music_uploads import MusicUploads, upload_authorized
 from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
@@ -476,8 +477,7 @@ class Studio:
         self.playback_session = ""
         self.stream_results = {}  # Bounded, session-scoped observations; no audio or URLs.
         self.mp3_buffers = {}
-        self.mp3_buffer_slot = threading.Lock()
-        self.mp3_buffer_holder = None  # Diagnostics only: (phase, monotonic time the slot was taken).
+        self.mp3_starts = NewestStart()
         self.client = None
         self.library = None
         self.library_user = None

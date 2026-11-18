@@ -27,14 +27,7 @@ from .client import ApiError, NotConnected, Studio, UncertainWrite
 from .content_security import BASE_POLICY, content_policy
 from .errors import error_payload
 from .library import ConflictError, LibraryError
-from .mp3_playback import (
-    READ_SIZE,
-    buffer_key,
-    buffered_range,
-    limit_reached,
-    needs_buffer,
-    read_prefix,
-)
+from .mp3_playback import READ_SIZE, buffer_key, buffered_range, needs_buffer, read_prefix
 from .server_lifecycle import RequestDrain, ServerClosing, drain_server
 from .sources import SourceError
 from .track_comparison import view as track_comparison
@@ -504,6 +497,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(status, {"error": message})
 
         key = buffer_key(session, request_id, track_id, quality)
+        order = self.studio.mp3_starts.arrive() if key else 0
         cached = self.studio.buffered_mp3(key) if key else None
         if cached is not None:
             try:
@@ -527,38 +521,31 @@ class Handler(SimpleHTTPRequestHandler):
             prefix = b""
             headers_started = False
             try:
-                wanted = bool(key) and needs_buffer(upstream, mime, byte_range)
-                if wanted and self.studio.mp3_buffer_slot.acquire(False):
+                if key and needs_buffer(upstream, mime, byte_range):
+                    # The newest start owns the one buffering attempt. A start the player has
+                    # left stops at its next chunk instead of keeping the next track waiting.
+                    starts = self.studio.mp3_starts
+                    starts.claim(order)
+                    taken = time.monotonic()
+                    note(buffer={"state": "buffering"})
+                    chunks = iter(upstream.iter_content(READ_SIZE))
                     try:
-                        taken = time.monotonic()
-                        self.studio.mp3_buffer_holder = ("buffering", taken)
-                        note(buffer={"state": "buffering"})
-                        chunks = iter(upstream.iter_content(READ_SIZE))
-                        try:
-                            prefix, complete = read_prefix(chunks)
-                        except requests.RequestException:
-                            note(buffer={"state": "aborted", "reason": "upstream_error", "elapsed_ms": elapsed(taken)})
-                            raise
-                        read = {"bytes": len(prefix), "elapsed_ms": elapsed(taken)}
-                        if complete:
-                            # The slot stays taken until the player has read this whole response.
-                            self.studio.mp3_buffer_holder = ("sending", taken)
-                            if self.studio.buffered_mp3(key, prefix) is None:
-                                note(buffer={"state": "aborted", "reason": "not_stored", **read})
-                                refuse(401, "The playback session changed. Connect again.")
-                            else:
-                                note(buffer={"state": "completed", **read})
-                                self._serve_buffered_mp3(prefix, local_range, note)
-                            return
-                        note(buffer={"state": "aborted", "reason": limit_reached(prefix), **read})
-                    finally:
-                        self.studio.mp3_buffer_holder = None
-                        self.studio.mp3_buffer_slot.release()
+                        prefix, stopped = read_prefix(chunks, lambda: starts.newest(order))
+                    except requests.RequestException:
+                        note(buffer={"state": "aborted", "reason": "upstream_error", "elapsed_ms": elapsed(taken)})
+                        raise
+                    read = {"bytes": len(prefix), "elapsed_ms": elapsed(taken)}
+                    if stopped is None:
+                        if self.studio.buffered_mp3(key, prefix) is None:
+                            note(buffer={"state": "aborted", "reason": "not_stored", **read})
+                            refuse(401, "The playback session changed. Connect again.")
+                        else:
+                            note(buffer={"state": "completed", **read})
+                            self._serve_buffered_mp3(prefix, local_range, note)
+                        return
+                    note(buffer={"state": "aborted", "reason": stopped, **read})
                 else:
-                    holder = self.studio.mp3_buffer_holder if wanted else None
-                    note(buffer={"state": "skipped", "reason": "slot_busy",
-                                 **({"slot_holder": holder[0], "slot_held_ms": elapsed(holder[1])} if holder else {})}
-                         if wanted else {"state": "not_needed"})
+                    note(buffer={"state": "not_needed"})
                     chunks = iter(upstream.iter_content(65536))
                 headers_started = True
                 self.send_response(upstream.status_code)

@@ -135,24 +135,25 @@ test("the report names the buffer outcome and local answer of a replaced start a
   assert.deepEqual(p.requests, [replaced]);
 
   p.audio.readyState = 1;
-  p.audio.duration = Infinity;
-  answers.push({state: "available", first_response: upstream, local_responses: [passed],
-    buffer: {state: "skipped", reason: "slot_busy", slot_holder: "buffering", slot_held_ms: 770}});
+  p.audio.duration = 171.2;
+  const buffered = {request_range: "bytes=0-", status: 206, source: "buffer", content_length: "5480000", accept_ranges: "bytes", elapsed_ms: 2100};
+  answers.push({state: "available", first_response: upstream, local_responses: [buffered],
+    buffer: {state: "completed", bytes: 5480000, elapsed_ms: 2090}});
   p.emit("loadedmetadata");
   await settle();
   assert.deepEqual(p.requests, [replaced, next]);
 
   // On export the replaced start has its final outcome; the proxy has already forgotten the other one.
-  answers.push({state: "available", first_response: upstream, local_responses: [{...passed, elapsed_ms: 6004}],
-    buffer: {state: "aborted", reason: "time_limit", bytes: 191488, elapsed_ms: 6001}}, {state: "unknown"});
+  answers.push({state: "available", first_response: upstream, local_responses: [{...passed, elapsed_ms: 842}],
+    buffer: {state: "aborted", reason: "replaced", bytes: 16384, elapsed_ms: 840}}, {state: "unknown"});
   const report = await p.report();
   assert.equal(report.proxy_reports_buffer, true);
   assert.deepEqual(report.attempts.map(attempt => attempt.started_ms), [0, 780]);
-  assert.deepEqual(report.attempts[0].buffer, {state: "aborted", reason: "time_limit", bytes: 191488, elapsed_ms: 6001});
-  assert.equal(report.attempts[0].local_responses[0].elapsed_ms, 6004);
+  assert.deepEqual(report.attempts[0].buffer, {state: "aborted", reason: "replaced", bytes: 16384, elapsed_ms: 840});
+  assert.equal(report.attempts[0].local_responses[0].elapsed_ms, 842);
   assert.equal(report.attempts[0].events.length, 1);
-  assert.deepEqual(report.attempts[1].buffer, {state: "skipped", reason: "slot_busy", slot_holder: "buffering", slot_held_ms: 770});
-  assert.deepEqual(report.attempts[1].local_responses, [passed]);
+  assert.deepEqual(report.attempts[1].buffer, {state: "completed", bytes: 5480000, elapsed_ms: 2090});
+  assert.deepEqual(report.attempts[1].local_responses, [buffered]);
   assert.equal(report.attempts[1].proxy_state, "available");
   assert.doesNotMatch(JSON.stringify(report), /private-session|private-track|synthetic-playback-attempt|127\.0\.0\.1/);
 });

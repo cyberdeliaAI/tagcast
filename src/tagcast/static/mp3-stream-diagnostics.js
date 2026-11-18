@@ -35,7 +35,7 @@ function mp3StreamDiagnosticsPanel() {
 function beginMp3StreamDiagnostic(source, session, request, quality, libraryDuration) {
   const d = mp3StreamDiagnostics;
   mp3StreamDiagnosticSession();
-  // A replaced start can still hold the proxy's only buffer slot. Read its state before it expires.
+  // A replaced start never reports metadata. Read what the proxy did with it before that expires.
   if (d.enabled && d.active && !d.active.lookup) d.active.lookup = readMp3StreamDiagnosticResponse(d.active);
   d.active = null;
   if (!d.enabled || !session || !request || !["96", "128", "192", "256", "320"].includes(quality)) return source;

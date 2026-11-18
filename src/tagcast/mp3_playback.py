@@ -1,11 +1,33 @@
 """Make a complete, bounded chunked MP3 seekable on the local connection."""
 
 import re
+import threading
 from time import monotonic
 
 MAX_MP3_BYTES = 24 * 1024 * 1024
 BUFFER_SECONDS = 6
 READ_SIZE = 16 * 1024
+
+
+class NewestStart:
+    """Let only the most recent playback start buffer. An older one stops at its next chunk."""
+
+    def __init__(self):
+        self._lock, self._arrived, self._owner = threading.Lock(), 0, 0
+
+    def arrive(self):
+        """Number a local stream request in the order the player sent it."""
+        with self._lock:
+            self._arrived += 1
+            return self._arrived
+
+    def claim(self, order):
+        """Take the one buffering attempt unless a later request already has it."""
+        with self._lock:
+            self._owner = max(self._owner, order)
+
+    def newest(self, order):
+        return self._owner == order
 
 
 def buffer_key(session, request, track, quality):
@@ -24,20 +46,22 @@ def needs_buffer(response, mime, request_range):
             and headers.get("Transfer-Encoding", "").strip().lower() == "chunked")
 
 
-def read_prefix(chunks):
-    """On reaching a limit, return the prefix and leave the iterator open for playback."""
+def read_prefix(chunks, newest=lambda: True):
+    """Return the bytes read and why reading stopped early; None means the response is complete.
+
+    An early stop leaves the iterator open, so the same response continues as playback.
+    """
     prefix = bytearray()
     deadline = monotonic() + BUFFER_SECONDS
     for chunk in chunks:
         prefix.extend(chunk)
-        if len(prefix) > MAX_MP3_BYTES or monotonic() >= deadline:
-            return prefix, False
-    return prefix, bool(prefix)
-
-
-def limit_reached(prefix):
-    """Name what ended an incomplete read. Diagnostics only."""
-    return "size_limit" if len(prefix) > MAX_MP3_BYTES else "time_limit" if prefix else "empty"
+        if len(prefix) > MAX_MP3_BYTES:
+            return prefix, "size_limit"
+        if monotonic() >= deadline:
+            return prefix, "time_limit"
+        if not newest():
+            return prefix, "replaced"
+    return prefix, "empty" if not prefix else None if newest() else "replaced"
 
 
 def buffered_range(value, size):

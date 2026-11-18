@@ -940,15 +940,18 @@ their shared browsing/player state; a fast local response can otherwise race the
   Export only on explicit download with no audio, identifiers, URLs or credentials.
   The local status read never opens another audio response or changes playback.
   For the same opted-in request also keep the first buffering decision (`completed`,
-  `skipped`, `aborted` or `not_needed`, with byte count, duration and the holder of a
-  busy slot) and at most eight local proxy answers: status and framing headers only.
-  These observations must not change buffering, the response or the selected quality.
+  `aborted` with its reason or `not_needed`, with byte count and duration) and at most
+  eight local proxy answers: status and framing headers only. These observations
+  must not change buffering, the response or the selected quality.
 - Ordinary playback may buffer a chunked MP3 response without a length or byte ranges
   at the selected quality. Serve local byte ranges only after a complete read, scoped
   to the playback request, track, quality and session. Keep at most two complete tracks
-  of 24 MiB each in RAM and one buffering attempt in flight. If the attempt exceeds the
-  size or time budget, play the same response with its consumed prefix. Clear buffers
-  on session replacement, preserve upstream diagnostics and leave Original/Gapless alone.
+  of 24 MiB each in RAM and one buffering attempt in flight. The newest local stream
+  request owns that attempt: a start the player has left stops at its next chunk and
+  never waits for, or is waited on by, a response still being sent. If the attempt is
+  replaced or exceeds the size or time budget, play the same response with its consumed
+  prefix. Clear buffers on session replacement, preserve upstream diagnostics and leave
+  Original/Gapless alone.
 - Recently played appears only with optional iBroadcast play reporting enabled. Read
   the native playlist by type `recently-played`, never its display name. Preserve
   its ordering and unique track IDs; omit trashed or missing tracks and do not

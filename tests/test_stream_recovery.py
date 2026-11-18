@@ -157,10 +157,13 @@ class StreamRecoveryTests(unittest.TestCase):
         self.assertFalse(self.studio.stream_results)
         self.assertFalse(self.studio.mp3_buffers)
 
-    def serve(self, *, quality="128", track="1", byte_range="bytes=0-", request=None, session=None):
+    def serve(self, *, quality="128", track="1", byte_range="bytes=0-", request=None, session=None, on_write=None):
         handler = Mock(studio=self.studio, headers={"Range": byte_range}, server=SimpleNamespace())
         handler._serve_buffered_mp3.side_effect = lambda *args: app.Handler._serve_buffered_mp3(handler, *args)
-        app.Handler._stream(handler, track, quality, request or self.request, session or self.session, diagnostic=True)
+        handler.wfile.write.side_effect = on_write
+        # test_client reloads tagcast.client; the handler must catch the classes this Studio raises.
+        with patch.multiple(app, NotConnected=client.NotConnected, ApiError=client.ApiError):
+            app.Handler._stream(handler, track, quality, request or self.request, session or self.session, diagnostic=True)
         body = b"".join(call.args[0] for call in handler.wfile.write.call_args_list)
         headers = dict(call.args for call in handler.send_header.call_args_list)
         status = handler.send_response.call_args.args[0] if handler.send_response.called else handler._json.call_args.args[0]
@@ -228,13 +231,11 @@ class StreamRecoveryTests(unittest.TestCase):
         self.assertEqual([(answer["request_range"], answer["status"], answer["source"], answer["content_range"])
                           for answer in answers[1:]],
                          [("bytes=5-6", 206, "buffer", "bytes 5-6/9"), ("bytes=9-", 416, "buffer", "bytes */9")])
-        self.assertIsNone(self.studio.mp3_buffer_holder)
-        self.assertFalse(self.studio.mp3_buffer_slot.locked())
         for _ in range(20):
             self.serve(quality="256", byte_range="bytes=1-2")
         self.assertEqual(len(self.proxy()[1]), 8)
 
-    def test_diagnostic_names_a_skipped_or_aborted_buffer_and_the_upstream_answer(self):
+    def test_diagnostic_names_an_unneeded_or_aborted_buffer_and_the_upstream_answer(self):
         seekable = {"Content-Length": "4", "Content-Range": "bytes 0-3/9", "Accept-Ranges": "bytes"}
         self.transport.open_stream.return_value = StreamResponse([b"abcd"], 206, seekable)
         self.assertEqual(self.serve()[0], 206)
@@ -257,19 +258,53 @@ class StreamRecoveryTests(unittest.TestCase):
                 self.assertEqual([(answer["status"], answer["source"], answer["content_length"], answer["accept_ranges"])
                                   for answer in answers], [(200, "upstream", None, "none")])
 
-        # Another playback request still holds the only slot, as an abandoned start does.
-        self.transport.open_stream.return_value = StreamResponse([b"abcd"])
-        self.studio.mp3_buffer_slot.acquire()
-        self.studio.mp3_buffer_holder = ("buffering", app.time.monotonic() - 2)
-        try:
-            self.assertEqual(self.serve(request="slot-is-busy-12345678")[0], 200)
-        finally:
-            self.studio.mp3_buffer_slot.release()
-        buffer, answers = self.proxy("slot-is-busy-12345678")
-        self.assertEqual((buffer["state"], buffer["reason"], buffer["slot_holder"]), ("skipped", "slot_busy", "buffering"))
-        self.assertGreaterEqual(buffer["slot_held_ms"], 2000)
-        self.assertEqual(answers[0]["status"], 200)
-        self.assertFalse(self.studio.mp3_buffers)
+    def test_a_later_start_takes_the_buffering_attempt_from_the_start_the_player_left(self):
+        later = "later-start-12345678"
+
+        def abandoned():
+            yield b"abcd"
+            # The player moves on while this response is still being read.
+            self.assertEqual(self.serve(request=later, track="2")[0], 206)
+            yield b"efgh"
+            yield b"ijkl"
+
+        self.transport.open_stream.side_effect = (StreamResponse(abandoned()), StreamResponse([b"next"]))
+        status, headers, body = self.serve()
+        self.assertEqual((status, headers["Accept-Ranges"], body), (200, "none", b"abcdefghijkl"))
+        self.assertNotIn("Content-Length", headers)
+        buffer, answers = self.proxy()
+        self.assertEqual((buffer["state"], buffer["reason"], buffer["bytes"]), ("aborted", "replaced", 8))
+        self.assertEqual([(answer["status"], answer["source"]) for answer in answers], [(200, "upstream")])
+        self.assertEqual(self.proxy(later)[0]["state"], "completed")
+        self.assertEqual([key[1] for key in self.studio.mp3_buffers], [later])
+
+    def test_a_start_whose_upstream_answers_late_cannot_take_the_attempt_from_a_later_start(self):
+        later = "later-start-12345678"
+
+        def open_stream(*_args, **_kwargs):
+            if not self.studio.mp3_buffers:
+                # The later start arrives, buffers and completes before these headers return.
+                self.transport.open_stream.side_effect = (StreamResponse([b"next"]), StreamResponse([b"abcd", b"efgh"]))
+                self.assertEqual(self.serve(request=later, track="2")[0], 206)
+            return self.transport.open_stream()
+
+        self.transport.open_stream.side_effect = open_stream
+        status, _headers, body = self.serve()
+        self.assertEqual((status, body), (200, b"abcdefgh"))
+        self.assertEqual(self.proxy()[0]["reason"], "replaced")
+        self.assertEqual([key[1] for key in self.studio.mp3_buffers], [later])
+
+    def test_the_next_start_buffers_while_a_complete_response_is_still_being_sent(self):
+        later = []
+
+        def player_reads_slowly(_data):
+            if not later:
+                later.append(self.serve(request="later-start-12345678", track="2")[0])
+
+        self.transport.open_stream.side_effect = (StreamResponse([b"abcd"]), StreamResponse([b"next"]))
+        self.assertEqual(self.serve(on_write=player_reads_slowly)[0], 206)
+        self.assertEqual(later, [206])
+        self.assertEqual(len(self.studio.mp3_buffers), 2)
 
     def test_diagnostic_names_a_failed_buffer_and_stays_silent_without_opt_in(self):
         def interrupted():
