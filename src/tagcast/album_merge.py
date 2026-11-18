@@ -70,7 +70,7 @@ class AlbumMerge:
         return value
 
     def _snapshot(self, library, ids):
-        if library.combine_sets:
+        if library.album_writes_blocked:
             raise LibraryError("Turn off Combine Multi-Disc Album Sets in iBroadcast before merging albums.")
         library._browse_index("genres")
         active = set(library.album_ids())
@@ -181,7 +181,7 @@ class AlbumMerge:
             def check(after):
                 same_owner = (studio.client, studio.library_user, studio.playback_session) == owner
                 members = after.active_track_ids(target)
-                complete = same_owner and not after.combine_sets and set(members) == set(snapshot["tracks"]) \
+                complete = same_owner and not after.album_writes_blocked and set(members) == set(snapshot["tracks"]) \
                     and len(members) == len(snapshot["tracks"]) and target in after.albums \
                     and album_state(after, target) == snapshot["albums"][target]["metadata"] \
                     and all(not after.active_track_ids(i) for i in review["ids"] if i != target)

@@ -35,6 +35,9 @@ The application consists of a Python server and a plain JavaScript frontend.
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
+- `src/tagcast/discover.py`: explicitly requested artist discovery from loaded genres/ratings
+  or opt-in Last.fm similarity, with snapshot-local indexes and strict local artist matching.
+  `discover_lastfm.py` owns bounded explicit public reads, pacing, RAM caching and source errors.
 - `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
@@ -68,6 +71,23 @@ The application consists of a Python server and a plain JavaScript frontend.
   Never hold Studio.lock during file/network I/O or socket abort. Keep uncertain
   uploads distinct and never retry them automatically. Only the local hash index
   persists, using the existing private atomic storage. Playback remains independent.
+  Keep a bounded, memory-only account/session guard for recent accepted and uncertain
+  MD5 outcomes across upload reviews and Clear. Never treat remembered uncertainty
+  as success or silently evict unlisted outcomes; release them on fresh native membership
+  or owner replacement. Before the first audio request, refresh MD5 membership and
+  skip newly present reviewed files; a failed check sends no audio. A machine-readable
+  storage limit stops the queue, preserving uncertainty and checking earlier results.
+- `src/tagcast/trash_emptying.py`: explicit Settings → Data & exports review of the current iBroadcast
+  trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Check the remote
+  revision before review/save; reuse only a matching known account/combine library,
+  downloading on changed/unknown revisions. Keep fresh downloaded read-back even
+  with an unchanged revision. Recheck complete trash membership/identity and
+  account/session/combine state, consume the review once,
+  send one empty_trash request without retry, and verify absence from the loaded library.
+  Emptying moves files to iBroadcast's unavailable Dashboard records; no permanent
+  dashboard deletion, restore, local-file operation or automatic follow-up is allowed.
+  Keep acknowledgement plus extra confirmation, aggregate History/export and accepted
+  write/read-back draining. Opening Settings never reads or empties the trash.
 - `src/tagcast/artwork.py`: image validation, base64 decoding and downloads.
 - `src/tagcast/artist_bios.py`: opt-in TheAudioDB biographies, fetched only for a visited
   album artist and held in a separate bounded local SQLite cache.
@@ -79,7 +99,7 @@ The application consists of a Python server and a plain JavaScript frontend.
 - `src/tagcast/static/`: HTML, CSS, SVG and shared JavaScript files:
   `app.js`, `metadata-export.js`, `genres.js`, `credits.js`, `lookup.js`, `updates.js`, `artwork.js`, `player.js`, `playback.js`, `album.js`,
   `album-info.js`, `lyrics.js`, `trash.js`, `artists.js`, `tracks.js`, `favourites.js`, `browse.js`, `overview.js`, `cleanup.js`, `collections.js`, `playlist-tools.js`, `playlist-order.js`, `playlist-import.js`, `tags.js`, `queue-sync.js`, `album-guide.js`, `help.js`, `navigation.js`. `album.js` provides album browsing;
-  `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
+  `empty-trash.js` owns the separate reviewed trash-emptying dialog; `trash.js` moves chosen tracks of the open album to iBroadcast's trash after a review;
   `artists.js` provides a searchable, paginated album artist grid using album
   summaries; `tracks.js` searches every track through `/api/tracks` (the demo
   searches its own albums) and plays or opens a result. Editing remains in `app.js`, and `player.js` owns browser-local playback and the queue independently of the editor. `navigation.js` gives every page a hash address
@@ -208,6 +228,9 @@ their shared browsing/player state; a fast local response can otherwise race the
   order, keyboard selection, Escape/Tab dismissal, bulk gates and Various Artists.
   Invalidate the chooser on library/draft/catalogue replacement.
 - Online suggestions fill the editor; metadata writes follow only after review.
+  Hide healthy album-source sections with no matches; show one compact No match state
+  only after all requested sources are empty. Keep loading, errors and missing-key
+  guidance visible. This changes presentation, not lookup requests or candidate actions.
   Artwork has a separate comparison and explicit save.
 - Track lyrics have a separate textarea/review/save, independent of ordinary metadata
   patches. Now playing and the visited track read native userdata lazily; never scan
@@ -476,8 +499,23 @@ their shared browsing/player state; a fast local response can otherwise race the
   not-sent and unconfirmed results distinct. Tag dialogs preserve playback, history,
   focus and scroll, reject late reads/writes after library replacement, and have local
   Help. Invalidate loaded tag metadata and browse indexes after checked writes.
-- With `Combine Multi-Disc Album Sets` enabled, album changes are blocked;
-  track changes can proceed. The cache must match this setting.
+- Support both `Combine Multi-Disc Album Sets` states without changing the account preference.
+  Keep supplied track `album_id` separate from the visible container when they differ.
+  The service may instead rewrite every track’s `album_id` to the container and encode positions
+  as 101/201. Never reconstruct missing original album IDs from those positions. Track
+  writes target `file_id`; validate received ownership, native position, before-values and
+  the setting/view snapshot. Source rows may be absent; never invent their album fields.
+  Display-only numeric decoding requires combining on and at least two complete consecutive
+  disc blocks starting at 101/201, each starting at track 1 without gaps. Preserve raw numbers
+  in reviews, writes and export; a lone/mixed/ambiguous native 101 stays unchanged.
+  A complete source row nested in exactly one larger container is not another visible album;
+  ambiguous membership fails closed. Display original disc groups inside native containers,
+  and do not apply Tagcast's separate-disc grouping to that view.
+  Album-field/track-number writes, splitting, merging and album-artist cleanup stay blocked
+  when either the setting is on or the response still has combined membership. A lagging
+  combined response with the setting off must not be reused as the final cache. Read-back
+  validates view and original membership; uncertainty never triggers a resend. The separate
+  multi-disc advice banner is dismissible per account/browser and never hides save guards.
 - With that setting off, the album lists and the album page show the discs of a
   set (same title, album artist, album year and active-track upload-date set, different disc numbers) as one album
   (`albumShelf`, `mergeDiscs`); every write still goes to the disc's own album.
@@ -488,9 +526,11 @@ their shared browsing/player state; a fast local response can otherwise race the
   account, `lastmodified` and `combine_sets`. Track search runs on the server's
   library copy (`Library.search_tracks`, at most 1,000 results); the browser never
   loads every track.
-- Album artists and Albums each have one shared Filter and sort menu with independent
-  Sort/Show choices, retaining the existing hidden filter/order values for history and
-  discovery links. Show active checkmarks and both choices on the trigger. Omit zero-count
+- Album artists and Albums have fixed sort buttons below search in the existing sticky
+  toolbar and a separate Filters menu. Retain the hidden filter/order values for history,
+  saved sorts and discovery links. Repeated clicks reverse direction; show the active
+  button and direction. Filters retain active checkmarks and the selected filter on the
+  trigger. Omit zero-count
   filters except All; counts use loaded artist groups or the merged album shelf within
   the current artist scope, before text search. A selected filter can remain active
   when its count drops to zero; keep All reachable without silently resetting search.
@@ -606,12 +646,27 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal, focus/scroll return and close Help on navigation or library replacement.
 - The mobile sidebar is a disclosure menu; its open/closed state adds no history
   entry. Keep connection and source settings reachable and support Escape.
+  Desktop navigation starts open and has a separate browser-local manual collapse preference and an external
+  header button that remains reachable while collapsed. Restore mobile access on resize;
+  do not mix this state with shortcut visibility or change playback/history. Opening the
+  right panel never collapses navigation automatically.
   Browser-local `tagcast-sidebar` preferences hide optional shortcuts and reorder
   navigation in DOM/keyboard order. Album artists, Albums and Change history cannot
   be hidden; connection controls and Settings remain outside customization. Hiding
   a shortcut never disables its feature or changes the current page/audio. Preserve
   opt-in gates for Recently played and 1001 Albums, support restoring defaults, and
   ignore unknown/duplicate stored IDs. Routine updates preserve focus and scroll.
+- The existing right side panel has Playlist and Details tabs; Playlist is the current
+  local play queue, separate from the native Playlists page. Reuse that same queue/audio
+  view and preserve the full Now playing page. Details follows the current queued track and its
+  original native album, independently of browsing, in read-only accordions. Use only loaded
+  metadata, without provider/API requests or playback changes; pause retains the subject and
+  an empty/cleared queue shows no album fallback. Retire old rendered details on library/session replacement,
+  even when closed. Keep tab keyboard navigation, Escape and opening-control focus return.
+  Its header toggle follows Live at the far right. Keep desktop sorting and segmented
+  tabs compact, with larger mobile/coarse-pointer targets. Devices belongs beside the
+  Play queue heading in the shared Playlist/Now playing view, including an empty queue;
+  preserve its existing queue-sync opt-in, ownership checks and explicit connection actions.
 - Decades reuses the browse indexes and effective track/album years. Exclude unknown
   years, use full decade labels (1980s, 2020s), sample merged album summaries locally
   without duplicates, and preserve the random order on Back. Surprise me again
@@ -757,16 +812,43 @@ their shared browsing/player state; a fast local response can otherwise race the
   dismissal restore focus without changing audio, the queue or browser history.
   Close on library replacement; cancel pending cover clicks on navigation. Preserve
   fullscreen focus handling when a lightbox is above Now playing.
-- Album details offer Play album in disc/track order and Shuffle album in a newly mixed
+- Album More → Compare track list is explicit and read-only (`track_comparison.py` /
+  `track-comparison.js`). Opening uses loaded album/disc-set details only. Search
+  sends only the entered artist/title to MusicBrainz; an explicit edition choice
+  fetches that release's bounded track list through the existing paced public HTTP
+  cache. Respect source selection and capture/recheck account, session, library and
+  album ownership around I/O without holding Studio.lock. Never refresh iBroadcast,
+  scan audio, match/reorder automatically or add an Apply/Save action. Preserve
+  repeats, version text, known/unknown disc/track positions and duration. Positional
+  differences are observations, not proof of incorrect/missing music; incomplete
+  references remain visibly incomplete. Bound to 200 search results and 1,000 audio
+  tracks. Invalidate and clear on close, navigation, source/account/library changes;
+  preserve audio/history/focus, and do not restore an old route's scroll after navigation.
+  Explicit per-track title/artist choices (`track-comparison-drafts.js`) may fill the
+  existing editor only; comparison/staging never sends a mutation. Pairing is manual,
+  with positional display not proof of identity, and one bounded reference selector at
+  a time. Preserve native track IDs, positions, versions and all existing/unknown credits;
+  add separate guest artist credits from structured provider data, never one combined
+  artist name. Reuse native names without global case renaming. Capture and recheck the
+  complete source snapshot/session before and after opening the editor, suppress extra
+  automatic source suggestions, then use normal review/save/read-back. Confirm before
+  discarding choices or replacing their reference; invalidate stale ownership outright.
+  Initial correction display defers native lyrics, including background repaints, until
+  explicit track/tab selection. Keep ordinary editor lyrics behavior and position the
+  initial draft without scroll animation so a late read cannot move Review under input.
+- Album details offer Play in disc/track order and an accessible icon-only Shuffle in a newly mixed
   queue order, including every disc. Both explicitly replace the queue and reuse the same
   native audio and ownership guards. Shuffle never reorders library tracks or metadata;
   ordinary Play restores disc/track order. Preserve Repeat and Play next semantics.
-- Play random album uses all filtered merged albums, before paging or the decade
+  Add to playlist is in More and opens the existing chooser/review for the complete
+  displayed set. Preserve menu keyboard/focus behavior and reject stale album,
+  library and session captures before preparing the chooser.
+- Play random album in discovery groups uses all filtered merged albums, before paging or the decade
   display sample. Load only the chosen set, play from its first track and replace
   the queue. Avoid the current album when alternatives exist. Clear, explicit Play
   and library changes cancel pending random playback; previews cannot play.
-- On the album browser, hide random playback for every cleanup/edition filter and
-  while albums are selected. All albums and browse discovery groups retain it.
+- The album browser has no separate Play random album shortcut. Its Random sort
+  button follows Rating in the fixed search toolbar and never starts playback.
   Compact, aligned Play and + menu buttons on album cards/lists let the user play
   one chosen complete set without navigation. Load only that set, replace the queue
   explicitly and cancel pending playback on clear, another Play or library replacement.
@@ -895,9 +977,10 @@ their shared browsing/player state; a fast local response can otherwise race the
   Album Random album order shuffles the complete merged shelf once before search,
   artist scope, filters and pagination. Preserve it through metadata read-backs and
   Back/Forward within the same library; reset on library/account replacement or a
-  different sort choice. Keep random ordering separate from Play random album.
-  The shared Filter and sort menu shows Sort/Show side by side above 760px and
-  stacked below, retaining independent choices and keyboard dismissal/focus.
+  different sort choice. Clicking the fixed Random sort again explicitly reshuffles;
+  disable it while loading or with fewer than two matching albums.
+  The separate Filters menu preserves keyboard dismissal/focus; fixed sorting buttons
+  share the sticky search toolbar and preserve independent filtering and history.
   Derive all sorting data from loaded summaries; never fetch details for sorting.
   Album-rating read-back invalidates copied multi-disc shelf ratings (including
   partial results) and refreshes visible album ordering. Confirm unnamed native
@@ -911,6 +994,42 @@ their shared browsing/player state; a fast local response can otherwise race the
   ratings, audio or the queue and never fetches track details or biographies. Migrate
   the former separate album-favourites shortcut without losing access when either old
   shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
+- Artist Discover starts only on an explicit artist-page action or Refresh. Last.fm
+  is the default (`discover_lastfm`, on by default); Settings → Discovery can disable it
+  for local genres only. Saving the preference never requests; it retires cached/pending
+  results, and the server rejects explicit Last.fm requests while disabled. Last.fm reuses the
+  enabled Sources & keys API key server-side and sends only the chosen full artist name
+  to artist.getSimilar (autocorrect off). Match up to 100 returned artists strictly with
+  unique local NFC/case/whitespace identities; never strip punctuation, accents or version
+  text, infer aliases or use fuzzy MBIDs. Provider similarity ranks artists; native ratings
+  choose their albums. Healthy results without local matches fall back to the existing
+  genres with a visible notice. Errors/missing keys remain errors, never silent fallback.
+  Keep Last.fm attribution, catalogue and terms links; do not claim album/audio similarity.
+  discover_lastfm.py uses one fixed HTTPS endpoint, no redirects/cookies/auth/netrc, shared
+  pacing and bounded responses/timeouts. No automatic retries; respect origin cache headers
+  and Retry-After. Keep at most 64 public RAM entries / 2 MiB / six hours and obey no-store.
+  Keep six results and one album per represented artist, with native additional credits
+  and conservative disc grouping. Artist ID zero identifies compilations, never a name.
+  The local index belongs to its Library; coalesce outside Studio.lock. Reject replaced
+  accounts/sessions/libraries/combine/preference/source/key generations before publishing. Browser
+  memory holds at most twelve artist/source results, respecting online expiry without
+  timers or automatic refresh. Opening pages, Back and translation make no new requests.
+  Do not refresh the library, scan audio, write metadata or persist discovery reports.
+  Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
+  Keep the Last.fm privacy explanation in Settings → Discovery and Help, without a
+  repeated paragraph below the artist-page disclosure. Similar in your library uses
+  a native details/summary alongside About this artist, with the active source label.
+  Refresh stays inside the content, outside summary. New artists start closed; only
+  explicit summary activation or Refresh starts discovery, never programmatic toggle.
+- Creation receipts for artists, uploaded artwork and split destinations are separate
+  from assignment/read-back confirmation. Preserve bounded write_effects in errors,
+  results and browser History/export, including failures before a read-back job exists.
+  Show possible leftovers only for incomplete saves, distinguishing confirmed creation
+  from a lost receipt. Never infer an object is unused, clean it up, retry it or offer
+  metadata Undo for a creation-only failure. Keep existing save gates and payloads.
+  Albums opened from a Discover card label their breadcrumb origin as Discover from
+  the seed artist, not that artist's discography. Keep the actual artist-page route,
+  cached results and browsing/scroll restoration; ordinary album links keep their normal origin.
 - `artist_biographies` is off by default. Enabling does not scan or fetch. Visiting one
   album artist first reads `artist-biographies.sqlite3`, then looks up only missing or
   expired text through the shared paced free TheAudioDB adapter. Cache English public
@@ -1125,7 +1244,18 @@ their shared browsing/player state; a fast local response can otherwise race the
   credentials or library data. Cache attempts (including failures) for 24 hours in
   `updates.json`; manual checks bypass the interval. `auto_updates` is a local
   setting. Keep failures separate from library loading, validate versions and
-  construct release URLs for this repository. Never install or restart automatically.
+  construct release URLs for this repository. Release notes stay bounded untrusted text;
+  render only a fixed Markdown subset with escaped text/attributes, credential-free HTTPS
+  links and bounded inline/table work. Keep unsupported content visible as text and flat
+  nested lists; never execute provider HTML or load its embedded images or styles. Browser/source and portable
+  builds retain manual installation. The desktop updater uses fixed, version-pinned
+  GitHub release feeds and exact platform filenames, with SHA-512 package verification.
+  Downloading is opt-in; installation always needs explicit native confirmation.
+  Never install on ordinary quit. Keep Homebrew copies with their package manager.
+  Drain the owned backend and all accepted writes/read-backs before installation;
+  defer on uncertainty, canceled shutdown or a reused server. Never force-stop a write.
+  Publish update feeds only with all final verified release packages, including the
+  additional tested Windows NSIS installer; preserve portable ZIP/TAR and the CLI.
 - The desktop launcher remembers automatic browser opening in `launcher.json`,
   separately from server settings. Default to enabled; the manual browser button
   stays available. CLI `--open` remains explicit.
@@ -1136,11 +1266,17 @@ their shared browsing/player state; a fast local response can otherwise race the
   Reuse only matching application/version/protocol servers; reject occupied foreign
   ports and stop only owned servers. Close warns for unsaved state, stops cleanup
   between batches and waits for accepted writes/read-backs without forced killing.
+  The separate finishing window follows the current resolved interface colours,
+  including Auto and custom palettes, through a bounded colour-only report from the
+  active main frame. Keep a safe startup fallback and forced-colour accessibility;
+  appearance changes never affect the shutdown drain/accepted-write handshake.
   Keep renderer sandbox/context isolation/webSecurity enabled, Node integration and
   webviews disabled, and no generic preload/IPC bridge. Restrict navigation to the
   app entry pages, external opening to parsed credential-free HTTPS, and permissions
   to the app main frame's fullscreen/output/sanitized clipboard; never grant capture.
-  Hash existing inline theme scripts in CSP. No automatic updater or playback restart.
+  Hash existing inline theme scripts in CSP. The updater has only fixed, main-frame-bound
+  IPC actions; never expose feeds, file paths, commands or a generic IPC bridge.
+  Automatic download defaults off; installation and restart always stay explicit.
   Electron profiles/browser-local histories are separate; server credentials/settings
   and local account favourites retain their normal folder. Fuses disable RunAsNode,
   Node options/inspect injection and loading unpackaged application code.

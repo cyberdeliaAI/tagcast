@@ -1,5 +1,40 @@
 # Screenshot refresh checklist
 
+## Tagcast 1.7.0 — illustrated manual published, 11 November 2026
+
+The [illustrated 1.7.0 PDF](https://github.com/cyberdeliaAI/tagcast/wiki/PDF-manual) is complete: 52 pages, clickable contents and bookmarks. The maintainer approved reusing useful older screenshots. No further capture round is required for this edition. Captions identify earlier interfaces; the original 1.4.0 PDF remains available as a historical edition.
+
+### Already supplied — do not repeat
+
+**59 original captures from 11 November are archived in the repository.** Deleting personal copies from the local Screenshots folder does not remove these documentation sources.
+
+| Set | Coverage | Inventory |
+| --- | --- | --- |
+| Ten interface captures | Album/artist browsing, metadata review, image chooser, Now playing, CD/cover with lyrics | [Originals](screenshots/2026-11-11-interface/README.md) |
+| Nine visualization captures | All eight distinct effects and Aurora with lyrics | [Originals](screenshots/2026-11-11-visualizations/README.md) |
+| Thirty-two guide captures | Track editor, history, artwork, biography, favourites, tags, playlists/imports, lyrics import, transfer reviews, settings, Overview and Mini Player | [Exact states](screenshots/2026-11-11-guide/README.md) |
+| Eight final manual captures | Tagcast connection dialog, composer review and confirmed result, artwork saving, tag chooser, 1001 missing/manual match and narrow Light album | [Exact states and hashes](screenshots/2026-11-11-manual/README.md) |
+
+A review is not a confirmed save. The new artwork screenshot is still Saving disc 2 of 2; the tag chooser has no changes selected. The 840 × 1784 narrow screenshot shows the stacked layout, but physical dimensions alone do not prove a specific CSS viewport. Existing account redactions and provider attribution remain intact.
+
+### Next captures — core illustrated guide
+
+There are **no required follow-up screenshots**. The previous 30-image follow-up proposal and ten theme-preview replacements are superseded as requirements. Current text and labelled older illustrations cover the remaining workflows.
+
+### Optional detail for a fully current reference
+
+When the interface changes, useful optional replacements include cleanup/year choices, trash and duplicate reviews, merge/split membership reviews, playlist final/paused reviews, individual native lyrics, transfer results, and additional settings. Capture only a state that explains a distinct decision; do not repeat covered views or manufacture a successful result.
+
+### Other publication assets
+
+The separate downloadable-theme gallery retains dated Light/Dark previews for its named palettes. They still demonstrate those colours; refreshing them is optional. The November walkthrough remains a dated recording. Images and this PDF are not evidence of new native-platform, physical Wayland or hardware/audio validation.
+
+### Capture and handoff rules
+
+Use readable English labels, preserve complete decisions and provider attribution, and retain original PNGs with capture date, version and state. Reuse archived images across channels. Keep older files referenced by documentation, historical editions or attribution; deleting unused personal copies is independent of repository cleanup.
+
+Use synthetic or approved disposable data for mutation demonstrations. Do not perform real iBroadcast writes merely for documentation. Hide credentials, active sign-in codes, private paths and personal account data. Always distinguish draft, review, running, uncertain and confirmed states. Retain versioned PDF filenames and their source/checksum record.
+
 ## Tagcast 0.80.0 — 23 October 2026
 
 Five current screenshots cover the album editor, track editor, album lyrics import,

@@ -226,10 +226,13 @@ function visibleLyricsSelection(context) {
     const id = $("#track-inline").dataset.track;
     return lyricsSelection(editing.originals.flatMap(a => a.tracks).find(t => String(t.id) === id));
   }
-  return $("#now-playing-panel").hidden ? null : lyricsSelection(player.queue[player.index]);
+  return $("#now-playing-panel").hidden || (typeof workspacePanel !== "undefined" && workspacePanel.tab === "details" && state.screen !== "now-playing") ? null : lyricsSelection(player.queue[player.index]);
 }
 
 function renderLyrics(context, selection = visibleLyricsSelection(context)) {
+  // A comparison correction draft is initially metadata-only. Background cache,
+  // language or player repaints must not start a read or expand its form either.
+  if (context === "track" && typeof editing !== "undefined" && editing?.deferTrackLyrics) selection = null;
   const box = $(context === "track" ? "#track-lyrics" : "#now-playing-lyrics");
   if (!box) return;
   box.hidden = !selection;

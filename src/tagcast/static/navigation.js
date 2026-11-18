@@ -247,7 +247,10 @@ function albumOrigin(hash, entry) {
   const parent = source.screen === "browse" && source.key !== null ? `#/${source.kind}`
     : source.artist ? "#/artists" : source.playlist ? "#/playlists" : null;
   const trail = parent ? [nav.views.get(parent) || {hash: parent, label: routeLabel(parent, {}), scope: nav.scope, saved: {}}] : [];
-  trail.push(navigationSnapshot(hash, entry));
+  const snapshot = navigationSnapshot(hash, entry);
+  // A suggestion belongs to this search context, not to the seed artist's discography.
+  if (source.artist && source.artist === albumView.discoveryArtist) snapshot.discoveryArtist = source.artist;
+  trail.push(snapshot);
   return trail;
 }
 
@@ -270,6 +273,7 @@ function restoreNavigationScroll() {
 // Same-page renders update filters; only page changes add history entries.
 function syncHistory() {
   syncSearchClearButtons();
+  if (typeof syncWorkspacePanel === "function") syncWorkspacePanel();
   if (!nav.ready || nav.restoring) return;
   navigationScope();
   const hash = `#/${currentRoute()}`, entry = history.state || {};
@@ -300,7 +304,9 @@ function renderAlbumBreadcrumb() {
   nav.crumbs = origin.length ? origin : [{hash: "#/albums", label: TagcastI18n.text("nav.sidebar.albums"), scope: nav.scope, saved: {}}];
   const album = state.albums.find(a => String(a.id) === albumView.id);
   // Fixed page names are shown in the current language; library names come from the entry.
-  const label = item => fixedRoute(item.hash) ? routeLabel(item.hash, item.saved || {}) || item.label : item.label;
+  const label = item => item.discoveryArtist && parseRoute(item.hash)?.artist === item.discoveryArtist
+    ? TagcastI18n.text("discover.heading", {artist: item.discoveryArtist})
+    : fixedRoute(item.hash) ? routeLabel(item.hash, item.saved || {}) || item.label : item.label;
   $("#breadcrumb").innerHTML = nav.crumbs.map((item, index) => `<button type="button" class="breadcrumb-link" data-album-crumb="${index}">${escapeHtml(label(item))}</button><span class="slash" aria-hidden="true">/</span>`).join("")
     + `<span aria-current="page">${album?.name ? escapeHtml(album.name) : TagcastI18n.html("nav.breadcrumb.album")}</span>`;
 }
