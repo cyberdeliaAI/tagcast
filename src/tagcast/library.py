@@ -274,6 +274,7 @@ class Library:
         self._recent_rows = None
         self._stats = None
         self._search = None
+        self._search_lock = Lock()
         self._favourites = None
         self._browse_tracks = None
         self._browse_albums = {}
@@ -684,7 +685,9 @@ class Library:
         if not words:
             return {"tracks": [], "total": 0}
         if self._search is None:
-            self._search = self._search_index()
+            with self._search_lock:
+                if self._search is None:
+                    self._search = self._search_index()
         found = [(track_id, album_id) for haystack, track_id, album_id in self._search
                  if all(word in haystack for word in words)]
         return {"tracks": [self.track_row(*f) for f in found[:limit]], "total": len(found)}

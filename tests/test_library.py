@@ -1,5 +1,7 @@
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from threading import Event, Lock
 from unittest.mock import patch
 
 from tagcast.library import (
@@ -157,6 +159,50 @@ class SummaryTests(unittest.TestCase):
                 self.assertEqual(Library(library.to_cache()).track_view(100)["uploaded_at"], expected)
                 self.assertEqual(library.track_view(100)["uploaded_on"], day[:10])
                 self.assertEqual(library.album_summary(10)["uploaded_at"], expected)
+
+    def test_overlapping_track_searches_share_one_snapshot_index(self):
+        library = lib()
+        started, waiting, finish = Event(), Event(), Event()
+        mutex = Lock()
+
+        class SearchLock:
+            def __enter__(self):
+                if mutex.locked():
+                    waiting.set()
+                mutex.acquire()
+
+            def __exit__(self, *_):
+                mutex.release()
+
+        library._search_lock = SearchLock()
+        original = library._search_index
+
+        def build():
+            started.set()
+            self.assertTrue(finish.wait(5))
+            return original()
+
+        with patch.object(library, "_search_index", side_effect=build) as builder:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(library.search_tracks, "song")
+                try:
+                    self.assertTrue(started.wait(5))
+                    second = pool.submit(library.search_tracks, "elsewhere")
+                    self.assertTrue(waiting.wait(5))
+                finally:
+                    finish.set()
+                self.assertEqual(first.result(5)["total"], 2)
+                self.assertEqual(second.result(5)["total"], 1)
+            builder.assert_called_once_with()
+
+        self.assertEqual(edited("tracks", 100, "title", "Revised").search_tracks("song")["total"], 1)
+
+    def test_track_search_index_can_be_rebuilt_after_a_failure(self):
+        library = lib()
+        with patch.object(library, "_search_index", side_effect=ValueError("temporary failure")):
+            with self.assertRaises(ValueError):
+                library.search_tracks("song")
+        self.assertEqual(library.search_tracks("song")["total"], 2)
 
     def test_file_formats_reuse_stored_types_in_details_search_favourites_and_cache(self):
         for mime, expected in [("audio/flac", "FLAC"), ("audio/x-flac", "FLAC"),
