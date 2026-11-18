@@ -278,6 +278,8 @@ class Library:
         self._search = None
         self._search_lock = Lock()
         self._favourites = None
+        self._favourite_count = None
+        self._favourites_lock = Lock()
         self._browse_tracks = None
         self._browse_albums = {}
         self._browse_indexes = {}
@@ -853,27 +855,46 @@ class Library:
                            for g in found[offset:offset + limit]],
                 "total": len(found), "count": len(groups), "offset": offset}
 
+    def _favourite_positions(self):
+        remaining = {i for i, t in self.tracks.items() if not t.get("trashed") and number(t.get("rating")) >= 5}
+        if not remaining:
+            return
+        for album_id, album in self.albums.items():
+            if album.get("trashed"):
+                continue
+            for value in album.get("tracks") or []:
+                track_id = number(value)
+                if track_id in remaining:
+                    remaining.remove(track_id)
+                    yield track_id, album_id
+                    if not remaining:
+                        return
+
+    def favourite_count(self):
+        """Count the same active positions as Favourites without preparing search rows."""
+        if self._favourite_count is None:
+            with self._favourites_lock:
+                if self._favourite_count is None:
+                    self._favourite_count = sum(1 for _ in self._favourite_positions())
+        return self._favourite_count
+
     def favourites(self, query="", offset=0, limit=50):
         """iBroadcast's thumbs-up tracks (rating >= 5), without loading them all in the browser."""
         if self._favourites is None:
-            rows, seen = [], set()
-            liked = {i for i, t in self.tracks.items() if not t.get("trashed") and number(t.get("rating")) >= 5}
-            for album_id, album in self.albums.items() if liked else []:
-                if album.get("trashed"):
-                    continue
-                for value in album.get("tracks") or []:
-                    track_id = number(value)
-                    if track_id not in liked or track_id in seen:
-                        continue
-                    seen.add(track_id)
-                    row = self.track_row(track_id, album_id)
-                    haystack = fold(" ".join([row["title"], row["artist"], row["album"],
-                                             self.artist_name(album.get("artist_id")), *row["composers"]]))
-                    order = (fold(row["artist"]), fold(row["album"]), row["disc"],
-                             row["track"] or 9999, fold(row["title"]), track_id)
-                    rows.append((order, haystack, (track_id, album_id)))
-            rows.sort(key=lambda item: item[0])
-            self._favourites = rows
+            with self._favourites_lock:
+                if self._favourites is None:
+                    rows = []
+                    for track_id, album_id in self._favourite_positions():
+                        album = self.albums[album_id]
+                        row = self.track_row(track_id, album_id)
+                        haystack = fold(" ".join([row["title"], row["artist"], row["album"],
+                                                 self.artist_name(album.get("artist_id")), *row["composers"]]))
+                        order = (fold(row["artist"]), fold(row["album"]), row["disc"],
+                                 row["track"] or 9999, fold(row["title"]), track_id)
+                        rows.append((order, haystack, (track_id, album_id)))
+                    rows.sort(key=lambda item: item[0])
+                    self._favourite_count = len(rows)
+                    self._favourites = rows
         words = fold(query).split()
         found = [row for _, haystack, row in self._favourites if all(w in haystack for w in words)]
         offset = min(offset, max(0, (len(found) - 1) // limit * limit))

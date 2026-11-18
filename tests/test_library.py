@@ -255,6 +255,24 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual((summary["no_genre"], summary["no_cover"], summary["track_count"]), (1, 1, 2))
         self.assertNotIn("tracks", summary)
 
+    def test_favourite_count_shares_membership_without_building_search_rows(self):
+        data = raw()
+        tables = data["library"]
+        tables["tracks"]["map"]["rating"] = 8
+        for track in ("100", "101", "102", "103", "104"):
+            tables["tracks"][track].append(5)
+        tables["albums"]["10"][2].extend([100, 102])
+        tables["albums"]["11"][2].append(100)
+        tables["albums"]["12"][2] = []
+        library = Library(data)
+        with patch.object(library, "track_row", side_effect=AssertionError("No search rows")):
+            self.assertEqual(library.favourite_count(), 3)
+            self.assertEqual(library.favourite_count(), 3)
+        self.assertIsNone(library._favourites)
+        visible = library.favourites("artist b")
+        self.assertEqual(visible["count"], 3)
+        self.assertEqual(library.favourite_count(), visible["count"])
+
     def test_native_favourites_include_top_ratings_only_and_search_and_paginate_on_server(self):
         data = raw()
         tracks = data["library"]["tracks"]

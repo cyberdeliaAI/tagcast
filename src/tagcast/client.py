@@ -902,7 +902,7 @@ class Studio:
                 "album_favourites": favourites,
                 "artist_favourites": artist_favourites,
                 "playlists_count": self.collections.playlist_count(library),
-                "favourites_count": library.favourites()["count"],
+                "favourites_count": library.favourite_count(),
                 "source": source, "lastmodified": library.lastmodified,
                 "combine_sets": library.combine_sets, "combined_view": library.combined_view}
         with self.lock:
