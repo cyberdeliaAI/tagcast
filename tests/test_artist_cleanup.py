@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from tagcast.client import ApiError, Studio
+from tagcast import client
 from tagcast.library import ConflictError, Library
 
 
@@ -57,7 +57,7 @@ class ArtistCleanupTests(unittest.TestCase):
             self.assertEqual(last["offset"], 100)
             self.assertEqual([row["id"] for row in last["albums"][0]["tracks"]], ["147", "148", "149", "150"])
             studio.library = None
-            with self.assertRaisesRegex(ApiError, "Load the library"):
+            with self.assertRaisesRegex(client.ApiError, "Load the library"):
                 studio.artist_cleanup()
 
     def test_account_change_while_scanning_discards_the_result(self):
@@ -73,7 +73,7 @@ class ArtistCleanupTests(unittest.TestCase):
     @contextmanager
     def _studio(raw):
         with TemporaryDirectory() as directory:
-            studio = Studio(Path(directory))
+            studio = client.Studio(Path(directory))
             studio.client = object()
             studio.library, studio.library_user = Library(raw), "owner"
             with patch.object(studio, "_current", side_effect=AssertionError("No remote reads")):
