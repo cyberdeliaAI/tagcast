@@ -4841,7 +4841,7 @@ test("a superseded play rejection after a user seek cannot fail the newer recove
 test("track changes, Stop, account and library replacement cancel a pending recovery and late replies", async () => {
   for (const change of ['step(1)', 'stopPlayer()', 'state.connection.playback_session="replacement"', 'state.details=new Map(state.details)']) {
     const {p, audio, loads} = await recoveryPage(); let release, signal;
-    p.setFetch((_url, options) => { signal = options.signal; return new Promise(resolve => { release = resolve; }); });
+    p.setFetch((url, options) => { if (url.endsWith("/release-buffer")) return {ok:true}; signal = options.signal; return new Promise(resolve => { release = resolve; }); });
     await failRecovery(p);
     p.run(change); const source = audio.src, index = p.run('player.index');
     release({ok:true,json:async()=>({state:"network"})}); await settle();
@@ -4932,6 +4932,7 @@ test("recovery keeps a sent or uncertain play event single-use and excludes reco
     const {p, audio} = await recoveryPage(); const reports = [];
     p.setFetch((url, options) => {
       if (url.startsWith('/api/playback/stream-status')) return {ok:true,json:async()=>({state:'network'})};
+      if (url.endsWith('/release-buffer')) return {ok:true};
       reports.push(JSON.parse(options.body));
       if (result === 'lost') throw Error('Lost history response');
       return {ok:true,json:async()=>({status:result})};
@@ -4962,7 +4963,7 @@ test("Gapless fallback retains the play event and owns the failure episode witho
 test("shutdown and page departure abort recovery; reopening never resumes it automatically", async () => {
   for (const event of ['pagehide','tagcast-playback-shutdown']) {
     const {p, audio, loads} = await recoveryPage(); let signal;
-    p.setFetch((_url, options) => { signal = options.signal; return new Promise(() => {}); });
+    p.setFetch((url, options) => { if (url.endsWith('/release-buffer')) return {ok:true}; signal = options.signal; return new Promise(() => {}); });
     await failRecovery(p); await p.emitWindow(event);
     assert.equal(signal.aborted, true); assert.equal(audio.paused, true);
     await p.emitWindow('tagcast-playback-resume'); await p.emitWindow('online');
@@ -5031,6 +5032,106 @@ test("Mini Player pause, play and seek commands retain the current occurrence du
   assert.equal(p.run('player.queue[player.index]===recoveryEntry'), true);
 });
 
+test("MP3 stays on its original URL until the user seeks into a completed RAM copy", async () => {
+  const {p, audio, loads} = await recoveryPage();
+  p.run('audio.duration=Infinity;audio.seekable={length:0};audio.currentTime=3;player.queue[0].length=180');
+  const source = audio.src;
+  assert.match(source, /buffer=live$/);
+  let statusReads = 0;
+  p.setFetch((url) => {
+    if (url.startsWith("/api/playback/buffer-status?")) {
+      statusReads++;
+      return {ok:true,json:async()=>({state:statusReads===1 ? "copying" : "ready"})};
+    }
+    return {ok:true,json:async()=>({released:true})};
+  });
+  await audio.emit("playing");
+  p.flushTimers(1000); await settle();
+  assert.equal(audio.src,source); assert.equal(loads(),0);
+  assert.equal(p.run('mp3BufferDuration()'),undefined);
+  p.run('gaplessControls.spacious=true;gaplessRenderTransport()');
+  assert.equal(p.nodes.get('#gapless-play').disabled,false);
+  assert.equal(p.nodes.get('#gapless-position').disabled,true);
+  assert.equal(p.nodes.get('#gapless-time').textContent,"0:03 / 3:00");
+  p.flushTimers(2000); await settle();
+  assert.equal(audio.src,source); assert.equal(loads(),0);
+  assert.equal(p.nodes.get('#gapless-position').disabled,false);
+  p.run('audio.paused=true;audio.playbackRate=1.25;seekSystemPlayback(90)'); await settle();
+  assert.equal(loads(),1);
+  assert.equal(audio.src,source.replace('buffer=live','buffer=ready'));
+  await readyRecovery(p);
+  assert.equal(audio.paused,true); assert.equal(audio.currentTime,90);
+  assert.equal(audio.playbackRate,1.25);
+  assert.equal(p.run('playReporting.watch===recoveryWatch'),true);
+  p.run('stopPlayer()');
+  assert.equal(p.run('mp3PlaybackBuffer'),null);
+  assert.equal(p.requests.filter(r=>r.url==='/api/playback/release-buffer').length,1);
+});
+
+async function bufferedMp3Page(readStatus = "ready") {
+  const {p, audio, loads} = await recoveryPage();
+  p.run('audio.duration=Infinity;audio.seekable={length:0};audio.currentTime=8;player.queue[0].length=180;mp3PlaybackBuffer.ready=true');
+  p.setFetch(url => ({ok:true,json:async()=>url.startsWith("/api/playback/buffer-status?") ? {state:readStatus} : {released:true}}));
+  return {p, audio, loads, source:audio.src};
+}
+
+test("a buffered MP3 seek still completes when the library refreshes before readiness", async () => {
+  const {p, audio, loads} = await bufferedMp3Page();
+  p.run('audio.paused=false;seekSystemPlayback(90)'); await settle();
+  p.run('state.details = new Map(); state.loading = true');
+  await readyRecovery(p);
+  p.flushTimers(10000); await settle();
+  assert.equal(loads(),1);
+  assert.equal(audio.paused,false);
+  assert.equal(audio.currentTime,90);
+  assert.equal(p.run('audioRecovery.pending'),null);
+  assert.equal(p.run('audioRecovery.holdEnded'),false);
+});
+
+test("a vanished MP3 copy is checked before the source changes", async () => {
+  const {p, audio, loads, source} = await bufferedMp3Page("unavailable");
+  p.run('audio.paused=false;seekSystemPlayback(90)'); await settle();
+  assert.equal(loads(),0);
+  assert.equal(audio.src,source);
+  assert.equal(audio.paused,false);
+  assert.equal(audio.currentTime,8);
+  assert.equal(p.run('mp3BufferDuration()'),undefined);
+  assert.equal(p.run('audioRecovery.pending'),null);
+});
+
+test("a racing cache miss restores direct MP3 only once and obeys the current play or pause intent", async () => {
+  for (const wantsPlay of [false,true]) {
+    const {p, audio, loads, source} = await bufferedMp3Page();
+    p.run('audio.paused=false;audio.playbackRate=1.25;seekSystemPlayback(90)'); await settle();
+    assert.equal(audio.src,source.replace('buffer=live','buffer=ready'));
+    if (!wantsPlay) p.run('audioRecoveryIntent(false)');
+    p.run('audio.error={code:4}'); await audio.emit('error');
+    assert.equal(audio.src,source.replace('&buffer=live',''));
+    assert.equal(p.run('audioRecovery.pending.restoring'),true);
+    p.run('audio.duration=Infinity;audio.readyState=4;audio.buffered={length:0}');
+    for (const event of ["loadedmetadata","canplay"]) await audio.emit(event);
+    if (wantsPlay) await audio.emit("playing");
+    p.flushTimers(30000); await settle();
+    assert.equal(audio.currentTime,0);
+    assert.equal(audio.paused,!wantsPlay);
+    assert.equal(audio.playbackRate,1.25);
+    assert.equal(p.run('audioRecovery.pending'),null);
+    assert.equal(p.run('audioRecovery.holdEnded'),false);
+    assert.equal(loads(),2);
+    assert.equal(p.requests.filter(r=>r.url==='/api/playback/release-buffer').length,1);
+  }
+});
+
+test("eviction during a later cached range request returns to the direct source", async () => {
+  const {p, audio, loads, source} = await bufferedMp3Page();
+  p.run('audio.paused=false;seekSystemPlayback(90)'); await settle(); await readyRecovery(p);
+  assert.equal(p.run('audioRecovery.pending'),null);
+  p.run('audio.error={code:4}'); await audio.emit('error');
+  assert.equal(audio.src,source.replace('&buffer=live',''));
+  assert.equal(p.run('audioRecovery.pending.restoring'),true);
+  assert.equal(loads(),2);
+});
+
 test("a transient audio network error recovers the same occurrence and listening event at its saved position", async () => {
   let loads = 0;
   const p = livePage({setupAudio(audio) {
@@ -5043,7 +5144,7 @@ test("a transient audio network error recovers the same occurrence and listening
   p.setPlaybackClock(5000); p.run('audio.currentTime=23'); await audio.emit("timeupdate");
   p.run('globalThis.recoveryWatch=playReporting.watch');
   const reads = [];
-  p.setFetch(url => { reads.push(url); return {ok:true,json:async()=>({state:"network"})}; });
+  p.setFetch(url => { if (!url.endsWith("/release-buffer")) reads.push(url); return {ok:true,json:async()=>({state:"network"})}; });
   p.run('audio.error={code:2}'); await audio.emit("error");
   p.flushTimers(500); await settle();
   assert.equal(reads.length, 1, "Classify the existing failed request without another upstream read");
@@ -10807,7 +10908,7 @@ test('uncertain order saves cannot repeat and stale or cancelled page replies ca
     if(change==='session') p.run('state.connection.playback_session="other-session"');
     release({ok:true,json:async()=>({rows:[]})}); await settle();
     assert.equal(p.run('Boolean(playlistOrderCurrent())'),false);
-    assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+    assert.equal(p.requests.filter(r=>r.url==='/api/playlist' && r.options?.method==='POST').length,0);
   }
 });
 
@@ -11321,6 +11422,19 @@ test('gapless is off by default and only an explicit saved opt-in enables it',()
  assert.equal(page({storage:{'tagcast-gapless-test':'on'}}).run('gaplessTrial.enabled'),true);
  assert.equal(page({storage:{'tagcast-gapless-test':'off'}}).run('gaplessTrial.enabled'),false);
 });
+test("Gapless preference is retained while only Premium Original starts the engine", async () => {
+  const p = livePage(); await settle();
+  p.run('gaplessSupported=()=>true;setGaplessEnabled(true);state.connection.premium=true;lookup.streamQuality="192";playTracks(state.details.get("1"))');
+  assert.equal(p.run('gaplessTrial.active'),null);
+  assert.match(p.run('gaplessSettings()'),/id="gapless-test-enabled" checked disabled/);
+  p.run('state.connection.premium=false;lookup.streamQuality="orig";playCurrent()');
+  assert.equal(p.run('gaplessTrial.active'),null);
+  p.run('state.connection.premium=true;gaplessPrepare=()=>new Promise(()=>{});playCurrent()');
+  assert.equal(p.run('Boolean(gaplessTrial.active)'),true);
+  assert.doesNotMatch(p.run('gaplessSettings()'),/id="gapless-test-enabled" checked disabled/);
+  assert.equal(p.run('localStorage.getItem("tagcast-gapless-test")'),'on');
+});
+
 test('gapless provenance belongs only to albums explicitly played in order',async()=>{
  const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));`);
  assert.equal(p.run('Boolean(gaplessAlbumEntry(player.queue[0]))'),true);
@@ -11505,7 +11619,7 @@ test('fallback during startup preserves the requested autoplay rather than mista
 
 
 test('jumping beyond the prepared horizon discards unrelated cached files before the new read',async()=>{
- const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));const farEntry={...player.queue[2],id:'far-entry'};player.queue.push(farEntry);gaplessAlbumQueue(player.queue,true);const oldEngine={session:state.connection.playback_session,quality:player.quality,controllers:new Set(),current:{entry:player.queue[0],media:{bytes:20}},prepared:new Map([[player.queue[1],{media:{bytes:20}}],[player.queue[2],{media:{bytes:20}}]])};gaplessTrial.active=oldEngine;gaplessTrial.enabled=true;gaplessSupported=()=>true;let seededPrepared=-1;gaplessPrepare=g=>{seededPrepared=g.prepared.size;return Promise.reject(Error('Stop synthetic preparation'));};player.index=player.queue.length-1;gaplessBegin(farEntry,true);`);
+ const p=livePage();await settle();p.run(`playTracks(state.details.get('1'));lookup.streamQuality=player.quality='orig';state.connection.premium=true;const farEntry={...player.queue[2],id:'far-entry'};player.queue.push(farEntry);gaplessAlbumQueue(player.queue,true);const oldEngine={session:state.connection.playback_session,quality:player.quality,controllers:new Set(),current:{entry:player.queue[0],media:{bytes:20}},prepared:new Map([[player.queue[1],{media:{bytes:20}}],[player.queue[2],{media:{bytes:20}}]])};gaplessTrial.active=oldEngine;gaplessTrial.enabled=true;gaplessSupported=()=>true;let seededPrepared=-1;gaplessPrepare=g=>{seededPrepared=g.prepared.size;return Promise.reject(Error('Stop synthetic preparation'));};player.index=player.queue.length-1;gaplessBegin(farEntry,true);`);
  assert.equal(p.run('seededPrepared'),0);await settle();
 });
 

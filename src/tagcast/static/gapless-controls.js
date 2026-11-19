@@ -3,7 +3,7 @@
 // Presentation only: all buttons and seeking retain the same native audio element.
 const gaplessControls = {draft: null, spacious: false};
 function customTransportEnabled() {
-  return Boolean(gaplessTrial.active) || gaplessControls.spacious || Boolean(player.resumePending) || Boolean(audioRecoveryCurrent());
+  return Boolean(gaplessTrial.active) || gaplessControls.spacious || Boolean(player.resumePending) || Boolean(audioRecoveryCurrent()) || Boolean(mp3BufferDuration());
 }
 function transportSelection() {
   const g = gaplessTrial.active;
@@ -31,13 +31,14 @@ function gaplessRenderTransport() {
   }
   const failed = Boolean(audio.error);
   const recovery = audioRecoveryCurrent();
+  const directMp3 = !failed && !g && currentMp3Buffer() && audio.readyState >= 2;
   const ready = Boolean(recovery && Number.isFinite(recovery.duration) && recovery.duration > 0) || !failed && (g ? Boolean(g.started && g.current && g.ready !== false)
-    : Boolean(player.queue[player.index] && Number.isFinite(audio.duration) && audio.duration > 0));
-  const duration = ready ? playerTrackDuration() : Number(player.resumePending ? player.queue[player.index]?.length : g?.first?.length) || 0;
+    : Boolean(player.queue[player.index] && Number.isFinite(playerTrackDuration()) && playerTrackDuration() > 0));
+  const duration = ready ? playerTrackDuration() : Number(player.resumePending || directMp3 ? player.queue[player.index]?.length : g?.first?.length) || 0;
   const draft = gaplessControls.draft || g?.seekIntent;
   const preview = draft && (draft === g?.seekIntent || transportDraftCurrent(draft));
-  const position = Math.max(0, Math.min(duration, preview ? draft.position : ready ? playerTrackPosition() : 0));
-  const waiting = Boolean(recovery && recovery === audioRecovery.pending) || !player.resumePending && !failed && (g ? g.ready === false || Boolean(g.seekIntent) : !ready);
+  const position = Math.max(0, Math.min(duration, preview ? draft.position : ready || directMp3 ? playerTrackPosition() : 0));
+  const waiting = Boolean(recovery && recovery === audioRecovery.pending) || !player.resumePending && !failed && (g ? g.ready === false || Boolean(g.seekIntent) : !ready && !directMp3);
   transport.setAttribute("aria-busy", String(waiting));
   $("#gapless-time").textContent = waiting ? TagcastI18n.text("gaplessSettings.transport.preparing") : `${gaplessClock(position)} / ${gaplessClock(duration)}`;
   $("#gapless-time").title = waiting && g ? gaplessTrial.message : "";
@@ -45,12 +46,12 @@ function gaplessRenderTransport() {
   $(".transport-timeline").title = failed ? TagcastI18n.text("player.error.trackStatus") : "";
   $("#transport-total").textContent = gaplessClock(duration);
   const slider = $("#gapless-position"); slider.max = String(duration); slider.value = String(position);
-  slider.disabled = !ready || !Number.isFinite(duration) || duration <= 0;
+  slider.disabled = !ready || Boolean(recovery?.restoring) || !Number.isFinite(duration) || duration <= 0;
   const title = player.queue[player.index]?.title, times = {position: gaplessClock(position), duration: gaplessClock(duration)};
   slider.setAttribute("aria-label", title ? TagcastI18n.text("gaplessSettings.transport.seekIn", {title}) : TagcastI18n.text("gaplessSettings.transport.seekCurrent"));
   slider.setAttribute("aria-valuetext", TagcastI18n.text(waiting ? "gaplessSettings.transport.preparingAt" : "gaplessSettings.transport.position", times));
   const button = $("#gapless-play"), paused = audioRecoveryPaused();
-  button.disabled = !ready && !player.resumePending && !recovery; button.textContent = paused ? "▶" : "❚❚";
+  button.disabled = !ready && !directMp3 && !player.resumePending && !recovery; button.textContent = paused ? "▶" : "❚❚";
   button.setAttribute("aria-label", TagcastI18n.text(paused ? "gaplessSettings.transport.playTrack" : "gaplessSettings.transport.pauseTrack"));
   button.title = TagcastI18n.text(paused ? "gaplessSettings.transport.play" : "gaplessSettings.transport.pause");
   const muted = audio.muted || audio.volume === 0, label = TagcastI18n.text(muted ? "gaplessSettings.transport.unmute" : "gaplessSettings.transport.mute");

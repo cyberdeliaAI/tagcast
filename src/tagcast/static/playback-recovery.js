@@ -6,9 +6,10 @@ const audioRecovery = {generation: 0, pending: null, failed: null, networkUsed: 
 
 function audioRecoveryCurrent(record = audioRecovery.pending || audioRecovery.failed) {
   return record && !audioRecovery.closing && record.generation === audioRecovery.generation
-    && record.entry === player.queue[player.index] && record.details === state.details
-    && record.session === state.connection.playback_session && record.quality === player.quality
-    && live() && !state.loading && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) ? record : null;
+    && record.entry === player.queue[player.index] && record.session === state.connection.playback_session
+    && record.quality === player.quality
+    && (record.cached ? record.request === player.streamRequest : record.details === state.details && !state.loading)
+    && live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) ? record : null;
 }
 function audioRecoveryPaused() {
   const record = audioRecoveryCurrent();
@@ -19,22 +20,146 @@ function audioRecoveryDuration() { return audioRecoveryCurrent()?.duration; }
 
 function clearAudioRecovery() {
   const record = audioRecovery.pending;
-  if (record) { clearTimeout(record.timer); clearTimeout(record.deadline); record.controller.abort(); }
+  if (record) {
+    clearTimeout(record.timer); clearTimeout(record.deadline); record.controller.abort();
+    if (record.cached) audioRecovery.holdEnded = false;
+  }
   audioRecovery.pending = null; audioRecovery.failed = null;
 }
 function selectAudioRecovery(autoPlay) {
-  clearAudioRecovery(); audioRecovery.generation++;
+  clearAudioRecovery(); clearMp3PlaybackBuffer(); audioRecovery.generation++;
   audioRecovery.holdEnded = false;
   audioRecovery.intent = autoPlay;
   // A Gapless failure has already chosen its one ordinary-source fallback.
   audioRecovery.networkUsed = Boolean(typeof gaplessTrial !== "undefined" && gaplessTrial.bypass);
 }
+let mp3PlaybackBuffer = null;
+
+function currentMp3Buffer(record = mp3PlaybackBuffer) {
+  return record && record === mp3PlaybackBuffer && !audioRecovery.closing
+    && record.entry === player.queue[player.index] && record.session === state.connection.playback_session
+    && record.request === player.streamRequest && record.quality === player.quality && live()
+    && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) ? record : null;
+}
+
+function clearMp3PlaybackBuffer() {
+  const record = mp3PlaybackBuffer;
+  mp3PlaybackBuffer = null;
+  if (!record) return;
+  clearTimeout(record.timer); record.controller.abort();
+  fetch("/api/playback/release-buffer", {method: "POST", keepalive: true,
+    headers: {"Content-Type": "application/json", "X-Tagcast": "1"},
+    body: JSON.stringify({request: record.request, session: record.session})}).catch(() => {});
+}
+
+async function readMp3BufferStatus(record) {
+  const response = await fetch("/api/playback/buffer-status?" + new URLSearchParams({
+    request: record.request, session: record.session
+  }), {signal: record.controller.signal, cache: "no-store"});
+  return response.ok ? (await response.json()).state : "unavailable";
+}
+
+function watchMp3PlaybackBuffer() {
+  const record = currentMp3Buffer();
+  if (!record || record.probing) return;
+  const ranges = audio.seekable;
+  if (Number.isFinite(audio.duration) && (!ranges || ranges.length &&
+      Number.isFinite(ranges.end(ranges.length - 1)) && ranges.end(ranges.length - 1) >= audio.duration - .25)) return;
+  record.probing = true;
+  const deadline = performance.now() + 120000;
+  const check = async () => {
+    if (!currentMp3Buffer(record)) return;
+    try {
+      const status = await readMp3BufferStatus(record);
+      if (!currentMp3Buffer(record)) return;
+      if (status === "ready") {
+        record.ready = true; renderAudioRecovery();
+      } else if (["copying", "unknown"].includes(status) && performance.now() < deadline) {
+        record.timer = setTimeout(check, 2000);
+      }
+    } catch { /* Direct playback can continue without the local copy. */ }
+  };
+  record.timer = setTimeout(check, 1000);
+}
+audio.addEventListener("playing", watchMp3PlaybackBuffer);
+
+function mp3BufferDuration() {
+  const record = currentMp3Buffer();
+  if (!record?.ready || record.used) return undefined;
+  const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Number(record.entry.length);
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+}
+
+function seekBufferedMp3(position) {
+  const buffer = currentMp3Buffer(), duration = mp3BufferDuration();
+  if (!duration || !buffer || audio.error) return false;
+  // Recheck availability without interrupting the audio source. A second player
+  // can claim the single slot after the last readiness observation.
+  buffer.seekPosition = position;
+  if (buffer.checkingSeek) return true;
+  buffer.checkingSeek = true;
+  const useCopy = status => {
+    if (!currentMp3Buffer(buffer)) return;
+    buffer.checkingSeek = false;
+    if (audioRecoveryCurrent() || audio.error) return;
+    if (status !== "ready") {
+      buffer.ready = false; renderAudioRecovery();
+      toast(TagcastI18n.text("player.error.bufferSeekUnavailable"));
+      return;
+    }
+    beginBufferedMp3Seek(buffer, duration);
+  };
+  readMp3BufferStatus(buffer).then(useCopy, () => useCopy("unavailable"));
+  return true;
+}
+
+function bufferedMp3Recovery(buffer, duration, position, wantsPlay) {
+  freezeAudioReporting();
+  const record = {
+    entry: buffer.entry, session: buffer.session, request: buffer.request,
+    quality: buffer.quality, generation: audioRecovery.generation, controller: new AbortController(),
+    duration, position, stage: "loading", wantsPlay, rate: audio.playbackRate || 1, playSerial: 0, cached: true,
+    directSource: buffer.source, resumeAt: Math.max(0, Number(audio.currentTime) || 0)
+  };
+  audioRecovery.holdEnded = true;
+  audioRecovery.pending = record;
+  return record;
+}
+
+function beginBufferedMp3Seek(buffer, duration) {
+  buffer.used = true;
+  const record = bufferedMp3Recovery(buffer, duration, buffer.seekPosition, !audio.paused && !audio.ended);
+  record.deadline = setTimeout(() => restoreDirectMp3(record), 10000);
+  audio.src = buffer.source + "&buffer=ready"; audio.load(); audio.playbackRate = record.rate;
+  renderAudioRecovery();
+}
+
+function restoreDirectMp3(record) {
+  if (audioRecovery.pending !== record) return false;
+  if (!audioRecoveryCurrent(record)) { finishAudioRecovery(record, false); return true; }
+  clearTimeout(record.deadline);
+  clearMp3PlaybackBuffer();
+  record.restoring = true; record.metadata = false; record.playRequested = false; record.playSerial++;
+  record.position = record.resumeAt;
+  record.deadline = setTimeout(() => finishAudioRecovery(record, false), 30000);
+  // Reopen the selected bitrate without claiming another buffer or issuing a retry loop.
+  audio.src = record.directSource; audio.load(); audio.playbackRate = record.rate;
+  renderAudioRecovery();
+  return true;
+}
+
 function normalStreamUrl(track, quality) {
+  clearMp3PlaybackBuffer();
   const base = `/api/stream/${encodeURIComponent(track.id)}?quality=${quality}`;
   const session = state.connection.playback_session;
   player.streamRequest = session ? globalThis.crypto?.randomUUID?.()
     || `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}` : "";
-  return session ? `${base}&request=${encodeURIComponent(player.streamRequest)}&session=${encodeURIComponent(session)}` : base;
+  if (!session) return base;
+  const source = base + "&" + new URLSearchParams({request: player.streamRequest, session});
+  if (quality === "orig") return source;
+  mp3PlaybackBuffer = {entry: track, quality, session, request: player.streamRequest, source,
+    controller: new AbortController(), ready: false, used: false, probing: false, timer: null};
+  return source + "&buffer=live";
 }
 function renderAudioRecovery() {
   if (typeof gaplessRenderTransport === "function") gaplessRenderTransport();
@@ -50,6 +175,7 @@ function finishAudioRecovery(record, success) {
   const current = audioRecoveryCurrent(record);
   clearTimeout(record.timer); clearTimeout(record.deadline); record.controller.abort();
   audioRecovery.pending = null;
+  if (record.cached) audioRecovery.holdEnded = false;
   if (!current) { audioRecovery.failed = null; return; }
   audioRecovery.failed = success ? null : record;
   player.continuing = false;
@@ -58,7 +184,8 @@ function finishAudioRecovery(record, success) {
     freezeAudioReporting(); audio.pause();
   }
   const key = success ? "player.error.recovered" : record.failureKey || "player.error.recoveryFailed";
-  toast(TagcastI18n.text(key));
+  if (success && record.restoring) toast(TagcastI18n.text("player.error.bufferSeekUnavailable"));
+  else if (!record.cached || !success) toast(TagcastI18n.text(key));
   if (visualPlayer.open) setVisualPlayerStatus(success ? null : () => TagcastI18n.text(key));
   renderAudioRecovery();
 }
@@ -76,7 +203,8 @@ function audioRecoveryReady() {
     const serial = ++record.playSerial;
     audio.play().catch(() => {
       if (audioRecoveryCurrent(record) && record.wantsPlay && record.playSerial === serial) {
-        if (player.quality === "orig" && !player.fallback && [3, 4].includes(audio.error?.code)) recoverAudio(audio.error.code);
+        if (record.cached && !record.restoring && audio.error) restoreDirectMp3(record);
+        else if (player.quality === "orig" && !player.fallback && [3, 4].includes(audio.error?.code)) recoverAudio(audio.error.code);
         else finishAudioRecovery(record, false);
       }
     });
@@ -96,6 +224,7 @@ function audioRecoveryPlaying() {
 function audioRecoverySeek(position) {
   const record = audioRecoveryCurrent();
   if (!record) return false;
+  if (record.restoring) return true;
   record.position = Math.max(0, Math.min(record.duration, position));
   const prepared = record === audioRecovery.failed && !audio.error && audio.getAttribute("src") && audio.readyState >= 2;
   if (record === audioRecovery.pending && record.metadata || prepared) {
@@ -121,11 +250,17 @@ function recoverAudio(code, manual = false) {
   const previous = audioRecoveryCurrent();
   if (audioRecovery.pending) {
     if (audioRecovery.pending.stage !== "loading") return true; // Coalesce duplicate error events.
+    if (audioRecovery.pending.cached && !audioRecovery.pending.restoring) return restoreDirectMp3(audioRecovery.pending);
     if (!(player.quality === "orig" && !player.fallback && [3, 4].includes(code))) {
       finishAudioRecovery(audioRecovery.pending, false); return true;
     }
     clearAudioRecovery(); // A confirmed decode failure may still take the existing quality fallback.
   } else if (!manual && audioRecovery.failed) return true;
+  const buffer = currentMp3Buffer();
+  if (!manual && buffer?.used) {
+    const duration = Number.isFinite(audio.duration) ? audio.duration : Number(buffer.entry.length) || 0;
+    return restoreDirectMp3(bufferedMp3Recovery(buffer, duration, 0, audioRecovery.intent && !audio.ended));
+  }
   if (!manual && code !== 2 && code !== 4 && !(code === 3 && player.quality === "orig" && !player.fallback)) return false;
   const entry = player.queue[player.index], session = state.connection.playback_session;
   if (!entry || !session || !player.streamRequest || audioRecovery.closing || !live() || state.loading
@@ -195,7 +330,15 @@ audio.addEventListener("loadedmetadata", () => {
   record.metadata = true;
   record.duration = Number.isFinite(audio.duration) ? audio.duration : record.duration;
   record.position = Math.min(record.position, record.duration || record.position);
-  audio.currentTime = record.position;
+  if (record.restoring) {
+    // The fresh direct response may be lengthless too. Only restore a position
+    // the browser already has, so resuming cannot hang on an unseekable offset.
+    const ranges = audio.buffered;
+    const present = Array.from({length: ranges?.length || 0}, (_, i) => i)
+      .some(i => ranges.start(i) <= record.position && ranges.end(i) > record.position);
+    if (!present) record.position = Number(audio.currentTime) || 0;
+  }
+  if (audio.currentTime !== record.position) audio.currentTime = record.position;
   audioRecoveryReady();
 });
 for (const name of ["seeked", "canplay"]) audio.addEventListener(name, audioRecoveryReady);
@@ -204,7 +347,7 @@ audio.addEventListener("pause", () => {
   if (!audio.error && !audioRecovery.pending) audioRecovery.intent = false;
 });
 function closeAudioRecovery() {
-  audioRecovery.closing = true; clearAudioRecovery(); freezeAudioReporting(); audio.pause();
+  audioRecovery.closing = true; clearAudioRecovery(); clearMp3PlaybackBuffer(); freezeAudioReporting(); audio.pause();
 }
 window.addEventListener("pagehide", closeAudioRecovery);
 window.addEventListener("pageshow", () => { audioRecovery.closing = false; });
