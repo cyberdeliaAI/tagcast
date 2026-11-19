@@ -23,10 +23,14 @@ function gaplessFail(entry, g) { gaplessTrial.failures.set(entry, {quality: g.qu
 function gaplessSupported() {
   return typeof MediaSource !== "undefined" && MediaSource.isTypeSupported('audio/mp4; codecs="flac"');
 }
+function gaplessQualityAvailable(quality = lookup.streamQuality) {
+  return state.connection.premium === true && quality === "orig";
+}
 function gaplessSettings() {
-  return `<section class="settings-section" data-settings-category="playback"><h3>${TagcastI18n.html("gapless.settings.heading")} <span class="settings-mode">${TagcastI18n.html("gapless.settings.mode")}</span></h3><label class="checkline"><input type="checkbox" id="gapless-test-enabled" ${gaplessTrial.enabled ? "checked" : ""} ${gaplessSupported() ? "" : "disabled"}> ${TagcastI18n.html("gapless.settings.enable")}</label><p class="muted">${TagcastI18n.html("gapless.settings.intro")}</p><p class="muted">${TagcastI18n.html("gapless.settings.startup")}</p><details class="settings-details"><summary>${TagcastI18n.html("gapless.settings.details")}</summary><p class="muted">${TagcastI18n.html("gapless.settings.formats")}</p><p class="muted">${TagcastI18n.html("gapless.settings.limits")}</p></details><p id="gapless-test-status" role="status">${escapeHtml(gaplessStatusText())}</p></section>`;
+  return `<section class="settings-section" data-settings-category="playback"><h3>${TagcastI18n.html("gapless.settings.heading")} <span class="settings-mode">${TagcastI18n.html("gapless.settings.mode")}</span></h3><label class="checkline"><input type="checkbox" id="gapless-test-enabled" ${gaplessTrial.enabled ? "checked" : ""} ${gaplessSupported() && gaplessQualityAvailable() ? "" : "disabled"}> ${TagcastI18n.html("gapless.settings.enable")}</label><p class="muted">${TagcastI18n.html("gapless.settings.intro")}</p><p class="muted">${TagcastI18n.html("gapless.settings.startup")}</p><details class="settings-details"><summary>${TagcastI18n.html("gapless.settings.details")}</summary><p class="muted">${TagcastI18n.html("gapless.settings.formats")}</p><p class="muted">${TagcastI18n.html("gapless.settings.limits")}</p></details><p id="gapless-test-status" role="status">${escapeHtml(gaplessStatusText())}</p></section>`;
 }
 function gaplessStatusText() {
+  if (!gaplessQualityAvailable()) return TagcastI18n.text("gapless.status.originalRequired");
   return gaplessSupported() ? gaplessTrial.message : TagcastI18n.text("gapless.status.unsupported");
 }
 function gaplessNoteText(note) {
@@ -35,7 +39,7 @@ function gaplessNoteText(note) {
 // Notes that end with a reason pass the error itself, so its text is translated when shown.
 function gaplessNote(key, params = {}, error = null) {
   const note = gaplessTrial.note = {key, params, error};
-  const status = document.querySelector("#gapless-test-status"); if (status) status.textContent = gaplessTrial.message;
+  const status = document.querySelector("#gapless-test-status"); if (status) status.textContent = gaplessStatusText();
   renderStreamQuality();
   if (typeof gaplessRenderTransport === "function") gaplessRenderTransport();
   if (visualPlayer.open && gaplessTrial.active) setVisualPlayerStatus(() => gaplessNoteText(note));
@@ -358,7 +362,7 @@ function gaplessBegin(entry, autoPlay) {
     if (previous.current?.media) reusable.set(previous.current.entry, previous.current.media);
   }
   gaplessCancel();
-  if (gaplessTrial.bypass || !gaplessTrial.enabled || !gaplessAlbumEntry(entry) || !gaplessSupported() || gaplessFailed(entry)
+  if (gaplessTrial.bypass || !gaplessTrial.enabled || !gaplessQualityAvailable(player.quality) || !gaplessAlbumEntry(entry) || !gaplessSupported() || gaplessFailed(entry)
       || (typeof queueSync !== "undefined" && queueSync.active)) return false;
   audio.pause(); audio.removeAttribute("src"); audio.load(); playReporting.watch = null;
   const g = {session: state.connection.playback_session, quality: player.quality, first: entry, autoPlay, offset: gaplessTrial.offset,
@@ -427,7 +431,7 @@ function setGaplessEnabled(enabled) {
   gaplessNote(gaplessTrial.enabled ? "gapless.status.enabled" : "gapless.status.disabled");
 }
 document.addEventListener("change", event => {
-  if (event.target.id === "gapless-test-enabled") setGaplessEnabled(event.target.checked);
+  if (event.target.id === "gapless-test-enabled" && gaplessQualityAvailable()) setGaplessEnabled(event.target.checked);
 });
 // A language change rewrites the settings status line from the stored note. Player and
 // Now playing labels repaint in player.js; nothing is prepared, fetched or restarted here.

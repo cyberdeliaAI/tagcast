@@ -55,7 +55,8 @@ function firstSetupStepMarkup() {
     <button type="button" class="button primary" data-setup-connect>${setupLabel(connected ? "setup.continue" : "connection.ready.signIn")}</button>
     ${connected ? "" : `<button type="button" class="button" data-setup-demo>${setupLabel("setup.demo")}</button>`}`;
   if (firstSetup.step === 1) return `${premium ? `<label class="field">${setupLabel("settings.streaming.quality")}<select id="setup-quality">${["96", "128", "192", "256", "320", "orig"].map(value => `<option value="${value}" ${d.quality === value ? "selected" : ""}>${value === "orig" ? TagcastI18n.html("settings.streaming.original") : TagcastI18n.html("settings.streaming.mp3", {quality: value})}</option>`).join("")}</select></label>` : `<p>${setupLabel(connected ? "settings.streaming.freeQuality" : "setup.connectQuality")}</p>`}
-    <p class="muted">${setupLabel("settings.streaming.note")}</p><label class="checkline"><input id="setup-gapless" type="checkbox" ${d.gapless ? "checked" : ""} ${gaplessSupported() ? "" : "disabled"}>${setupLabel("gapless.settings.enable")}</label><p class="muted">${setupLabel("gapless.settings.intro")}</p>`;
+    <p class="muted">${setupLabel("settings.streaming.note")}</p><label class="checkline"><input id="setup-gapless" type="checkbox" ${d.gapless ? "checked" : ""} ${gaplessSupported() && gaplessQualityAvailable(d.quality) ? "" : "disabled"}>${setupLabel("gapless.settings.enable")}</label><p class="muted">${setupLabel("gapless.settings.intro")}</p>
+    <p class="muted" id="setup-gapless-quality-note" ${gaplessQualityAvailable(d.quality) ? "hidden" : ""}>${setupLabel("gapless.status.originalRequired")}</p>`;
   if (firstSetup.step === 2) return setupSelect("lyrics", "playbackLyrics.settings.source", [["native", "playbackLyrics.settings.native"], ["native-first", "playbackLyrics.settings.nativeFirst"], ["unison-first", "playbackLyrics.settings.unisonFirst"]], d.lyrics)
     + `<p class="muted">${setupLabel("playbackLyrics.settings.online")}</p><p class="muted">${setupLabel("playbackLyrics.settings.timing")}</p>`;
   if (firstSetup.step === 3) return `<label class="field">${setupLabel("settings.language.label")}<select id="setup-language"><option value="auto" ${d.language === "auto" ? "selected" : ""}>${TagcastI18n.html("page.language.automatic")}</option>${TagcastI18n.languages().map(l => `<option value="${l.tag}" ${d.language === l.tag ? "selected" : ""}>${escapeHtml(l.name)}</option>`).join("")}</select></label>`
@@ -88,7 +89,7 @@ function openFirstSetup(automatic = false) {
 }
 function captureFirstSetup() {
   const d = firstSetupDraft(), value = id => $("#setup-" + id).value, checked = id => $("#setup-" + id).checked;
-  if (firstSetup.step === 1) { if (state.connection.connected && state.connection.premium) d.quality = $("#setup-quality")?.value ?? d.quality; if (gaplessSupported()) d.gapless = checked("gapless"); }
+  if (firstSetup.step === 1) { if (state.connection.connected && state.connection.premium) d.quality = $("#setup-quality")?.value ?? d.quality; if (gaplessSupported() && gaplessQualityAvailable(d.quality)) d.gapless = checked("gapless"); }
   if (firstSetup.step === 2) d.lyrics = value("lyrics");
   if (firstSetup.step === 3) for (const key of ["language", "appearance", "palette", "browsing", "view"]) d[key] = value(key);
   if (firstSetup.step === 4) { d.record = checked("record"); d.sync = checked("sync"); }
@@ -113,7 +114,7 @@ async function saveFirstSetup() {
       if (draft.quality !== baseline.quality && state.connection.premium !== true) throw Error(TagcastI18n.text("setup.changed"));
       if (draft.quality !== baseline.quality) await persistSettings({stream_quality: draft.quality});
       if (firstSetup.scope !== firstSetupScope()) throw Error(TagcastI18n.text("setup.changed"));
-      if (draft.gapless !== baseline.gapless) setGaplessEnabled(draft.gapless);
+      if (gaplessSupported() && gaplessQualityAvailable(draft.quality) && draft.gapless !== baseline.gapless) setGaplessEnabled(draft.gapless);
     } else if (step === 2) {
       if (!["native", "native-first", "unison-first"].includes(draft.lyrics)) throw Error(TagcastI18n.text("setup.invalid"));
       if (draft.lyrics !== baseline.lyrics) setPlaybackLyricsMode(draft.lyrics);
@@ -168,6 +169,14 @@ document.addEventListener("click", event => {
   if (target.closest("[data-setup-skip]")) { firstSetup.drafts.delete(firstSetup.step); firstSetup.baselines.delete(firstSetup.step); firstSetupAdvance(firstSetup.step + 1); }
   if (target.closest("[data-setup-next]")) saveFirstSetup();
   if (target.closest("[data-setup-settings]")) { pauseFirstSetup(true); openSettings("interface"); }
+});
+document.addEventListener("change", event => {
+  if (event.target.id === "setup-quality") {
+    const input = $("#setup-gapless");
+    const original = gaplessQualityAvailable(event.target.value);
+    input.disabled = !gaplessSupported() || !original;
+    $("#setup-gapless-quality-note").hidden = original;
+  }
 });
 TagcastI18n.subscribe(() => {
   // Never rebuild inputs/drafts for a language change.

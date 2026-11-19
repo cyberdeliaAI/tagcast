@@ -181,7 +181,7 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 function seekSystemPlayback(position, fast = false) {
   if (!systemPlaybackTrack() || !Number.isFinite(position) || !Number.isFinite(playerTrackDuration()) || playerTrackDuration() <= 0) return;
   const target = Math.max(0, Math.min(playerTrackDuration(), position));
-  if (audioRecoverySeek(target)) { syncSystemPlayback(); return; }
+  if (audioRecoverySeek(target) || seekBufferedMp3(target)) { syncSystemPlayback(); return; }
   if (typeof gaplessSeek === "function") gaplessSeek(target, fast);
   else if (fast && typeof audio.fastSeek === "function") audio.fastSeek(target);
   else audio.currentTime = target;
