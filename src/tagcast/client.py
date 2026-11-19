@@ -50,6 +50,7 @@ from .library import (
 )
 from .lyrics import Lyrics
 from .metadata_export import MetadataExport
+from .mp3_playback import REQUEST_ID, Mp3Buffer
 from .music_uploads import MusicUploads, upload_authorized
 from .playlist_import import PlaylistImport
 from .queue_sync import QUEUE_SCOPES, QueueSync
@@ -446,6 +447,7 @@ class Studio:
         self.play_lock = threading.Lock()
         self.play_events = {}
         self.playback_session = ""
+        self.mp3_buffer = Mp3Buffer()
         self.stream_results = {}  # Bounded, session-scoped observations; no audio or URLs.
         self.client = None
         self.library = None
@@ -618,6 +620,7 @@ class Studio:
             self.trash_emptying.reviews.clear()
             self.playback_session = secrets.token_hex(16)
             self.stream_results.clear()
+            self.mp3_buffer.clear()
             if save:
                 self._save_tokens(token_set, client)
 
@@ -632,6 +635,7 @@ class Studio:
             self.trash_emptying.reviews.clear()
             self.playback_session = ""
             self.stream_results.clear()
+            self.mp3_buffer.clear()
             self._device_gen += 1
             self._device_request_id = None
             self._device_stop.set()
@@ -1730,6 +1734,38 @@ class Studio:
                 raise NotConnected("The playback session changed. Connect again.")
             result = self.stream_results.get(request_id)
             return {"state": result[1] if result and result[0] == session and result[2] > time.monotonic() else "unknown"}
+
+    def _mp3_session(self, session):
+        self._require_client()
+        if not session or session != self.playback_session:
+            raise NotConnected("The playback session changed. Connect again.")
+
+    def begin_mp3_buffer(self, key, order):
+        with self.lock:
+            if not self.client or key[0] != self.playback_session:
+                return False
+            return self.mp3_buffer.begin(key, order)
+
+    def read_mp3_buffer(self, key):
+        with self.lock:
+            self._mp3_session(key[0])
+            return self.mp3_buffer.read(key)
+
+    def mp3_buffer_status(self, request, session):
+        if not isinstance(request, str) or not REQUEST_ID.fullmatch(request):
+            raise ApiError("Invalid playback request.")
+        with self.lock:
+            self._mp3_session(session)
+            return {"state": self.mp3_buffer.status(session, request)}
+
+    def release_mp3_buffer(self, body):
+        request, session = body.get("request"), body.get("session")
+        if not isinstance(request, str) or not REQUEST_ID.fullmatch(request):
+            raise ApiError("Invalid playback request.")
+        with self.lock:
+            if self.client and session and session == self.playback_session:
+                self.mp3_buffer.release(session, request)
+        return {"released": True}
 
     def stream(self, track_id, range_header=None, quality=None, *, request_id=None, playback_session=None):
         """Open a track's audio from iBroadcast. Returns (response, mime); close the response."""

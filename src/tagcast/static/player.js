@@ -8,6 +8,7 @@ const audio = $("#audio");
 const playerTrackPosition = () => (typeof audioRecoveryPosition === "function" ? audioRecoveryPosition() : undefined)
   ?? (typeof gaplessPosition === "function" ? gaplessPosition() : Number(audio.currentTime) || 0);
 const playerTrackDuration = () => (typeof audioRecoveryDuration === "function" ? audioRecoveryDuration() : undefined)
+  ?? (typeof mp3BufferDuration === "function" ? mp3BufferDuration() : undefined)
   ?? (typeof gaplessDuration === "function" ? gaplessDuration() : audio.duration);
 const visualPlayer = {open: false, native: false, request: 0, focus: null, inert: [], artwork: null, status: null};
 const playReporting = {enabled: lookup.recordPlays === true, watch: null, error: ""};
@@ -779,6 +780,7 @@ function step(delta) {
       player.queue = player.queue.filter(t => !t.upNext); player.index = 0; playCurrent(); return;
     }
     player.index = player.queue.length;
+    clearMp3PlaybackBuffer();
     if (typeof gaplessCancel === "function") gaplessCancel();
     audio.pause(); audio.removeAttribute("src"); audio.load();
     markPlaying(); renderStreamQuality(); return;
@@ -787,7 +789,7 @@ function step(delta) {
 }
 
 function stopPlayer() {
-  if (typeof clearAudioRecovery === "function") { clearAudioRecovery(); audioRecovery.generation++; }
+  if (typeof clearAudioRecovery === "function") { clearAudioRecovery(); clearMp3PlaybackBuffer(); audioRecovery.generation++; }
   if (typeof gaplessCancel === "function") gaplessCancel();
   if (typeof closePlaybackOutput === "function") closePlaybackOutput(false);
   closeQueueActions();

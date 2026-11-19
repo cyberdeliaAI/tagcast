@@ -26,6 +26,7 @@ from .client import ApiError, NotConnected, Studio, UncertainWrite
 from .content_security import BASE_POLICY, content_policy
 from .errors import error_payload
 from .library import ConflictError, LibraryError
+from .mp3_playback import buffer_key, buffered_range, needs_buffer
 from .server_lifecycle import RequestDrain, ServerClosing, drain_server
 from .sources import SourceError
 from .track_comparison import view as track_comparison
@@ -202,10 +203,13 @@ class Handler(SimpleHTTPRequestHandler):
     def _get(self, url):
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path.startswith("/api/stream/"):
-            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"), query.get("request"), query.get("session"))
+            self._stream(url.path.rsplit("/", 1)[1], query.get("quality"), query.get("request"),
+                         query.get("session"), buffer=query.get("buffer"))
             return
         if url.path == "/api/playback/stream-status":
             return self._run(lambda: self.studio.stream_status(query.get("request"), query.get("session")))
+        if url.path == "/api/playback/buffer-status":
+            return self._run(lambda: self.studio.mp3_buffer_status(query.get("request"), query.get("session")))
         if url.path == "/api/app":
             self._json(200, {"application": "Tagcast", "version": __version__,
                              "desktop_protocol": 1,
@@ -378,6 +382,7 @@ class Handler(SimpleHTTPRequestHandler):
             "/api/duplicate-cleanup/stop": lambda b: self.studio.duplicate_cleanup.cancel(b.get("id")),
             "/api/favourite": self.studio.favourite,
             "/api/play": self.studio.record_play,
+            "/api/playback/release-buffer": lambda body: self.studio.release_mp3_buffer(body),
             "/api/album-rating": self.studio.collections.rate_album,
             "/api/artist-rating": self.studio.collections.rate_artist,
             "/api/album-favourite": self.studio.collections.favourite_album,
@@ -456,29 +461,72 @@ class Handler(SimpleHTTPRequestHandler):
                     raise failure
                 self._run(failed)
 
-    def _stream(self, track_id, quality=None, request_id=None, session=None):
+    def _serve_buffered_mp3(self, audio, request_range):
+        size = len(audio)
+        status, start, end = buffered_range(request_range, size)
+        self.send_response(status)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(end - start))
+        self.send_header("Cache-Control", "no-store")
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end - 1}/{size}")
+        elif status == 416:
+            self.send_header("Content-Range", f"bytes */{size}")
+        self.end_headers()
+        if end > start:
+            try:
+                self.wfile.write(audio[start:end])
+            except OSError:
+                self.close_connection = True
+
+    def _stream(self, track_id, quality=None, request_id=None, session=None, *, buffer=None):
         """Pass a track's audio through, so the access token never reaches the page."""
+        request_range = self.headers.get("Range")
+        key = buffer_key(session, request_id, track_id, quality) if buffer in ("live", "ready") else None
+        order = None
         try:
+            if buffer == "ready":
+                audio = self.studio.read_mp3_buffer(key) if key else None
+                if audio is None:
+                    self._json(404, {"error": "The local playback buffer is unavailable."})
+                else:
+                    self._serve_buffered_mp3(audio, request_range)
+                return
+            if key and request_range in (None, "bytes=0-"):
+                order = self.studio.mp3_buffer.arrive()
             tracking = {"request_id": request_id, "playback_session": session} if request_id else {}
-            upstream, mime = self.studio.stream(track_id, self.headers.get("Range"), quality, **tracking)
+            upstream, mime = self.studio.stream(track_id, request_range, quality, **tracking)
         except NotConnected as error:
             self._json(401, {"error": str(error)})
             return
         except (ApiError, LibraryError) as error:
+            if order is not None:
+                self.studio.mp3_buffer.skip(key)
             self._json(404 if isinstance(error, LibraryError) else 502, {"error": str(error)})
             return
         reader = getattr(self.server, "stream_reader", None)
         with upstream, reader(self.connection, upstream) if reader else nullcontext():
+            copying = False
+            if order is not None:
+                if needs_buffer(upstream, mime, request_range):
+                    copying = self.studio.begin_mp3_buffer(key, order)
+                else:
+                    self.studio.mp3_buffer.skip(key)
             self.send_response(upstream.status_code)
             self.send_header("Content-Type", upstream.headers.get("Content-Type") or mime or "audio/mpeg")
             for name in ("Content-Length", "Content-Range", "Accept-Ranges"):
                 if upstream.headers.get(name):
                     self.send_header(name, upstream.headers[name])
             self.send_header("Cache-Control", "no-store")
-            self.end_headers()
+            complete = False
             try:
-                for chunk in upstream.iter_content(65536):
+                self.end_headers()
+                for chunk in upstream.iter_content(16384 if copying else 65536):
                     self.wfile.write(chunk)
+                    if copying:
+                        copying = self.studio.mp3_buffer.append(key, chunk)
+                complete = True
             except requests.RequestException as error:
                 state = "security" if isinstance(error, requests.exceptions.SSLError) else "network"
                 self.studio.record_stream_result(request_id, session, state)
@@ -487,6 +535,9 @@ class Handler(SimpleHTTPRequestHandler):
                 # A cancellation is not itself a network diagnosis; retain the
                 # known header outcome for the browser's own MediaError code.
                 self.studio.record_stream_result(request_id, session, "available")
+            finally:
+                if copying:
+                    self.studio.mp3_buffer.finish(key, complete=complete)
 
     def _callback(self, query):
         error = (query.get("error_description") or query.get("error") or [""])[0]

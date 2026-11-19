@@ -160,3 +160,118 @@ class StreamRecoveryTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+    def test_chunked_mp3_starts_before_completion_and_seek_uses_only_the_local_copy(self):
+        continuation = threading.Event()
+
+        class Response:
+            status_code, ok = 200, True
+            headers = {"Content-Type": "audio/mpeg", "Accept-Ranges": "none",
+                       "Transfer-Encoding": "chunked"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                pass
+
+            def iter_content(self, _size):
+                yield b"first"
+                if not continuation.wait(5):
+                    raise AssertionError("Client could not read the first chunk before completion")
+                yield b"second"
+
+        self.transport.open_stream.return_value = Response()
+        handler = type("BufferedStreamHandler", (app.Handler,), {"studio": self.studio, "port": 0})
+        server = app.Server(("127.0.0.1", 0), partial(handler, directory=str(app.STATIC)))
+        handler.port = server.server_port
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+
+        def request(path, *, method="GET", headers=None, body=None):
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+            connection.request(method, path, body=body, headers=headers or {})
+            self.addCleanup(connection.close)
+            return connection.getresponse()
+
+        query = f"request={self.request}&session={self.session}"
+        stream = f"/api/stream/1?quality=128&{query}"
+        status = f"/api/playback/buffer-status?{query}"
+        try:
+            response = request(stream + "&buffer=live", headers={"Range": "bytes=0-"})
+            self.assertEqual(response.status, 200)
+            self.assertIsNone(response.getheader("Content-Length"))
+            self.assertEqual(response.read(5), b"first")
+            self.assertEqual(json.loads(request(status).read()), {"state": "copying"})
+            self.assertEqual(request(stream + "&buffer=ready").status, 404)
+            continuation.set()
+            self.assertEqual(response.read(), b"second")
+            self.assertEqual(json.loads(request(status).read()), {"state": "ready"})
+
+            class SeekableResponse(Response):
+                status_code = 206
+                headers = {"Content-Type": "audio/mpeg", "Content-Length": "6",
+                           "Content-Range": "bytes 0-5/6", "Accept-Ranges": "bytes"}
+
+                def iter_content(self, _size):
+                    yield b"direct"
+
+            self.transport.open_stream.return_value = SeekableResponse()
+            other_request = "another-player-12345"
+            other = request(stream.replace(self.request, other_request) + "&buffer=live",
+                            headers={"Range": "bytes=0-"})
+            self.assertEqual(other.status, 206)
+            self.assertEqual(other.read(), b"direct")
+            self.assertEqual(json.loads(request(status).read()), {"state": "ready"})
+            other_status = request(status.replace(self.request, other_request))
+            self.assertEqual(json.loads(other_status.read()), {"state": "unavailable"})
+            response = request(stream + "&buffer=ready", headers={"Range": "bytes=4-7"})
+            self.assertEqual(response.status, 206)
+            self.assertEqual(response.getheader("Content-Range"), "bytes 4-7/11")
+            self.assertEqual(response.read(), b"tsec")
+            response = request(stream + "&buffer=ready", headers={"Range": "bytes=50-"})
+            self.assertEqual(response.status, 416)
+            self.assertEqual(response.getheader("Content-Range"), "bytes */11")
+            self.assertEqual(request(stream.replace("/stream/1", "/stream/2") + "&buffer=ready").status, 404)
+            # test_client may reload the client module after Handler imported this class.
+            with patch.object(app, "NotConnected", client.NotConnected):
+                self.assertEqual(request(stream.replace(self.session, "old-session") + "&buffer=ready").status, 401)
+            self.assertEqual(request(status, headers={"Sec-Fetch-Site": "cross-site"}).status, 403)
+            release = "/api/playback/release-buffer"
+            body = json.dumps({"request": self.request, "session": self.session})
+            headers = {"Content-Type": "application/json"}
+            self.assertEqual(request(release, method="POST", headers=headers, body=body).status, 403)
+            headers["X-Tagcast"] = "1"
+            self.assertEqual(json.loads(request(release, method="POST", headers=headers, body=body).read()),
+                             {"released": True})
+            self.assertEqual(request(stream + "&buffer=ready").status, 404)
+            self.assertEqual(self.transport.open_stream.call_count, 2)
+        finally:
+            continuation.set()
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_abandoned_or_oversized_copy_cannot_be_published(self):
+        from tagcast import mp3_playback
+
+        buffer = self.studio.mp3_buffer
+        old = (self.session, self.request, "1", "128")
+        new = (self.session, "second-stream-request", "2", "128")
+        old_order = buffer.arrive()
+        slow_order = buffer.arrive()
+        self.assertTrue(buffer.begin(old, old_order))
+        self.assertTrue(buffer.append(old, b"first"))
+        self.assertTrue(buffer.begin(new, buffer.arrive()))
+        self.assertFalse(buffer.begin(old, buffer.arrive()))
+        slower = (self.session, "third-stream-request", "3", "128")
+        self.assertFalse(buffer.begin(slower, slow_order))
+        self.assertEqual(buffer.status(*slower[:2]), "unavailable")
+        self.assertFalse(buffer.append(old, b"late"))
+        buffer.finish(old, complete=True)
+        self.assertIsNone(buffer.read(old))
+        with patch.object(mp3_playback, "MAX_BYTES", 5):
+            self.assertFalse(buffer.append(new, b"too large"))
+        buffer.finish(new, complete=True)
+        self.assertIsNone(buffer.read(new))
+        self.assertEqual(buffer.status(*new[:2]), "unavailable")
