@@ -1,15 +1,21 @@
 "use strict";
 
 // Presentation only: the native audio element remains the playback authority.
+const visualDiscStyles = ["cover", "cd", "vinyl"];
 const visualDisc = {style: storedVisualDiscStyle(), waiting: false, label: ""};
 
 function storedVisualDiscStyle() {
-  try { return localStorage.getItem("tagcast-player-artwork") === "cd" ? "cd" : "cover"; }
+  try {
+    const style = localStorage.getItem("tagcast-player-artwork");
+    return visualDiscStyles.includes(style) ? style : "cover";
+  }
   catch { return "cover"; }
 }
 
 function visualDiscSettings() {
-  return `<label>${TagcastI18n.html("player.disc.setting")} <select id="player-artwork-style" aria-describedby="player-artwork-note"><option value="cover" ${visualDisc.style === "cover" ? "selected" : ""}>${TagcastI18n.html("player.disc.cover")}</option><option value="cd" ${visualDisc.style === "cd" ? "selected" : ""}>${TagcastI18n.html("player.disc.cd")}</option></select></label><p class="muted" id="player-artwork-note">${TagcastI18n.html("player.disc.note")}</p>`;
+  const options = visualDiscStyles.map(style =>
+    `<option value="${style}" ${visualDisc.style === style ? "selected" : ""}>${TagcastI18n.html(`player.disc.${style}`)}</option>`);
+  return `<label>${TagcastI18n.html("player.disc.setting")} <select id="player-artwork-style" aria-describedby="player-artwork-note">${options.join("")}</select></label><p class="muted" id="player-artwork-note">${TagcastI18n.html("player.disc.note")}</p>`;
 }
 
 // Bound decorative lettering only; the original metadata remains unchanged.
@@ -50,30 +56,41 @@ function expandedTextColours(link, paper, accent) {
   return {text, backing: paper};
 }
 
+function renderVinylTonearm() {
+  if (visualDisc.style !== "vinyl" || !visualPlayer.open) return;
+  const position = playerTrackPosition(), duration = playerTrackDuration();
+  const progress = Number.isFinite(position) && Number.isFinite(duration) && duration > 0
+    ? Math.max(0, Math.min(1, position / duration)) : 0;
+  $("#visual-player").style.setProperty("--vinyl-tonearm-angle", `${24 * progress}deg`);
+}
+
 function renderVisualDisc() {
-  const stage = $("#visual-player"), cd = visualDisc.style === "cd";
+  const stage = $("#visual-player"), cd = visualDisc.style === "cd", vinyl = visualDisc.style === "vinyl";
+  const effect = typeof musicVisualizationActive === "function" && musicVisualizationActive();
   renderVisualDiscLabel();
   stage.classList.toggle("cd-view", cd);
-  stage.classList.toggle("disc-spinning", cd && visualPlayer.open && !document.hidden
+  stage.classList.toggle("vinyl-view", vinyl);
+  stage.classList.toggle("disc-spinning", (cd || vinyl) && !effect && visualPlayer.open && !document.hidden
     && !visualDisc.waiting && !audio.paused && !audio.ended && !audio.seeking
     && audio.readyState >= 3);
+  renderVinylTonearm();
   const palette = TagcastThemes.active() || {base: document.documentElement.dataset.palette || "forest"};
   const colours = TagcastThemes.colours(palette, TagcastThemes.mode()), accent = colours.accent;
   const readable = expandedTextColours(colours.link, colours.paper, accent);
   stage.style.setProperty("--expanded-link", readable.text);
   stage.style.setProperty("--expanded-source-backing", readable.backing);
-  const effect = typeof musicVisualizationActive === "function" && musicVisualizationActive();
   const button = $("#visual-player-disc-toggle");
   button.setAttribute("aria-pressed", String(cd && !effect));
   button.textContent = TagcastI18n.text("player.disc.cdTab");
   button.setAttribute("aria-label", TagcastI18n.text("player.disc.toggle"));
-  $("#visual-player-cover-toggle").setAttribute("aria-pressed", String(!cd && !effect));
+  $("#visual-player-cover-toggle").setAttribute("aria-pressed", String(visualDisc.style === "cover" && !effect));
+  $("#visual-player-vinyl-toggle").setAttribute("aria-pressed", String(vinyl && !effect));
   const setting = $("#player-artwork-style");
   if (setting) setting.value = visualDisc.style;
 }
 
 function setVisualDiscStyle(style) {
-  if (!["cover", "cd"].includes(style)) return;
+  if (!visualDiscStyles.includes(style)) return;
   visualDisc.style = style;
   try { localStorage.setItem("tagcast-player-artwork", style); } catch { /* private window */ }
   renderVisualDisc();
@@ -83,6 +100,7 @@ $("#visual-player-disc-toggle").addEventListener("click", () => {
   setVisualDiscStyle("cd");
 });
 $("#visual-player-cover-toggle").addEventListener("click", () => setVisualDiscStyle("cover"));
+$("#visual-player-vinyl-toggle").addEventListener("click", () => setVisualDiscStyle("vinyl"));
 document.addEventListener("change", event => {
   if (event.target.id === "player-artwork-style") setVisualDiscStyle(event.target.value);
 });
@@ -93,6 +111,7 @@ for (const name of ["playing", "canplay", "seeked"]) {
   audio.addEventListener(name, () => { visualDisc.waiting = false; renderVisualDisc(); });
 }
 for (const name of ["play", "pause"]) audio.addEventListener(name, renderVisualDisc);
+for (const name of ["timeupdate", "durationchange"]) audio.addEventListener(name, renderVinylTonearm);
 // A network 'stalled' event alone does not stop audio already in the buffer.
 document.addEventListener("visibilitychange", renderVisualDisc);
 document.addEventListener("tagcast-theme-change", renderVisualDisc);

@@ -3,7 +3,7 @@
 // Online sources: year, genre and cover suggestions side by side, like a tag editor's
 // "tag sources". A suggestion only fills the form; saving still goes through the review.
 
-const lookup = {sources: [], auto: true, discoverLastfm: true, recordPlays: false, streamQuality: "128", queueSync: false, settingsRevision: 0, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
+const lookup = {sources: [], auto: true, discoverSource: "listenbrainz", recordPlays: false, streamQuality: "128", queueSync: false, settingsRevision: 0, keysFromEnv: [], results: new Map(), tokens: {}, album: null};
 const sourceLabel = name => lookup.sources.find(s => s.name === name)?.label || name;
 
 function applyLookupSources(sources) {
@@ -162,16 +162,13 @@ function settingsContentMarkup() {
   const freeAccount = live() && state.connection.premium === false;
   const immediate = `<span class="settings-mode">${TagcastI18n.html("settings.mode.immediate")}</span>`;
   const saveRequired = `<span class="settings-mode">${TagcastI18n.html("settings.mode.saveRequired")}</span>`;
-  return `${typeof firstSetupSettings === "function" ? firstSetupSettings() : ""}${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="interface-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.notice.heading")} ${immediate}</h3>
-    <p class="muted" data-notice-description>${TagcastI18n.html(libraryNotice.visible ? "settings.notice.visible" : "settings.notice.hidden")}</p>
-    <button type="button" class="button small" data-show-notice ${libraryNotice.visible ? "disabled" : ""}>${TagcastI18n.html("settings.notice.show")}</button>
-    </section><section class="metadata-editing-settings" data-settings-category="interface"><h3>${TagcastI18n.html("settings.editing.heading")} ${immediate}</h3>
+  return `${typeof firstSetupSettings === "function" ? firstSetupSettings() : ""}${typeof languageSettingsSection === "function" ? languageSettingsSection() : ""}<section class="metadata-editing-settings" data-settings-category="library"><h3>${TagcastI18n.html("settings.editing.heading")} ${immediate}</h3>
     <label class="checkline"><input type="checkbox" id="apply-track-year-default" ${metadataEditingDefaults.applyYearToTracks ? "checked" : ""}> ${TagcastI18n.html("settings.editing.trackYear")}</label>
     <p class="muted">${TagcastI18n.html("settings.editing.trackYearNote")}</p>
     <p class="muted">${TagcastI18n.html("settings.editing.trackYearScope")}</p>
-    </section><section class="interface-settings" id="settings-multi-disc-info" data-settings-category="interface"><h3>${TagcastI18n.html("combined.settings.heading")}</h3>
+    </section><section id="settings-multi-disc-info" data-settings-category="library"><h3>${TagcastI18n.html("combined.settings.heading")}</h3>
     <p class="muted">${TagcastI18n.html("combined.settings.recommend")}</p>
-    <p class="muted">${TagcastI18n.html("combined.settings.limits")}</p>
+    <p id="settings-multi-disc-limits" class="muted">${TagcastI18n.html("combined.settings.limits")}</p>
     </section><section class="player-display-settings" data-settings-category="playback"><h3>${TagcastI18n.html("settings.display.heading")} ${immediate}</h3>
     <label class="checkline"><input type="checkbox" data-player-display="quality" ${playerDisplay.quality ? "checked" : ""}> ${TagcastI18n.html("settings.display.quality")}</label>
     <label class="checkline"><input type="checkbox" data-player-display="track-artists" ${playerDisplay.trackArtists ? "checked" : ""}> ${TagcastI18n.html("settings.display.trackArtists")}</label>
@@ -206,11 +203,12 @@ function settingsContentMarkup() {
     <p class="muted">${TagcastI18n.html("settings.devices.note")}</p>
     <button type="button" class="button small" data-queue-reconnect>${TagcastI18n.html("settings.devices.reconnect")}</button></section>
     <section class="artist-discover-settings" data-settings-category="discovery"><h3>${TagcastI18n.html("settings.discover.heading")} ${saveRequired}</h3>
-    <label class="checkline"><input type="checkbox" name="discover_lastfm" ${lookup.discoverLastfm ? "checked" : ""}> ${TagcastI18n.html("settings.discover.lastfm")}</label>
+    <label class="field">${TagcastI18n.html("settings.discover.source")} <select name="discover_source">${["local", "listenbrainz", "lastfm"].map(source => `<option value="${source}" ${lookup.discoverSource === source ? "selected" : ""}>${source === "local" ? TagcastI18n.html("settings.discover.local") : escapeHtml(discoverSourceLabel(source))}</option>`).join("")}</select></label>
     <p class="muted">${TagcastI18n.html("settings.discover.note")}</p>
     <p class="muted">${TagcastI18n.html("settings.discover.requirements")}</p>
-    ${lookup.discoverLastfm ? `<p class="muted">${TagcastI18n.html("discover.privacyLastfm")}</p>` : ""}</section>
-    <section class="playback-settings" data-settings-category="discovery"><h3>1001 Albums ${saveRequired}</h3>
+    <p class="muted">${TagcastI18n.html("discover.privacyListenBrainz")}</p>
+    <p class="muted">${TagcastI18n.html("discover.privacyLastfm")}</p></section>
+    <section data-settings-category="discovery"><h3>1001 Albums ${saveRequired}</h3>
     <label class="checkline"><input type="checkbox" name="album_guide" ${albumGuide.enabled ? "checked" : ""}> ${TagcastI18n.html("settings.guide.enable")}</label>
     <p class="muted">${TagcastI18n.html("settings.guide.note")}</p>
     <button type="button" class="button small" data-guide-open ${albumGuide.enabled ? "" : "disabled"}>${TagcastI18n.html("settings.guide.open")}</button></section>
@@ -276,7 +274,7 @@ async function saveSettings(form, clear) {
   if (form.elements.queue_sync) body.queue_sync = form.elements.queue_sync.checked;
   if (form.elements.record_plays) body.record_plays = form.elements.record_plays.checked;
   if (form.elements.album_guide) body.album_guide = form.elements.album_guide.checked;
-  if (form.elements.discover_lastfm) body.discover_lastfm = form.elements.discover_lastfm.checked;
+  if (form.elements.discover_source) body.discover_source = form.elements.discover_source.value;
   if (form.elements.artist_biographies) body.artist_biographies = form.elements.artist_biographies.checked;
   if (form.elements.album_information) body.album_information = form.elements.album_information.checked;
   for (const input of form.querySelectorAll("input[type=password]")) if (input.value.trim()) body[input.name] = input.value.trim();
@@ -298,7 +296,6 @@ async function saveSettings(form, clear) {
 }
 
 document.addEventListener("click", event => {
-  if (event.target.closest("[data-show-notice]")) { setLibraryNotice(true); event.target.disabled = true; const description = document.querySelector("[data-notice-description]"); if (description) description.textContent = TagcastI18n.text("settings.notice.visible"); return; }
   const year = event.target.closest("[data-use-year]");
   if (year) { setFormField("year", year.dataset.useYear); return; }
   const genre = event.target.closest("[data-use-genre]"), all = event.target.closest("[data-use-genres]");

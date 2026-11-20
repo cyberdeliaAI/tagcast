@@ -34,7 +34,7 @@ function updateMusicUploadPermission() {
 // Static labels carry data-i18n, so they follow a language change without rebuilding
 // the Settings form; the permission note is updated by updateMusicUploadPermission().
 function musicUploadsSettingsPanel() {
-  return `<section class="playback-settings music-upload-settings" data-settings-category="data"><h3 data-i18n="uploads.settings.heading">${TagcastI18n.html("uploads.settings.heading")} <span class="settings-mode" data-i18n="uploads.settings.mode">${TagcastI18n.html("uploads.settings.mode")}</span></h3>
+  return `<section class="music-upload-settings" data-settings-category="data"><h3 data-i18n="uploads.settings.heading">${TagcastI18n.html("uploads.settings.heading")} <span class="settings-mode" data-i18n="uploads.settings.mode">${TagcastI18n.html("uploads.settings.mode")}</span></h3>
     <label class="checkline" data-i18n="uploads.settings.enable"><input type="checkbox" name="music_uploads" ${musicUploadsView.enabled ? "checked" : ""}> ${TagcastI18n.html("uploads.settings.enable")}</label>
     <p class="muted" data-i18n="uploads.settings.note">${TagcastI18n.html("uploads.settings.note")}</p>
     <p class="muted" id="music-upload-permission-note">${escapeHtml(musicUploadPermissionNote())}</p>

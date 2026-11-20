@@ -153,8 +153,7 @@ html[data-library-notice="hidden"] #library-notice{display:none}
 .notice-dismiss{border:0;background:transparent;color:inherit;flex-shrink:0;font-size:20px;line-height:1;padding:2px 5px;min-width:28px;min-height:28px;border-radius:4px}
 .notice-dismiss:hover{background:var(--palette-surface,#fff)}
 .playback-settings,.source-settings,.history-settings{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
-.interface-settings h3,.playback-settings h3,.source-settings h3,.history-settings h3{margin:0 0 14px}
-.interface-settings{margin-top:16px}
+.playback-settings h3,.source-settings h3,.history-settings h3{margin:0 0 14px}
 .settings-dialog{width:min(640px,94vw)}
 .setting-row{display:grid;grid-template-columns:1fr minmax(180px,240px) auto;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
 .setting-row strong{font-size:13px}
@@ -1026,9 +1025,9 @@ body.help-open{overflow:hidden}
 #settings-content summary{cursor:pointer;font-size:12px;font-weight:600}
 #settings-content .setting-row{grid-template-columns:minmax(0,1fr) minmax(130px,210px) auto}
 #settings-content .setting-row input{width:100%;background:var(--palette-surface,#fff);color:var(--ink)}
-.settings-save-bar{position:sticky;bottom:10px;padding:14px 18px;border:1px solid var(--line);border-radius:8px;background:var(--sidebar);color:var(--palette-shell-ink,var(--accent));box-shadow:0 4px 18px #0002;z-index:2}
-.settings-save-bar p{margin:0 0 10px;max-width:none!important}
-.settings-save-bar>div{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.settings-save-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;position:sticky;bottom:10px;padding:14px 18px;border:1px solid var(--line);border-radius:8px;background:var(--sidebar);color:var(--palette-shell-ink,var(--accent));box-shadow:0 4px 18px #0002;z-index:2}
+#settings-content .settings-save-bar p{flex:1 1 15rem;min-width:0;margin:0;max-width:none;overflow-wrap:anywhere}
+.settings-save-bar>div{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;max-width:100%;margin-inline-start:auto}
 body.has-player .settings-save-bar{bottom:calc(var(--player-clearance,112px) + 10px)}
 .settings-editor-return{margin-bottom:16px}
 @media(max-width:1024px){.settings-layout{grid-template-columns:150px minmax(0,1fr);gap:20px}#settings-nav a{padding:10px;font-size:12px}#settings-content .setting-row{grid-template-columns:minmax(0,1fr) auto}#settings-content .setting-row>div{grid-column:1/-1}}

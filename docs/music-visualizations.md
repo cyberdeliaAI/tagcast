@@ -1,10 +1,13 @@
 # Optional music visualizations
 
-The expanded player can replace the cover/CD presentation with an audio-reactive
+The expanded player can replace the artwork with an audio-reactive
 visualization. This is off by default. Choose **Visualization** in the expanded
 player or **Settings → Playback → Fullscreen visualizations**. The preference is
-local to the current browser/app profile. Cover or CD returns to the existing
-artwork presentation. Lyrics can remain visible alongside an effect.
+local to the current browser/app profile. Choose Cover, CD or Vinyl to return to
+artwork. Vinyl places a record behind the cover and uses the tonearm to show
+progress through the track. The artwork choice is remembered on the current
+profile and can also be set under **Settings → Playback → Now playing artwork**.
+Lyrics can remain visible alongside an effect.
 
 Available presentations:
 

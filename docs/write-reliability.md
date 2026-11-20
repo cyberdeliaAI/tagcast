@@ -62,7 +62,7 @@ for the complete call-site inventory, regressions and unresolved append contract
 
 ## Reviewed iBroadcast trash emptying (development)
 
-**Settings → Data & exports → Review iBroadcast trash…** explicitly checks the remote library
+**Settings → Data & files → Review iBroadcast trash…** explicitly checks the remote library
 revision and shows only tracks whose native trashed flag is set, 50 per page. Nothing is
 selected or sent when Settings opens. Empty trash produces an ordinary empty
 state; reviews above 10,000 tracks or with unreadable metadata are blocked.

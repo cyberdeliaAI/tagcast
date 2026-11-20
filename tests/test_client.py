@@ -1012,7 +1012,8 @@ class ClientTests(unittest.TestCase):
 
     def test_discovery_defaults_to_lastfm_and_persists_local_only_without_provider_reads(self):
         studio = client.Studio(self.home)
-        self.assertTrue(studio.settings()["discover_lastfm"])
+        self.assertEqual(studio.settings()["discover_source"], "listenbrainz")
+        self.assertFalse(studio.settings()["discover_lastfm"])
         with patch.object(studio.discover.lastfm, "read", side_effect=AssertionError("No lookup on save")):
             settings = studio.save_settings({"lastfm_api_key": "keep-key", "discover_lastfm": False})
             self.assertFalse(settings["discover_lastfm"])

@@ -35,9 +35,9 @@ The application consists of a Python server and a plain JavaScript frontend.
   daily persistent cache, independent of iBroadcast credentials.
 - `src/tagcast/album_guide.py`: opt-in, explicitly started comparison with the bundled
   cleaned 1001 Albums reference; account-scoped local results, no iBroadcast requests.
-- `src/tagcast/discover.py`: explicitly requested artist discovery from loaded genres/ratings
-  or opt-in Last.fm similarity, with snapshot-local indexes and strict local artist matching.
-  `discover_lastfm.py` owns bounded explicit public reads, pacing, RAM caching and source errors.
+- `src/tagcast/discover.py`: explicitly requested artist discovery from loaded genres/ratings,
+  Last.fm or ListenBrainz, with snapshot-local indexes and strict local artist matching.
+  `discover_lastfm.py` and `discover_listenbrainz.py` own bounded public reads and RAM caches.
 - `src/tagcast/collections.py`: local account-scoped album favourites, native album ratings, private playlists, reviewed
   append/replace operations, and bounded metadata for explicitly chosen queued tracks.
 - `src/tagcast/playlist_import.py`: bounded local CSV drafts, explicit column mapping, conservative
@@ -77,7 +77,7 @@ The application consists of a Python server and a plain JavaScript frontend.
   or owner replacement. Before the first audio request, refresh MD5 membership and
   skip newly present reviewed files; a failed check sends no audio. A machine-readable
   storage limit stops the queue, preserving uncertainty and checking earlier results.
-- `src/tagcast/trash_emptying.py`: explicit Settings → Data & exports review of the current iBroadcast
+- `src/tagcast/trash_emptying.py`: explicit Settings → Data & files review of the current iBroadcast
   trash, paged at 50 tracks and capped at 10,000 reviewed tracks. Check the remote
   revision before review/save; reuse only a matching known account/combine library,
   downloading on changed/unknown revisions. Keep fresh downloaded read-back even
@@ -410,7 +410,7 @@ their shared browsing/player state; a fast local response can otherwise race the
 - `create_artist` is not automatically retried after temporary failures.
 - Album year edits change track years only when the user chooses that option.
   Individual track edits take precedence over album-wide edits.
-  Settings → Interface → Metadata editing has an off-by-default browser/profile-local
+  Settings → Library & editing → Metadata editing has an off-by-default browser/profile-local
   `tagcast-apply-album-year-to-tracks` preference. It only preselects the existing
   track-year checkbox in new album drafts; per-draft overrides and normal review/save
   guards remain. Bulk selection starts unchecked until Release year is enabled;
@@ -995,20 +995,26 @@ their shared browsing/player state; a fast local response can otherwise race the
   ratings, audio or the queue and never fetches track details or biographies. Migrate
   the former separate album-favourites shortcut without losing access when either old
   shortcut was visible. Arrow keys and Home/End select tabs; all work on touch.
-- Artist Discover starts only on an explicit artist-page action or Refresh. Last.fm
-  is the default (`discover_lastfm`, on by default); Settings → Discovery can disable it
-  for local genres only. Saving the preference never requests; it retires cached/pending
-  results, and the server rejects explicit Last.fm requests while disabled. Last.fm reuses the
+- Artist Discover starts only on an explicit artist-page action or Refresh. Settings → Discovery
+  offers local genres, ListenBrainz and Last.fm. Default to ListenBrainz with no saved choice.
+  Resolve existing `discover_lastfm` preferences when `discover_source` is absent.
+  Saving a preference retires cached/pending results and makes
+  no provider requests. The server only uses the enabled online choice. Last.fm reuses the
   enabled Sources & keys API key server-side and sends only the chosen full artist name
   to artist.getSimilar (autocorrect off). Match up to 100 returned artists strictly with
   unique local NFC/case/whitespace identities; never strip punctuation, accents or version
   text, infer aliases or use fuzzy MBIDs. Provider similarity ranks artists; native ratings
   choose their albums. Healthy results without local matches fall back to the existing
-  genres with a visible notice. Errors/missing keys remain errors, never silent fallback.
+  genres with a visible notice. Last.fm errors and missing keys remain visible errors.
   Keep Last.fm attribution, catalogue and terms links; do not claim album/audio similarity.
   discover_lastfm.py uses one fixed HTTPS endpoint, no redirects/cookies/auth/netrc, shared
   pacing and bounded responses/timeouts. No automatic retries; respect origin cache headers
   and Retry-After. Keep at most 64 public RAM entries / 2 MiB / six hours and obey no-store.
+  ListenBrainz uses a bounded, exact MusicBrainz name search followed by a keyless ListenBrainz
+  Radio read using only the resolved public artist ID. Skip disabled MusicBrainz, ambiguous
+  names or native artist groups. Missing results, blocked lookups and provider errors fall back
+  to labelled local genres. Keep provider attribution and related MusicBrainz artist links,
+  at most 30 returned artists and 64 RAM entries with the shorter provider cache lifetime.
   Keep six results and one album per represented artist, with native additional credits
   and conservative disc grouping. Artist ID zero identifies compilations, never a name.
   The local index belongs to its Library; coalesce outside Studio.lock. Reject replaced
@@ -1017,7 +1023,7 @@ their shared browsing/player state; a fast local response can otherwise race the
   timers or automatic refresh. Opening pages, Back and translation make no new requests.
   Do not refresh the library, scan audio, write metadata or persist discovery reports.
   Explicit Open/Play/Queue and artwork retain existing routes, permissions and guards.
-  Keep the Last.fm privacy explanation in Settings → Discovery and Help, without a
+  Keep both providers' privacy explanations in Settings → Discovery and Help, without a
   repeated paragraph below the artist-page disclosure. Similar in your library uses
   a native details/summary alongside About this artist, with the active source label.
   Refresh stays inside the content, outside summary. New artists start closed; only
