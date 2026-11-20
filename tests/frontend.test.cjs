@@ -546,7 +546,7 @@ test('startup settings wait for all deferred feature scripts before applying pre
   assert.equal(p.run('artistProfile.enabled'),true);
   assert.equal(p.run('albumInformation.enabled'),true);
   assert.equal(p.run('albumGuide.enabled'),true);
-  assert.equal(p.run('lookup.discoverLastfm'),false);
+  assert.equal(p.run('discoverSource()'),'local');
 });
 
 test("new installations sign in with a code without client ID setup", async () => {
@@ -2151,7 +2151,8 @@ test("reloading the library refreshes the current player's rating without restar
 test('library loading has a global indeterminate indicator independent of the dismissible notice and playback', async () => {
   const p=livePage(); await settle();
   const albums=p.json('state.albums'), details=p.json('[...state.details.values()]');
-  p.run('playTracks(state.details.get("1")); setLibraryNotice(false)');
+  p.run('playTracks(state.details.get("1"))');
+  await p.nodes.get("#notice-dismiss").emit("click");
   const before=p.run('JSON.stringify({queue:player.queue,src:audio.src})');
   let release;
   p.setFetch(url=>url.startsWith('/api/library')?new Promise(resolve=>{release=resolve;}):{ok:true,json:async()=>url.startsWith('/api/playlists')?{playlists:[],total:0}:{albums:details}});
@@ -3387,6 +3388,24 @@ test("Random sort button is unavailable for loading, empty and single-album resu
     const before=p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])");
     await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue:"random"}}});
     assert.equal(p.run("JSON.stringify([albumOrder.ids,state.page,$('#sort').value])"),before);
+  }
+});
+
+test("Album sort buttons return to the results start from deep continuous scroll", async () => {
+  const p = page(); await settle();
+  p.run(`state.albums=Array.from({length:230},(_,i)=>({...state.albums[0],id:String(i+1000),year:1900+i}));
+    albumContinuous.setEnabled(true);$("#sort").value="newest";setArtist(null);
+    albumContinuous.more();albumContinuous.more();window.scrollY=3200`);
+  const controls = {style: {position: ""},
+    getBoundingClientRect: () => ({top: controls.style.position === "static" ? 260 - p.run("window.scrollY") : 0})};
+  p.nodes.get("#albums-page").querySelector = selector => selector === ".toolbar, .sticky-search" ? controls : null;
+  for (const sortValue of ["random", "year"]) {
+    assert.equal(p.run("albumContinuous.count"),180);
+    await p.click({"[data-sort-kind]":{dataset:{sortKind:"albums",sortValue}}});
+    assert.equal(p.nodes.get("#sort").value,sortValue);
+    assert.equal(p.run("window.scrollY"),260);
+    assert.equal(p.run("albumContinuous.count"),60);
+    p.run("albumContinuous.more();albumContinuous.more();window.scrollY=3200");
   }
 });
 
@@ -5302,7 +5321,7 @@ test("a late initial settings response cannot undo a newly saved playback prefer
   assert.equal(p.run("playReporting.enabled"), true);
 });
 
-test("the library info banner can be hidden, remembered and restored without requests or stopping audio", async () => {
+test("dismissing the library info banner persists without requests or stopping audio", async () => {
   const storage = {}, p = livePage(); await settle();
   p.run('playTracks(state.details.get("1")); updateChrome()');
   const source = p.nodes.get("#audio").src, requests = p.requests.length;
@@ -5310,9 +5329,7 @@ test("the library info banner can be hidden, remembered and restored without req
   assert.equal(p.nodes.get("#library-notice").hidden, true);
   p.run('updateChrome(); openSettings()');
   assert.equal(p.nodes.get("#library-notice").hidden, true);
-  assert.match(p.nodes.get("#settings-content").innerHTML, /Show library information banner/);
-  await p.click({"[data-show-notice]": {}});
-  assert.equal(p.nodes.get("#library-notice").hidden, false);
+  assert.doesNotMatch(p.nodes.get("#settings-content").innerHTML, /data-show-notice|Library information banner/);
   assert.equal(p.nodes.get("#audio").src, source);
   assert.equal(p.nodes.get("#audio").paused, false);
   assert.equal(p.requests.length, requests);
@@ -5885,27 +5902,28 @@ test("CD artwork is opt-in, profile-local and does not dirty server settings", a
   assert.equal(invalid.run('storedVisualDiscStyle()'), 'cover');
 });
 
-test("CD view toggles keep the same audio, queue, artwork and lyrics requests", async () => {
+test("Artwork view toggles keep the same audio, queue, artwork and lyrics requests", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1"));audio.currentTime=39;audio.volume=.4;audio.playbackRate=1.25;audio.readyState=3;openVisualPlayer()');
   const before = playbackState(p), requests = p.requests.length;
   const art = p.nodes.get('#visual-player-art'), writes = [];
   let imageSrc = art.src;
   Object.defineProperty(art, 'src', {configurable:true,get(){return imageSrc;},set(value){imageSrc=value;writes.push(value);}});
-  for (const style of ['cd','cd','cover','cover']) {
-    await p.nodes.get(`#visual-player-${style === 'cd' ? 'disc' : 'cover'}-toggle`).emit('click');
+  for (const style of ['cd','vinyl','cd','cover','vinyl','cover']) {
+    await p.nodes.get(`#visual-player-${style === 'cd' ? 'disc' : style}-toggle`).emit('click');
     assert.equal(p.run('visualDisc.style'),style);
     assert.equal(p.nodes.get('#visual-player-cover-toggle').getAttribute('aria-pressed'),String(style === 'cover'));
     assert.equal(p.nodes.get('#visual-player-disc-toggle').getAttribute('aria-pressed'),String(style === 'cd'));
+    assert.equal(p.nodes.get('#visual-player-vinyl-toggle').getAttribute('aria-pressed'),String(style === 'vinyl'));
   }
   assert.deepEqual(playbackState(p), before);
-  assert.deepEqual(writes, [], 'Both presentations reuse the already loaded cover');
+  assert.deepEqual(writes, [], 'All presentations reuse the already loaded cover');
   assert.equal(p.requests.length, requests, 'Changing artwork style does not fetch lyrics or metadata');
   await p.nodes.get('#visual-player-disc-toggle').emit('click');
   assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), true);
   p.run('playbackLyricsView.open=true;renderVisualPlayer()'); await settle();
   const lyricRequests = p.requests.length;
-  await p.nodes.get('#visual-player-disc-toggle').emit('click');
+  await p.nodes.get('#visual-player-vinyl-toggle').emit('click');
   await p.nodes.get('#visual-player-disc-toggle').emit('click');
   assert.equal(p.nodes.get('.visual-player-content').classList.contains('lyrics-visible'), true);
   assert.equal(p.run('playbackLyricsView.open'), true);
@@ -5914,6 +5932,40 @@ test("CD view toggles keep the same audio, queue, artwork and lyrics requests", 
   p.run('hideVisualPlayer()');
   assert.equal(p.nodes.get('#visual-player').classList.contains('disc-spinning'), false);
   assert.equal(p.nodes.get('#audio').paused, false, 'Closing the presentation does not pause playback');
+});
+
+test("Vinyl restores a manual preference and follows the track clock through seeks and pauses", async () => {
+  const storage = {'tagcast-player-artwork':'vinyl'}, p = livePage({storage}); await settle();
+  const stage = p.nodes.get('#visual-player'), a = p.nodes.get('#audio'), angles = [];
+  const setProperty = stage.style.setProperty.bind(stage.style);
+  stage.style.setProperty = (name, value) => {
+    if (name === '--vinyl-tonearm-angle') angles.push(value);
+    setProperty(name, value);
+  };
+  p.run('openSettings("playback")');
+  assert.match(p.nodes.get('#settings-content').innerHTML, /<option value="vinyl" selected>Vinyl<\/option>/);
+  p.run('closeSettings(); playTracks(state.details.get("1")); audio.readyState=3; openVisualPlayer()');
+  assert.equal(stage.classList.contains('vinyl-view'), true);
+  assert.equal(stage.classList.contains('disc-spinning'), true);
+  a.duration = 120;
+  a.currentTime = 30;
+  await a.emit('durationchange');
+  assert.equal(angles.at(-1), '6deg');
+  a.pause();
+  assert.equal(stage.classList.contains('disc-spinning'), false);
+  a.currentTime = 90;
+  await a.emit('seeked');
+  assert.equal(angles.at(-1), '18deg');
+  a.currentTime = 121;
+  await a.emit('timeupdate');
+  assert.equal(angles.at(-1), '24deg');
+  a.duration = Infinity;
+  await a.emit('durationchange');
+  assert.equal(angles.at(-1), '0deg');
+  p.run('hideVisualPlayer()');
+  const angleWrites = angles.length;
+  await a.emit('timeupdate');
+  assert.equal(angles.length, angleWrites);
 });
 
 test("CD lettering uses bounded loaded metadata as text, updates per track and preserves playback", async () => {
@@ -11471,14 +11523,35 @@ test('a backward seek cancels pending forward preparation without shortening the
  assert.equal(p.nodes.get('#audio').currentTime,10);assert.equal(p.run('gaplessTrial.active.seekIntent'),null);
 });
 
-test('Settings is a routed page with seven categories and preserves existing preference keys', async()=>{
+test('Settings is a routed page and preserves existing preference keys', async()=>{
  const p=page({hash:'#/settings/playback',storage:{'tagcast-player-view':'window','tagcast-player-quality':'hidden','tagcast-gapless-test':'on'}});await settle();
  assert.equal(p.run('state.screen'),'settings');assert.equal(p.run('settingsView.category'),'playback');
  const html=readFileSync(path.join(staticDir,'index.html'),'utf8');assert.match(html,/<section id="settings"/);assert.doesNotMatch(html,/<dialog id="settings"/);
- assert.equal(p.run('Object.keys(SETTINGS_CATEGORIES).length'),7);
+ assert.match(p.nodes.get('#settings-nav').innerHTML, /href="#\/settings\/library"[^>]*>Library &amp; editing/);
  assert.equal(p.run('visualPlayerMode'),'window');assert.equal(p.run('playerDisplay.quality'),false);assert.equal(p.run('gaplessTrial.enabled'),true);
  assert.match(p.nodes.get('#settings-content').innerHTML,/Supported audio and limitations/);
  assert.equal(p.requests.filter(r=>r.options?.method==='POST').length,0);
+});
+
+test("library editing and file settings are grouped by task, with active combined-mode advice", async () => {
+  const p = page({hash: "#/settings/library"}); await settle();
+  assert.equal(p.run("settingsView.category"), "library");
+  p.run('lookup.sources = [{name:"musicbrainz",label:"MusicBrainz",enabled:true}]; renderSettingsContent()');
+  const markup = p.nodes.get("#settings-content").innerHTML;
+  assert.match(markup, /<section class="metadata-editing-settings" data-settings-category="library">/);
+  assert.match(markup, /id="settings-multi-disc-info" data-settings-category="library"/);
+  assert.match(markup, /class="music-upload-settings" data-settings-category="data"/);
+  assert.match(p.nodes.get("#settings-nav").innerHTML, /Data &amp; files/);
+  assert.equal(p.nodes.get("#settings-save-bar").hidden, true);
+
+  const advice = p.nodes.get("#settings-multi-disc-limits");
+  assert.equal(advice.className, "muted");
+  p.run('state.mode="live"; state.connection.connected=true; state.connection.combine_sets=true; updateChrome()');
+  assert.equal(advice.className, "warn-box");
+  assert.match(advice.textContent, /Album information and track numbers are read-only/);
+  p.run('state.connection.combine_sets=false; updateChrome()');
+  assert.equal(advice.className, "muted");
+  assert.match(advice.textContent, /^With combining on/);
 });
 test('Settings category Back and Forward retain one pending server draft and never affect playback',async()=>{
  const p=livePage();await settle();p.run('playTracks(state.details.get("1"));openSettings("sources");');
@@ -14520,7 +14593,7 @@ test('local artist discovery stays hidden outside live named artist pages and bo
 
 async function lastfmDiscoverPage() {
   const setup=await localDiscoverPage({local:false}),{p,data,selection}=setup;
-  p.run('lookup.sources=[{name:"lastfm",enabled:true}];renderArtistDiscover()');
+  p.run('applyDiscoverSettings({discover_lastfm:true});lookup.sources=[{name:"lastfm",enabled:true}];renderArtistDiscover()');
   Object.assign(data,{source:'lastfm',requested_source:'lastfm',fallback:false,expires_in:60});
   Object.assign(data.albums[0],{shared_genres:[],related_artist:'Related Artist',lastfm_url:'https://www.last.fm/music/Related%20Artist'});
   p.setFetch((url,options)=>{
@@ -14530,9 +14603,9 @@ async function lastfmDiscoverPage() {
   return setup;
 }
 
-test('Last.fm is the default without a page selector and starts only on explicit Discover',async()=>{
+test('Last.fm remains available without a page selector and starts only on explicit Discover',async()=>{
   const {p}=await lastfmDiscoverPage();
-  assert.equal(p.run('lookup.discoverLastfm'),true);
+  assert.equal(p.run('discoverSource()'),'lastfm');
   assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/<select[^>]*id="artist-discover-source"/);
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,0);
   assert.doesNotMatch(readFileSync(path.join(staticDir,'index.html'),'utf8'),/artist-discover-privacy/);
@@ -14611,23 +14684,23 @@ test('Discovery settings save local-only mode, retire cached results and never s
   await p.run('loadArtistDiscover()');
   assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Related Artist/);
   p.run('openSettings("discovery")');
-  assert.match(p.nodes.get('#settings-content').innerHTML,/name="discover_lastfm" checked/);
+  assert.match(p.nodes.get('#settings-content').innerHTML,/<select name="discover_source">.*<option value="lastfm" selected>/);
   let finish;
   p.setFetch((url,options)=>{
     assert.equal(url,'/api/settings');
-    assert.equal(JSON.parse(options.body).discover_lastfm,false);
+    assert.equal(JSON.parse(options.body).discover_source,'local');
     return new Promise(resolve=>{finish=resolve});
   });
-  const saved=p.run('saveSettings({elements:{auto_lookup:{checked:true},auto_updates:{checked:false},discover_lastfm:{checked:false}},querySelectorAll:()=>[]})');
+  const saved=p.run('saveSettings({elements:{auto_lookup:{checked:true},auto_updates:{checked:false},discover_source:{value:"local"}},querySelectorAll:()=>[]})');
   await settle();
-  assert.equal(p.run('lookup.discoverLastfm'),true,'An unsaved preference cannot change discovery');
-  finish({ok:true,json:async()=>({sources:[{name:'lastfm',enabled:true}],discover_lastfm:false,auto_lookup:true})});
+  assert.equal(p.run('discoverSource()'),'lastfm','An unsaved preference cannot change discovery');
+  finish({ok:true,json:async()=>({sources:[{name:'lastfm',enabled:true}],discover_source:'local',auto_lookup:true})});
   await saved;
-  assert.equal(p.run('lookup.discoverLastfm'),false);
+  assert.equal(p.run('discoverSource()'),'local');
   assert.equal(p.run('artistDiscover.entries.size'),0,'Retire completed online results too');
   assert.equal(p.requests.filter(r=>r.url==='/api/discover').length,1);
   p.run('showScreen("albums");render()');
-  assert.doesNotMatch(p.run('settingsContentMarkup()'),/Your library and listening history stay local/);
+  assert.match(p.run('settingsContentMarkup()'),/value="local" selected>Local genres/);
   assert.equal(p.nodes.get('#artist-discover-setup').hidden,true);
   assert.equal(p.nodes.get('#artist-discover-results').hidden,true);
   Object.assign(data,{source:'local',requested_source:'local',fallback:false,expires_in:null});
@@ -14641,6 +14714,38 @@ test('Discovery settings save local-only mode, retire cached results and never s
   assert.match(p.nodes.get('#artist-discover-cards').innerHTML,/Shared genres: Rock/);
   assert.equal(p.nodes.get('#artist-discover-attribution').hidden,true);
   assert.equal(p.nodes.get('#artist-discover-fallback').hidden,true);
+});
+
+test('ListenBrainz is the default and shows attributed library results only after a click', async () => {
+  const {p, selection, data} = await localDiscoverPage({local:false});
+  assert.equal(p.run('discoverSource()'), 'listenbrainz');
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'ListenBrainz');
+  assert.equal(p.requests.filter(r => r.url === '/api/discover').length, 0);
+  const mbid = '01234567-89ab-4def-8123-456789abcdef';
+  const local = {...data, requested_source: 'listenbrainz', source: 'local', fallback: true, expires_in: 0};
+  const online = {...local, source: 'listenbrainz', fallback: false, expires_in: 60, albums: [{
+    ...data.albums[0], shared_genres: [], related_artist: 'Fixture Artist', related_artist_mbid: mbid
+  }]};
+  let response = online;
+  p.setFetch((url, options) => {
+    assert.equal(url, '/api/discover');
+    assert.deepEqual(JSON.parse(options.body), {...selection, source: 'listenbrainz'});
+    return {ok: true, json: async () => response};
+  });
+  await p.nodes.get('#artist-discover-toggle').emit('click');
+  await settle();
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML, new RegExp('https://musicbrainz.org/artist/' + mbid));
+  assert.equal(p.nodes.get('#artist-discover-listenbrainz-attribution').hidden, false);
+  assert.equal(p.nodes.get('#artist-discover-attribution').hidden, true);
+  response = {...online, albums: [{...online.albums[0], related_artist_mbid: '../unsafe'}]};
+  await p.run('loadArtistDiscover()');
+  assert.match(p.nodes.get('#artist-discover-status').textContent, /discovery response could not be read/i);
+  response = local;
+  await p.run('loadArtistDiscover()');
+  assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Your library');
+  assert.match(p.nodes.get('#artist-discover-fallback').textContent, /ListenBrainz.*local suggestions/);
+  assert.match(p.nodes.get('#artist-discover-cards').innerHTML, /Shared genres: Art Rock/);
+  assert.equal(p.nodes.get('#artist-discover-listenbrainz-attribution').hidden, true);
 });
 
 test('Last.fm source changes and saved settings reject late results without automatic fallback',async()=>{
@@ -14691,7 +14796,8 @@ test('Last.fm refuses untrusted catalogue links and responses for a different so
 test('combined album advice is independent, dismissible per account and restored after switching off', async () => {
   const storage = {}, p = page({storage}); await settle();
   const before = p.requests.length;
-  p.run('state.mode="live"; state.connection.connected=true; state.connection.combine_sets=true; combinedNoticeProfile="account-a"; setLibraryNotice(false); updateChrome()');
+  p.run('state.mode="live"; state.connection.connected=true; state.connection.combine_sets=true; combinedNoticeProfile="account-a"; updateChrome()');
+  await p.nodes.get("#notice-dismiss").emit("click");
   assert.equal(p.nodes.get('#library-notice').hidden, true);
   assert.equal(p.nodes.get('#combined-albums-notice').hidden, false);
   await p.nodes.get('#combined-notice-dismiss').emit('click');
@@ -14772,6 +14878,7 @@ test('similar music is a native disclosure with a separate refresh and source la
   assert.doesNotMatch(summary, /<button|artist-discover-refresh/);
   assert.doesNotMatch(disclosure, /artist-discover-heading|<h2/);
   const {p, data, selection} = await localDiscoverPage({local:false});
+  p.run('applyDiscoverSettings({discover_source:"lastfm"}); renderArtistDiscover()');
   assert.equal(p.nodes.get('#artist-discover').open, false);
   assert.equal(p.nodes.get('#artist-discover-source').textContent, 'Last.fm');
   await p.nodes.get('#artist-discover').emit('toggle');

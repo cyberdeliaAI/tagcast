@@ -10,7 +10,7 @@ in both iBroadcast and Tagcast. This does not establish every error/recovery beh
 
 ## Using Uploads
 
-1. Open **Settings → Data & exports → Music uploads**, enable the option and **Save changes**.
+1. Open **Settings → Data & files → Music uploads**, enable the option and **Save changes**.
 2. If upload permission has not been granted, choose **Approve upload permission…**
    and sign in again on iBroadcast. This adds the optional `user.upload` scope; it
    does not upload music or reset preferences. After approval the button is hidden

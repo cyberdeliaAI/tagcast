@@ -2,17 +2,18 @@
 
 On an **Album artists** page, choose an artist, then open **Similar in your library**.
 It is a disclosure alongside **About this artist**, with the active source next to
-the title: **Last.fm**, or **Your library** for local results. **Refresh suggestions**
+the title: **Last.fm**, **ListenBrainz**, or **Your library** for local results. **Refresh suggestions**
 is inside the open section. New artist pages start closed; returning to a previously
 opened artist can restore completed results without another request.
-Tagcast tries **Last.fm** first. Up to six albums from other artists in the loaded
+Up to six albums from other artists in the loaded
 iBroadcast library appear above the album toolbar. Cards
 reuse Open album/artist, Play and Queue. Viewing results changes neither playback,
 selection nor Change history. The feature is unavailable in the demo or during a
 library load. There is no per-artist source selector. Under **Settings → Discovery →
-Similar music**, turn off **Use Last.fm for similar artists** to use only local genres,
-then save. The preference defaults to on and persists in local `config.json` across
-restarts. Saving or opening a page never starts discovery; only explicitly opening
+Similar music**, choose **Local genres**, **ListenBrainz** or **Last.fm** and save.
+**ListenBrainz** is the default when no preference is saved. Saved choices are
+retained. The preference persists in
+local `config.json` across restarts. Saving or opening a page never starts discovery. Only explicitly opening
 this section or choosing Refresh does. Restoring its open state on Back does not start a request, and no global open preference is saved.
 
 Opening a suggested album labels its breadcrumb **Discover from [artist]**, so a
@@ -36,8 +37,7 @@ Last.fm supplies up to 100 related artists. Tagcast matches their names locally,
 ignoring case, NFC spelling and surrounding/repeated whitespace while preserving
 accents, punctuation and full names. Ambiguous normalized native names are skipped;
 there is no fuzzy match, automatic spelling correction or invented MBID. A name
-match cannot resolve every homonymous artist. MusicBrainz and ListenBrainz lookups
-are not part of this implementation.
+match cannot resolve every homonymous artist.
 
 Provider similarity determines the artist order. Native album ratings, artist
 ratings and stable title/ID order choose one album per represented artist. The
@@ -75,10 +75,32 @@ including attribution, non-commercial-use, rate-limit and caching conditions.
 The view retains Powered by AudioScrobbler attribution, catalogue links and the
 API terms link. Using a personal API key does not waive those conditions.
 
+## ListenBrainz
+
+Choose **ListenBrainz** under **Settings → Discovery → Similar music**. It uses
+public reads without an account, API key or scrobbling. An explicit lookup sends
+the selected artist name to MusicBrainz. Tagcast requires one exact normalized
+name match from the complete bounded search response and skips ambiguous local
+artist groups. It sends the resulting public artist ID to ListenBrainz Radio for
+up to 30 related artists.
+
+Tagcast fits those artists to the loaded library with the same strict local
+name matching and album selection used for Last.fm. The cards credit ListenBrainz
+and link to the related artist in MusicBrainz. The library, listening history,
+iBroadcast credentials and audio stay on the device. If MusicBrainz is disabled
+under **Sources & keys**, the artist match is ambiguous, a provider is unavailable
+or there are no usable library matches, Tagcast shows labelled local genre results.
+
+Requests use the shared provider pacing with no redirects or automatic retries.
+Provider results are cached only in RAM, for up to 64 entries and at most six
+hours as allowed by the cache headers from both services. Saving the preference
+does not start a request. Replacing the library or changing accounts or relevant
+preferences invalidates pending results.
+
 ## Local genres
 
-With Last.fm disabled for discovery, or after a healthy Last.fm search without
-usable local matches, the selected artist's loaded albums supply the genre set.
+With **Local genres** selected or on a fallback, the selected artist's loaded
+albums supply the genre set.
 Other albums are ranked by weighted genre overlap, with less common genres contributing more. Genre labels
 compare without case or surrounding whitespace; punctuation and distinct labels
 remain distinct. Native album ratings, then artist ratings, break equal genre
