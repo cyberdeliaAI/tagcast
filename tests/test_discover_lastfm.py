@@ -47,6 +47,7 @@ class OnlineDiscoveryTests(unittest.TestCase):
         self.studio.library_user = "account-a"
         self.studio.playback_session = "session-a"
         self.studio.config["lastfm_api_key"] = "private-fixture-key"
+        self.studio.config["discover_lastfm"] = True
         self.data = discovery_data()
         self.studio.library = Library(self.data)
 
@@ -113,7 +114,7 @@ class OnlineDiscoveryTests(unittest.TestCase):
             ),
             ({"source": "unknown"}, {}, "discover.invalid_source"),
         ]:
-            self.studio.config = config
+            self.studio.config = {"discover_lastfm": True, **config}
             with self.subTest(code=code), patch.object(self.studio.discover.lastfm, "read") as read:
                 with self.assertRaises(LibraryError) as error:
                     self.view(**changes)

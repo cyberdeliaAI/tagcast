@@ -6,6 +6,7 @@ const SETTINGS_CATEGORIES = {
   interface: ["settings.category.interface", "settings.category.interfaceNote"],
   appearance: ["settings.category.appearance", "settings.category.appearanceNote"],
   playback: ["settings.category.playback", "settings.category.playbackNote"],
+  library: ["settings.category.library", "settings.category.libraryNote"],
   discovery: ["settings.category.discovery", "settings.category.discoveryNote"],
   sources: ["settings.category.sources", "settings.category.sourcesNote"],
   data: ["settings.category.data", "settings.category.dataNote"],
@@ -49,6 +50,7 @@ function updateSettingsPage(mountEditor = true) {
   $("#settings-category-title").textContent = TagcastI18n.text(label);
   $("#settings-category-description").textContent = TagcastI18n.text(description);
   settingsShowCategory();
+  updateSettingsMultiDiscAdvice();
   const back = document.querySelector("[data-settings-return]");
   if (back) back.hidden = !settingsView.editor;
   if (settingsView.category === "appearance" && mountEditor) mountThemeEditor();
@@ -65,7 +67,7 @@ function updateSettingsSaveState() {
   settingsView.dirty = settingsView.rendered && settingsFormSnapshot() !== settingsView.baseline;
   const save = $("#settings-save"), bar = $("#settings-save-bar");
   if (save) { save.disabled = settingsView.saving; save.textContent = TagcastI18n.text(settingsView.saving ? "settings.save.saving" : "settings.save.button"); }
-  if (bar) bar.hidden = !lookup.sources.length || (!settingsView.dirty && ["interface", "appearance", "data"].includes(settingsView.category));
+  if (bar) bar.hidden = !lookup.sources.length || (!settingsView.dirty && ["interface", "appearance", "library", "data"].includes(settingsView.category));
   const hint = $("#settings-save-hint");
   if (hint) hint.textContent = TagcastI18n.text(settingsView.dirty ? "settings.save.hintDirty" : "settings.save.hint");
 }

@@ -61,6 +61,13 @@ function updateCombinedNotice() {
   } catch { /* private window */ }
   banner.hidden = !combinedAlbumView() || !state.connection.connected || state.loading || !combinedNoticeProfile || dismissed;
 }
+function updateSettingsMultiDiscAdvice() {
+  const advice = $("#settings-multi-disc-limits");
+  if (!advice) return;
+  const combined = state.connection.connected && !state.loading && combinedAlbumView();
+  advice.className = combined ? "warn-box" : "muted";
+  advice.textContent = TagcastI18n.text(combined ? "combined.settings.active" : "combined.settings.limits");
+}
 $("#combined-notice-dismiss").addEventListener("click", () => {
   if (combinedNoticeProfile) try { localStorage.setItem(`tagcast-combined-notice:${combinedNoticeProfile}`, "hidden"); } catch { /* private window */ }
   $("#combined-albums-notice").hidden = true; $("#mode-badge").focus();
@@ -91,15 +98,12 @@ function libraryLoadingText(message, refresh) {
   return [message, refresh ? TagcastI18n.text("library.loading.fresh") : "", TagcastI18n.text("library.loading.patience")].filter(Boolean).join(" ");
 }
 
-function setLibraryNotice(visible) {
-  libraryNotice.visible = visible;
-  document.documentElement.dataset.libraryNotice = visible ? "shown" : "hidden";
-  $("#library-notice").hidden = !visible;
-  try { localStorage.setItem("tagcast-library-notice", visible ? "shown" : "hidden"); } catch { /* private window */ }
-}
-
 $("#notice-dismiss").addEventListener("click", () => {
-  setLibraryNotice(false); $("#mode-badge").focus();
+  libraryNotice.visible = false;
+  document.documentElement.dataset.libraryNotice = "hidden";
+  $("#library-notice").hidden = true;
+  try { localStorage.setItem("tagcast-library-notice", "hidden"); } catch { /* private window */ }
+  $("#mode-badge").focus();
 });
 const live = () => state.mode === "live";
 let devicePoll = null;
@@ -1432,6 +1436,7 @@ $("#all-albums").addEventListener("click", () => setArtist(null));
 for (const id of ["#filter", "#sort"]) $(id).addEventListener("change", () => {
   if (id === "#sort") albumOrder.ids = [];
   state.page = 0; render();
+  if (id === "#sort" && state.screen === "albums") scrollListingStart("#albums-page");
 });
 // A different page size keeps the first album you were looking at in view.
 $("#per-page").addEventListener("change", event => {
@@ -1578,6 +1583,7 @@ function paintChrome() {
   $("#data-notice").textContent = TagcastI18n.text(live() ? "connection.notice.live" : "connection.notice.demo");
   $("#library-notice").hidden = !libraryNotice.visible;
   updateCombinedNotice();
+  updateSettingsMultiDiscAdvice();
   $("#library-loading").hidden = !state.loading;
   $("#history-note").textContent = TagcastI18n.text(live() ? "history.note.live" : "history.note.demo");
 }

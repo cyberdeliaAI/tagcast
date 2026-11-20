@@ -43,7 +43,7 @@ def lastfm_error(kind):
     if kind == "busy":
         return SourceError("Last.fm is busy. Wait before trying again.", code="discover.lastfm_busy")
     if kind == "key":
-        return SourceError("Last.fm refused the API key. Check Sources & keys in Settings.", code="discover.lastfm_key")
+        return SourceError("Last.fm refused the API key. Check it under Sources & keys or choose ListenBrainz in Settings → Discovery.", code="discover.lastfm_key")
     if kind == "identity":
         return SourceError("Last.fm could not identify this artist exactly. You can turn off Last.fm in Settings → Discovery to use local genres.", code="discover.lastfm_identity")
     return SourceError("Last.fm returned an unusable response. Try again later.", code="discover.lastfm_response")

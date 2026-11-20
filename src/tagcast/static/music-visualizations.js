@@ -440,8 +440,8 @@ function drawMusicVisualization(time, listening) {
 document.addEventListener("change", event => {
   if (["music-visualization-mode", "music-visualization-setting"].includes(event.target?.id)) setMusicVisualization(event.target.value);
 });
-// Choosing Cover or CD returns to the existing presentation explicitly.
-for (const id of ["#visual-player-cover-toggle", "#visual-player-disc-toggle"]) {
+// Choosing an artwork view explicitly switches off the effect.
+for (const id of ["#visual-player-cover-toggle", "#visual-player-disc-toggle", "#visual-player-vinyl-toggle"]) {
   $(id)?.addEventListener("click", () => setMusicVisualization("off"));
 }
 for (const name of ["play", "playing", "emptied"]) audio.addEventListener(name, syncMusicVisualization);

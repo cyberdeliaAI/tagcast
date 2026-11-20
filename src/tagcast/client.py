@@ -32,7 +32,7 @@ from .artist_bios import ArtistBiographies
 from .artist_cleanup import guest_credit_page
 from .cleanup import Cleanup
 from .collections import Collections
-from .discover import ArtistDiscover
+from .discover import DISCOVER_SOURCES, ArtistDiscover, discovery_source
 from .downloads import AudioDownloads
 from .duplicate_cleanup import DuplicateCleanup
 from .errors import CodedError
@@ -1286,6 +1286,7 @@ class Studio:
         return disabled if isinstance(disabled, list) else []
 
     def settings(self):
+        artist_discovery = discovery_source(self.config)
         return {"sources": self.lookup.describe(),
                 "setup_eligible": self.setup_eligible and self.client is None and not self.config,
                 "keys_from_env": [k for k, env in KEY_ENV.items() if os.environ.get(env)],
@@ -1297,7 +1298,8 @@ class Studio:
                 "music_uploads": self.config.get("music_uploads") is True,
                 "music_uploads_authorized": upload_authorized(self.client),
                 "album_guide": self.config.get("album_guide") is True,
-                "discover_lastfm": self.config.get("discover_lastfm", True) is not False,
+                "discover_source": artist_discovery,
+                "discover_lastfm": artist_discovery == "lastfm",
                 "artist_biographies": self.config.get("artist_biographies") is True,
                 "artist_biographies_revision": self.artist_bios.revision,
                 "album_information": self.config.get("album_information") is True,
@@ -1343,6 +1345,8 @@ class Studio:
                 raise ApiError("Choose whether 1001 Albums is enabled.")
             if "discover_lastfm" in body and type(body["discover_lastfm"]) is not bool:
                 raise ApiError("Choose whether artist discovery uses Last.fm.")
+            if "discover_source" in body and body["discover_source"] not in DISCOVER_SOURCES:
+                raise ApiError("Choose a discovery source in Settings.", code="discover.invalid_source")
             if "guide_matching_details" in body and type(body["guide_matching_details"]) is not bool:
                 raise ApiError("Choose whether matching details are shown.")
             if "auto_lookup" in body and type(body["auto_lookup"]) is not bool:
@@ -1382,7 +1386,11 @@ class Studio:
                 config["record_plays"] = body["record_plays"]
             if "album_guide" in body:
                 config["album_guide"] = body["album_guide"]
-            if "discover_lastfm" in body:
+            if "discover_source" in body:
+                config["discover_source"] = body["discover_source"]
+                config["discover_lastfm"] = body["discover_source"] == "lastfm"
+            elif "discover_lastfm" in body:
+                config.pop("discover_source", None)
                 config["discover_lastfm"] = body["discover_lastfm"]
             if "artist_biographies" in body:
                 config["artist_biographies"] = body["artist_biographies"]
@@ -1395,9 +1403,10 @@ class Studio:
                 self.artist_bios.revision += 1
             if config.get("album_information", False) != self.config.get("album_information", False):
                 self.album_info.revision += 1
-            if config.get("discover_lastfm", True) != self.config.get("discover_lastfm", True) or \
-                    config.get("lastfm_api_key") != self.config.get("lastfm_api_key") or (
-                    "lastfm" in config.get("disabled_sources", [])) != ("lastfm" in self.disabled_sources()):
+            if discovery_source(config) != discovery_source(self.config) or \
+                    config.get("lastfm_api_key") != self.config.get("lastfm_api_key") or any(
+                        (name in body.get("disabled_sources", self.disabled_sources()))
+                        != (name in self.disabled_sources()) for name in ("lastfm", "musicbrainz")):
                 self.discover.generation += 1
             self.config = config
         if not config.get("queue_sync"):

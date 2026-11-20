@@ -1,14 +1,26 @@
-"""Explicit local or Last.fm artist discovery, matched to the loaded library."""
+"""Explicit local or online artist discovery, matched to the loaded library."""
 
 import math
 from collections import defaultdict
 from urllib.parse import quote
 
 from .discover_lastfm import LastfmSimilar
+from .discover_listenbrainz import ListenBrainzSimilar
 from .library import ConflictError, LibraryError, number
-from .sources import artist_name_key
+from .sources import SourceError, artist_name_key
 
 MAX_RESULTS = 6
+DISCOVER_SOURCES = ("local", "lastfm", "listenbrainz")
+
+
+def discovery_source(config):
+    source = config.get("discover_source")
+    if source in DISCOVER_SOURCES:
+        return source
+    legacy = config.get("discover_lastfm")
+    if isinstance(legacy, bool):
+        return "lastfm" if legacy else "local"
+    return "listenbrainz"
 
 
 class DiscoverIndex:
@@ -67,7 +79,7 @@ class DiscoverIndex:
         """Unique strict local artist matches; provider similarity outranks native ratings."""
         seed = self.artists[name]["albums"]
         chosen, represented = [], set()
-        for provider_name, _score in artists:
+        for provider_name, reference in artists:
             matches = self.names.get(artist_name_key(provider_name), [])
             if len(matches) != 1:
                 continue
@@ -80,7 +92,7 @@ class DiscoverIndex:
                 if album["artists"] & represented:
                     continue
                 represented.update(album["artists"])
-                chosen.append((album, provider_name))
+                chosen.append((album, (provider_name, reference)))
                 break
             if len(chosen) == MAX_RESULTS:
                 break
@@ -119,6 +131,7 @@ class ArtistDiscover:
         self.studio = studio
         self.generation = 0
         self.lastfm = LastfmSimilar(studio.lookup.http)
+        self.listenbrainz = ListenBrainzSimilar(studio.lookup.http)
 
     def view(self, body):
         """Never refresh the library, inspect audio, persist a report or change playback."""
@@ -126,8 +139,8 @@ class ArtistDiscover:
             raise LibraryError("Choose an album artist.", code="discover.invalid_artist")
         ids, name = body.get("artists"), body.get("name")
         source = body.get("source")
-        if "source" in body and source not in ("local", "lastfm"):
-            raise LibraryError("Choose local genres or Last.fm.", code="discover.invalid_source")
+        if "source" in body and source not in DISCOVER_SOURCES:
+            raise LibraryError("Choose a discovery source in Settings.", code="discover.invalid_source")
         if not isinstance(name, str) or not name.strip() or len(name) > 1000 \
                 or not isinstance(ids, list) \
                 or not 0 < len(ids) <= 100 or any(not isinstance(i, str) or not i.isascii()
@@ -142,12 +155,15 @@ class ArtistDiscover:
                 raise ConflictError("The account, library or artist changed. Reopen the artist.", code="discover.stale")
             revision, combine = library.lastmodified, studio.combine_sets
             generation = self.generation
-            online_enabled = studio.config.get("discover_lastfm", True) is not False
+            selected = discovery_source(studio.config)
             if source is None:
-                source = "lastfm" if online_enabled else "local"
+                source = selected
+            if source == "listenbrainz" and selected != "listenbrainz":
+                raise LibraryError("Choose a discovery source in Settings.", code="discover.invalid_source")
+            musicbrainz_enabled = "musicbrainz" not in studio.disabled_sources()
             key = studio.source_keys().get("lastfm_api_key", "") if source == "lastfm" else ""
             if source == "lastfm":
-                if not online_enabled:
+                if selected != "lastfm":
                     raise LibraryError("Last.fm discovery is disabled. Enable it in Settings → Discovery.", code="discover.lastfm_discovery_disabled")
                 if "lastfm" in studio.disabled_sources():
                     raise LibraryError("Last.fm is disabled. Enable it in Sources & keys in Settings.", code="discover.lastfm_disabled")
@@ -160,13 +176,15 @@ class ArtistDiscover:
             return (studio.client is client and studio.library is library and studio.library_user == account
                     and studio.playback_session == session and library.lastmodified == revision
                     and studio.combine_sets == combine and self.generation == generation
-                    and (studio.config.get("discover_lastfm", True) is not False) == online_enabled)
+                    and discovery_source(studio.config) == selected)
 
         def valid_online():
             with studio.lock:
-                if not current() or self.generation != generation \
-                        or studio.source_keys().get("lastfm_api_key", "") != key \
-                        or "lastfm" in studio.disabled_sources():
+                if not current() or (source == "lastfm" and (
+                        studio.source_keys().get("lastfm_api_key", "") != key
+                        or "lastfm" in studio.disabled_sources())) or (
+                        source == "listenbrainz"
+                        and musicbrainz_enabled != ("musicbrainz" not in studio.disabled_sources())):
                     raise ConflictError("The account, library or source changed. Start discovery again.", code="discover.online_stale")
 
         # Derived data belongs to the Library object, so an old snapshot is not retained
@@ -183,8 +201,17 @@ class ArtistDiscover:
         if not artist or set(ids) != artist["ids"]:
             raise ConflictError("The account, library or artist changed. Reopen the artist.", code="discover.stale")
         effective, fallback, ttl = source, False, None
-        if source == "lastfm":
-            related, ttl = self.lastfm.read(name, key, (account, session, generation), valid_online)
+        if source != "local":
+            context = account, session, generation
+            if source == "lastfm":
+                related, ttl = self.lastfm.read(name, key, context, valid_online)
+            else:
+                related, ttl = (), 0
+                if musicbrainz_enabled and len(artist["ids"]) == 1 and len(name) <= 200:
+                    try:
+                        related, ttl = self.listenbrainz.read(name, context, valid_online)
+                    except SourceError:
+                        pass  # The local genre result remains available on provider failure.
             valid_online()
             choices = index.similar_recommendations(name, related)
             status = "ready"
@@ -207,9 +234,12 @@ class ArtistDiscover:
                         playable = False
             row = {"id": album["id"], "shared_genres": reason if effective == "local" else [], "playable": playable}
             if effective == "lastfm":
-                row.update(related_artist=reason, lastfm_url="https://www.last.fm/music/" + quote(reason, safe=""))
+                provider_name, _ = reason
+                row.update(related_artist=provider_name, lastfm_url="https://www.last.fm/music/" + quote(provider_name, safe=""))
+            if effective == "listenbrainz":
+                row.update(related_artist=reason[0], related_artist_mbid=reason[1])
             albums.append(row)
-        if source == "lastfm":
+        if source != "local":
             valid_online()
         with studio.lock:
             if not current():

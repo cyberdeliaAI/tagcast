@@ -20,7 +20,7 @@ function page({stored = null, reduced = false, supported = true, paused = false,
       addEventListener(k, f) { handlers[k] = f; },
       getContext() { return new Proxy({}, {get: (_, k) => typeof k === "string" ? (...args) => log.calls.push([k, ...args]) : undefined, set: () => true}); }};
   }
-  const nodes = Object.fromEntries(["#music-visualization-mode", "#music-visualization-setting", "#music-visualization-status", "#visual-player", "#music-visualization-surface", "#visual-player-cover-toggle", "#visual-player-disc-toggle"].map(k=>[k,node()]));
+  const nodes = Object.fromEntries(["#music-visualization-mode", "#music-visualization-setting", "#music-visualization-status", "#visual-player", "#music-visualization-surface", "#visual-player-cover-toggle", "#visual-player-disc-toggle", "#visual-player-vinyl-toggle"].map(k=>[k,node()]));
   const document = node(); document.hidden = false;
   document.createElement = tag => { const n=node();n.tagName=tag;return n; };
   document.head = {append(n) { log.scripts.push(n); }};
@@ -78,6 +78,16 @@ test("all canvas effects work without Butterchurn and never load it",async()=>{
   assert.equal(p.log.scripts.length,0);assert.equal(p.log.renderers.length,0);
   assert.ok(p.log.calls.some(c=>c[0]==="fillRect"));assert.ok(p.log.calls.some(c=>c[0]==="lineTo"));
   assert.ok(p.log.calls.some(c=>c[0]==="drawImage"));
+});
+
+test("choosing Vinyl leaves the visualizer and returns to artwork", () => {
+  const p = page({paused:true});
+  p.run('setMusicVisualization("scope")');
+  assert.equal(p.nodes["#music-visualization-surface"].hidden, false);
+  p.nodes["#visual-player-vinyl-toggle"].handlers.click();
+  assert.equal(p.nodes["#music-visualization-surface"].hidden, true);
+  assert.equal(p.storage["tagcast-fullscreen-visualization"], "off");
+  assert.equal(p.audio.paused, true);
 });
 
 test("the fullscreen vectorscope plots stereo sum and difference and freezes when paused", () => {
