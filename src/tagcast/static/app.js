@@ -47,6 +47,9 @@ const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
 let loadedLibrarySession = null;
+let preparingAlbumOverview = false;
+let startupSync = "";
+let deferredStartupCheck = null;
 let combinedNoticeProfile = "";
 
 const combinedAlbumView = () => live() && Boolean(state.connection.combine_sets || state.connection.combined_view);
@@ -95,7 +98,13 @@ function nextLibraryLoadingMessage() {
 
 // Whole sentences: the playful message, a fresh download note and the patience note.
 function libraryLoadingText(message, refresh) {
+  if (preparingAlbumOverview) return TagcastI18n.text("library.loading.overview");
   return [message, refresh ? TagcastI18n.text("library.loading.fresh") : "", TagcastI18n.text("library.loading.patience")].filter(Boolean).join(" ");
+}
+
+function playbackLibraryReady() {
+  return live() && (!state.loading || (preparingAlbumOverview && state.connection.connected
+    && loadedLibrarySession === state.connection.playback_session));
 }
 
 $("#notice-dismiss").addEventListener("click", () => {
@@ -222,8 +231,10 @@ function summarize(album) {
 }
 
 function useLocal(albums, mode) {
+  startupSync = ""; deferredStartupCheck = null;
   pendingAlbums = null;
   loadedLibrarySession = null;
+  preparingAlbumOverview = false;
   saveOrder += 1;
   libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
@@ -1546,6 +1557,7 @@ function updatePlaylistCount(value = state.playlistsCount) {
 }
 
 function updateChrome() {
+  resumeStartupCheck();
   if (typeof updateEmptyTrashControls === "function") updateEmptyTrashControls();
   updatePlaylistCount();
   if (typeof updateAlbumMergeControls === "function") updateAlbumMergeControls();
@@ -1585,6 +1597,10 @@ function paintChrome() {
   updateCombinedNotice();
   updateSettingsMultiDiscAdvice();
   $("#library-loading").hidden = !state.loading;
+  const sync = $("#library-sync");
+  sync.hidden = !startupSync;
+  sync.textContent = startupSync ? TagcastI18n.text(startupSync === "cached" ? "library.sync.cached" : "library.sync.checking") : "";
+  sync.setAttribute("data-working", String(startupSync === "checking"));
   $("#history-note").textContent = TagcastI18n.text(live() ? "history.note.live" : "history.note.demo");
 }
 
@@ -1603,7 +1619,7 @@ async function boot() {
   if (typeof firstSetupBootReady === "function") firstSetupBootReady();
   updateChrome();
   checkForUpdates();
-  if (state.connection.connected) loadLive();
+  if (state.connection.connected) loadLive(false, state.connection.startup_cache);
   else if (typeof restorePendingRoute === "function") restorePendingRoute();
 }
 
@@ -1635,13 +1651,34 @@ function resetLiveLibraryViews() {
   state.artistFavourites = new Set(); state.artistFavouriteError = "";
 }
 
-async function loadLive(refresh = false) {
+function installLibraryData(data, albums) {
+  state.albums = albums; state.artistNames = data.artists || [];
+  combinedNoticeProfile = typeof data.playback_profile === "string" ? data.playback_profile : "";
+  if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
+  applyEditorNames(data.editor_names);
+  updatePlaylistCount(data.playlists_count);
+  state.albumFavourites = new Set(data.album_favourites?.albums || []);
+  state.albumFavouriteError = data.album_favourites?.error || "";
+  state.artistFavourites = new Set(data.artist_favourites?.artists || []);
+  state.artistFavouriteError = data.artist_favourites?.error || "";
+  state.connection.combine_sets = Boolean(data.combine_sets);
+  state.connection.combined_view = Boolean(data.combined_view);
+  if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
+  if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
+  if (typeof data.account === "string") state.connection.account = data.account;
+}
+
+async function loadLive(refresh = false, tryStartup = false) {
+  const usingSavedCopy = Boolean(startupSync);
+  startupSync = ""; deferredStartupCheck = null;
+  let startup = "";
   pendingAlbums = null;
   saveOrder += 1;
   const request = ++libraryLoadRequest, session = state.connection.playback_session;
   const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
   const retained = loadedLibrarySession !== null && loadedLibrarySession === session;
   if (!retained) {
+    preparingAlbumOverview = false;
     if (loadedLibrarySession !== null) {
       if (typeof detachQueueMemory === "function") detachQueueMemory();
       if (typeof stopPlayer === "function") stopPlayer();
@@ -1655,34 +1692,41 @@ async function loadLive(refresh = false) {
   updateChrome(); render();
   let replaced = false, switchedToDemo = false;
   try {
-    const data = await api(`/api/library${refresh ? "?refresh=1" : ""}`);
+    const query = tryStartup ? `?startup=1&session=${encodeURIComponent(session)}` : refresh ? "?refresh=1" : "";
+    let data = await api(`/api/library${query}${tryStartup ? "&playback=1" : ""}`);
+    if (!current()) return;
+    if (data.source === "playback") {
+      loadedLibrarySession = session;
+      preparingAlbumOverview = true;
+      state.connection.combined_view = data.combined_view;
+      $("#library-loading-detail").textContent = TagcastI18n.text("library.loading.overview");
+      bindQueueMemory(data.playback_profile);
+      restoreQueueMemory();
+      data = await api(`/api/library${query}`);
+    }
     if (!current()) return;
     const albums = colorize(data.albums);
     if (retained) resetLiveLibraryViews();
     replaced = true;
     loadedLibrarySession = session;
-    state.albums = albums; state.artistNames = data.artists || [];
-    combinedNoticeProfile = typeof data.playback_profile === "string" ? data.playback_profile : "";
-    if (typeof bindQueueMemory === "function") bindQueueMemory(data.playback_profile);
-    applyEditorNames(data.editor_names);
-    updatePlaylistCount(data.playlists_count);
-    state.albumFavourites = new Set(data.album_favourites?.albums || []);
-    state.albumFavouriteError = data.album_favourites?.error || "";
-    state.artistFavourites = new Set(data.artist_favourites?.artists || []);
-    state.artistFavouriteError = data.artist_favourites?.error || "";
-    state.connection.combine_sets = Boolean(data.combine_sets);
-    state.connection.combined_view = Boolean(data.combined_view);
-    if (Object.hasOwn(data, "premium")) state.connection.premium = data.premium;
-    if (typeof favourites !== "undefined") favourites.count = data.favourites_count ?? null;
-    toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
+    installLibraryData(data, albums);
+    preparingAlbumOverview = false;
+    if (data.source === "startup") {
+      startup = data.snapshot;
+      startupSync = "checking";
+    } else {
+      toast(TagcastI18n.text(data.source === "download" ? "library.load.downloaded" : "library.load.unchanged", {count: state.albums.length}));
+    }
   } catch (error) {
     if (!current()) return;
     if (error.status === 401) {
       Object.assign(state.connection, {connected: false, account: "", playback_session: ""});
     }
-    if (error.status === 401 || !retained) {
+    if (error.status === 401 || (!retained && !preparingAlbumOverview)) {
       useLocal(demoLibrary(), "demo");
       switchedToDemo = true;
+    } else if (usingSavedCopy) {
+      startupSync = "cached";
     }
     toast(TagcastI18n.text("library.load.failed", {error: TagcastI18n.errorText(error)}));
   } finally {
@@ -1700,6 +1744,59 @@ async function loadLive(refresh = false) {
     if (typeof restorePendingRoute === "function") restorePendingRoute();
     if (typeof syncMusicUploadsPage === "function") syncMusicUploadsPage();
     if (typeof restoreQueueMemory === "function" && live()) restoreQueueMemory();
+    if (startup && current()) checkStartupLibrary({request, session, snapshot: startup});
+  }
+}
+
+function startupViewBusy() {
+  return saving || checking || $("dialog[open]") || settingsView.editor;
+}
+
+function resumeStartupCheck() {
+  if (!deferredStartupCheck || startupViewBusy()) return;
+  const check = deferredStartupCheck;
+  deferredStartupCheck = null;
+  checkStartupLibrary(check);
+}
+document.addEventListener("close", () => Promise.resolve().then(resumeStartupCheck), true);
+
+async function checkStartupLibrary(check) {
+  const {request, session, snapshot} = check, order = saveOrder;
+  const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
+  if (!current()) return;
+  try {
+    const data = await api(`/api/library?known=${encodeURIComponent(snapshot)}&session=${encodeURIComponent(session)}`);
+    if (!current()) return;
+    if (data.source === "current") {
+      const premiumChanged = state.connection.premium !== data.premium;
+      state.connection.premium = data.premium; state.connection.account = data.account;
+      startupSync = ""; updateChrome();
+      if (premiumChanged) render();
+      return;
+    }
+    // Do not retire a review or publish a reply that preceded a more recent save.
+    // Once the user finishes, read the current snapshot again without retaining the old payload.
+    if (startupViewBusy() || order !== saveOrder) {
+      deferredStartupCheck = check; resumeStartupCheck(); return;
+    }
+    const albums = colorize(data.albums);
+    replaceStartupView(() => {
+      resetLiveLibraryViews();
+      installLibraryData(data, albums);
+    });
+    startupSync = ""; updateChrome(); render();
+    refreshPlayerRatings();
+    restoreQueueMemory();
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401) {
+      Object.assign(state.connection, {connected: false, account: "", playback_session: ""});
+      useLocal(demoLibrary(), "demo"); render();
+    } else {
+      startupSync = "cached";
+    }
+    updateChrome();
+    toast(TagcastI18n.text("library.load.failed", {error: TagcastI18n.errorText(error)}));
   }
 }
 

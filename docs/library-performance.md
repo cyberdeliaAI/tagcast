@@ -17,6 +17,21 @@ in the frontend; it does not suddenly become another hundred times faster.
 
 ## Freshness and ownership
 
+On startup, Tagcast first mounts the saved library and checks its account and
+disc membership. The player then restores the saved queue's track IDs while the
+album overview is being built. The queue starts paused. Pressing Play streams the
+selected track immediately, even if the overview is still loading. When the
+albums appear, playback continues on the same track. The private token file
+remembers the last verified account ID, display name, Premium flag and disc grouping
+setting. Older profiles first verify the owner with a status request. A missing,
+incompatible or expired cache follows the normal online load.
+
+The background check asks for the current revision. An unchanged snapshot needs
+no second set of album summaries. A changed library replaces the browsing data
+without restarting the current track. A temporary check failure leaves the saved
+library available with a reload hint. Streaming still requires iBroadcast, and
+metadata writes and read-backs continue to use their normal freshness checks.
+
 - The cache belongs to one `Library` instance, without a global revision/account cache,
   timer, disk format change or new request.
 - Studio's existing account/revision/combine-setting checks remain unchanged. A fresh

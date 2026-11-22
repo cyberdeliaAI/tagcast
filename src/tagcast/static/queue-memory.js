@@ -2,9 +2,9 @@
 
 // Restore IDs/occurrences only, against fresh metadata in the loaded account. No credentials,
 // names, stream URLs, audio, drafts or output-device settings enter browser storage.
-const queueMemory = {profile: "", session: "", attempted: "", restoring: false};
+const queueMemory = {profile: "", session: "", attempted: "", pending: null, restoring: false};
 function queueMemoryOwner() {
-  return live() && !state.loading && queueMemory.profile && queueMemory.session === state.connection.playback_session
+  return playbackLibraryReady() && queueMemory.profile && queueMemory.session === state.connection.playback_session
     && (typeof queueSync === "undefined" || !queueSync.active && !queueSync.applying)
     && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
 }
@@ -13,13 +13,14 @@ function bindQueueMemory(profile) {
   queueMemory.profile = valid; queueMemory.session = state.connection.playback_session;
 }
 function detachQueueMemory() {
-  saveQueueMemory(); queueMemory.profile = ""; queueMemory.session = ""; queueMemory.attempted = "";
+  saveQueueMemory(); queueMemory.profile = ""; queueMemory.session = ""; queueMemory.attempted = ""; queueMemory.pending = null;
 }
 function saveQueueMemory(clear = false) {
   if (!queueMemoryOwner() || queueMemory.restoring) return;
   if (!player.queue.length && !clear) return;
   // Explicitly clearing also cancels a pending restore in this tab.
   queueMemory.attempted = queueMemory.session;
+  queueMemory.pending = null;
   if (player.queue.length > 10000) return;
   const runs = new Map();
   const entries = player.queue.map(track => {
@@ -47,12 +48,15 @@ function readQueueMemory(profile) {
   } catch { return null; }
 }
 async function restoreQueueMemory() {
-  if (!queueMemoryOwner() || queueMemory.attempted === queueMemory.session || player.queue.length) return;
+  if (!queueMemoryOwner() || player.queue.length) return;
+  // A background library replacement may retire an unfinished restore of this session.
+  if (queueMemory.attempted === queueMemory.session && (!queueMemory.pending || queueMemory.pending === state.details)) return;
   const {profile, session} = queueMemory, details = state.details, epoch = player.epoch;
   queueMemory.attempted = session;
   const saved = readQueueMemory(profile); if (!saved) return;
+  queueMemory.pending = details;
   const current = () => queueMemoryOwner() && profile === queueMemory.profile && session === queueMemory.session
-    && details === state.details && epoch === player.epoch && !player.queue.length;
+    && details === state.details && details === queueMemory.pending && epoch === player.epoch && !player.queue.length;
   const restored = [];
   try {
     for (let offset = 0; offset < saved.entries.length; offset += 1000) {
@@ -92,6 +96,9 @@ async function restoreQueueMemory() {
     player.resumePending = true;
     renderRepeatButton(); renderCurrentPlayerTrack(); gaplessRenderTransport();
   } catch { /* Keep the saved queue for the next restart; a failed read never starts playback. */ }
-  finally { queueMemory.restoring = false; }
+  finally {
+    queueMemory.restoring = false;
+    if (queueMemory.pending === details) queueMemory.pending = null;
+  }
 }
 window.addEventListener("pagehide", () => saveQueueMemory());

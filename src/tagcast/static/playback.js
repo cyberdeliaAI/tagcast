@@ -5,7 +5,7 @@ const playbackOutput = {devices: [], names: new Map(), read: 0, opened: 0, busy:
 const systemPlayback = {session: null, installed: false, metadata: "", positionAt: -Infinity};
 
 function systemPlaybackTrack() {
-  return live() && !state.loading && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) && (player.resumePending || audioRecoveryCurrent() || audio.getAttribute("src") && !audio.error)
+  return playbackLibraryReady() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) && (player.resumePending || audioRecoveryCurrent() || audio.getAttribute("src") && !audio.error)
     ? player.queue[player.index] : null;
 }
 

@@ -2130,6 +2130,138 @@ test("preview favourites cannot write, including player hearts, and explain that
   assert.match(p.run('heartButton({id: "100", title: "Demo", rating: 0})'), /disabled/);
 });
 
+test("the saved queue plays before the album overview and keeps playing through the remote check", async () => {
+  const profile = "a".repeat(64);
+  for (const result of ["current", "download", "offline", "logout"]) {
+    const storage = {["tagcast-queue-" + profile]: JSON.stringify({version: 1,
+      entries: [{id: "100"}], index: 0, repeat: "none", shuffle: false})};
+    const p = page({deferReady: true, storage});
+    const albums = p.json("state.albums"), details = p.json("[...state.details.values()]");
+    const cached = {albums, artists: [], premium: true, account: "Listener", snapshot: "snapshot1",
+      source: "startup", playback_profile: profile};
+    const ok = data => ({ok: true, json: async () => data});
+    let showAlbums, release;
+    p.setStatusFetch(() => ok({connected: true, startup_cache: true, playback_session: "session1"}));
+    p.setFetch(url => {
+      if (url === "/api/library?startup=1&session=session1&playback=1") return ok({source: "playback", playback_profile: profile});
+      if (url === "/api/library?startup=1&session=session1") return new Promise(resolve => { showAlbums = resolve; });
+      if (url === "/api/library?known=snapshot1&session=session1") return new Promise(resolve => { release = resolve; });
+      if (url === "/api/queue-tracks") return ok({tracks: [{id: "100", position: 0, title: "Selected track",
+        artist: "Artist", album: {id: "1", name: "Album", artist: "Artist"}}]});
+      return ok({albums: details});
+    });
+    await p.run("boot()"); await settle();
+    assert.ok(showAlbums);
+    assert.equal(release, undefined);
+    assert.equal(p.run("state.loading && !state.albums.length && player.resumePending"), true);
+    assert.equal(p.nodes.get("#library-loading").hidden, false);
+    assert.match(p.nodes.get("#library-loading-detail").textContent, /Preparing the album overview/);
+    assert.equal(p.nodes.get("#audio").src, undefined);
+    await p.nodes.get("#gapless-play").emit("click"); await settle();
+    const src = p.nodes.get("#audio").src;
+    assert.match(src, /\/api\/stream\/100/);
+    p.run("audio.currentTime = 4; globalThis.oldQueue = player.queue");
+    showAlbums(ok(cached)); await settle();
+    assert.ok(release);
+    assert.equal(p.run("!state.loading && state.albums.length > 0 && player.queue === oldQueue && !audio.paused && audio.currentTime === 4"), true);
+    assert.equal(p.requests.filter(r => r.url === "/api/queue-tracks").length, 1);
+    assert.equal(p.nodes.get("#library-sync").hidden, false);
+    await p.run('openAlbum("1")');
+    const location = p.location.hash;
+    p.run("globalThis.oldDetails = state.details");
+    if (result === "offline" || result === "logout") {
+      release({ok: false, status: result === "logout" ? 401 : 502, json: async () => ({error: "Unavailable"})});
+    } else if (result === "current") {
+      release(ok({source: "current", premium: true, account: "Listener"}));
+    } else {
+      release(ok({...cached, source: "download", albums: [{...albums[0], name: "Updated title"}]}));
+    }
+    await settle();
+    if (result === "logout") {
+      assert.equal(p.run("player.queue.length"), 0);
+      assert.equal(p.run("state.mode"), "demo");
+      continue;
+    }
+    assert.equal(p.nodes.get("#audio").src, src, result);
+    assert.equal(p.run("!audio.paused && player.queue === oldQueue"), true, result);
+    assert.equal(p.location.hash, location, result);
+    assert.equal(p.run("state.details === oldDetails"), result !== "download");
+    assert.equal(p.nodes.get("#library-sync").hidden, result !== "offline");
+    if (result === "download") assert.equal(p.run("state.albums[0].name"), "Updated title");
+  }
+});
+
+test("a failed album overview preserves early playback unless the session expired", async () => {
+  const profile = "b".repeat(64);
+  for (const status of [502, 401]) {
+    const p = page({deferReady: true, storage: {["tagcast-queue-" + profile]: JSON.stringify({
+      version: 1, entries: [{id: "100"}], index: 0, repeat: "none", shuffle: false})}});
+    const ok = data => ({ok: true, json: async () => data});
+    let release;
+    p.setStatusFetch(() => ok({connected: true, startup_cache: true, playback_session: "session"}));
+    p.setFetch(url => {
+      if (url.endsWith("&playback=1")) return ok({source: "playback", playback_profile: profile});
+      if (url.startsWith("/api/library?startup=")) return new Promise(resolve => { release = resolve; });
+      if (url === "/api/queue-tracks") return ok({tracks: [{id: "100", position: 0, title: "Track",
+        artist: "Artist", album: {id: "1", name: "Album", artist: "Artist"}}]});
+      return ok({});
+    });
+    await p.run("boot()"); await settle();
+    await p.nodes.get("#gapless-play").emit("click"); await settle();
+    assert.equal(p.run("state.loading && !audio.paused"), true);
+    const src = p.run("audio.src");
+    release({ok: false, status, json: async () => ({error: "Unavailable"})}); await settle();
+    assert.equal(p.run("state.loading"), false);
+    if (status === 502) {
+      assert.equal(p.run("live() && !audio.paused && player.queue.length === 1"), true);
+      assert.equal(p.run("audio.src"), src);
+    } else {
+      assert.equal(p.run("!live() && audio.paused && !player.queue.length && !queueMemory.profile"), true);
+    }
+  }
+});
+
+test("a retired startup reply cannot restore queue storage after switching away from live playback", async () => {
+  const p = page({deferReady: true});
+  const ok = data => ({ok: true, json: async () => data});
+  let release;
+  p.setStatusFetch(() => ok({connected: true, startup_cache: true, playback_session: "former-session"}));
+  p.setFetch(url => url.endsWith("&playback=1") ? new Promise(resolve => { release = resolve; }) : ok({}));
+  await p.run("boot()"); await settle();
+  assert.ok(release);
+  p.run('useLocal(demoLibrary(), "demo")');
+  release(ok({source: "playback", playback_profile: "a".repeat(64)})); await settle();
+  assert.equal(p.run("!state.loading && !playbackLibraryReady() && !queueMemory.profile && !player.queue.length"), true);
+  assert.equal(p.requests.some(r => r.url === "/api/queue-tracks" || r.url.endsWith("session=former-session")), false);
+});
+
+test("a changed startup library waits for the open editor and then reads the current snapshot again", async () => {
+  const p = livePage(); await settle();
+  const albums = p.json("state.albums"), details = p.json("[...state.details.values()]");
+  const ok = data => ({ok: true, json: async () => data});
+  let checks = 0, release;
+  p.run('Object.assign(state.connection, {connected:true, playback_session:"session"})');
+  p.setFetch(url => {
+    if (url.startsWith("/api/library?startup=")) return ok({albums, source: "startup", snapshot: "initial"});
+    if (url.startsWith("/api/library?known=")) {
+      checks++;
+      if (checks === 1) return new Promise(resolve => { release = resolve; });
+      return ok({albums: [{...albums[0], name: "Latest title"}], source: "download"});
+    }
+    return ok({albums: details});
+  });
+  await p.run("loadLive(false, true)");
+  await p.run('openEditor(["1"], {onlineSuggestions:false})');
+  p.run('editing.dirty.add("name"); globalThis.originalDetails = state.details');
+  release(ok({albums: [], source: "download"})); await settle();
+  assert.equal(p.run('$("#editor").open && editing.dirty.has("name") && state.details === originalDetails'), true);
+  assert.equal(checks, 1);
+  p.run('$("#editor").close()'); await p.emitDocument("close"); await settle();
+  assert.equal(checks, 2);
+  assert.equal(p.run("state.albums[0].name"), "Latest title");
+  assert.equal(p.nodes.get("#library-sync").hidden, true);
+});
+
 test("reloading the library refreshes the current player's rating without restarting its audio", async () => {
   const p = livePage(); await settle();
   p.run('playTracks(state.details.get("1"), "100")');
@@ -13642,6 +13774,21 @@ test('queue restore skips deleted entries, retains the next occurrence and never
   await other.run('restoreQueueMemory()');
   assert.equal(other.run('player.queue.length'),0);
   assert.equal(other.requests.filter(r=>r.url==='/api/queue-tracks').length,0);
+});
+
+test('a background replacement can finish an interrupted queue restore without accepting late rows', async () => {
+  const storage = {}, p = queueMemoryPage(storage);
+  p.run("player.queue=[{id:'900'}];player.index=0;saveQueueMemory();player.queue=[];queueMemory.attempted=''");
+  let release;
+  p.setFetch(() => new Promise(resolve => { release = resolve; }));
+  const old = p.run('restoreQueueMemory()'); await settle();
+  const rows = title => ({ok:true,json:async()=>({tracks:[{id:"900",position:0,title,album:{id:"1"}}]})});
+  p.run('state.details = new Map()');
+  p.setFetch(() => rows("Updated"));
+  await p.run('restoreQueueMemory()');
+  release(rows("Old")); await old;
+  assert.deepEqual(p.json('player.queue.map(t => t.title)'), ["Updated"]);
+  assert.equal(p.nodes.get("#audio").src, undefined);
 });
 
 test('queue restore cannot overwrite an explicit clear, newer playback, account or library replacement', async () => {

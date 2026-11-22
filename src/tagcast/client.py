@@ -14,6 +14,7 @@ import secrets
 import shutil
 import threading
 import time
+import zlib
 from concurrent.futures import Future
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -468,6 +469,8 @@ class Studio:
         self.downloads = 0  # library downloads started so far; numbers each one
         self.library_started = 0  # the number of the download the copy in memory came from
         self.account = None
+        self.account_id = ""
+        self.saved_identity = None
         self.cache_lock = threading.Lock()
         self.download_lock = threading.Lock()  # one full library download at a time
         self.jobs = {}  # background read-backs after a save, by job ID
@@ -496,6 +499,13 @@ class Studio:
         if tokens and tokens.get("client_id") == self.client_id and tokens.get("token_set"):
             try:
                 self._connect(oauth.TokenSet.from_dict(tokens["token_set"]), save=False)
+                identity = tokens.get("library_identity")
+                if isinstance(identity, dict) and isinstance(identity.get("id"), str) and identity["id"] \
+                        and isinstance(identity.get("name"), str) and type(identity.get("premium")) is bool \
+                        and type(identity.get("combine_sets")) is bool:
+                    self.saved_identity = identity
+                    self.account_id, self.account = identity["id"], identity["name"]
+                    self.premium, self.combine_sets = identity["premium"], identity["combine_sets"]
             except (KeyError, TypeError):
                 pass
 
@@ -519,16 +529,25 @@ class Studio:
             handle.write(data)
         os.replace(tmp, path)
 
-    def _read_cache(self, user_id, lastmodified):
+    def _read_cache(self, user_id, lastmodified, combine_sets):
         try:
             data = json.loads(gzip.decompress((self.home / CACHE_FILE).read_bytes()))
-            if data.get("user_id") != user_id or data.get("status", {}).get("lastmodified") != lastmodified \
-                    or data.get("combine_sets") != self.combine_sets:
+            revision = data.get("status", {}).get("lastmodified")
+            if not user_id or data.get("user_id") != user_id or not revision \
+                    or (lastmodified is not None and revision != lastmodified) \
+                    or data.get("combine_sets") is not combine_sets:
                 return None
             library = Library(data)
-            return None if not library.combine_sets and library.combined_view else library
-        except (OSError, ValueError, AttributeError, EOFError, LibraryError):
+            return library if self._reusable_library(library) else None
+        except (OSError, ValueError, TypeError, AttributeError, EOFError, LibraryError, zlib.error):
             return None
+
+    @staticmethod
+    def _reusable_library(library):
+        # A matching metadata revision does not renew expired streaming URLs.
+        expires = library.expires
+        expired = expires.isascii() and expires.isdecimal() and int(expires) <= time.time()
+        return not expired and (library.combine_sets or not library.combined_view)
 
     def _write_cache(self, library, user_id, client):
         """Write the library to disk in the background; a failed write only costs a download."""
@@ -592,8 +611,10 @@ class Studio:
     def _save_tokens(self, token_set, client):
         with self.lock:
             if client is self.client and token_set is client.token_set:
-                self._write("tokens.json", {"client_id": self.client_id,
-                                            "token_set": token_set.to_dict()})
+                saved = {"client_id": self.client_id, "token_set": token_set.to_dict()}
+                if self.saved_identity:
+                    saved["library_identity"] = self.saved_identity
+                self._write("tokens.json", saved)
 
     def _retire_connection_services(self):
         """Detach the current owner's services under Studio.lock without waiting on I/O."""
@@ -615,6 +636,7 @@ class Studio:
             client.token_set = token_set
             self._retire_connection_services()
             self.client, self.library, self.library_user, self.account = client, None, None, None
+            self.account_id, self.saved_identity = "", None
             self.combine_sets = self.premium = False
             self.jobs.clear()
             self.trash_emptying.reviews.clear()
@@ -630,6 +652,7 @@ class Studio:
                 return
             self._retire_connection_services()
             self.client = self.library = self.library_user = self.account = self.device = None
+            self.account_id, self.saved_identity = "", None
             self.combine_sets = self.premium = False
             self.jobs.clear()
             self.trash_emptying.reviews.clear()
@@ -662,6 +685,7 @@ class Studio:
                 "client_id_from_env": bool(os.environ.get("IBROADCAST_CLIENT_ID")),
                 "using_default_client": self.client_id == DEFAULT_CLIENT_ID,
                 "connected": bool(client),
+                "startup_cache": bool(client and self.account_id and (self.library or (self.home / CACHE_FILE).is_file())),
                 "combine_sets": self.combine_sets,
                 "premium": self.premium,
                 "account": self.account or "",
@@ -685,8 +709,32 @@ class Studio:
         with self.lock:
             if client is not self.client:
                 return None
-            self.premium = user.get("premium") in (True, 1, "1")
-        return str(user.get("username") or user.get("email") or "")
+            self._accept_account(client, user)
+            return self.account or ""
+
+    def _accept_account(self, client, user, *, remember=False):
+        """Bind cached playback to the owner identified by this credential's status response."""
+        user_id = text(user.get("id") or user.get("user_id"))
+        if self.account_id and not user_id:
+            raise ApiError("iBroadcast did not identify the library owner. Try reloading the library.")
+        if self.account_id and user_id != self.account_id:
+            self._disconnect(expected_client=client)
+            raise NotConnected("The iBroadcast account changed. Connect again.")
+        self.account_id = user_id
+        name = user.get("username") or user.get("email")
+        if name:
+            self.account = str(name)
+        self.premium = user.get("premium") in (True, 1, "1")
+        prefs = user.get("preferences") if isinstance(user.get("preferences"), dict) else {}
+        self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
+        identity = {"id": user_id, "name": self.account or "", "premium": self.premium, "combine_sets": self.combine_sets}
+        if remember and user_id and identity != self.saved_identity and isinstance(getattr(client, "token_set", None), oauth.TokenSet):
+            self.saved_identity = identity
+            try:
+                self._save_tokens(client.token_set, client)
+            except OSError:
+                self.saved_identity = None
+                log.warning("Could not remember the library owner for startup playback.")
 
     def start_device(self):
         if not self.client_id:
@@ -816,12 +864,10 @@ class Studio:
             raise
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
         status = data.get("status") if isinstance(data.get("status"), dict) else {}
-        prefs = user.get("preferences") if isinstance(user.get("preferences"), dict) else {}
         with self.lock:
             self._check_client(client)
-            self.premium = user.get("premium") in (True, 1, "1")
-            self.combine_sets = text(prefs.get("combine_sets")) in ("1", "true", "True")
-        return text(status.get("lastmodified")), text(user.get("id") or user.get("user_id"))
+            self._accept_account(client, user, remember=True)
+            return text(status.get("lastmodified")), self.account_id
 
     def _keep(self, library, user_id, started, client):
         """Keep a download, unless the session it belongs to ended meanwhile (Disconnect)."""
@@ -832,7 +878,7 @@ class Studio:
         self._write_cache(library, user_id, client)
         return True
 
-    def _current(self, client, refresh=False, after=None):
+    def _current(self, client, refresh=False, after=None, *, known=None):
         """The library as iBroadcast has it now. Downloads only when it changed since our copy.
 
         iBroadcast has no partial library download, but its status call reports
@@ -847,7 +893,8 @@ class Studio:
         if lastmodified and not refresh and after is None:  # a read-back always reads fresh data
             if library := self._in_memory(client, user_id, lastmodified):
                 return library, "memory"
-            if library := self._read_cache(user_id, lastmodified):
+            # When checking the mounted startup copy we already know what was on disk.
+            if known is None and (library := self._read_cache(user_id, lastmodified, self.combine_sets)):
                 with self.lock:
                     self._check_client(client)
                     self.library, self.library_user = library, user_id
@@ -876,7 +923,7 @@ class Studio:
             library, owner, combine_sets = self.library, self.library_user, self.combine_sets
         if library and owner == user_id and library.lastmodified == lastmodified \
                 and library.combine_sets == combine_sets \
-                and not (not library.combine_sets and library.combined_view):
+                and self._reusable_library(library):
             return library
         return None
 
@@ -888,9 +935,28 @@ class Studio:
             self._check_client(client)
             return {"combine_sets": self.combine_sets}
 
-    def load_library(self, refresh=False):
-        client = self._require_client()
-        library, source = self._current(client, refresh)
+    def load_library(self, refresh=False, *, startup=False, playback_first=False, session=None, known=None):
+        with self.lock:
+            client = self._require_client()
+            if (startup or known is not None) and session != self.playback_session:
+                raise NotConnected("The playback session changed. Reload Tagcast.")
+        library = self._startup_library(client) if startup and not refresh else None
+        if library is not None and playback_first:
+            # Queue restoration only needs the mounted account and requested track IDs.
+            # Resolve native disc membership once, before the queue and album reads run in parallel.
+            combined_view = library.combined_view
+            with self.lock:
+                self._check_client(client)
+                return {"source": "playback", "playback_profile": self.collections.playback_profile(library),
+                        "combined_view": combined_view}
+        if library is None:
+            library, source = self._current(client, refresh, known=known)
+        else:
+            source = "startup"
+        if source == "memory" and known == library.queue_snapshot:
+            with self.lock:
+                self._check_client(client)
+                return {"source": "current", "premium": self.premium, "account": self.account}
         albums = library.album_index()
         try:
             favourites = self.collections.album_favourites(library)
@@ -908,12 +974,33 @@ class Studio:
                 "artist_favourites": artist_favourites,
                 "playlists_count": self.collections.playlist_count(library),
                 "favourites_count": library.favourite_count(),
-                "source": source, "lastmodified": library.lastmodified,
+                "source": source, "snapshot": library.queue_snapshot, "lastmodified": library.lastmodified,
                 "combine_sets": library.combine_sets, "combined_view": library.combined_view}
         with self.lock:
             self._check_client(client)
             result["premium"] = self.premium
+            result["account"] = self.account
             return result
+
+    def _startup_library(self, client):
+        """Mount only a matching local copy. Normal loads and write checks still consult status."""
+        with self.lock:
+            self._check_client(client)
+            user_id, combine = self.account_id, self.combine_sets
+            if not user_id:
+                return None
+            library = self.library
+        if library is None:
+            library = self._read_cache(user_id, None, combine)
+        with self.lock:
+            self._check_client(client)
+            if self.library is not None:
+                library = self.library if self.library_user == user_id else None
+            if library is None or self.account_id != user_id or library.combine_sets != self.combine_sets \
+                    or not self._reusable_library(library):
+                return None
+            self.library, self.library_user = library, user_id
+            return library
 
     def album_details(self, ids):
         with self.lock:

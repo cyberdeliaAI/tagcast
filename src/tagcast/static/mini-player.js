@@ -40,7 +40,7 @@ function miniSnapshot() {
     album: available ? track.album?.name || "" : "", cover: available ? track.album?.artwork || "" : "",
     position: available && ready ? playerTrackPosition() : 0, duration: available && ready ? duration : 0,
     paused: g && !ready ? !g.autoPlay : audioRecoveryPaused(),
-    controllable, seekable: controllable && ready && !state.loading && (!audio.error || recovery) && Number.isFinite(duration) && duration > 0,
+    controllable, seekable: controllable && ready && playbackLibraryReady() && (!audio.error || recovery) && Number.isFinite(duration) && duration > 0,
     previous: controllable && player.index > 0, next: controllable && player.index < player.queue.length - 1,
     status: status ? TagcastI18n.text(`mini.status.${status}`) : "",
     language: TagcastI18n.language, direction: TagcastI18n.direction, labels: miniLabels(),

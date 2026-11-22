@@ -1,6 +1,7 @@
 """Client tests against the in-process fake iBroadcast in mock_ibroadcast.py."""
 
 import copy
+import gzip
 import importlib
 import json
 import os
@@ -9,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -820,6 +822,155 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(restarted.load_library()["source"], "download")
         self.assertEqual(restarted.load_library(refresh=True)["source"], "download")
         self.assertEqual(mock_ibroadcast.STATE["downloads"], 3)
+
+    def test_restored_queue_streams_while_the_first_album_index_is_still_building(self):
+        studio = self.local_connection()
+        original = studio.load_library()
+        self.wait_for_cache(studio)
+        studio = client.Studio(self.home)
+        session = studio.playback_session
+        with self.assertRaises(client.NotConnected):
+            studio.load_library(startup=True, playback_first=True, session="previous-session")
+        self.assertIsNone(studio.library)
+        with patch.object(client.Library, "album_index", side_effect=AssertionError("built albums early")), \
+                patch.object(studio.client, "_jsonrequest", side_effect=AssertionError("unexpected remote read")):
+            ready = studio.load_library(startup=True, playback_first=True, session=session)
+        self.assertEqual(ready, {"source": "playback", "playback_profile": original["playback_profile"],
+                                 "combined_view": original["combined_view"]})
+
+        entered, release = threading.Event(), threading.Event()
+        album_index = studio.library.album_index
+
+        def delayed_index():
+            entered.set()
+            if not release.wait(5):
+                raise AssertionError("Playback waited for the album overview")
+            return album_index()
+
+        with ThreadPoolExecutor(1) as pool, patch.object(studio.library, "album_index", delayed_index), \
+                patch.object(studio, "_read_cache", side_effect=AssertionError("disk reread")):
+            overview = pool.submit(studio.load_library, startup=True, session=session)
+            try:
+                self.assertTrue(entered.wait(5))
+                rows = studio.collections.queue_tracks({"tracks": ["903", "903"], "restore": True,
+                    "profile": ready["playback_profile"], "session": session})["tracks"]
+                self.assertEqual([(r["id"], r["position"]) for r in rows], [("903", 0), ("903", 1)])
+                audio, _mime = studio.stream("903", "bytes=10-19", playback_session=session)
+                with audio:
+                    self.assertEqual((audio.status_code, audio.content), (206, mock_ibroadcast.AUDIO[10:20]))
+                self.assertFalse(overview.done())
+            finally:
+                release.set()
+            self.assertEqual(overview.result(5)["albums"], original["albums"])
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], 1)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
+    def test_restart_can_restore_queue_and_stream_while_changed_library_downloads(self):
+        studio = self.local_connection()
+        original = studio.load_library()
+        self.wait_for_cache(studio)
+        studio = client.Studio(self.home)
+        session = studio.playback_session
+        with patch.object(studio.client, "_jsonrequest", side_effect=AssertionError("startup contacted iBroadcast")):
+            self.assertTrue(studio.status()["startup_cache"])
+            cached = studio.load_library(startup=True, session=session)
+        self.assertEqual((cached["source"], cached["playback_profile"]), ("startup", original["playback_profile"]))
+        with patch.object(studio, "_read_cache", side_effect=AssertionError("disk reread")):
+            current = studio.load_library(known=cached["snapshot"], session=session)
+        self.assertEqual(current["source"], "current")
+        self.assertNotIn("albums", current)
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], 1)
+
+        entered, release = threading.Event(), threading.Event()
+        fetch = studio.client.fetch_library
+
+        def delayed_download():
+            entered.set()
+            if not release.wait(5):
+                raise AssertionError("Playback waited for the library download")
+            return fetch()
+
+        mock_ibroadcast.STATE["version"] += 1
+        with ThreadPoolExecutor(1) as pool, patch.object(studio.client, "fetch_library", delayed_download):
+            checking = pool.submit(studio.load_library, known=cached["snapshot"], session=session)
+            try:
+                self.assertTrue(entered.wait(5))
+                restored = studio.collections.queue_tracks({"tracks": ["903"], "restore": True,
+                    "profile": cached["playback_profile"], "session": session})
+                self.assertEqual(restored["tracks"][0]["id"], "903")
+                audio, _mime = studio.stream("903", "bytes=10-19", playback_session=session)
+                with audio:
+                    self.assertEqual((audio.status_code, audio.content), (206, mock_ibroadcast.AUDIO[10:20]))
+            finally:
+                release.set()
+            fresh = checking.result(5)
+        self.assertNotEqual(fresh["snapshot"], cached["snapshot"])
+        self.assertEqual(fresh["lastmodified"], mock_ibroadcast.lastmodified())
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
+    def test_startup_cache_needs_current_credentials_owner_and_usable_stream_urls(self):
+        studio = self.local_connection()
+        studio.load_library()
+        self.wait_for_cache(studio)
+        path = Path(self.home, client.CACHE_FILE)
+        saved = json.loads(gzip.decompress(path.read_bytes()))
+        for field in ("user_id", "combine_sets", "expires", "corrupt"):
+            with self.subTest(field=field):
+                copy_on_disk = copy.deepcopy(saved)
+                if field == "expires":
+                    copy_on_disk["library"]["expires"] = "1"
+                else:
+                    copy_on_disk[field] = True if field == "combine_sets" else "another-owner"
+                path.write_bytes(b"broken" if field == "corrupt" else gzip.compress(json.dumps(copy_on_disk).encode()))
+                restarted = client.Studio(self.home)
+                self.assertIsNone(restarted._startup_library(restarted.client))
+                self.assertIsNone(restarted.library)
+        path.write_bytes(gzip.compress(json.dumps(saved).encode()))
+        tokens = studio._read("tokens.json")
+        del tokens["library_identity"]
+        studio._write("tokens.json", tokens)
+        legacy = client.Studio(self.home)
+        self.assertIsNone(legacy._startup_library(legacy.client))
+        with patch.object(legacy.client, "_jsonrequest", wraps=legacy.client._jsonrequest) as status:
+            self.assertTrue(legacy.status()["startup_cache"])
+            cached = legacy.load_library(startup=True, session=legacy.playback_session)
+            self.assertEqual([call.args[0] for call in status.call_args_list], ["status"])
+        self.assertEqual(cached["source"], "startup")
+        with patch.object(legacy.client, "_jsonrequest", return_value={"user": {"id": "other"}}):
+            with self.assertRaises(client.NotConnected):
+                legacy.load_library(known=cached["snapshot"], session=legacy.playback_session)
+        self.assertIsNone(legacy.client)
+        self.assertIsNone(legacy.library)
+
+    def test_startup_disk_read_cannot_install_after_reconnect(self):
+        studio = self.local_connection()
+        studio.load_library()
+        self.wait_for_cache(studio)
+        restarted = client.Studio(self.home)
+        read = restarted._read_cache
+
+        def reconnect(*args):
+            library = read(*args)
+            restarted._connect(restarted.client.token_set)
+            return library
+
+        with patch.object(restarted, "_read_cache", side_effect=reconnect), self.assertRaises(client.NotConnected):
+            restarted.load_library(startup=True, session=restarted.playback_session)
+        self.assertIsNone(restarted.library)
+        self.assertIsNone(restarted.saved_identity)
+
+    def test_write_from_startup_copy_checks_for_an_external_edit_first(self):
+        studio = self.local_connection()
+        studio.load_library()
+        self.wait_for_cache(studio)
+        restarted = client.Studio(self.home)
+        restarted.load_library(startup=True, session=restarted.playback_session)
+        before = restarted.album_details(["73"])[0]["year"]
+        with patch.dict(mock_ibroadcast.STATE["albums"][73], year=before + 1):
+            mock_ibroadcast.STATE["version"] += 1
+            with self.assertRaises(ConflictError):
+                restarted.save([edit("album", 73, 73, year=(before, 1990))])
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
 
     def test_cache_is_private_and_keeps_no_account_secrets(self):
         studio = self.connect()
