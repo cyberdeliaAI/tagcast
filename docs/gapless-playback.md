@@ -24,7 +24,7 @@ Ordinary playback can reload the same track once after a confirmed transient net
 
 ## Preparation and controls
 
-The current file is prepared before playback, so starting can take longer than normal streaming. Longer tracks start while subsequent preparation continues; very short consecutive tracks can require one additional file before startup. A near-end seek can wait for preparation while current audio continues. Explicit Next/Previous and queue changes are supported but are not promised seamless transitions.
+For Original FLAC, the first track can start once a group of checksum-checked frames is buffered. Tagcast continues reading the same stream and checks the full sample count at its end. It then prepares the following track. Short intros still wait for the next boundary to be buffered, and a very short sequence can require one further track before startup. MP3 still requires full-file preparation. A near-end seek can wait for preparation while current audio continues. Explicit Next/Previous and queue changes are supported but are not promised seamless transitions.
 
 The existing bounded preparation, coded-buffer eviction and fallback timeouts remain in place. Sleep/wake and physical device changes depend on the operating system and need separate practical validation; a successful synthetic pre-output measurement does not prove those paths. AirPlay through System default remains a system output route, not a new native AirPlay integration.
 
@@ -32,6 +32,6 @@ Turning Gapless off retains normal playback. Normal queue synchronisation, play 
 
 ## Validation and platform scope
 
-Deterministic synthetic FLAC tests measure sample continuity against independently encoded single-file references. Additional tests cover short tracks, seeking, Repeat, queue changes, decoder rejection and normal fallback. Real-world macOS listening also checks reliability; it does not prove sample accuracy for every album or physical output.
+Deterministic synthetic FLAC tests measure sample continuity against independently encoded single-file references. The startup test withholds the second half of the first FLAC until Electron captures non-silent audio, then checks the album against the uninterrupted reference. Additional tests cover short tracks, seeking, Repeat, queue changes, decoder rejection and normal fallback. Real-world macOS listening also checks reliability; it does not prove sample accuracy for every album or physical output.
 
 The release uses the existing cross-platform Python/frontend tests, native package checks and Linux Electron PCM measurements. Windows and Intel macOS package checks are not a substitute for listening on those devices. Sleep/wake and physical output changes still need device-specific practical testing. The earlier [candidate validation record](gapless-rc-validation.md) and [technical follow-up](gapless-improvements.md) document the measured scope and limitations.

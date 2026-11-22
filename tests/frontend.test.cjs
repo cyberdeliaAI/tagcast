@@ -11838,6 +11838,52 @@ test('production gapless-off playback uses the ordinary audio and retains seekin
  assert.equal(p.nodes.get('#audio'),identity);assert.equal(identity.hidden,false);assert.equal(p.run('gaplessDiagnostics.enabled'),false);
 });
 
+test('a damaged Original FLAC tail falls back once at the paused position after early playback', async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get('1')); lookup.streamQuality=player.quality='orig';
+    state.connection.premium=true; gaplessSupported=()=>true; gaplessTrial.enabled=true;
+    const ordinary=[]; playCurrent=(play, continuation)=>ordinary.push({play, continuation, offset:gaplessTrial.offset});
+    gaplessOpen=async(g, entry, media)=>{
+      g.current={entry,media,start:0,end:media.duration,part:1}; g.started=g.ready=true;
+      audio.currentTime=.75; audio.pause();
+    };`);
+  const raw = new Uint8Array(readFileSync(path.join(__dirname,'fixtures/gapless/tone.flac')));
+  raw[raw.length-1] ^= 1;
+  let read = 0, releaseTail, cancelled = 0;
+  p.setFetch(async () => ({ok:true, headers:{get:()=>null}, body:{getReader:()=>({
+    read:async()=>{
+      read++;
+      if (read===1) return {value:raw.subarray(0,2)};
+      if (read===2) return {value:raw.subarray(2,-2)};
+      if (read===3) return new Promise(resolve=>{releaseTail=()=>resolve({value:raw.subarray(-2)});});
+      return {done:true};
+    },
+    cancel(){ cancelled++; }, releaseLock(){}
+  })}}));
+  assert.equal(p.run('gaplessBegin(player.queue[0],true)'),true); await settle();
+  assert.equal(p.run('gaplessTrial.active.current.media.incomplete'),true);
+  p.run('gaplessPrune(gaplessTrial.active,new Set())');
+  assert.equal(p.run('gaplessTrial.active.prepared.size'),1);
+  releaseTail(); await settle();
+  assert.equal(p.run('gaplessTrial.active'),null);
+  assert.deepEqual(p.json('ordinary'),[{play:false,continuation:true,offset:.75}]);
+  assert.equal(cancelled,1);
+});
+
+test('a partial FLAC never ends the timeline or seeks into the undownloaded tail', async () => {
+  const p = livePage(); await settle();
+  p.run(`playTracks(state.details.get('1')); audio.currentTime=1; let endings=0;
+    const partial={session:state.connection.playback_session, current:{entry:player.queue[0],start:0,end:12,part:1,
+      media:{incomplete:true,parts:[{start:0,end:3}]}},started:true,trim:null,
+      media:{readyState:'open',duration:12,endOfStream(){endings++;}},
+      buffer:{updating:false,buffered:{length:1,start:()=>0,end:()=>3}}};
+    gaplessTrial.active=partial; gaplessPump(partial); gaplessSeek(11);`);
+  assert.equal(p.run('endings'),0); assert.equal(p.run('audio.currentTime'),1);
+  assert.equal(p.run('partial.seekIntent.position'),11);
+  p.run('partial.current.media.incomplete=false; partial.buffer.buffered={length:1,start:()=>8,end:()=>12}; gaplessReadiness(partial); gaplessPump(partial)');
+  assert.equal(p.run('audio.currentTime'),11); assert.equal(p.run('endings'),1);
+});
+
 // Deterministic slow-transfer clock: no real network, sleeps or music fixtures.
 async function gaplessTransferPage() {
  const p=livePage();await settle();

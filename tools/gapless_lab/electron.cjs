@@ -14,6 +14,23 @@ const routes={'/':'harness.html','/environment.js':'environment.js','/run.js':'r
 const production={'/i18n-en.js':'i18n-en.js','/i18n.js':'i18n.js','/gapless-media.js':'gapless-media.js','/gapless.js':'gapless.js','/gapless-diagnostics.js':'gapless-diagnostics.js'};
 const timers=new Set();
 function send(res,file,delay=0){const data=fs.readFileSync(file);res.writeHead(200,{'Content-Type':file.endsWith('.flac')?'audio/flac':file.endsWith('.html')?'text/html':'text/javascript','Content-Length':data.length,'Cache-Control':'no-store'});const t=setTimeout(()=>{timers.delete(t);if(!res.destroyed)res.end(data);},delay);timers.add(t);res.on('close',()=>{clearTimeout(t);timers.delete(t);});}
+// The server releases the second half only after the worklet has captured non-silent
+// output. A player waiting for EOF cannot pass by producing a late 'playing' event.
+function holdFirstTail(run, res, file, record) {
+ const data=fs.readFileSync(file), split=Math.floor(data.length/2);
+ res.writeHead(200,{'Content-Type':'audio/flac','Content-Length':data.length,'Cache-Control':'no-store'});
+ record.prefixBytes=split;
+ const release=heard=>{
+  clearTimeout(timer); run.releaseTail=null;
+  record.playedBeforeEOF=heard; record.tailReleasedAt=performance.now()-run.started;
+  if(!res.destroyed)res.end(data.subarray(split));
+ };
+ let timer=setTimeout(()=>{
+  res.write(data.subarray(0,split)); record.prefixSentAt=performance.now()-run.started;
+  run.releaseTail=release; timer=setTimeout(()=>release(false),6000);
+ },record.delay);
+ res.on('close',()=>{clearTimeout(timer);run.releaseTail=null;});
+}
 server=http.createServer((req,res)=>{
  const url=new URL(req.url,'http://localhost');
  if(req.headers.host!==`127.0.0.1:${server.address().port}`){res.writeHead(403).end();return;}
@@ -21,11 +38,11 @@ server=http.createServer((req,res)=>{
  if(production[url.pathname])return send(res,path.join(ROOT,'src/tagcast/static',production[url.pathname]));
  if(url.pathname==='/reference'&&active?.config.reference)return send(res,path.join(directory,active.config.reference));
  const match=url.pathname.match(/^\/api\/stream\/(\d+)$/);
- if(match&&active){const n=Number(match[1]),spec=active.config.tracks[n];if(spec){const record={index:n,epoch:Date.now(),at:performance.now()-active.started,delay:active.config.delays?.[n]||0,bytes:spec.bytes};active.requests.push(record);res.on('finish',()=>{record.finishedAt=performance.now()-active.started;record.finishedEpoch=Date.now();});return send(res,path.join(directory,spec.file),record.delay);}}
+ if(match&&active){const n=Number(match[1]),spec=active.config.tracks[n];if(spec){const record={index:n,epoch:Date.now(),at:performance.now()-active.started,delay:active.config.delays?.[n]||0,bytes:spec.bytes};active.requests.push(record);res.on('finish',()=>{record.finishedAt=performance.now()-active.started;record.finishedEpoch=Date.now();});if(n===0&&active.config.id==='startup-long'&&!active.config.referenceMode)return holdFirstTail(active,res,path.join(directory,spec.file),record);return send(res,path.join(directory,spec.file),record.delay);}}
  res.writeHead(404).end();
 });
 ipcMain.on('lab-config',event=>{if(event.sender!==window?.webContents){event.returnValue=null;return;}event.returnValue=active.config;});
-ipcMain.on('lab-pcm',(event,buffer)=>{if(event.sender===window?.webContents&&active){if(active.bytes+buffer.byteLength>256*1024**2)throw Error('Capture exceeded diagnostic bound');fs.writeSync(active.fd,Buffer.from(buffer));active.bytes+=buffer.byteLength;}});
+ipcMain.on('lab-pcm',(event,buffer)=>{if(event.sender===window?.webContents&&active){if(active.bytes+buffer.byteLength>256*1024**2)throw Error('Capture exceeded diagnostic bound');if(active.releaseTail && new Float32Array(buffer).some(sample=>Number.isFinite(sample)&&sample!==0))active.releaseTail(true);fs.writeSync(active.fd,Buffer.from(buffer));active.bytes+=buffer.byteLength;}});
 ipcMain.on('lab-done',(event,result)=>{if(event.sender===window?.webContents&&active)active.resolve(result);});
 async function run(config,referenceMode=false,normalization){
  const name=config.id+(referenceMode?'-reference':''),file=path.join(out,name+'.f32le');
@@ -54,6 +71,7 @@ async function run(config,referenceMode=false,normalization){
  result.boundaryWaiting=(result.events||[]).filter(e=>e.name==='waiting'&&ends.slice(0,-1).some(t=>Math.abs(e.time-t)<.025));
  result.endWaiting=(result.events||[]).filter(e=>e.name==='waiting'&&Math.abs(e.time-ends.at(-1))<1/config.rate);result.pass=!result.error&&!result.fallbacks?.length&&result.signal.exact&&!result.channelMismatch;
  result.referenceMode=referenceMode;result.gating=Boolean(config.gate);
+ if(config.id==='startup-long'&&!referenceMode)result.pass &&= result.requests.find(r=>r.index===0)?.playedBeforeEOF===true && result.boundaryWaiting.length===0;
  if(config.gate&&!referenceMode)result.pass &&= result.finalIndex===config.tracks.length-1;
  if(config.seekProbe){result.partialCapture=true;if(config.seekProbe!=='near-end'){result.signal.exact=null;result.pass=!result.error&&Boolean(result.seekProbe)&&(config.expectDeferred===undefined||result.seekProbe.deferred===config.expectDeferred)&&(config.expectDeferred!==false||Math.abs(result.seekProbe.relativeAfterRequest-result.seekProbe.target)<.0001);}}result.required=Boolean(config.required);
  if(config.expectedBoundaryFallback){result.expectedBoundaryFallback=true;result.pass=!result.error&&result.finalIndex===0&&result.events.some(e=>e.name==='ended')&&result.message.includes('standard playback')&&Math.abs(result.time-expected[0].samples/config.rate)<.0001;}results.push(result);fs.writeFileSync(path.join(out,name+'.json'),JSON.stringify(result,null,2));
