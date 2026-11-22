@@ -1612,6 +1612,8 @@
   "library.sort.uploadedOldest": "Fecha de subida · más antigua primero",
   "library.sort.yearNewest": "Año de lanzamiento · más reciente primero",
   "library.sort.yearOldest": "Año de lanzamiento · más antiguo primero",
+  "library.sync.cached": "Se muestra tu biblioteca guardada. Vuelve a cargarla para comprobar si hay cambios.",
+  "library.sync.checking": "Puedes reproducir música de tu biblioteca guardada mientras Tagcast comprueba si hay cambios.",
   "library.total.tracks_many": "{{count, number}} de canciones",
   "library.total.tracks_one": "{{count, number}} canción",
   "library.total.tracks_other": "{{count, number}} canciones",

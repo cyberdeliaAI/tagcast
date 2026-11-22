@@ -1602,6 +1602,8 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "library.sort.uploadedOldest": "Date uploaded · oldest first",
   "library.sort.yearNewest": "Release year · newest first",
   "library.sort.yearOldest": "Release year · oldest first",
+  "library.sync.cached": "Showing your saved library. Reload to check for changes.",
+  "library.sync.checking": "You can play from your saved library while Tagcast checks for changes.",
   "library.total.tracks_one": "{{count, number}} track",
   "library.total.tracks_other": "{{count, number}} tracks",
   "listening.empty.browse": "Browse albums",

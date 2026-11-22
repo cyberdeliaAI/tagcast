@@ -1612,6 +1612,8 @@
   "library.sort.uploadedOldest": "Date d’envoi · plus anciennes d’abord",
   "library.sort.yearNewest": "Année de sortie · plus récentes d’abord",
   "library.sort.yearOldest": "Année de sortie · plus anciennes d’abord",
+  "library.sync.cached": "La bibliothèque enregistrée est affichée. Rechargez-la pour vérifier les changements.",
+  "library.sync.checking": "Vous pouvez écouter votre musique depuis la bibliothèque enregistrée pendant que Tagcast vérifie les changements.",
   "library.total.tracks_many": "{{count, number}} de morceaux",
   "library.total.tracks_one": "{{count, number}} morceau",
   "library.total.tracks_other": "{{count, number}} morceaux",

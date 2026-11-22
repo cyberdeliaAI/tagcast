@@ -1552,6 +1552,8 @@
   "library.sort.uploadedOldest": "Upload-Datum · älteste zuerst",
   "library.sort.yearNewest": "Erscheinungsjahr · neueste zuerst",
   "library.sort.yearOldest": "Erscheinungsjahr · älteste zuerst",
+  "library.sync.cached": "Deine gespeicherte Bibliothek wird angezeigt. Lade sie neu, um nach Änderungen zu suchen.",
+  "library.sync.checking": "Du kannst Musik aus deiner gespeicherten Bibliothek abspielen, während Tagcast nach Änderungen sucht.",
   "library.total.tracks_one": "{{count, number}} Titel",
   "library.total.tracks_other": "{{count, number}} Titel",
   "listening.empty.browse": "Alben ansehen",

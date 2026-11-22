@@ -1552,6 +1552,8 @@
   "library.sort.uploadedOldest": "Uploaddatum · oudste eerst",
   "library.sort.yearNewest": "Jaar van uitgave · nieuwste eerst",
   "library.sort.yearOldest": "Jaar van uitgave · oudste eerst",
+  "library.sync.cached": "Je ziet je opgeslagen bibliotheek. Laad opnieuw om op wijzigingen te controleren.",
+  "library.sync.checking": "Je kunt alvast afspelen vanuit je opgeslagen bibliotheek. Tagcast controleert op wijzigingen.",
   "library.total.tracks_one": "{{count, number}} nummer",
   "library.total.tracks_other": "{{count, number}} nummers",
   "listening.empty.browse": "Albums bekijken",

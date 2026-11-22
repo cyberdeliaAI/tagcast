@@ -1492,6 +1492,8 @@
   "library.sort.uploadedOldest": "アップロード日 · 古い順",
   "library.sort.yearNewest": "リリース年 · 新しい順",
   "library.sort.yearOldest": "リリース年 · 古い順",
+  "library.sync.cached": "保存済みのライブラリを表示しています。再読み込みして変更を確認してください。",
+  "library.sync.checking": "Tagcast が変更を確認している間も、保存済みのライブラリから再生できます。",
   "library.total.tracks_other": "{{count, number}}曲",
   "listening.empty.browse": "アルバムを見る",
   "listening.empty.description": "聴きたいアルバムを選んで再生すると、ここに曲が表示されます。",
