@@ -71,10 +71,15 @@ function gaplessApplySeek(g, position, fast) {
   const target = (g?.current?.start || 0) + Math.max(0, Math.min(gaplessDuration(), position));
   if (fast && typeof audio.fastSeek === "function") audio.fastSeek(target); else audio.currentTime = target;
 }
+function gaplessCanApplySeek(g, position) {
+  const media = g.current.media;
+  if (media?.incomplete && position >= media.parts.at(-1).end) return false;
+  return gaplessBoundaryReady(g) || gaplessSeekReady(g, position);
+}
 function gaplessSeek(position, fast = false) {
   const g = gaplessTrial.active;
   if (g) g.seekIntent = null;
-  if (g?.current && position > gaplessPosition() + .05 && !gaplessBoundaryReady(g) && !gaplessSeekReady(g, position)) {
+  if (g?.current && position > gaplessPosition() + .05 && !gaplessCanApplySeek(g, position)) {
     g.seekIntent = {engine: g, segment: g.current, position, fast, at: performance.now()};
     gaplessNote("gapless.status.seekPreparing");
     gaplessPrefetch(g); gaplessPump(g); return;
@@ -103,7 +108,7 @@ function gaplessReadiness(g) {
   }
   const intent = g.seekIntent;
   if (intent && intent.segment !== g.current) { g.seekIntent = null; return; }
-  if (intent && (gaplessBoundaryReady(g) || gaplessSeekReady(g, intent.position))) {
+  if (intent && gaplessCanApplySeek(g, intent.position)) {
     g.seekIntent = null; gaplessApplySeek(g, intent.position, intent.fast);
     gaplessActiveNote(g);
   }
@@ -150,23 +155,58 @@ function gaplessCandidate(g, entry = g.current.entry) {
   const first = player.repeat === "queue" ? player.queue.find(t => !t.upNext) : null, start = gaplessAlbumEntry(first);
   return start?.run === origin.run && start.index === 0 && origin.index === origin.run.length - 1 ? {entry: first, wrap: true} : null;
 }
-async function gaplessRead(g, entry, controller) {
+async function gaplessRead(g, entry, controller, onParts) {
+  const record = g.prepared?.get(entry);
   const response = await fetch(`/api/stream/${encodeURIComponent(entry.id)}?quality=${g.quality}`, {signal: controller.signal, cache: "no-store"});
   if (!response.ok) throw playbackFailure("errors.gapless.http", {status: response.status});
-  const record = g.prepared?.get(entry), max = 96 * 1024 ** 2, length = Number(response.headers.get("Content-Length"));
+  const max = 96 * 1024 ** 2, length = Number(response.headers.get("Content-Length"));
   if (length > max) { await response.body?.cancel(); throw playbackFailure("errors.gapless.file_limit"); }
-  const reader = response.body.getReader(), chunks = []; let count = 0;
+  const reader = response.body.getReader(), chunks = [];
+  let count = 0, sniff = Boolean(onParts && g.quality === "orig"), stream;
+  const checkBudget = () => {
+    if (count > max || gaplessHeldBytes(g) > max || !gaplessValid(g) || controller.signal.aborted) {
+      throw playbackFailure("errors.gapless.cancelled_or_limit");
+    }
+  };
   try {
     while (true) {
       const {done, value} = await reader.read(); if (done) break;
       count += value.length;
-      if (record && g.prepared.get(entry) === record) {
-        record.received = count;
-        if (value.length) record.progress?.();
+      if (record) record.received = stream ? stream.pendingBytes + value.length : count;
+      checkBudget();
+      if (!value.length) continue;
+      record?.progress?.();
+      if (!stream) chunks.push(value);
+      if (sniff && count >= 4) {
+        const magic = new Uint8Array(4);
+        let copied = 0;
+        for (const chunk of chunks) {
+          const prefix = chunk.subarray(0, 4 - copied);
+          magic.set(prefix, copied); copied += prefix.length;
+          if (copied === 4) break;
+        }
+        sniff = false;
+        if (String.fromCharCode(...magic) === "fLaC") {
+          stream = gaplessMedia.progressiveFlac();
+          for (const chunk of chunks) stream.push(chunk);
+          chunks.length = 0;
+        }
+      } else if (stream) stream.push(value);
+      if (stream) {
+        record.partial = stream.media; record.received = stream.pendingBytes;
+        checkBudget();
+        if (stream.media?.parts.length) onParts(stream.media);
       }
-      if (count > max || gaplessHeldBytes(g) > max || !gaplessValid(g) || controller.signal.aborted) { await reader.cancel(); throw playbackFailure("errors.gapless.cancelled_or_limit"); }
-      chunks.push(value);
     }
+    checkBudget();
+    if (stream) {
+      const media = stream.finish();
+      record.received = 0; checkBudget();
+      return media;
+    }
+  } catch (error) {
+    try { await reader.cancel?.(); } catch { /* Preserve the original failure. */ }
+    throw error;
   } finally { reader.releaseLock(); }
   const bytes = new Uint8Array(count); let n = 0; for (const chunk of chunks) { bytes.set(chunk, n); n += chunk.length; }
   if (!gaplessValid(g) || controller.signal.aborted) throw playbackFailure("errors.gapless.cancelled");
@@ -186,16 +226,16 @@ async function gaplessRead(g, entry, controller) {
 }
 function gaplessHeldBytes(g) {
   const media = new Set([g.current?.media, g.next?.media]); let pending = 0;
-  for (const record of g.prepared?.values() || []) { media.add(record.media); pending += record.received || 0; }
+  for (const record of g.prepared?.values() || []) { media.add(record.media); media.add(record.partial); pending += record.received || 0; }
   return pending + [...media].reduce((n, item) => n + (item?.bytes || 0), 0);
 }
 function gaplessPrune(g, keep) {
-  for (const [entry, record] of g.prepared || []) if (!keep.has(entry)) {
+  for (const [entry, record] of g.prepared || []) if (!keep.has(entry) && !(entry === g.current?.entry && record.partial?.incomplete)) {
     record.retired = true; record.controller.abort(); g.prepared.delete(entry);
   }
 }
-async function gaplessPrepare(g, entry) {
-  if (g.current?.entry === entry && g.current.media) return g.current.media;
+async function gaplessPrepare(g, entry, onParts) {
+  if (g.current?.entry === entry && g.current.media && !g.current.media.incomplete) return g.current.media;
   g.prepared ||= new Map();
   if (g.prepared.has(entry)) return g.prepared.get(entry).promise;
   const controller = new AbortController(), record = {controller, received: 0, media: null};
@@ -210,9 +250,9 @@ async function gaplessPrepare(g, entry) {
   };
   record.progress();
   const timeout = setTimeout(expire, 60000);
-  record.promise = gaplessRead(g, entry, controller).then(media => {
+  record.promise = gaplessRead(g, entry, controller, onParts).then(media => {
     if (!gaplessValid(g) || g.prepared.get(entry) !== record || controller.signal.aborted) throw playbackFailure("errors.gapless.cancelled");
-    record.received = 0; record.media = media; g.preparationProgressAt = performance.now();
+    record.received = 0; delete record.partial; record.media = media; g.preparationProgressAt = performance.now();
     if (gaplessHeldBytes(g) > 96 * 1024 ** 2) throw playbackFailure("errors.gapless.memory_budget");
     return media;
   }).catch(error => {
@@ -260,7 +300,7 @@ function gaplessQueueChanged() {
   gaplessPrefetch(g); gaplessPump(g);
 }
 async function gaplessPrefetch(g) {
-  if (!gaplessValid(g) || !g.current || !g.wanted || g.next || g.pending || !playbackLibraryReady() || gaplessFailed(g.wanted, g.quality)) return;
+  if (!gaplessValid(g) || !g.current || g.current.media?.incomplete || !g.buffer || !g.wanted || g.next || g.pending || !playbackLibraryReady() || gaplessFailed(g.wanted, g.quality)) return;
   const entry = g.wanted, ticket = g.ticket; g.pending = true;
   try {
     const media = await gaplessPrepare(g, entry);
@@ -316,7 +356,7 @@ function gaplessPump(g) {
       sb.timestampOffset = segment.start; sb.appendWindowStart = 0; sb.appendWindowEnd = segment.end; sb.appendWindowStart = segment.start;
       sb.appendBuffer(part.data); segment.part += 1; g.finished = false; return;
     }
-    if ((!g.wanted || gaplessFailed(g.wanted, g.quality)) && !g.pending && !g.finished && g.media.readyState === "open") {
+    if (!g.current.media.incomplete && (!g.wanted || gaplessFailed(g.wanted, g.quality)) && !g.pending && !g.finished && g.media.readyState === "open") {
       g.finished = true; g.media.endOfStream();
     }
   } catch (error) { gaplessFallback(g, playbackFailure("errors.gapless.buffer_failed", {reason: error.message})); }
@@ -359,7 +399,7 @@ function gaplessBegin(entry, autoPlay) {
   const previous = gaplessTrial.active, reusable = new Map();
   if (previous && gaplessValid(previous) && previous.quality === player.quality) {
     for (const [key, record] of previous.prepared || []) if (record.media) reusable.set(key, record.media);
-    if (previous.current?.media) reusable.set(previous.current.entry, previous.current.media);
+    if (previous.current?.media && !previous.current.media.incomplete) reusable.set(previous.current.entry, previous.current.media);
   }
   gaplessCancel();
   if (gaplessTrial.bypass || !gaplessTrial.enabled || !gaplessQualityAvailable(player.quality) || !gaplessAlbumEntry(entry) || !gaplessSupported() || gaplessFailed(entry)
@@ -370,32 +410,40 @@ function gaplessBegin(entry, autoPlay) {
   const next = gaplessCandidate(g, entry)?.entry, keep = new Set([entry, next, next && gaplessCandidate(g, next)?.entry]);
   for (const [key, media] of reusable) if (keep.has(key)) g.prepared.set(key, {media, received: 0, controller: new AbortController(), promise: Promise.resolve(media)});
   gaplessTrial.offset = 0; gaplessTrial.active = g; gaplessNote("gapless.status.preparing");
-  (async () => {
-    try {
-      const media = await gaplessPrepare(g, entry); if (!gaplessValid(g)) return;
-      g.current = {entry, media, start: 0, end: media.duration, part: 0}; g.maxBlock = media.maxBlock; g.byteRate = media.byteRate;
-      g.media = new MediaSource(); g.url = URL.createObjectURL(g.media); audio.src = g.url;
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(playbackFailure("errors.gapless.not_opened")), 10000);
-        g.media.addEventListener("sourceopen", () => { clearTimeout(timeout); resolve(); }, {once: true});
-      });
-      if (!gaplessValid(g)) return;
-      g.buffer = g.media.addSourceBuffer('audio/mp4; codecs="flac"'); g.media.duration = media.duration;
-      g.buffer.addEventListener("error", () => gaplessFallback(g, playbackFailure("errors.gapless.decoder_rejected")));
-      g.buffer.addEventListener("updateend", () => {
-        if (!gaplessValid(g)) return;
-        if (!g.started && g.current.part > 0) {
-          g.started = true; if (g.offset) audio.currentTime = Math.min(g.offset, g.current.end);
-          gaplessNote(g.wanted && !gaplessBoundaryReady(g) ? "gapless.status.preparingNext" : "gapless.status.active");
-        }
-        gaplessReadiness(g); gaplessPump(g);
-      });
-      g.buffer.appendBuffer(media.init);
-      gaplessQueueChanged();
-      const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); gaplessPrefetchAhead(g); gaplessReadiness(g); gaplessWatch(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); if (gaplessValid(g)) g.timer = setTimeout(tick, 100); }; tick();
-    } catch (error) { gaplessFallback(g, error?.code ? error : error?.message); }
-  })();
+  function acceptParts(media) {
+    if (!gaplessValid(g)) return;
+    if (!g.current) {
+      gaplessOpen(g, entry, media).catch(error => gaplessFallback(g, error));
+    } else if (g.current.media === media) {
+      if (!media.incomplete && g.prepared.get(entry)?.media === media) g.prepared.delete(entry);
+      g.byteRate = Math.max(g.byteRate, media.byteRate);
+      gaplessPump(g);
+    }
+  }
+  gaplessPrepare(g, entry, acceptParts).then(acceptParts).catch(error => gaplessFallback(g, error));
   return true;
+}
+async function gaplessOpen(g, entry, media) {
+  g.current = {entry, media, start: 0, end: media.duration, part: 0}; g.maxBlock = media.maxBlock; g.byteRate = media.byteRate;
+  g.media = new MediaSource(); g.url = URL.createObjectURL(g.media); audio.src = g.url;
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(playbackFailure("errors.gapless.not_opened")), 10000);
+    g.media.addEventListener("sourceopen", () => { clearTimeout(timeout); resolve(); }, {once: true});
+  });
+  if (!gaplessValid(g)) return;
+  g.buffer = g.media.addSourceBuffer('audio/mp4; codecs="flac"'); g.media.duration = media.duration;
+  g.buffer.addEventListener("error", () => gaplessFallback(g, playbackFailure("errors.gapless.decoder_rejected")));
+  g.buffer.addEventListener("updateend", () => {
+    if (!gaplessValid(g)) return;
+    if (!g.started && g.current.part > 0) {
+      g.started = true; if (g.offset) audio.currentTime = Math.min(g.offset, g.current.end);
+      gaplessNote(g.wanted && !gaplessBoundaryReady(g) ? "gapless.status.preparingNext" : "gapless.status.active");
+    }
+    gaplessReadiness(g); gaplessPump(g);
+  });
+  g.buffer.appendBuffer(media.init);
+  gaplessQueueChanged();
+  const tick = () => { if (!gaplessValid(g)) { if (gaplessTrial.active === g) gaplessRetire(g); return; } gaplessAdvance(); gaplessQueueChanged(); gaplessPrefetch(g); gaplessPrefetchAhead(g); gaplessReadiness(g); gaplessWatch(g); if (typeof gaplessRenderTransport === "function") gaplessRenderTransport(); if (gaplessValid(g)) g.timer = setTimeout(tick, 100); }; tick();
 }
 function gaplessNativeSeek() {
   const g = gaplessTrial.active;

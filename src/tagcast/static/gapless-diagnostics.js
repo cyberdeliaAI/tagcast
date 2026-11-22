@@ -75,10 +75,10 @@ function gaplessDiagnosticsSet(enabled) {
   const generation = d.generation;
   // Function declarations are shared bindings. Restore the exact original functions on stop.
   const prepare = gaplessPrepare, advance = gaplessAdvance, fallback = gaplessFallback, cancel = gaplessCancel;
-  const wrappedPrepare = function(g, entry) {
+  const wrappedPrepare = function(g, entry, onParts) {
     const at = performance.now(), slot = gaplessDiagnosticSlot(entry);
     gaplessDiagnosticEvent("prepare-start", {slot});
-    return prepare(g, entry).then(media => {
+    return prepare(g, entry, onParts).then(media => {
       if (d.enabled && d.generation === generation) gaplessDiagnosticEvent("prepare-ready", {slot, elapsedMs: performance.now() - at, bytes: media.bytes, duration: media.duration, sampleRate: media.rate, channels: media.channels, bits: media.bits, maxBlock: media.maxBlock});
       return media;
     }, error => {
