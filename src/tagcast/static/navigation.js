@@ -450,6 +450,21 @@ function restorePendingRoute() {
   history.replaceState(viewState(0, ""), "", `#/${currentRoute()}`);
 }
 
+// A background replacement can arrive after the listener has already opened an album.
+function replaceStartupView(replace) {
+  const route = parseRoute(location.hash), entry = history.state || {};
+  const saved = viewState(entry.index || 0, entry.from || "", entry.fromHash || "");
+  nav.restoring = true;
+  try {
+    replace();
+    navigationScope();
+    if (route && !["now-playing", "downloads", "uploads", "settings"].includes(route.screen)) showRoute(route, saved);
+    const hash = `#/${currentRoute()}`;
+    if (hash !== location.hash) history.replaceState(saved, "", hash);
+    nav.scroll = {hash, top: saved.scrollY, scope: nav.scope};
+  } finally { nav.restoring = false; }
+}
+
 // A language change rewrites the menu button, the Sidebar settings section and the Back and
 // breadcrumb labels from memory. Each page's own script re-renders its visible content.
 TagcastI18n.subscribe(() => {

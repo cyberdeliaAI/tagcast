@@ -217,8 +217,9 @@ class Handler(SimpleHTTPRequestHandler):
         elif url.path == "/api/status":
             self._run(self.studio.status)
         elif url.path == "/api/library":
-            refresh = parse_qs(url.query).get("refresh") == ["1"]
-            self._run(lambda: self.studio.load_library(refresh))
+            self._run(lambda: self.studio.load_library(query.get("refresh") == "1",
+                      startup=query.get("startup") == "1", playback_first=query.get("playback") == "1",
+                      known=query.get("known"), session=query.get("session")))
         elif url.path == "/api/overview":
             self._run(self.studio.overview)
         elif url.path == "/api/account-settings":

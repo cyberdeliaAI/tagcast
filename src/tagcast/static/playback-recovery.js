@@ -8,7 +8,7 @@ function audioRecoveryCurrent(record = audioRecovery.pending || audioRecovery.fa
   return record && !audioRecovery.closing && record.generation === audioRecovery.generation
     && record.entry === player.queue[player.index] && record.session === state.connection.playback_session
     && record.quality === player.quality
-    && (record.cached ? record.request === player.streamRequest : record.details === state.details && !state.loading)
+    && (record.cached ? record.request === player.streamRequest : record.details === state.details && playbackLibraryReady())
     && live() && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed()) ? record : null;
 }
 function audioRecoveryPaused() {
@@ -263,7 +263,7 @@ function recoverAudio(code, manual = false) {
   }
   if (!manual && code !== 2 && code !== 4 && !(code === 3 && player.quality === "orig" && !player.fallback)) return false;
   const entry = player.queue[player.index], session = state.connection.playback_session;
-  if (!entry || !session || !player.streamRequest || audioRecovery.closing || !live() || state.loading
+  if (!entry || !session || !player.streamRequest || audioRecovery.closing || !playbackLibraryReady()
     || (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed())) return false;
   freezeAudioReporting();
   const record = {entry, details: state.details, session, generation: audioRecovery.generation,
