@@ -40,3 +40,47 @@ test('PCM limits reject oversized and multichannel buffers before reading sample
  assert.throws(()=>media.pcmFlac({sampleRate:44100,numberOfChannels:2,length:100000000,getChannelData:fail}),/memory/);
  assert.throws(()=>media.pcmFlac({sampleRate:44100,numberOfChannels:6,length:1,getChannelData:fail}),/limit/);
 });
+
+test('progressive FLAC emits checked fragments before EOF for arbitrary network chunk boundaries', () => {
+  const raw = fixture('tone.flac'), expected = media.pack(media.parseFlac(raw));
+  for (const stride of [1, 7, 257, 16384]) {
+    const stream = media.progressiveFlac();
+    for (let offset = 0; offset < raw.length - 2; offset += stride) {
+      stream.push(raw.subarray(offset, Math.min(raw.length - 2, offset + stride)));
+    }
+    const first = stream.media;
+    assert.equal(first.incomplete, true);
+    assert.ok(first.parts.length > 0 && first.parts.at(-1).end < first.duration);
+    stream.push(raw.subarray(-2));
+    assert.equal(stream.finish(), first);
+    assert.equal(first.incomplete, false);
+    assert.deepEqual(first.parts, expected.parts);
+    assert.deepEqual(first.init, expected.init);
+  }
+});
+
+test('progressive FLAC rejects a damaged tail and a missing final frame after a playable prefix', () => {
+  const raw = fixture('tone.flac');
+  const corrupt = raw.slice();
+  corrupt[corrupt.length - 1] ^= 1;
+  const finalFrame = media.parseFlac(raw).frames.at(-1);
+  for (const [data, reason] of [[corrupt, /checksum/], [raw.subarray(0, raw.length - finalFrame.data.length), /sample count/]]) {
+    const stream = media.progressiveFlac();
+    stream.push(data);
+    assert.ok(stream.media.parts.length > 0);
+    assert.throws(() => stream.finish(), reason);
+    assert.equal(stream.media.incomplete, true);
+  }
+});
+
+test('progressive FLAC skips embedded artwork without retaining the picture payload', () => {
+  const raw = fixture('tone.flac'), info = media.parseFlac(raw);
+  const stream = media.progressiveFlac(), block = new Uint8Array(4096);
+  stream.push(raw.subarray(0, 4));
+  stream.push(Uint8Array.of(0, 0, 0, 34)); stream.push(info.streaminfo);
+  stream.push(Uint8Array.of(128 | 6, 16, 0, 0));
+  for (let i = 0; i < 256; i++) stream.push(block);
+  assert.ok(stream.pendingBytes < 16384);
+  for (const frame of info.frames) stream.push(frame.data);
+  assert.deepEqual(stream.finish().parts, media.pack(info).parts);
+});

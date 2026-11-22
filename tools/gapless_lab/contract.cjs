@@ -42,6 +42,7 @@ function verifyResults(report,directory){
   const rows=report.results.filter(r=>r.id===id);if(rows.length!==1)throw Error('Missing/duplicate measurement: '+id);
   const row=rows[0];if(row.pass!==true)throw Error('Required measurement failed: '+id);
   if(JSON.stringify(JSON.parse(fs.readFileSync(path.join(directory,id+'.json'))))!==JSON.stringify(row))throw Error('Missing or inconsistent result artifact: '+id);
+  if(id==='startup-long' && (!row.requests?.find(r=>r.index===0)?.playedBeforeEOF || !row.signal?.exact || row.boundaryWaiting?.length!==0))throw Error('Missing progressive playback or exact boundary: '+id);
   if(row.captureFile&&fs.statSync(path.join(directory,row.captureFile)).size!==row.pcmBytes)throw Error('Missing or truncated PCM capture: '+id);
  }
  return true;

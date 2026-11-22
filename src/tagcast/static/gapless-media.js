@@ -40,42 +40,111 @@ const gaplessMedia = (() => {
     if (rateCode === 12) rate = a[p++] * 1000;
     else if (rateCode === 13 || rateCode === 14) { rate = (a[p] << 8 | a[p + 1]) * (rateCode === 14 ? 10 : 1); p += 2; }
     const bits = [info.bits, 8, 12, 0, 16, 20, 24, 32][depth], channels = assignment <= 7 ? assignment + 1 : assignment <= 10 ? 2 : 0;
-    check(rate === info.rate && bits === info.bits && channels === info.channels && crc(a, start, p + 1, 8) === 0, "FLAC frame does not match STREAMINFO.", "errors.gapless.media_flac_frame_mismatch");
+    check(rate === info.rate && bits === info.bits && channels === info.channels && p < a.length && crc(a, start, p + 1, 8) === 0, "FLAC frame does not match STREAMINFO.", "errors.gapless.media_flac_frame_mismatch");
     return {number, samples, variable, headerEnd: p + 1};
   }
-  function parseFlac(a) {
-    check(a.length > 42 && String.fromCharCode(...a.subarray(0, 4)) === "fLaC", "Original stream is not native FLAC.", "errors.gapless.media_not_flac");
-    let pos = 4, info, last = false;
-    while (!last) {
-      check(pos + 4 <= a.length, "Truncated FLAC metadata.", "errors.gapless.media_flac_truncated");
-      last = Boolean(a[pos] & 128); const kind = a[pos] & 127, size = a[pos + 1] * 65536 + a[pos + 2] * 256 + a[pos + 3]; pos += 4;
-      check(pos + size <= a.length, "Truncated FLAC metadata.", "errors.gapless.media_flac_truncated");
-      if (kind === 0) {
-        check(!info && size === 34, "Invalid FLAC STREAMINFO.", "errors.gapless.media_flac_streaminfo");
-        const data = a.slice(pos, pos + size), rate = data[10] * 4096 + data[11] * 16 + (data[12] >>> 4);
-        info = {rate, channels: ((data[12] >>> 1) & 7) + 1, bits: ((data[12] & 1) << 4 | data[13] >>> 4) + 1,
-          total: (data[13] & 15) * 2 ** 32 + read32(data, 14), streaminfo: data};
+  function readStreamInfo(data) {
+    const rate = data[10] * 4096 + data[11] * 16 + (data[12] >>> 4);
+    const info = {rate, channels: ((data[12] >>> 1) & 7) + 1,
+      bits: ((data[12] & 1) << 4 | data[13] >>> 4) + 1,
+      total: (data[13] & 15) * 2 ** 32 + read32(data, 14), streaminfo: data};
+    check(info.total > 0 && rate >= 8000 && rate <= 192000 && info.channels <= 2 && [16, 24].includes(info.bits),
+      "This FLAC format is outside the gapless trial limits.", "errors.gapless.media_flac_limits");
+    return info;
+  }
+
+  // Keep only the unfinished metadata block or frame. scan/checksum are relative to
+  // that frame, so a network chunk ending inside a header never loses a candidate.
+  function flacReader(onInfo, onFrame) {
+    let storage = new Uint8Array(0), start = 0, end = 0, magic = false, metadata = true;
+    let skip = 0, lastMetadata = false;
+    let info, header, scan = 0, checksum = 0, samples = 0, frames = 0;
+    function drain(eof) {
+      if (!magic) {
+        if (end - start < 4 && !eof) return;
+        check(String.fromCharCode(...storage.subarray(start, start + 4)) === "fLaC",
+          "Original stream is not native FLAC.", "errors.gapless.media_not_flac");
+        magic = true; start += 4;
       }
-      pos += size;
-    }
-    check(info && info.total > 0 && info.rate >= 8000 && info.rate <= 192000 && info.channels <= 2 && [16, 24].includes(info.bits), "This FLAC format is outside the gapless trial limits.", "errors.gapless.media_flac_limits");
-    const frames = []; let samples = 0;
-    while (pos < a.length) {
-      const h = flacHeader(a, pos, info), expected = h.variable ? samples : frames.length;
-      check(h.number === expected, "Non-contiguous FLAC frame numbers.", "errors.gapless.media_flac_frame_order");
-      let next = h.headerEnd + 2, checksum = crc(a, pos, next);
-      for (; next < a.length - 5; checksum = ((checksum << 8) ^ crc16Table[((checksum >>> 8) ^ a[next]) & 255]) & 65535, next++) {
-        if (checksum !== 0 || a[next] !== 255 || (a[next + 1] & 254) !== 248) continue;
-        let candidate; try { candidate = flacHeader(a, next, info); } catch { continue; }
-        if (candidate.variable !== h.variable || candidate.number !== (h.variable ? samples + h.samples : frames.length + 1)) continue;
-        break;
+      while (metadata) {
+        if (skip === 0 && !lastMetadata) {
+          if (end - start < 4) break;
+          const kind = storage[start] & 127;
+          const size = storage[start + 1] * 65536 + storage[start + 2] * 256 + storage[start + 3];
+          if (kind === 0) {
+            check(!info && size === 34, "Invalid FLAC STREAMINFO.", "errors.gapless.media_flac_streaminfo");
+            if (end - start < 38) break;
+            info = readStreamInfo(storage.slice(start + 4, start + 38));
+          }
+          lastMetadata = Boolean(storage[start] & 128); start += 4; skip = size;
+        }
+        // Artwork and other metadata can be large. Discard their payload as it arrives.
+        const available = Math.min(skip, end - start);
+        start += available; skip -= available;
+        if (skip) break;
+        if (lastMetadata) {
+          metadata = false;
+          check(info, "Invalid FLAC STREAMINFO.", "errors.gapless.media_flac_streaminfo");
+          onInfo(info);
+        }
       }
-      if (next >= a.length - 5) next = a.length;
-      check(crc(a, pos, next) === 0, "FLAC frame checksum failed.", "errors.gapless.media_flac_checksum");
-      frames.push({data: a.subarray(pos, next), samples: h.samples}); samples += h.samples; pos = next;
-      check(frames.length <= 100000 && samples <= info.total, "FLAC frame bounds exceeded.", "errors.gapless.media_flac_bounds");
+      if (metadata) {
+        check(!eof, "Truncated FLAC metadata.", "errors.gapless.media_flac_truncated"); return;
+      }
+      while (start < end) {
+        const data = storage.subarray(start, end);
+        // A complete FLAC frame header is at most 16 bytes, followed by a CRC16 footer.
+        if (!header) {
+          if (!eof && data.length < 18) return;
+          header = flacHeader(data, 0, info);
+          check(header.number === (header.variable ? samples : frames), "Non-contiguous FLAC frame numbers.", "errors.gapless.media_flac_frame_order");
+          scan = header.headerEnd + 2;
+          check(scan <= data.length, "FLAC frame checksum failed.", "errors.gapless.media_flac_checksum");
+          checksum = crc(data, 0, scan);
+        }
+        const limit = eof ? data.length : data.length - 15;
+        while (scan < limit) {
+          if (checksum === 0 && data[scan] === 255 && (data[scan + 1] & 254) === 248) {
+            let next;
+            try { next = flacHeader(data, scan, info); } catch { /* Audio can contain sync-like bytes. */ }
+            if (next?.variable === header.variable && next.number === (header.variable ? samples + header.samples : frames + 1)) break;
+          }
+          checksum = ((checksum << 8) ^ crc16Table[((checksum >>> 8) ^ data[scan]) & 255]) & 65535;
+          scan++;
+        }
+        if (scan >= limit && !eof) return;
+        check(checksum === 0, "FLAC frame checksum failed.", "errors.gapless.media_flac_checksum");
+        frames++; samples += header.samples;
+        check(frames <= 100000 && samples <= info.total, "FLAC frame bounds exceeded.", "errors.gapless.media_flac_bounds");
+        onFrame({data: eof ? data.subarray(0, scan) : data.slice(0, scan), samples: header.samples});
+        start += scan; header = null;
+      }
+      if (eof) check(samples === info.total, "FLAC sample count does not match STREAMINFO.", "errors.gapless.media_flac_samples");
     }
-    check(samples === info.total, "FLAC sample count does not match STREAMINFO.", "errors.gapless.media_flac_samples");
+    function push(chunk) {
+      for (let offset = 0; offset < chunk.length; offset += 65536) {
+        const part = chunk.subarray(offset, offset + 65536), kept = end - start;
+        if (end + part.length > storage.length) {
+          if (kept + part.length > storage.length) {
+            const larger = new Uint8Array(Math.max(kept + part.length, Math.min(storage.length * 2, 96 * 1024 ** 2)));
+            larger.set(storage.subarray(start, end)); storage = larger;
+          } else storage.copyWithin(0, start, end);
+          start = 0; end = kept;
+        }
+        storage.set(part, end); end += part.length; drain(false);
+      }
+    }
+    // Whole-file preparation can borrow the original buffer for every verified frame.
+    function finish(file) {
+      if (file) { storage = file; end = file.length; }
+      drain(true);
+    }
+    return {push, finish, get capacity() { return storage.byteLength; }};
+  }
+  function parseFlac(data) {
+    let info;
+    const frames = [], reader = flacReader(value => { info = value; }, frame => frames.push(frame));
+    reader.finish(data);
     return {...info, frames};
   }
   function streamInfo(rate, channels, bits, total, block) {
@@ -127,18 +196,42 @@ const gaplessMedia = (() => {
     const mvhd = full("mvhd", 0, u32(0), u32(0), u32(1000), u32(0), u32(0x10000), u16(0x100), zeros(10), matrix, zeros(24), u32(2));
     return cat(box("ftyp", encoder.encode("iso6"), u32(1), encoder.encode("iso6mp41dash")), box("moov", mvhd, trak, box("mvex", full("trex", 0, u32(1), u32(1), u32(0), u32(0), u32(0)))));
   }
-  function pack(info) {
-    const parts = []; let samples = 0, sequence = 1;
-    for (let i = 0; i < info.frames.length; i += 16) {
-      const frames = info.frames.slice(i, i + 16), base = samples;
+  function fragmentWriter(info) {
+    const media = {init: init(info), parts: [], duration: info.total / info.rate,
+      key: `${info.rate}/${info.channels}/${info.bits}`, samples: info.total, rate: info.rate,
+      maxBlock: info.streaminfo[2] * 256 + info.streaminfo[3], bytes: 0, byteRate: 0, maxPartBytes: 0};
+    let frames = [], base = 0, pendingBytes = 0;
+    function flush() {
+      if (!frames.length) return;
       const entries = cat(...frames.map(f => cat(u32(f.samples), u32(f.data.length))));
-      const fragment = offset => box("moof", full("mfhd", 0, u32(sequence)), box("traf", full("tfhd", 0x20000, u32(1)), full("tfdt", 0x1000000, u32(Math.floor(base / 2 ** 32)), u32(base)), full("trun", 0x301, u32(frames.length), u32(offset), entries)));
+      const fragment = offset => box("moof", full("mfhd", 0, u32(media.parts.length + 1)), box("traf", full("tfhd", 0x20000, u32(1)), full("tfdt", 0x1000000, u32(Math.floor(base / 2 ** 32)), u32(base)), full("trun", 0x301, u32(frames.length), u32(offset), entries)));
       const moof = fragment(0), data = cat(fragment(moof.length + 8), box("mdat", ...frames.map(f => f.data)));
-      samples += frames.reduce((n, f) => n + f.samples, 0); parts.push({start: base / info.rate, end: samples / info.rate, data}); sequence++;
+      const start = base / info.rate;
+      base += frames.reduce((n, f) => n + f.samples, 0);
+      const end = base / info.rate;
+      media.parts.push({start, end, data}); media.bytes += data.byteLength;
+      media.byteRate = Math.max(media.byteRate, data.byteLength / (end - start));
+      media.maxPartBytes = Math.max(media.maxPartBytes, data.byteLength);
+      frames = []; pendingBytes = 0;
     }
-    return {init: init(info), parts, duration: samples / info.rate, key: `${info.rate}/${info.channels}/${info.bits}`, samples, rate: info.rate, maxBlock: info.streaminfo[2] * 256 + info.streaminfo[3],
-      bytes: parts.reduce((n, p) => n + p.data.byteLength, 0), byteRate: Math.max(...parts.map(p => p.data.byteLength / (p.end - p.start))), maxPartBytes: Math.max(...parts.map(p => p.data.byteLength))};
+    function add(frame) {
+      frames.push(frame); pendingBytes += frame.data.length;
+      if (frames.length === 16) flush();
+    }
+    return {media, add, flush, get pendingBytes() { return pendingBytes; }};
   }
-  return {parseFlac, pcmFlac, mp3Info, pack};
+  function pack(info) {
+    const writer = fragmentWriter(info);
+    for (const frame of info.frames) writer.add(frame);
+    writer.flush(); return writer.media;
+  }
+  function progressiveFlac() {
+    let writer;
+    const reader = flacReader(info => { writer = fragmentWriter(info); writer.media.incomplete = true; }, frame => writer.add(frame));
+    return {push: reader.push, get media() { return writer?.media; },
+      get pendingBytes() { return reader.capacity + (writer?.pendingBytes || 0); },
+      finish() { reader.finish(); writer.flush(); writer.media.incomplete = false; return writer.media; }};
+  }
+  return {parseFlac, progressiveFlac, pcmFlac, mp3Info, pack};
 })();
 if (typeof module !== "undefined") module.exports = gaplessMedia;
