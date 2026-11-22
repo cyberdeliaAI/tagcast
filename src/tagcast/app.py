@@ -218,7 +218,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._run(self.studio.status)
         elif url.path == "/api/library":
             self._run(lambda: self.studio.load_library(query.get("refresh") == "1",
-                      startup=query.get("startup") == "1", known=query.get("known"), session=query.get("session")))
+                      startup=query.get("startup") == "1", playback_first=query.get("playback") == "1",
+                      known=query.get("known"), session=query.get("session")))
         elif url.path == "/api/overview":
             self._run(self.studio.overview)
         elif url.path == "/api/account-settings":

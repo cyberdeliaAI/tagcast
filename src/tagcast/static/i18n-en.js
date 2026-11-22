@@ -1561,6 +1561,7 @@ globalThis.TagcastI18nEnglish = Object.freeze({
   "library.loading.fresh": "Downloading a fresh copy of your collection.",
   "library.loading.hamsters": "Waking up the cloud hamsters. One of them hit snooze.",
   "library.loading.humming": "Asking the server to stop humming and send the tracks…",
+  "library.loading.overview": "Preparing the album overview. You can press Play as soon as your saved queue appears.",
   "library.loading.patience": "Large libraries can take a little while.",
   "library.loading.records": "Fetching your albums. Apparently ‘a few records’ means several thousand.",
   "library.loading.sofa": "Looking behind the digital sofa for your albums…",

@@ -1567,6 +1567,7 @@
   "library.loading.fresh": "Téléchargement d’une copie toute fraîche de votre collection.",
   "library.loading.hamsters": "On réveille les hamsters du cloud. L’un d’eux a demandé cinq minutes de plus.",
   "library.loading.humming": "On demande au serveur d’arrêter de fredonner et d’envoyer les morceaux…",
+  "library.loading.overview": "Préparation de la liste des albums. Vous pouvez lancer la lecture dès que votre file d’attente enregistrée apparaît.",
   "library.loading.patience": "Les grandes bibliothèques peuvent prendre un peu de temps.",
   "library.loading.records": "On récupère vos albums. Apparemment, « quelques disques » veut dire plusieurs milliers.",
   "library.loading.sofa": "On cherche vos albums derrière le canapé numérique…",

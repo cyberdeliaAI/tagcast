@@ -17,8 +17,11 @@ in the frontend; it does not suddenly become another hundred times faster.
 
 ## Freshness and ownership
 
-On startup, a signed-in listener can browse the saved library, restore their queue
-and press Play while Tagcast checks iBroadcast for changes. The private token file
+On startup, Tagcast first mounts the saved library and checks its account and
+disc membership. The player then restores the saved queue's track IDs while the
+album overview is being built. The queue starts paused. Pressing Play streams the
+selected track immediately, even if the overview is still loading. When the
+albums appear, playback continues on the same track. The private token file
 remembers the last verified account ID, display name, Premium flag and disc grouping
 setting. Older profiles first verify the owner with a status request. A missing,
 incompatible or expired cache follows the normal online load.

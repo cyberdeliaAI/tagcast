@@ -1567,6 +1567,7 @@
   "library.loading.fresh": "Descargando una copia nueva de tu colección.",
   "library.loading.hamsters": "Despertando a los hámsteres de la nube. Uno de ellos pospuso la alarma.",
   "library.loading.humming": "Pidiendo al servidor que deje de tararear y envíe las canciones…",
+  "library.loading.overview": "Preparando la lista de álbumes. Puedes iniciar la reproducción en cuanto aparezca tu cola guardada.",
   "library.loading.patience": "Las bibliotecas grandes pueden tardar un poco.",
   "library.loading.records": "Buscando tus álbumes. Al parecer, “unos cuantos discos” significa varios miles.",
   "library.loading.sofa": "Buscando tus álbumes detrás del sofá digital…",

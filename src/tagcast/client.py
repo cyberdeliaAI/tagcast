@@ -935,12 +935,20 @@ class Studio:
             self._check_client(client)
             return {"combine_sets": self.combine_sets}
 
-    def load_library(self, refresh=False, *, startup=False, session=None, known=None):
+    def load_library(self, refresh=False, *, startup=False, playback_first=False, session=None, known=None):
         with self.lock:
             client = self._require_client()
             if (startup or known is not None) and session != self.playback_session:
                 raise NotConnected("The playback session changed. Reload Tagcast.")
         library = self._startup_library(client) if startup and not refresh else None
+        if library is not None and playback_first:
+            # Queue restoration only needs the mounted account and requested track IDs.
+            # Resolve native disc membership once, before the queue and album reads run in parallel.
+            combined_view = library.combined_view
+            with self.lock:
+                self._check_client(client)
+                return {"source": "playback", "playback_profile": self.collections.playback_profile(library),
+                        "combined_view": combined_view}
         if library is None:
             library, source = self._current(client, refresh, known=known)
         else:

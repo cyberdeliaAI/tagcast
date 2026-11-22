@@ -4,7 +4,7 @@
 // names, stream URLs, audio, drafts or output-device settings enter browser storage.
 const queueMemory = {profile: "", session: "", attempted: "", pending: null, restoring: false};
 function queueMemoryOwner() {
-  return live() && !state.loading && queueMemory.profile && queueMemory.session === state.connection.playback_session
+  return playbackLibraryReady() && queueMemory.profile && queueMemory.session === state.connection.playback_session
     && (typeof queueSync === "undefined" || !queueSync.active && !queueSync.applying)
     && (typeof localPlaybackAllowed !== "function" || localPlaybackAllowed());
 }

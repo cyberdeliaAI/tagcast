@@ -823,6 +823,48 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(restarted.load_library(refresh=True)["source"], "download")
         self.assertEqual(mock_ibroadcast.STATE["downloads"], 3)
 
+    def test_restored_queue_streams_while_the_first_album_index_is_still_building(self):
+        studio = self.local_connection()
+        original = studio.load_library()
+        self.wait_for_cache(studio)
+        studio = client.Studio(self.home)
+        session = studio.playback_session
+        with self.assertRaises(client.NotConnected):
+            studio.load_library(startup=True, playback_first=True, session="previous-session")
+        self.assertIsNone(studio.library)
+        with patch.object(client.Library, "album_index", side_effect=AssertionError("built albums early")), \
+                patch.object(studio.client, "_jsonrequest", side_effect=AssertionError("unexpected remote read")):
+            ready = studio.load_library(startup=True, playback_first=True, session=session)
+        self.assertEqual(ready, {"source": "playback", "playback_profile": original["playback_profile"],
+                                 "combined_view": original["combined_view"]})
+
+        entered, release = threading.Event(), threading.Event()
+        album_index = studio.library.album_index
+
+        def delayed_index():
+            entered.set()
+            if not release.wait(5):
+                raise AssertionError("Playback waited for the album overview")
+            return album_index()
+
+        with ThreadPoolExecutor(1) as pool, patch.object(studio.library, "album_index", delayed_index), \
+                patch.object(studio, "_read_cache", side_effect=AssertionError("disk reread")):
+            overview = pool.submit(studio.load_library, startup=True, session=session)
+            try:
+                self.assertTrue(entered.wait(5))
+                rows = studio.collections.queue_tracks({"tracks": ["903", "903"], "restore": True,
+                    "profile": ready["playback_profile"], "session": session})["tracks"]
+                self.assertEqual([(r["id"], r["position"]) for r in rows], [("903", 0), ("903", 1)])
+                audio, _mime = studio.stream("903", "bytes=10-19", playback_session=session)
+                with audio:
+                    self.assertEqual((audio.status_code, audio.content), (206, mock_ibroadcast.AUDIO[10:20]))
+                self.assertFalse(overview.done())
+            finally:
+                release.set()
+            self.assertEqual(overview.result(5)["albums"], original["albums"])
+        self.assertEqual(mock_ibroadcast.STATE["downloads"], 1)
+        self.assertEqual(mock_ibroadcast.STATE["writes"], [])
+
     def test_restart_can_restore_queue_and_stream_while_changed_library_downloads(self):
         studio = self.local_connection()
         original = studio.load_library()

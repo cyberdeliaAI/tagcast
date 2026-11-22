@@ -102,7 +102,7 @@ function beginPlaybackWatch(active = false) {
   const track = player.queue[player.index];
   playReporting.watch = null;
   if (typeof localPlaybackAllowed === "function" && !localPlaybackAllowed()) return;
-  if (!playReporting.enabled || !live() || state.loading || !track || !state.connection.playback_session) return;
+  if (!playReporting.enabled || !playbackLibraryReady() || !track || !state.connection.playback_session) return;
   playReporting.watch = {browser: typeof queueSync !== "undefined" ? queueSync.browser : "", trackId: track.id, session: state.connection.playback_session,
     details: state.details, eventId: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID()
       : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`,
@@ -111,7 +111,7 @@ function beginPlaybackWatch(active = false) {
 }
 
 function playbackWatchCurrent(watch) {
-  return watch && playReporting.enabled && live() && !state.loading && watch.details === state.details
+  return watch && playReporting.enabled && playbackLibraryReady() && watch.details === state.details
     && watch.session === state.connection.playback_session;
 }
 

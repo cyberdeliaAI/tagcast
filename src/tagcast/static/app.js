@@ -47,6 +47,7 @@ const metadataEditingDefaults = {applyYearToTracks: storedTrackYearDefault()};
 const libraryNotice = {visible: document.documentElement.dataset.libraryNotice !== "hidden"};
 let libraryLoadRequest = 0;
 let loadedLibrarySession = null;
+let preparingAlbumOverview = false;
 let startupSync = "";
 let deferredStartupCheck = null;
 let combinedNoticeProfile = "";
@@ -97,7 +98,13 @@ function nextLibraryLoadingMessage() {
 
 // Whole sentences: the playful message, a fresh download note and the patience note.
 function libraryLoadingText(message, refresh) {
+  if (preparingAlbumOverview) return TagcastI18n.text("library.loading.overview");
   return [message, refresh ? TagcastI18n.text("library.loading.fresh") : "", TagcastI18n.text("library.loading.patience")].filter(Boolean).join(" ");
+}
+
+function playbackLibraryReady() {
+  return live() && (!state.loading || (preparingAlbumOverview && state.connection.connected
+    && loadedLibrarySession === state.connection.playback_session));
 }
 
 $("#notice-dismiss").addEventListener("click", () => {
@@ -227,6 +234,7 @@ function useLocal(albums, mode) {
   startupSync = ""; deferredStartupCheck = null;
   pendingAlbums = null;
   loadedLibrarySession = null;
+  preparingAlbumOverview = false;
   saveOrder += 1;
   libraryLoadRequest += 1; state.loading = false; state.playlistsCount = null;
   $("#library-loading").hidden = true;
@@ -1670,6 +1678,7 @@ async function loadLive(refresh = false, tryStartup = false) {
   const current = () => request === libraryLoadRequest && session === state.connection.playback_session;
   const retained = loadedLibrarySession !== null && loadedLibrarySession === session;
   if (!retained) {
+    preparingAlbumOverview = false;
     if (loadedLibrarySession !== null) {
       if (typeof detachQueueMemory === "function") detachQueueMemory();
       if (typeof stopPlayer === "function") stopPlayer();
@@ -1684,13 +1693,24 @@ async function loadLive(refresh = false, tryStartup = false) {
   let replaced = false, switchedToDemo = false;
   try {
     const query = tryStartup ? `?startup=1&session=${encodeURIComponent(session)}` : refresh ? "?refresh=1" : "";
-    const data = await api(`/api/library${query}`);
+    let data = await api(`/api/library${query}${tryStartup ? "&playback=1" : ""}`);
+    if (!current()) return;
+    if (data.source === "playback") {
+      loadedLibrarySession = session;
+      preparingAlbumOverview = true;
+      state.connection.combined_view = data.combined_view;
+      $("#library-loading-detail").textContent = TagcastI18n.text("library.loading.overview");
+      bindQueueMemory(data.playback_profile);
+      restoreQueueMemory();
+      data = await api(`/api/library${query}`);
+    }
     if (!current()) return;
     const albums = colorize(data.albums);
     if (retained) resetLiveLibraryViews();
     replaced = true;
     loadedLibrarySession = session;
     installLibraryData(data, albums);
+    preparingAlbumOverview = false;
     if (data.source === "startup") {
       startup = data.snapshot;
       startupSync = "checking";
@@ -1702,7 +1722,7 @@ async function loadLive(refresh = false, tryStartup = false) {
     if (error.status === 401) {
       Object.assign(state.connection, {connected: false, account: "", playback_session: ""});
     }
-    if (error.status === 401 || !retained) {
+    if (error.status === 401 || (!retained && !preparingAlbumOverview)) {
       useLocal(demoLibrary(), "demo");
       switchedToDemo = true;
     } else if (usingSavedCopy) {

@@ -2130,7 +2130,7 @@ test("preview favourites cannot write, including player hearts, and explain that
   assert.match(p.run('heartButton({id: "100", title: "Demo", rating: 0})'), /disabled/);
 });
 
-test("startup restores a playable queue before the library check finishes", async () => {
+test("the saved queue plays before the album overview and keeps playing through the remote check", async () => {
   const profile = "a".repeat(64);
   for (const result of ["current", "download", "offline", "logout"]) {
     const storage = {["tagcast-queue-" + profile]: JSON.stringify({version: 1,
@@ -2140,26 +2140,35 @@ test("startup restores a playable queue before the library check finishes", asyn
     const cached = {albums, artists: [], premium: true, account: "Listener", snapshot: "snapshot1",
       source: "startup", playback_profile: profile};
     const ok = data => ({ok: true, json: async () => data});
-    let release;
+    let showAlbums, release;
     p.setStatusFetch(() => ok({connected: true, startup_cache: true, playback_session: "session1"}));
     p.setFetch(url => {
-      if (url === "/api/library?startup=1&session=session1") return ok(cached);
+      if (url === "/api/library?startup=1&session=session1&playback=1") return ok({source: "playback", playback_profile: profile});
+      if (url === "/api/library?startup=1&session=session1") return new Promise(resolve => { showAlbums = resolve; });
       if (url === "/api/library?known=snapshot1&session=session1") return new Promise(resolve => { release = resolve; });
       if (url === "/api/queue-tracks") return ok({tracks: [{id: "100", position: 0, title: "Selected track",
         artist: "Artist", album: {id: "1", name: "Album", artist: "Artist"}}]});
       return ok({albums: details});
     });
     await p.run("boot()"); await settle();
-    assert.ok(release);
-    assert.equal(p.run("state.loading || !player.resumePending"), false);
-    assert.equal(p.nodes.get("#library-sync").hidden, false);
+    assert.ok(showAlbums);
+    assert.equal(release, undefined);
+    assert.equal(p.run("state.loading && !state.albums.length && player.resumePending"), true);
+    assert.equal(p.nodes.get("#library-loading").hidden, false);
+    assert.match(p.nodes.get("#library-loading-detail").textContent, /Preparing the album overview/);
     assert.equal(p.nodes.get("#audio").src, undefined);
     await p.nodes.get("#gapless-play").emit("click"); await settle();
     const src = p.nodes.get("#audio").src;
     assert.match(src, /\/api\/stream\/100/);
+    p.run("audio.currentTime = 4; globalThis.oldQueue = player.queue");
+    showAlbums(ok(cached)); await settle();
+    assert.ok(release);
+    assert.equal(p.run("!state.loading && state.albums.length > 0 && player.queue === oldQueue && !audio.paused && audio.currentTime === 4"), true);
+    assert.equal(p.requests.filter(r => r.url === "/api/queue-tracks").length, 1);
+    assert.equal(p.nodes.get("#library-sync").hidden, false);
     await p.run('openAlbum("1")');
     const location = p.location.hash;
-    p.run("globalThis.oldDetails = state.details; globalThis.oldQueue = player.queue");
+    p.run("globalThis.oldDetails = state.details");
     if (result === "offline" || result === "logout") {
       release({ok: false, status: result === "logout" ? 401 : 502, json: async () => ({error: "Unavailable"})});
     } else if (result === "current") {
@@ -2180,6 +2189,50 @@ test("startup restores a playable queue before the library check finishes", asyn
     assert.equal(p.nodes.get("#library-sync").hidden, result !== "offline");
     if (result === "download") assert.equal(p.run("state.albums[0].name"), "Updated title");
   }
+});
+
+test("a failed album overview preserves early playback unless the session expired", async () => {
+  const profile = "b".repeat(64);
+  for (const status of [502, 401]) {
+    const p = page({deferReady: true, storage: {["tagcast-queue-" + profile]: JSON.stringify({
+      version: 1, entries: [{id: "100"}], index: 0, repeat: "none", shuffle: false})}});
+    const ok = data => ({ok: true, json: async () => data});
+    let release;
+    p.setStatusFetch(() => ok({connected: true, startup_cache: true, playback_session: "session"}));
+    p.setFetch(url => {
+      if (url.endsWith("&playback=1")) return ok({source: "playback", playback_profile: profile});
+      if (url.startsWith("/api/library?startup=")) return new Promise(resolve => { release = resolve; });
+      if (url === "/api/queue-tracks") return ok({tracks: [{id: "100", position: 0, title: "Track",
+        artist: "Artist", album: {id: "1", name: "Album", artist: "Artist"}}]});
+      return ok({});
+    });
+    await p.run("boot()"); await settle();
+    await p.nodes.get("#gapless-play").emit("click"); await settle();
+    assert.equal(p.run("state.loading && !audio.paused"), true);
+    const src = p.run("audio.src");
+    release({ok: false, status, json: async () => ({error: "Unavailable"})}); await settle();
+    assert.equal(p.run("state.loading"), false);
+    if (status === 502) {
+      assert.equal(p.run("live() && !audio.paused && player.queue.length === 1"), true);
+      assert.equal(p.run("audio.src"), src);
+    } else {
+      assert.equal(p.run("!live() && audio.paused && !player.queue.length && !queueMemory.profile"), true);
+    }
+  }
+});
+
+test("a retired startup reply cannot restore queue storage after switching away from live playback", async () => {
+  const p = page({deferReady: true});
+  const ok = data => ({ok: true, json: async () => data});
+  let release;
+  p.setStatusFetch(() => ok({connected: true, startup_cache: true, playback_session: "former-session"}));
+  p.setFetch(url => url.endsWith("&playback=1") ? new Promise(resolve => { release = resolve; }) : ok({}));
+  await p.run("boot()"); await settle();
+  assert.ok(release);
+  p.run('useLocal(demoLibrary(), "demo")');
+  release(ok({source: "playback", playback_profile: "a".repeat(64)})); await settle();
+  assert.equal(p.run("!state.loading && !playbackLibraryReady() && !queueMemory.profile && !player.queue.length"), true);
+  assert.equal(p.requests.some(r => r.url === "/api/queue-tracks" || r.url.endsWith("session=former-session")), false);
 });
 
 test("a changed startup library waits for the open editor and then reads the current snapshot again", async () => {

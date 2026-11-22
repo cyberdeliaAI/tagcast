@@ -260,7 +260,7 @@ function gaplessQueueChanged() {
   gaplessPrefetch(g); gaplessPump(g);
 }
 async function gaplessPrefetch(g) {
-  if (!gaplessValid(g) || !g.current || !g.wanted || g.next || g.pending || state.loading || gaplessFailed(g.wanted, g.quality)) return;
+  if (!gaplessValid(g) || !g.current || !g.wanted || g.next || g.pending || !playbackLibraryReady() || gaplessFailed(g.wanted, g.quality)) return;
   const entry = g.wanted, ticket = g.ticket; g.pending = true;
   try {
     const media = await gaplessPrepare(g, entry);
