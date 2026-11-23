@@ -163,6 +163,17 @@ desktop app and the browser version. See the
 [Electron design](docs/electron.md), [native builds](docs/native-builds.md) and
 [documentation maintenance](docs/documentation.md).
 
+### How I use AI
+
+I use Claude (Anthropic), ChatGPT and Codex (OpenAI), and Mistral (Mistral AI)
+to explore technical options, debug problems, review code and help implement changes.
+I decide which features belong in Tagcast, how the interface should work and how
+the app is built.
+
+I review AI suggestions, test the code and revise it where needed before it
+becomes part of Tagcast. I’m responsible for the quality and reliability of each
+release and for the direction of the project.
+
 ## Code signing policy
 
 The macOS downloads are Developer ID signed and notarized by Apple. Windows
@@ -180,9 +191,8 @@ automatic update checks and the public service-status feed.
 
 ## Credits and license
 
-Developed by Cyberdelia, with AI-assisted development using Claude (Anthropic),
-ChatGPT / Codex (OpenAI) and Mistral (Mistral AI). Logos, icons and screenshots are
-in the [media kit](media/README.md) ([ZIP download](https://github.com/cyberdeliaAI/tagcast/raw/refs/heads/main/media/tagcast-media-kit.zip)).
+Developed by Cyberdelia. Logos, icons and screenshots are in the
+[media kit](media/README.md) ([ZIP download](https://github.com/cyberdeliaAI/tagcast/raw/refs/heads/main/media/tagcast-media-kit.zip)).
 
 [MIT](LICENSE) for Tagcast code. The original Powered by iBroadcast logos belong to
 iBroadcast and are displayed under its
