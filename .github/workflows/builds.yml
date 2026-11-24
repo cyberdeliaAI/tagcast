@@ -129,7 +129,7 @@ jobs:
         if: needs.scope.outputs.full == 'true' && (runner.os != 'Linux' && hashFiles('tagcast.spec') != '' && hashFiles('electron/package.json') == '')
         shell: bash
         run: uv run --frozen --python python --with-requirements requirements-build.txt python tools/build_binary.py --release-tag "$RELEASE_TAG"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') != '')
         with:
           name: tagcast-${{ matrix.target }}
@@ -138,13 +138,13 @@ jobs:
       - name: Build legacy console download
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         run: uv run --frozen --python python --with pyinstaller==6.22.3 python tools/build_binary.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: needs.scope.outputs.full == 'true' && (hashFiles('tagcast.spec') == '')
         with:
           name: tagcast-${{ matrix.target }}
           path: dist/*.zip
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && needs.scope.outputs.full == 'true'
         with:
           name: smoke-reports-${{ matrix.target }}
@@ -216,7 +216,7 @@ jobs:
               report.write_text(json.dumps(data, indent=2) + '\n')
           finally:
               marker.unlink(missing_ok=True)
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && needs.scope.outputs.full == 'true'
         with:
           name: deb-reports-${{ matrix.os }}
