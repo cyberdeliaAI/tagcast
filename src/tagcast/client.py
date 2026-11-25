@@ -169,6 +169,10 @@ class ConnectionSecurityError(ApiError):
     """TLS validation failed; never work around certificate checks."""
 
 
+class DownloadBandwidthLimit(ApiError):
+    """The download service explicitly reported its bandwidth limit."""
+
+
 class UncertainWrite(ApiError):
     """A request may have been applied; never resend it without a fresh review."""
 
@@ -394,6 +398,9 @@ class StudioClient(ibroadcast.iBroadcast):
                     answer = json.loads(response.raw.read(4096, decode_content=True))
                 except (ValueError, UnicodeError):
                     answer = {}
+                if isinstance(answer, dict) and answer.get("bandwidth_limit") is True:
+                    response.close()
+                    raise DownloadBandwidthLimit("iBroadcast's download bandwidth limit has been reached. Try again later.")
                 # This service can reject a token in JSON with HTTP 200. Normalize
                 # only that explicit rejection for the existing shared refresh gate.
                 if isinstance(answer, dict) and answer.get("authenticated") is False:

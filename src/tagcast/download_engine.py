@@ -61,7 +61,7 @@ class Fail(Exception):
 
 
 class TerminalTransferError(Fail):
-    """Stop this batch: credentials, TLS or a local prerequisite must be fixed."""
+    """A failure that stops the batch across all download sources."""
 
 
 class TransferStopped(Fail):
@@ -1270,6 +1270,9 @@ class Transfer:
         self.started = self.finished = None
 
     def _work(self, rel, path, track_id):
+        if self.stop.is_set():
+            return "stopped", 0, ""
+
         def progress(received, expected, new):
             with self.lock:
                 self.live[rel] = [received, expected]
