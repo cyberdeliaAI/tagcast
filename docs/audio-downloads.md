@@ -38,6 +38,10 @@ that iBroadcast's subsequent tag edits were not embedded in that file. Choose
 **Original upload · streaming server** directly for the uploaded bytes/tags.
 Converted MP3 always uses the streaming route.
 
+If iBroadcast reports that its download bandwidth limit has been reached, Tagcast
+stops the queue. The affected track is never retried through streaming. You can
+start a new download manually when bandwidth is available again.
+
 Existing completed files are kept independently of which source created them.
 Changing the source does not retag or replace those files. Use a different
 output folder if you deliberately need another copy with different metadata.
@@ -111,6 +115,10 @@ Automated tests use synthetic byte streams and ZIPs only. They cover filesystem
 integrity, crash/interruption recovery, resumed ranges, ZIP failures/fallbacks,
 collisions, work-folder moves, sessions, single-use reviews, HTTP origin guards,
 quality restrictions, UI navigation/focus and preservation of playback state.
+
+iBroadcast desktop 1.0.4 checks the `bandwidth_limit` field in its download
+worker. Tagcast tests this response with a two-track queue. Whether the service
+returns the same field for a live single-track ZIP request is still unverified.
 
 The real browser walkthrough confirms album selection → Downloads → review →
 completed local files with synthetic music. Four palettes in Light/Dark and

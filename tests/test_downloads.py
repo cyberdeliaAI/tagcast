@@ -199,6 +199,34 @@ class DownloadsTests(unittest.TestCase):
         self.assertTrue(all("Fallback:" in n["note"] for n in result["notes"]))
         self.assertTrue(all(p.read_bytes() == b"uploaded-audio" for p in (self.root / "music").rglob("*.flac")))
 
+    def test_bandwidth_limit_stops_before_stream_fallback_or_the_second_download(self):
+        self.select(["10"])
+        review = self.prepare(workers=1)
+        self.assertEqual(review["tracks"], 2)
+        self.studio.client.open_download.side_effect = StudioClient(access_token="fixture").open_download
+        limited = response(b'{"bandwidth_limit":true,"message":"private detail"}', "application/json")
+        with patch("tagcast.client.requests.post", return_value=limited) as post:
+            result = self.start(review)
+        post.assert_called_once()
+        self.assertEqual(post.call_args.kwargs["data"]["ids"], "1")
+        self.studio.client.open_stream.assert_not_called()
+        self.assertTrue(limited.raw.closed)
+        self.assertEqual((result["state"], result["done"], result["fail"]), ("stopped", 1, 1))
+        self.assertIn("bandwidth limit", result["failures"][0]["note"])
+        self.assertNotIn("private detail", json.dumps(result))
+        self.assertFalse(list((self.root / "music").rglob("*.flac")))
+
+    def test_non_boolean_or_false_bandwidth_limit_allows_normal_fallback(self):
+        self.select(["10"])
+        self.studio.client.open_download.side_effect = StudioClient(access_token="fixture").open_download
+        answers = [response(json.dumps({"bandwidth_limit": flag}).encode(), "application/json")
+                   for flag in [False, "true"]]
+        with patch("tagcast.client.requests.post", side_effect=answers):
+            result = self.start(self.prepare(workers=1))
+        self.assertEqual(result["ok"], 2)
+        self.assertEqual(result["notes_count"], 2)
+        self.assertEqual(self.studio.client.open_stream.call_count, 2)
+
     def test_changed_connection_blocks_transport_before_request_and_after_headers(self):
         context = self.downloads._context("session-one")
         transport = DownloadSession(self.studio, context)

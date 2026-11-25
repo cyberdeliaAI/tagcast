@@ -136,9 +136,11 @@ class DownloadSession:
     def _open(self, send):
         if not self.valid():
             raise engine.TransferStopped("Download stopped: the connection changed.")
-        from .client import ConnectionSecurityError, NotConnected
+        from .client import ConnectionSecurityError, DownloadBandwidthLimit, NotConnected
         try:
             response = send()
+        except DownloadBandwidthLimit as error:
+            raise engine.TerminalTransferError(str(error)) from None
         except NotConnected:
             raise engine.TerminalTransferError("iBroadcast rejected the session. Connect again before restarting downloads.") from None
         except (ConnectionSecurityError, requests.exceptions.SSLError, RawSSLError):
